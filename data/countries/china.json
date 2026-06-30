@@ -1,0 +1,14 @@
+{
+  "id": "china",
+  "name": "Chine",
+  "economy": { "gdp": 17700000000000, "growth": 4.8, "trade_dependency": 0.7 },
+  "military": { "defense_budget": 290000000000, "nuclear_power": true, "projection": 0.7 },
+  "resources": { "oil_dependency": 0.7, "energy_independence": 0.5 },
+  "alliances": ["BRICS", "SCO"],
+  "rivals": ["usa"],
+  "political_system": "one_party_state",
+  "political_stability": 0.75,
+  "technology_level": 0.85,
+  "ideology": ["state_capitalism", "sovereignty"],
+  "strategic_priorities": ["trade_stability", "energy_security", "regional_influence"]
+}

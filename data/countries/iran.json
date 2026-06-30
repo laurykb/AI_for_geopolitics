@@ -1,0 +1,14 @@
+{
+  "id": "iran",
+  "name": "Iran",
+  "economy": { "gdp": 400000000000, "growth": 1.5, "trade_dependency": 0.5 },
+  "military": { "defense_budget": 25000000000, "nuclear_power": false, "projection": 0.55 },
+  "resources": { "oil_dependency": 0.1, "energy_independence": 0.85 },
+  "alliances": [],
+  "rivals": ["usa", "saudi_arabia"],
+  "political_system": "theocracy",
+  "political_stability": 0.45,
+  "technology_level": 0.5,
+  "ideology": ["revolutionary", "anti_western"],
+  "strategic_priorities": ["regional_influence", "regime_survival", "sanctions_relief"]
+}

@@ -1,0 +1,14 @@
+{
+  "id": "saudi_arabia",
+  "name": "Arabie saoudite",
+  "economy": { "gdp": 1100000000000, "growth": 2.8, "trade_dependency": 0.6 },
+  "military": { "defense_budget": 75000000000, "nuclear_power": false, "projection": 0.5 },
+  "resources": { "oil_dependency": 0.05, "energy_independence": 0.95 },
+  "alliances": ["ArabLeague", "GCC"],
+  "rivals": ["iran"],
+  "political_system": "monarchy",
+  "political_stability": 0.6,
+  "technology_level": 0.55,
+  "ideology": ["monarchy", "regional_leadership"],
+  "strategic_priorities": ["oil_market_stability", "regional_security", "containment_of_iran"]
+}

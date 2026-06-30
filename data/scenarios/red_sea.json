@@ -1,0 +1,39 @@
+{
+  "region": "Red Sea",
+  "description": "Crise de sécurité maritime en mer Rouge perturbant une route commerciale stratégique.",
+  "events": [
+    {
+      "id": "rs-1",
+      "round_id": 1,
+      "event_type": "maritime_attack",
+      "title": "Attaques contre des navires commerciaux",
+      "description": "Plusieurs navires commerciaux sont attaqués ; l'origine est incertaine mais plusieurs indices pointent vers des acteurs liés à l'Iran.",
+      "actors": ["iran"],
+      "location": "Red Sea",
+      "severity": 0.6,
+      "uncertainty": 0.6
+    },
+    {
+      "id": "rs-2",
+      "round_id": 2,
+      "event_type": "coalition_proposal",
+      "title": "Proposition de coalition maritime",
+      "description": "Les États-Unis proposent une coalition internationale pour sécuriser la navigation.",
+      "actors": ["usa"],
+      "location": "Red Sea",
+      "severity": 0.4,
+      "uncertainty": 0.4
+    },
+    {
+      "id": "rs-3",
+      "round_id": 3,
+      "event_type": "energy_disruption",
+      "title": "Perturbation des flux énergétiques",
+      "description": "Les tensions entre l'Iran et l'Arabie saoudite menacent les flux énergétiques régionaux.",
+      "actors": ["iran", "saudi_arabia"],
+      "location": "Strait of Hormuz",
+      "severity": 0.7,
+      "uncertainty": 0.5
+    }
+  ]
+}

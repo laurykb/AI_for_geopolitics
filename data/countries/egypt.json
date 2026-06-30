@@ -1,0 +1,14 @@
+{
+  "id": "egypt",
+  "name": "Égypte",
+  "economy": { "gdp": 400000000000, "growth": 3.5, "trade_dependency": 0.8 },
+  "military": { "defense_budget": 4000000000, "nuclear_power": false, "projection": 0.4 },
+  "resources": { "oil_dependency": 0.5, "energy_independence": 0.55 },
+  "alliances": ["ArabLeague"],
+  "rivals": [],
+  "political_system": "authoritarian",
+  "political_stability": 0.5,
+  "technology_level": 0.45,
+  "ideology": ["regional_stability"],
+  "strategic_priorities": ["suez_canal_revenue", "regional_mediation", "economic_stability"]
+}

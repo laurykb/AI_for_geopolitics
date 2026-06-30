@@ -1,0 +1,41 @@
+"""État global du monde et utilitaires (tensions, alliances)."""
+
+from __future__ import annotations
+
+from pydantic import BaseModel, Field
+
+from core.country_state import CountryState
+from core.events import GeoEvent
+
+
+class WorldState(BaseModel):
+    """Photographie de l'état du monde à un round donné."""
+
+    current_round: int = 0
+    countries: dict[str, CountryState] = Field(default_factory=dict)
+    # tensions[a][b] = niveau de tension symétrique entre a et b, dans [0, 1].
+    tensions: dict[str, dict[str, float]] = Field(default_factory=dict)
+    event_history: list[GeoEvent] = Field(default_factory=list)
+
+    def get_tension(self, a: str, b: str) -> float:
+        """Tension actuelle entre a et b (0 par défaut)."""
+        return self.tensions.get(a, {}).get(b, 0.0)
+
+    def adjust_tension(self, a: str, b: str, delta: float) -> float:
+        """Ajuste symétriquement la tension entre a et b, bornée à [0, 1]."""
+        new = max(0.0, min(1.0, self.get_tension(a, b) + delta))
+        self.tensions.setdefault(a, {})[b] = new
+        self.tensions.setdefault(b, {})[a] = new
+        return new
+
+    def share_alliance(self, a: str, b: str) -> bool:
+        """True si a et b partagent au moins une alliance."""
+        ca, cb = self.countries.get(a), self.countries.get(b)
+        if ca is None or cb is None:
+            return False
+        return bool(set(ca.alliances) & set(cb.alliances))
+
+    @classmethod
+    def from_countries(cls, countries: list[CountryState]) -> WorldState:
+        """Construit un WorldState à partir d'une liste de pays."""
+        return cls(countries={c.id: c for c in countries})

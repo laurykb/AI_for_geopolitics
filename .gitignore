@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets & env (NE JAMAIS committer)
+.env
+*.env
+.mcp.local.json
+
+# Modèles & données lourdes
+*.gguf
+*.safetensors
+models/
+data/corpus/
+chroma/
+*.sqlite
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Claude Code local (perso, non partagé)
+.claude/settings.local.json
