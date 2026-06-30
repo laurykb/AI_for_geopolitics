@@ -10,12 +10,18 @@ from simulation.action_space import ActionType
 
 def _world() -> WorldState:
     a = CountryState(
-        id="a", name="A", economy={"gdp": 2000000000000},
-        military={"defense_budget": 100000000000}, resources={},
+        id="a",
+        name="A",
+        economy={"gdp": 2000000000000},
+        military={"defense_budget": 100000000000},
+        resources={},
     )
     b = CountryState(
-        id="b", name="B", economy={"gdp": 1000000000000},
-        military={"defense_budget": 10000000000}, resources={},
+        id="b",
+        name="B",
+        economy={"gdp": 1000000000000},
+        military={"defense_budget": 10000000000},
+        resources={},
     )
     return WorldState.from_countries([a, b])
 
@@ -32,9 +38,10 @@ def test_escalation_rises_with_military_actions():
             country="a", round_id=1, action=ActionType.DEPLOY_FORCES, target="b", intensity=1.0
         )
     ]
-    assert engine.assess(world, event, militant).escalation > engine.assess(
-        world, event, peaceful
-    ).escalation
+    assert (
+        engine.assess(world, event, militant).escalation
+        > engine.assess(world, event, peaceful).escalation
+    )
 
 
 def test_scores_in_range_and_explained():

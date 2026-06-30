@@ -9,24 +9,32 @@ from core.world_state import WorldState
 
 def _usa_iran_world() -> WorldState:
     usa = CountryState(
-        id="usa", name="USA",
+        id="usa",
+        name="USA",
         economy={"gdp": 25000000000000},
         military={"defense_budget": 800000000000, "projection": 0.9},
-        resources={}, rivals=["iran"],
+        resources={},
+        rivals=["iran"],
     )
     iran = CountryState(
-        id="iran", name="Iran",
+        id="iran",
+        name="Iran",
         economy={"gdp": 400000000000},
         military={"defense_budget": 20000000000},
-        resources={}, rivals=["usa"],
+        resources={},
+        rivals=["usa"],
     )
     return WorldState.from_countries([usa, iran])
 
 
 def _event() -> GeoEvent:
     return GeoEvent(
-        id="e1", round_id=1, event_type="maritime_attack",
-        title="Crise", actors=["iran"], severity=0.6,
+        id="e1",
+        round_id=1,
+        event_type="maritime_attack",
+        title="Crise",
+        actors=["iran"],
+        severity=0.6,
     )
 
 

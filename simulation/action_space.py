@@ -18,9 +18,7 @@ class ActionType(StrEnum):
     DEPLOY_FORCES = "deploy_forces"
 
 
-MILITARY_ACTIONS: frozenset[ActionType] = frozenset(
-    {ActionType.MOBILIZE, ActionType.DEPLOY_FORCES}
-)
+MILITARY_ACTIONS: frozenset[ActionType] = frozenset({ActionType.MOBILIZE, ActionType.DEPLOY_FORCES})
 ECONOMIC_ACTIONS: frozenset[ActionType] = frozenset({ActionType.SANCTION})
 COERCIVE_ACTIONS: frozenset[ActionType] = (
     MILITARY_ACTIONS | ECONOMIC_ACTIONS | frozenset({ActionType.CONDEMN})
