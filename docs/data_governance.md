@@ -64,6 +64,24 @@ PIB : World Bank *GDP (current US$)* 2024 [1]. Croissance : IMF *WEO* (avril 202
 - Les champs **qualitatifs** (`alliances`, `rivals`, `political_system`, `ideology`, `strategic_priorities`) sont **inchangés depuis P0** → le comportement des phases P1–P3 est préservé.
 - En revanche, plusieurs **valeurs numériques changent** vs P0 (ex. Chine `trade_dependency` 0,70 → **0,37** ; budgets défense ; PIB). L'agent rule-based a des seuils (`gdp ≥ 1e12`, `trade_dependency ≥ 0.6`, `projection ≥ 0.6`) : la Chine passe désormais **sous** 0,6 en `trade_dependency` (médiation → neutralité dans certains cas). **À faire côté Claude Code local** : relancer `pytest`, ajuster toute assertion couplée à une donnée précise, puis committer sur une branche `feat/p4-data`.
 
+## 7. Reproductibilité (build déterministe)
+
+Les profils `data/countries/*.json` ne sont plus saisis à la main : ils sont **reproductibles**
+depuis des entrées sourcées machine-lisibles `data/sources/indicators.json` (valeurs brutes +
+provenance), via le package `ingestion/` qui applique les normalisations du §3.
+
+```bash
+python -m ingestion.build            # --check (défaut) : vérifie la reproductibilité
+python -m ingestion.build --write    # (re)génère data/countries/*.json (format canonique)
+```
+
+`tests/test_ingestion_build.py` garantit en CI que chaque profil committé **est bien le produit**
+du build depuis les sources (égalité sémantique). Les valeurs « dures » (PIB, croissance, défense,
+GII, commerce, WGI) vivent dans `indicators.json` ; quand elles seront rafraîchies depuis les API
+(World Bank/IMF…), il suffira de mettre à jour ce fichier et de relancer le build. *NB : l'egress
+réseau vers `api.worldbank.org` n'est pas disponible dans l'environnement de dev actuel — un mode
+`--refresh` live pourra être ajouté quand il le sera.*
+
 ## Références
 
 [1] World Bank — GDP (current US$). <https://data.worldbank.org/indicator/NY.GDP.MKTP.CD>
