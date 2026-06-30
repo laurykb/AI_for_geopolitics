@@ -23,6 +23,14 @@ Les pays-agents décident désormais via un **LLM local**, en **JSON validé** :
 
 > Baseline mesurée (mistral 7B Q4, RTX 2060 Super 8 Go) : **~56 tok/s**, ~3,4 s/agent, **~6,0 Go VRAM**, **0 fallback** sur 18 appels.
 
+## Phase 2 — diplomatie ✅
+
+Une **phase de négociation** s'intercale dans le round (`décisions → conséquences → diplomatie → risque`) :
+
+- **`DiplomacyEngine`** (déterministe, explicable) : les propositions sont **agentiques** (`form_coalition`/`support` + cible, ou `proposed_alliances`) ; l'**accept/refuse** suit des règles claires (rivalité, tension, rival commun).
+- **Pactes** : à l'acceptation, un pacte partagé `pact:<a>+<b>` est ajouté aux deux pays (`share_alliance` devient vrai) et la tension baisse — ce qui alimente la **fracture d'alliance** du moteur de risque.
+- **Négociation visible** : `DiplomaticMessage` bilatéraux (offre + réponse) + **résumé public** dans `RoundSummary`, tracés dans `WorldState.diplomatic_history`.
+
 ## Installation & tests
 
 ```bash
@@ -46,12 +54,12 @@ python -m inference.bench --model llama3.2:3b
 core/        # modèles de domaine + moteurs (conséquences, risque, rounds)
 agents/      # base_agent + rule_based_agent (P0) + prompts + llm_agent (P1)
 inference/   # InferenceBackend + OllamaBackend / MockBackend + bench (P1)
-simulation/  # action_space
+simulation/  # action_space (P0) + diplomacy (P2)
 data/        # countries/*.json + scenarios/red_sea.json
-tests/       # unitaires + intégration (rounds rule-based ET LLM)
+tests/       # unitaires + intégration (rounds rule-based, LLM, diplomatie)
 docs/        # plan d'action ; (état de l'art à la racine)
 ```
 
 ## Prochaine étape
 
-**Phase 2** — diplomatie : messages bilatéraux, alliances, accept/refuse, résumé public (voir la roadmap dans `CLAUDE.md` et `docs/PLAN_ACTION_CLAUDE_CODE.md`).
+**Phase 3** — RAG sourcé : Chroma + BM25 + RRF + reranking + citations, métriques recall@k/MRR (voir la roadmap dans `CLAUDE.md` et `docs/PLAN_ACTION_CLAUDE_CODE.md`).
