@@ -1,14 +1,14 @@
 {
   "id": "france",
   "name": "France",
-  "economy": { "gdp": 3000000000000, "growth": 0.8, "trade_dependency": 0.6 },
-  "military": { "defense_budget": 55000000000, "nuclear_power": true, "projection": 0.6 },
-  "resources": { "oil_dependency": 0.5, "energy_independence": 0.65 },
+  "economy": { "gdp": 3162000000000, "growth": 1.1, "trade_dependency": 0.7 },
+  "military": { "defense_budget": 64700000000, "nuclear_power": true, "projection": 0.6 },
+  "resources": { "oil_dependency": 0.95, "energy_independence": 0.55 },
   "alliances": ["NATO", "EU", "Western"],
   "rivals": [],
   "political_system": "democracy",
-  "political_stability": 0.7,
-  "technology_level": 0.8,
+  "political_stability": 0.55,
+  "technology_level": 0.92,
   "ideology": ["liberal_democracy", "european_sovereignty"],
   "strategic_priorities": ["european_stability", "energy_security", "diplomatic_influence"]
 }

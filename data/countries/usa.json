@@ -1,14 +1,14 @@
 {
   "id": "usa",
   "name": "États-Unis",
-  "economy": { "gdp": 25000000000000, "growth": 2.1, "trade_dependency": 0.3 },
-  "military": { "defense_budget": 800000000000, "nuclear_power": true, "projection": 0.95 },
-  "resources": { "oil_dependency": 0.2, "energy_independence": 0.9 },
+  "economy": { "gdp": 28750000000000, "growth": 2.8, "trade_dependency": 0.25 },
+  "military": { "defense_budget": 997000000000, "nuclear_power": true, "projection": 0.95 },
+  "resources": { "oil_dependency": 0.15, "energy_independence": 0.95 },
   "alliances": ["NATO", "Western"],
   "rivals": ["iran"],
   "political_system": "democracy",
-  "political_stability": 0.7,
-  "technology_level": 0.95,
+  "political_stability": 0.45,
+  "technology_level": 0.98,
   "ideology": ["liberal_democracy"],
   "strategic_priorities": ["freedom_of_navigation", "deterrence", "alliance_leadership"]
 }
