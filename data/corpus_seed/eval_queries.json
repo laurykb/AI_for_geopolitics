@@ -1,0 +1,28 @@
+{
+  "queries": [
+    {
+      "query": "Why do attacks on ships threaten freedom of navigation in the Red Sea?",
+      "relevant_doc_ids": ["freedom-of-navigation"]
+    },
+    {
+      "query": "What is the impact of sanctions on Iran's economy?",
+      "relevant_doc_ids": ["iran-sanctions"]
+    },
+    {
+      "query": "How does the Strait of Hormuz affect global oil prices?",
+      "relevant_doc_ids": ["hormuz-energy"]
+    },
+    {
+      "query": "Who proposed a naval coalition to protect shipping?",
+      "relevant_doc_ids": ["coalition-operations"]
+    },
+    {
+      "query": "Why does Egypt depend on the Suez Canal revenue?",
+      "relevant_doc_ids": ["suez-egypt-trade"]
+    },
+    {
+      "query": "What drives the rivalry between Saudi Arabia and Iran?",
+      "relevant_doc_ids": ["saudi-iran-rivalry"]
+    }
+  ]
+}
