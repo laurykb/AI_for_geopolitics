@@ -6,7 +6,13 @@ requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.5",
     "ollama>=0.4",  # client backend d'inférence local (P1)
+    "numpy>=1.26",  # index vectoriel in-memory (P3)
+    "rank-bm25>=0.2",  # retrieval lexical (P3)
 ]
+
+[project.optional-dependencies]
+# Embeddings + reranking sur CPU pour le RAG réel (tire torch). Tests offline sans cet extra.
+rag = ["sentence-transformers>=2.2"]
 
 [tool.setuptools.packages.find]
 include = ["app*", "core*", "agents*", "inference*", "rag*", "simulation*", "storage*"]
