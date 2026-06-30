@@ -92,6 +92,7 @@ def main() -> int:
         for d in summary.decisions:
             tgt = f" -> {d.target}" if d.target else ""
             print(f"   {d.country:14s} {d.action.value:18s}{tgt:12s} i={d.intensity:.2f}")
+        print(f"   Diplomatie : {summary.diplomatic_summary}")
         avg = mean(round_tok_s) if round_tok_s else 0.0
         print(f"   latence={dt:.1f}s | tok/s moyen={avg:.1f} | VRAM={_vram_used_mib()} MiB")
         print("-" * 78)

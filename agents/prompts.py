@@ -69,6 +69,7 @@ def build_decision_prompt(country: CountryState, event: GeoEvent, world: WorldSt
     tensions = _relevant_tensions(country.id, event, world)
     tensions_str = "; ".join(tensions) if tensions else "aucune notable"
     involved = "oui" if country.id in event.actors else "non"
+    candidates = ", ".join(cid for cid in sorted(world.countries) if cid != country.id)
 
     return (
         f"PAYS : {country.name} (id={country.id}, régime={country.political_system})\n"
@@ -83,7 +84,9 @@ def build_decision_prompt(country: CountryState, event: GeoEvent, world: WorldSt
         f"- Sévérité : {event.severity:.2f} | Pays impliqué : {involved}\n"
         f"- Tensions (toi vs acteurs) : {tensions_str}\n\n"
         f"ACTIONS AUTORISÉES : {actions}\n"
-        f"Choisis UNE action servant tes intérêts. `target` doit être un id de pays "
-        f"existant ou null. Réponds en JSON : {{action, target, intensity (0-1), "
-        f"public_statement, risk_assessment (0-1), reasoning}}."
+        f"Choisis UNE action servant tes intérêts. `target` est un id parmi [{candidates}] "
+        f"ou null. Si tu choisis form_coalition ou support, `target` DOIT être l'id du pays "
+        f"allié visé. `intensity` et `risk_assessment` sont des décimaux entre 0.0 et 1.0. "
+        f"Réponds en JSON : {{action, target, intensity, "
+        f"public_statement, risk_assessment, reasoning}}."
     )
