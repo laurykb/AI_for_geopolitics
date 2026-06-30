@@ -15,7 +15,7 @@ from agents.rule_based_agent import RuleBasedAgent
 from core.decisions import AgentDecision
 from core.events import GeoEvent
 from core.world_state import WorldState
-from inference.backend import InferenceBackend
+from inference.backend import InferenceBackend, InferenceResult
 from simulation.action_space import ActionType
 
 
@@ -61,10 +61,14 @@ class LLMAgent(Agent):
         self.max_tokens = max_tokens
         self.temperature = temperature
         self._schema = LLMDecision.model_json_schema()
+        # Télémétrie du dernier appel (lecture par le bench / l'UI).
+        self.last_result: InferenceResult | None = None
+        self.last_used_fallback: bool = False
 
     def decide(self, event: GeoEvent, world: WorldState) -> AgentDecision:
         country = world.countries[self.country_id]
         prompt = build_decision_prompt(country, event, world)
+        self.last_used_fallback = True  # par défaut, sauf succès LLM ci-dessous
         try:
             result = self.backend.generate(
                 prompt,
@@ -74,12 +78,15 @@ class LLMAgent(Agent):
                 schema=self._schema,
             )
         except Exception:
+            self.last_result = None
             return self._fallback(event, world)
 
+        self.last_result = result
         data = _extract_json(result.text)
         if data is not None:
             decision = self._coerce(data, event, world)
             if decision is not None:
+                self.last_used_fallback = False
                 return decision
         return self._fallback(event, world)
 
