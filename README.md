@@ -31,6 +31,17 @@ Une **phase de négociation** s'intercale dans le round (`décisions → conséq
 - **Pactes** : à l'acceptation, un pacte partagé `pact:<a>+<b>` est ajouté aux deux pays (`share_alliance` devient vrai) et la tension baisse — ce qui alimente la **fracture d'alliance** du moteur de risque.
 - **Négociation visible** : `DiplomaticMessage` bilatéraux (offre + réponse) + **résumé public** dans `RoundSummary`, tracés dans `WorldState.diplomatic_history`.
 
+## Phase 3 — RAG sourcé ✅
+
+Pipeline de retrieval **hybride et explicable**, isolé dans `rag/` :
+
+- **Hybride** : dense (`InMemoryVectorIndex`, cosinus numpy) + lexical (**BM25**) → fusion **RRF** → **reranking** cross-encoder (optionnel).
+- **Embeddings/rerank sur CPU** (sentence-transformers, bge-small + cross-encoder) → libère la VRAM pour le LLM. Abstraction `Embedder` avec un **`HashingEmbedder`** déterministe pour des tests **offline** (sans torch).
+- **Citations** : chaque résultat porte sa provenance → `build_brief` produit un **brief sourcé** (`[source: …]`).
+- **Éval** : `recall@k` / `MRR` sur un jeu de requêtes labellisées (`data/corpus_seed/eval_queries.json`).
+
+> Corpus seed **illustratif** (`data/corpus_seed/`) ; l'ingestion de données réelles est la **Phase 4**.
+
 ## Installation & tests
 
 ```bash
@@ -48,6 +59,14 @@ python -m inference.bench                 # mistral:latest par défaut
 python -m inference.bench --model llama3.2:3b
 ```
 
+RAG réel (embeddings/rerank CPU — nécessite l'extra `rag`) :
+
+```bash
+pip install -e ".[rag]"
+python -m rag.demo "freedom of navigation in the Red Sea"   # retrieval + brief sourcé
+python -m rag.demo --eval                                    # recall@k / MRR
+```
+
 ## Structure
 
 ```
@@ -55,11 +74,12 @@ core/        # modèles de domaine + moteurs (conséquences, risque, rounds)
 agents/      # base_agent + rule_based_agent (P0) + prompts + llm_agent (P1)
 inference/   # InferenceBackend + OllamaBackend / MockBackend + bench (P1)
 simulation/  # action_space (P0) + diplomacy (P2)
-data/        # countries/*.json + scenarios/red_sea.json
-tests/       # unitaires + intégration (rounds rule-based, LLM, diplomatie)
+rag/         # corpus, embedder, BM25, vector index, RRF, retriever, brief, eval (P3)
+data/        # countries + scenarios + corpus_seed (P3)
+tests/       # unitaires + intégration (rounds, LLM, diplomatie, RAG)
 docs/        # plan d'action ; (état de l'art à la racine)
 ```
 
 ## Prochaine étape
 
-**Phase 3** — RAG sourcé : Chroma + BM25 + RRF + reranking + citations, métriques recall@k/MRR (voir la roadmap dans `CLAUDE.md` et `docs/PLAN_ACTION_CLAUDE_CODE.md`).
+**Phase 4** — données réelles : ingestion World Bank / SIPRI / GDELT → `CountryState` (recherche sourcée ; **bascule Cowork**), puis `docs/data_governance.md`. Voir `CLAUDE.md` et `docs/PLAN_ACTION_CLAUDE_CODE.md`.
