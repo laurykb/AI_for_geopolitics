@@ -15,7 +15,7 @@ dependencies = [
 rag = ["sentence-transformers>=2.2"]
 
 [tool.setuptools.packages.find]
-include = ["app*", "core*", "agents*", "inference*", "rag*", "simulation*", "storage*"]
+include = ["app*", "core*", "agents*", "inference*", "ingestion*", "rag*", "simulation*", "storage*"]
 
 [tool.ruff]
 line-length = 100
