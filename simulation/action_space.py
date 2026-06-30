@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 
-class ActionType(str, Enum):
+class ActionType(StrEnum):
     """Actions possibles d'un pays face à un événement (Phase 0)."""
 
     CONDEMN = "condemn"

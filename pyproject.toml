@@ -5,6 +5,9 @@ description = "Simulation géopolitique agentique — moteur déterministe (Phas
 requires-python = ">=3.11"
 dependencies = ["pydantic>=2.5"]
 
+[tool.setuptools.packages.find]
+include = ["app*", "core*", "agents*", "inference*", "rag*", "simulation*", "storage*"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

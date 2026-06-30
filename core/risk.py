@@ -49,7 +49,8 @@ class RiskEngine:
         explanation = (
             f"Escalade {escalation:.2f} : {n_mil} action(s) militaire(s), "
             f"tension moyenne {avg_tension:.2f}. "
-            f"Perturbation éco {economic:.2f} : {n_eco} sanction(s), sévérité {event.severity:.2f}. "
+            f"Perturbation éco {economic:.2f} : {n_eco} sanction(s), "
+            f"sévérité {event.severity:.2f}. "
             f"Fracture d'alliance {fracture:.2f}."
         )
         return RiskScore(

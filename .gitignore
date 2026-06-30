@@ -6,6 +6,9 @@ venv/
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
+*.egg-info/
+build/
+dist/
 
 # Secrets & env (NE JAMAIS committer)
 .env
