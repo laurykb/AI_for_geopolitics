@@ -35,6 +35,7 @@ from simulation.negotiation import (
     support_levels,
     update_memories,
 )
+from simulation.trajectory import TrajectoryEngine, TrajectoryState
 
 
 def _clamp(x: float) -> float:
@@ -94,6 +95,13 @@ class RiskStep:
 
 
 @dataclass
+class TrajectoryStep:
+    """Trajectoire Utopie–Dystopie mise à jour après le juge/risque (5 axes + indice U)."""
+
+    state: TrajectoryState
+
+
+@dataclass
 class SummaryStep:
     summary: RoundSummary
 
@@ -149,6 +157,7 @@ RoundStep = (
     | AgentDoneStep
     | DeltasStep
     | RiskStep
+    | TrajectoryStep
     | SummaryStep
     | TurnStartStep
     | MessageDoneStep
@@ -157,6 +166,16 @@ RoundStep = (
     | CommuniqueStep
     | ParticipationStep
 )
+
+
+def _advance_trajectory(
+    world: WorldState, summary: RoundSummary, engine: TrajectoryEngine | None
+) -> TrajectoryState:
+    """Fait avancer la trajectoire du monde d'un round et l'écrit dans `world`."""
+    state = (engine or TrajectoryEngine()).update(world, summary)
+    world.trajectory = state
+    world.trajectory_history.append(state)
+    return state
 
 
 def _snapshot(world: WorldState) -> dict[str, dict[str, float]]:
@@ -184,6 +203,7 @@ def run_live_round(
     *,
     consequence_engine: ConsequenceEngine | None = None,
     risk_engine: RiskEngine | None = None,
+    trajectory_engine: TrajectoryEngine | None = None,
     recent: list[str] | None = None,
 ) -> Iterator[RoundStep]:
     """Joue un round observable et émet ses étapes une à une."""
@@ -225,6 +245,7 @@ def run_live_round(
         consequences=log,
         headline=f"{date} — {event.title}",
     )
+    yield TrajectoryStep(state=_advance_trajectory(world, summary, trajectory_engine))
     yield SummaryStep(summary=summary)
 
 
@@ -246,6 +267,7 @@ def run_negotiation_round(
     recent: list[str] | None = None,
     ledger: BudgetLedger | None = None,
     fog: FogScenario | None = None,
+    trajectory_engine: TrajectoryEngine | None = None,
 ) -> Iterator[RoundStep]:
     """Round arbitré : (GM ou événement fourni) -> négociation -> juge -> attributs bornés.
 
@@ -338,4 +360,5 @@ def run_negotiation_round(
         risk=risk,
         headline=f"{date} — {event.title}",
     )
+    yield TrajectoryStep(state=_advance_trajectory(world, summary, trajectory_engine))
     yield SummaryStep(summary=summary)

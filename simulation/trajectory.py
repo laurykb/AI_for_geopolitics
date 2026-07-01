@@ -120,12 +120,14 @@ def capability_shares(world: WorldState) -> dict[str, float]:
 def coordination_signal(summary: RoundSummary) -> float:
     """A1 — coopération vs conflit (Goldstein-like) [2], remis dans `[0, 1]`.
 
-    Moyenne de `stance(action) × intensité` (coop +, coercition −) sur les décisions, remise de
-    `[-1, 1]` vers `[0, 1]`. Un round majoritairement coopératif -> proche de 1.
+    Si des décisions atomiques existent (round déterministe), moyenne de `stance(action) ×
+    intensité` (coop +, coercition −) remise de `[-1, 1]` vers `[0, 1]`. Sinon (round négocié,
+    sans décisions), repli sur `1 − escalade` : l'escalade arbitrée par le juge est l'antithèse
+    directe de la coordination (l'échelle de Goldstein est précisément l'axe conflit↔coopération).
     """
     decisions = summary.decisions
     if not decisions:
-        return 0.5
+        return _clamp(1.0 - summary.risk.escalation)
     mean = sum(stance(d.action) * d.intensity for d in decisions) / len(decisions)
     return _clamp((mean + 1.0) / 2.0)
 

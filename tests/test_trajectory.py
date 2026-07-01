@@ -146,6 +146,15 @@ def test_more_cooperation_raises_coordination():
     assert coop.axes["A1"] > coerce.axes["A1"]
 
 
+def test_coordination_falls_back_to_escalation_without_decisions():
+    # Round négocié : pas de décisions atomiques -> A1 = 1 − escalade (verdict du juge).
+    calm = _summary([], esc=0.1)
+    tense = _summary([], esc=0.9)
+    assert coordination_signal(calm) == pytest.approx(0.9)
+    assert coordination_signal(tense) == pytest.approx(0.1)
+    assert coordination_signal(calm) > coordination_signal(tense)
+
+
 def test_higher_hhi_lowers_distribution_and_utopia():
     engine = TrajectoryEngine()
     summary = _cooperative_summary()

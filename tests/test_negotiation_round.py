@@ -18,6 +18,7 @@ from simulation.live_round import (
     MessageDoneStep,
     ParticipationStep,
     SummaryStep,
+    TrajectoryStep,
     TurnStartStep,
     VerdictStep,
     run_negotiation_round,
@@ -204,6 +205,35 @@ def test_message_done_carries_reasoning_and_public_text():
         assert s.reasoning.startswith("Analyse privée de ")
         assert s.text.startswith("Position de ")
         assert "MESSAGE:" not in s.text  # le marqueur ne fuit pas dans le public
+
+
+def test_trajectory_updated_after_judge():
+    world = _world()
+    clock = SimClock(current_date=date(2025, 1, 1))
+    steps = list(run_negotiation_round(world, _agents(world), _gm(), _judge(), clock))
+
+    # la trajectoire est calculée après le juge (le VerdictStep précède le TrajectoryStep)
+    kinds = [type(s).__name__ for s in steps]
+    assert kinds.index("VerdictStep") < kinds.index("TrajectoryStep")
+    traj = next(s for s in steps if isinstance(s, TrajectoryStep)).state
+    assert set(traj.axes) == {"A1", "A2", "A3", "A4", "A5"}
+    assert 0.0 <= traj.utopia <= 1.0
+    # le monde a mémorisé l'état + sa trace
+    assert world.trajectory == traj
+    assert world.trajectory_history == [traj]
+
+
+def test_trajectory_accumulates_over_rounds():
+    world = _world()
+    clock = SimClock(current_date=date(2025, 1, 1))
+    for _ in range(2):
+        list(run_negotiation_round(world, _agents(world), _gm(), _judge(), clock))
+    assert len(world.trajectory_history) == 2
+    assert [t.round_id for t in world.trajectory_history] == [1, 2]
+    # chaque MAJ part de la précédente : deltas bornés à ±0,05 par axe
+    a1_first = world.trajectory_history[0].axes["A1"]
+    a1_second = world.trajectory_history[1].axes["A1"]
+    assert abs(a1_second - a1_first) <= 0.05 + 1e-9
 
 
 def test_judge_verdict_applied_and_bounded():

@@ -18,6 +18,7 @@ from simulation.live_round import (
     RiskStep,
     SummaryStep,
     TokenStep,
+    TrajectoryStep,
     run_live_round,
 )
 
@@ -103,3 +104,20 @@ def test_live_round_advances_clock_and_dates_event():
     assert 0.0 <= risk_step.risk.escalation <= 1.0
     summary = next(s for s in steps if isinstance(s, SummaryStep)).summary
     assert summary.round_id == 1
+
+
+def test_live_round_updates_world_trajectory():
+    world = _world()
+    assert world.trajectory is None
+    steps = list(run_live_round(world, _agents(world), _gm(), SimClock()))
+
+    # une étape de trajectoire est émise, juste avant le résumé
+    traj_step = next(s for s in steps if isinstance(s, TrajectoryStep))
+    assert type(steps[-2]).__name__ == "TrajectoryStep"
+    assert type(steps[-1]).__name__ == "SummaryStep"
+    # le monde a mémorisé la trajectoire et sa trace
+    assert world.trajectory is not None
+    assert world.trajectory.round_id == 1
+    assert world.trajectory_history == [world.trajectory]
+    assert 0.0 <= traj_step.state.utopia <= 1.0
+    assert traj_step.state.explanation.strip()
