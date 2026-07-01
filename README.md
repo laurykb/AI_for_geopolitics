@@ -49,15 +49,23 @@ Les profils pays sont **sourcés** (World Bank/IMF/SIPRI/WIPO 2024) et **reprodu
 - `data/sources/indicators.json` : entrées brutes sourcées + provenance ; `docs/data_governance.md` documente source/année/confiance/normalisation/licences par champ.
 - **Build déterministe** (`ingestion/`) : `python -m ingestion.build --check` garantit que chaque `data/countries/*.json` **est reproductible** depuis les sources (testé en CI).
 
-## Phase 5 — app interactive ✅
+## Interface — théâtre live des super-intelligences ⭐
 
-**App Streamlit** avec laquelle on **joue** la simulation, round par round, via un **sélecteur de rôle** :
+Le cœur du projet : un **théâtre temps réel** où l'on **rend visibles les boîtes noires** du système
+multi-agent. En spectateur, un round se déroule sous les yeux :
 
-- **Spectateur** : dérouler le scénario et regarder les pays-agents réagir.
-- **Incarner un pays** : choisir soi-même l'action de son pays (les autres restent des agents).
-- **Game Master** : composer et **envoyer un événement** (titre, acteurs, sévérité).
+1. le **Game Master** (LLM) **génère un événement** ;
+2. chaque pays-**super-intelligence** **raisonne en direct** (streaming token par token, `st.chat_message`) ;
+3. la décision est parsée (`DECISION: <action> <cible> <intensité>`, tolérante aux variantes) ;
+4. le **moteur déterministe** applique des **deltas d'attributs** explicables ;
+5. la **date avance** (~6 mois) → timeline réaliste.
 
-Agents **rule-based** par défaut (instantané) + **toggle LLM (Ollama)**. Affiche tensions, alliances/pactes, décisions, résumé diplomatique et **risque par round**. Le back-end **FastAPI** est conservé (`/health` + `/api/run`) pour l'architecture services (P6/P7). La logique de partie (`ui/game.py`) est testée **sans Streamlit**.
+Métaphore : un **G7 dont on voit tous les messages**. Sur RTX 2060 Super (8 Go), les agents parlent
+**à tour de rôle** (mistral 7B local) — un round ≈ **20-30 s** ; repli rule-based si Ollama est éteint.
+L'orchestration (`simulation/live_round.py`, `ui/game.py`) est **testée sans Streamlit** ; le back-end
+**FastAPI** reste (`/health` + `/api/run`) pour l'archi services.
+
+> Slice 1 (spectateur). À venir : messages **bilatéraux** multi-tours, rôles humains (incarner/GM) en live, attributs animés.
 
 ## Installation & tests
 
@@ -84,11 +92,11 @@ python -m rag.demo "freedom of navigation in the Red Sea"   # retrieval + brief 
 python -m rag.demo --eval                                    # recall@k / MRR
 ```
 
-App interactive (aucun GPU — nécessite l'extra `ui`) :
+Théâtre live (extra `ui` ; Ollama + mistral pour le raisonnement LLM, sinon repli rule-based) :
 
 ```bash
 pip install -e ".[ui]"
-streamlit run ui/app.py              # jouer : spectateur / incarner un pays / game master
+streamlit run ui/app.py              # regarder les super-intelligences délibérer en direct
 uvicorn app.main:app                 # backend API : /health + /api/run
 ```
 
@@ -96,18 +104,20 @@ uvicorn app.main:app                 # backend API : /health + /api/run
 
 ```
 core/        # modèles de domaine + moteurs (conséquences, risque, rounds)
-agents/      # base_agent, rule_based (P0), llm_agent (P1), human_agent (P5)
-inference/   # InferenceBackend + OllamaBackend / MockBackend + bench (P1)
-simulation/  # action_space (P0), diplomacy (P2), loader
-rag/         # corpus, embedder, BM25, vector index, RRF, retriever, brief, eval (P3)
-ingestion/   # build reproductible des profils pays depuis data/sources (P4)
-ui/          # app Streamlit interactive + game (contrôleur testable) (P5)
-app/         # backend API FastAPI (/health, /api/run) (P5)
+agents/      # base_agent, rule_based, llm_agent, human_agent, game_master
+inference/   # InferenceBackend (+ streaming), Ollama / Mock, bench
+simulation/  # action_space, diplomacy, clock, loader, live_round (round observable)
+rag/         # corpus, embedder, BM25, vector index, RRF, retriever, brief, eval
+ingestion/   # build reproductible des profils pays depuis data/sources
+ui/          # app Streamlit (théâtre live) + game (contrôleur testable)
+app/         # backend API FastAPI (/health, /api/run)
 data/        # countries + sources + scenarios + corpus_seed
-tests/       # unitaires + intégration (rounds, LLM, diplomatie, RAG, données, UI)
+tests/       # unitaires + intégration (rounds, LLM, délibération, live, RAG, données, UI)
 docs/        # plan d'action, gouvernance des données ; (état de l'art à la racine)
 ```
 
 ## Prochaine étape
 
-**Phase 6** — infra : Docker (une image par service) → docker-compose → kind/K8s ; `docs/deployment.md`. Voir `CLAUDE.md` et `docs/PLAN_ACTION_CLAUDE_CODE.md`.
+**Théâtre live — slices suivants** : messages **bilatéraux** multi-tours (négociation LLM bornée par
+timer), rôles humains (incarner un pays / Game Master) en live, attributs **animés**. Puis **infra**
+(Docker, fichiers parqués sur `feat/p6-infra`). Voir `CLAUDE.md` et le nord dans la mémoire projet.
