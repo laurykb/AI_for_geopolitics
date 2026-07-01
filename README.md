@@ -49,9 +49,15 @@ Les profils pays sont **sourcés** (World Bank/IMF/SIPRI/WIPO 2024) et **reprodu
 - `data/sources/indicators.json` : entrées brutes sourcées + provenance ; `docs/data_governance.md` documente source/année/confiance/normalisation/licences par champ.
 - **Build déterministe** (`ingestion/`) : `python -m ingestion.build --check` garantit que chaque `data/countries/*.json` **est reproductible** depuis les sources (testé en CI).
 
-## Phase 5 — dashboard ✅
+## Phase 5 — app interactive ✅
 
-**Dashboard FastAPI** (lecture seule) : rejoue le scénario mer Rouge (rule-based) et rend, dans une page server-rendered avec **SVG inline** (aucune dépendance JS) : **timeline** + headlines, **scores de risque** par round, **heatmap de tensions**, **alliances/pactes**, **journal diplomatique**.
+**App Streamlit** avec laquelle on **joue** la simulation, round par round, via un **sélecteur de rôle** :
+
+- **Spectateur** : dérouler le scénario et regarder les pays-agents réagir.
+- **Incarner un pays** : choisir soi-même l'action de son pays (les autres restent des agents).
+- **Game Master** : composer et **envoyer un événement** (titre, acteurs, sévérité).
+
+Agents **rule-based** par défaut (instantané) + **toggle LLM (Ollama)**. Affiche tensions, alliances/pactes, décisions, résumé diplomatique et **risque par round**. Le back-end **FastAPI** est conservé (`/health` + `/api/run`) pour l'architecture services (P6/P7). La logique de partie (`ui/game.py`) est testée **sans Streamlit**.
 
 ## Installation & tests
 
@@ -78,25 +84,27 @@ python -m rag.demo "freedom of navigation in the Red Sea"   # retrieval + brief 
 python -m rag.demo --eval                                    # recall@k / MRR
 ```
 
-Dashboard (aucun GPU) :
+App interactive (aucun GPU — nécessite l'extra `ui`) :
 
 ```bash
-python -m ingestion.build            # vérifie la reproductibilité des profils pays
-uvicorn app.main:app                 # puis http://127.0.0.1:8000/
+pip install -e ".[ui]"
+streamlit run ui/app.py              # jouer : spectateur / incarner un pays / game master
+uvicorn app.main:app                 # backend API : /health + /api/run
 ```
 
 ## Structure
 
 ```
 core/        # modèles de domaine + moteurs (conséquences, risque, rounds)
-agents/      # base_agent + rule_based_agent (P0) + prompts + llm_agent (P1)
+agents/      # base_agent, rule_based (P0), llm_agent (P1), human_agent (P5)
 inference/   # InferenceBackend + OllamaBackend / MockBackend + bench (P1)
-simulation/  # action_space (P0) + diplomacy (P2)
+simulation/  # action_space (P0), diplomacy (P2), loader
 rag/         # corpus, embedder, BM25, vector index, RRF, retriever, brief, eval (P3)
 ingestion/   # build reproductible des profils pays depuis data/sources (P4)
-app/         # dashboard FastAPI + charts SVG + gabarit (P5)
+ui/          # app Streamlit interactive + game (contrôleur testable) (P5)
+app/         # backend API FastAPI (/health, /api/run) (P5)
 data/        # countries + sources + scenarios + corpus_seed
-tests/       # unitaires + intégration (rounds, LLM, diplomatie, RAG, données, dashboard)
+tests/       # unitaires + intégration (rounds, LLM, diplomatie, RAG, données, UI)
 docs/        # plan d'action, gouvernance des données ; (état de l'art à la racine)
 ```
 
