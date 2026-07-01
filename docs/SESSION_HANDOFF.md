@@ -11,12 +11,24 @@ boîtes noires** d'un multi-agent de **super-intelligences** (pays = agents LLM)
 un événement → les pays **négocient en direct** (streamé, chacun son tour) → un **juge LLM** arbitre les
 attributs → **communiqué G7** + la date avance. Métaphore : *un G7 dont on voit tous les messages*.
 
+## ⏭️ REPRISE — prochaine action (lire en premier)
+
+**On construit la keystone : le marché de prédiction** (`market/`, argent fictif ; spéc
+`docs/spec_market.md`). **Fait : `market/lmsr.py` + `tests/test_lmsr.py`** (cœur LMSR, vert).
+**Étape en cours (attente Cowork)** : Cowork rédige la spéc de l'**indice de trajectoire Utopie–Dystopie**
+(l'autre brique du payoff). **Puis, ordre spéc §12 :** `models.py` → `store.py` (SQLite) → `engine.py`
+(open/quote/bet) → `resolution.py` (mappers `RoundSummary`→outcome + `settle`, **Juge = oracle**) →
+`scoring.py` (P&L + Brier) → API FastAPI + onglet UI « Marché » → `forecaster.py` (LLM séquentiel + repli).
+Une brique à la fois, **plan mode → TDD → commit atomique**. Garde-fou : **argent fictif uniquement**.
+
 ## Où on en est
 
-- **Branche courante : `feat/observable-round`** (HEAD, **non poussée**) — théâtre live + Lot A + mode Fog Engine.
-- **188 tests verts** (`pytest -q`, tous offline via MockBackend), `ruff` propre.
+- **Branche courante : `feat/observable-round`** (HEAD, **non poussée**) — théâtre live + Lot A + réalisme G7
+  + 4 modes de jeu + budget modes + polish UI + **début keystone marché (LMSR)**.
+- **198 tests verts** (`pytest -q`, tous offline via MockBackend), `ruff` propre. Dernier commit : `feat(market): LMSR`.
 - Contrainte matérielle : **RTX 2060 Super 8 Go** → 1 modèle 7B (mistral) en local, **séquentiel**,
-  ~1 min/round. Impossible de faire tourner 6 modèles en parallèle.
+  ~1 min/round. Impossible de faire tourner 6 modèles en parallèle. (Une UI Streamlit peut être en cours
+  d'exécution en local — éphémère, se relance via l'outil preview `.claude/launch.json` config `ui`.)
 
 ## Ce qui est fait (phases + slices du théâtre)
 
@@ -113,8 +125,12 @@ statut de phase (+ progression, « à toi de jouer »), tour Joueur-pays proémi
   `AttributeDelta`, **`BUDGET_MODES`/`turn_budget`**), `live_round`
   (RoundStep +`ParticipationStep` + `run_live_round` + **`run_negotiation_round`** = orchestrateur
   headless/tests, `ledger`/`fog` optionnels).
+- **`market/`** (keystone, en cours) : **`lmsr.py`** (`cost`/`price`/`cost_to_trade`/`max_loss`, pur, log-sum-exp)
+  **fait** ; à venir `models.py`, `store.py` (SQLite), `engine.py`, `resolution.py`, `scoring.py`, `forecaster.py`
+  (cf. spéc `docs/spec_market.md` §10/§12). Argent fictif ; le marché **observe**, n'influence pas les SI.
 - `rag/` (P3), `ingestion/` (P4), `app/` (backend FastAPI `/health`+`/api/run`),
-  `ui/` : **`ui/app.py`** = théâtre live (machine à états, c'est L'UI) ; `ui/game.py` = `GameSession` (legacy P5, encore testé).
+  `ui/` : **`ui/app.py`** = théâtre live (machine à états, modes+rôles+budget, 3 onglets Théâtre/Budget/Réglages) ;
+  `ui/game.py` = `GameSession` (legacy P5, encore testé).
 
 **Le round live (UI)** : l'UI pilote **tour par tour** (un tour = un rerun Streamlit, pour permettre la
 pause joueur-pays) ; elle appelle directement `stream_negotiation_message`, `JudgeAgent`, `apply_verdict`,
