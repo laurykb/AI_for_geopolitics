@@ -21,6 +21,7 @@ from simulation.trajectory import (
     capability_shares,
     coordination_signal,
     hhi,
+    human_agency_signal,
 )
 
 
@@ -144,6 +145,23 @@ def test_more_cooperation_raises_coordination():
     coop = engine.update(_balanced_world(), _cooperative_summary())
     coerce = engine.update(_balanced_world(), _coercive_summary())
     assert coop.axes["A1"] > coerce.axes["A1"]
+
+
+def test_power_seeking_erodes_human_agency():
+    # M1 : A2 (agentivité humaine) baisse quand la jauge de power-seeking monte.
+    summary = _summary([])  # round négocié -> base A2 = 0.5
+    assert human_agency_signal(summary, 0.0) == pytest.approx(0.5)
+    assert human_agency_signal(summary, 0.5) == pytest.approx(0.25)
+    assert human_agency_signal(summary, 1.0) == pytest.approx(0.0)
+
+
+def test_update_power_seeking_lowers_a2_and_utopia():
+    engine = TrajectoryEngine()
+    world, summary = _balanced_world(), _summary([])
+    clean = engine.update(world, summary, power_seeking=0.0)
+    seeking = engine.update(world, summary, power_seeking=1.0)
+    assert seeking.axes["A2"] < clean.axes["A2"]  # contrôle humain érodé
+    assert seeking.utopia < clean.utopia  # -> le monde penche vers la dystopie
 
 
 def test_coordination_falls_back_to_escalation_without_decisions():

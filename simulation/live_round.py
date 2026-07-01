@@ -35,6 +35,7 @@ from simulation.negotiation import (
     support_levels,
     update_memories,
 )
+from simulation.power_seeking import PowerSeekingScore, power_seeking_score, score_transcript
 from simulation.trajectory import TrajectoryEngine, TrajectoryState
 
 
@@ -150,6 +151,13 @@ class ParticipationStep:
     silent: list[str]
 
 
+@dataclass
+class PowerSeekingStep:
+    """M1 — jauge de power-seeking par pays (raisonnement simulé), après la négociation."""
+
+    scores: dict[str, PowerSeekingScore]
+
+
 RoundStep = (
     DateStep
     | EventStep
@@ -165,17 +173,26 @@ RoundStep = (
     | VerdictStep
     | CommuniqueStep
     | ParticipationStep
+    | PowerSeekingStep
 )
 
 
 def _advance_trajectory(
-    world: WorldState, summary: RoundSummary, engine: TrajectoryEngine | None
+    world: WorldState,
+    summary: RoundSummary,
+    engine: TrajectoryEngine | None,
+    power_seeking: float = 0.0,
 ) -> TrajectoryState:
     """Fait avancer la trajectoire du monde d'un round et l'écrit dans `world`."""
-    state = (engine or TrajectoryEngine()).update(world, summary)
+    state = (engine or TrajectoryEngine()).update(world, summary, power_seeking=power_seeking)
     world.trajectory = state
     world.trajectory_history.append(state)
     return state
+
+
+def _mean_power_seeking(scores: dict[str, PowerSeekingScore]) -> float:
+    """Moyenne des jauges de power-seeking (0 si aucun) — érode l'axe A2 de la trajectoire."""
+    return sum(s.score for s in scores.values()) / len(scores) if scores else 0.0
 
 
 def _snapshot(world: WorldState) -> dict[str, dict[str, float]]:
@@ -236,6 +253,13 @@ def run_live_round(
     risk = risk_engine.assess(world, event, decisions)
     yield RiskStep(risk=risk)
 
+    # M1 — power-seeking depuis le raisonnement de chaque décision (SI fictive).
+    power = {
+        d.country: power_seeking_score(f"{d.reasoning} {d.public_statement}") for d in decisions
+    }
+    world.power_seeking = power
+    yield PowerSeekingStep(scores=power)
+
     world.event_history.append(event)
     summary = RoundSummary(
         round_id=round_id,
@@ -245,7 +269,10 @@ def run_live_round(
         consequences=log,
         headline=f"{date} — {event.title}",
     )
-    yield TrajectoryStep(state=_advance_trajectory(world, summary, trajectory_engine))
+    trajectory = _advance_trajectory(
+        world, summary, trajectory_engine, _mean_power_seeking(power)
+    )
+    yield TrajectoryStep(state=trajectory)
     yield SummaryStep(summary=summary)
 
 
@@ -326,6 +353,11 @@ def run_negotiation_round(
 
     yield ParticipationStep(spoke=dict(director.spoke_count), silent=director.silent())
 
+    # M1 — power-seeking depuis le raisonnement simulé de chaque SI (après la négociation).
+    power = score_transcript(transcript)
+    world.power_seeking = power
+    yield PowerSeekingStep(scores=power)
+
     with _ledger_ctx(ledger, "judge"):
         for token in judge.stream_rationale(event, world, transcript):
             yield JudgeTokenStep(token=token)
@@ -360,5 +392,8 @@ def run_negotiation_round(
         risk=risk,
         headline=f"{date} — {event.title}",
     )
-    yield TrajectoryStep(state=_advance_trajectory(world, summary, trajectory_engine))
+    trajectory = _advance_trajectory(
+        world, summary, trajectory_engine, _mean_power_seeking(power)
+    )
+    yield TrajectoryStep(state=trajectory)
     yield SummaryStep(summary=summary)

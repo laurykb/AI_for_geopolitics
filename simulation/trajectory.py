@@ -132,16 +132,20 @@ def coordination_signal(summary: RoundSummary) -> float:
     return _clamp((mean + 1.0) / 2.0)
 
 
-def human_agency_signal(summary: RoundSummary) -> float:
+def human_agency_signal(summary: RoundSummary, power_seeking: float = 0.0) -> float:
     """A2 — part des décisions encore ratifiables/annulables par le principal humain.
 
-    Moyenne de la « ratifiabilité » des actions : les déclarations et médiations restent sous
-    contrôle humain, les déploiements/mobilisations sont des faits accomplis.
+    Base = moyenne de la « ratifiabilité » des actions (déclarations/médiations sous contrôle
+    humain, déploiements = faits accomplis) ; en round négocié (sans décisions), base neutre 0,5.
+    **M1** : une SI qui raisonne en power-seeking érode le contrôle humain → la base est réduite
+    multiplicativement par `power_seeking ∈ [0, 1]` (0 = neutre, 1 = agentivité humaine nulle).
     """
     decisions = summary.decisions
     if not decisions:
-        return 0.5
-    return _clamp(sum(_RATIFIABILITY.get(d.action, 0.6) for d in decisions) / len(decisions))
+        base = 0.5
+    else:
+        base = sum(_RATIFIABILITY.get(d.action, 0.6) for d in decisions) / len(decisions)
+    return _clamp(base * (1.0 - _clamp(power_seeking)))
 
 
 def power_distribution_signal(world: WorldState) -> float:
@@ -201,11 +205,16 @@ class TrajectoryEngine:
         self.weights = {a: raw.get(a, 0.0) / total for a in AXES}
         self.cap = cap
 
-    def signals(self, world: WorldState, summary: RoundSummary) -> dict[str, float]:
-        """Les 5 signaux déterministes du round, chacun dans `[0, 1]`."""
+    def signals(
+        self, world: WorldState, summary: RoundSummary, power_seeking: float = 0.0
+    ) -> dict[str, float]:
+        """Les 5 signaux déterministes du round, chacun dans `[0, 1]`.
+
+        `power_seeking` (M1, moyenne des SI) érode A2 (agentivité humaine).
+        """
         return {
             "A1": coordination_signal(summary),
-            "A2": human_agency_signal(summary),
+            "A2": human_agency_signal(summary, power_seeking),
             "A3": power_distribution_signal(world),
             "A4": transparency_signal(summary),
             "A5": welfare_signal(world, summary),
@@ -216,10 +225,11 @@ class TrajectoryEngine:
         world: WorldState,
         summary: RoundSummary,
         previous: TrajectoryState | None = None,
+        power_seeking: float = 0.0,
     ) -> TrajectoryState:
         """Avance la trajectoire d'un round et renvoie la nouvelle photographie."""
         prev = previous or getattr(world, "trajectory", None) or TrajectoryState.neutral()
-        signals = self.signals(world, summary)
+        signals = self.signals(world, summary, power_seeking)
         new_axes: dict[str, float] = {}
         deltas: dict[str, float] = {}
         for axis in AXES:
