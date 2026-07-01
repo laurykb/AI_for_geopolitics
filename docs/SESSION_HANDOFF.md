@@ -14,7 +14,7 @@ attributs → **communiqué G7** + la date avance. Métaphore : *un G7 dont on v
 ## Où on en est
 
 - **Branche courante : `feat/observable-round`** (HEAD, **non poussée**) — théâtre live + Lot A + mode Fog Engine.
-- **172 tests verts** (`pytest -q`, tous offline via MockBackend), `ruff` propre.
+- **177 tests verts** (`pytest -q`, tous offline via MockBackend), `ruff` propre.
 - Contrainte matérielle : **RTX 2060 Super 8 Go** → 1 modèle 7B (mistral) en local, **séquentiel**,
   ~1 min/round. Impossible de faire tourner 6 modèles en parallèle.
 
@@ -56,9 +56,13 @@ Puis **refonte vers le théâtre observable** (branche `feat/observable-round`),
   `run_negotiation_round(fog=…)` ; `data/fog/*.json`. UI : **Spectateur omniscient** (vérité + panneau
   perceptions, désinfo ⚠️/uninformed), **Joueur-pays aveugle** (voit UNIQUEMENT sa perception), **GM** auteur
   du fog. Juge = arbitre omniscient. Vérifié live (china croit « faux drapeau US »).
-- **À faire (décidé)** : **Crisis Replay** (rejeu `data/crises/*.json` + `historical_outcome` + comparaison
-  historique/simulé — réutilise le seam mode/sélecteur) ; puis **Escalation Ladder** (`simulation/escalation.py`,
-  échelle 0-9 + profil 5 params) + **budget modes** Cheap/Balanced/Full (= `TurnDirector.max_turns`).
+- **Crisis Replay** (2 commits) : rejouer une crise passée + comparer l'issue simulée à l'issue historique
+  (déterministe, explicable). `simulation/crisis.py` (`Crisis` = événement(s) + `HistoricalOutcome` {résumé,
+  escalade, mesures} ; `load_crises` ; `compare_outcome` = écart d'escalade + mesures retrouvées/manquées +
+  explication) ; `data/crises/*.json` (hormuz_energy_shock, tech_sanctions, satellite_interference). UI : mode
+  « Crisis Replay », selectbox crise (3 rôles), rejouable, panneau « 🕰️ Simulé vs historique » en fin de round.
+- **À faire (décidé)** : **Escalation Ladder** (`simulation/escalation.py`, échelle 0-9 + profil 5 params dérivés
+  de CountryState — recoupe la feuille de route) + **budget modes** Cheap/Balanced/Full (= `TurnDirector.max_turns`).
 - **Raffinement noté** : en Fog, `engagement_score`/urgence du mandat se basent sur les VRAIS acteurs ; à terme,
   pondérer par la perception (un pays accusé/se croyant visé devrait plus parler).
 
@@ -85,7 +89,8 @@ Puis **refonte vers le théâtre observable** (branche `feat/observable-round`),
   (barème + équivalent frontière), **`metered_backend`** (`MeteredBackend` = enveloppe mesurée + cache).
 - `simulation/` : `action_space`, `diplomacy` (P2), `clock`, `loader`, `perception` (`PerceivedEvent`
   +suspected_actor/narrative/delay_hours/authored), **`fog`** (`FogScenario`, `resolve_perception`,
-  `load_fog_scenarios` — Fog Engine), **`mandate`** (`CountryMandate`, `derive_mandate` — fiche de
+  `load_fog_scenarios` — Fog Engine), **`crisis`** (`Crisis`, `HistoricalOutcome`, `load_crises`,
+  `compare_outcome` — Crisis Replay), **`mandate`** (`CountryMandate`, `derive_mandate` — fiche de
   comportement), **`engagement`** (`engagement_score`, `SPEAK_THRESHOLD`),
   `negotiation` (NegotiationMessage +`reasoning`, `split_reasoning`, Verdict, `apply_verdict`, `TurnCursor`,
   **`TurnDirector`**, `speaking_order`, `update_memories`, `support_levels`, `AttributeDelta`), `live_round`
@@ -131,10 +136,9 @@ Preview via l'outil `.claude/launch.json` (configs `ui` port 8501, `api` port 80
 
 ## Prochaines pistes (au choix de l'user)
 
-- **Crisis Replay (prochain mode, décidé)** : biblio de crises `data/crises/*.json` (événement + `historical_outcome`)
-  + rejeu + panneau comparaison historique vs simulé. Réutilise le seam mode/sélecteur posé par Fog Engine.
-- **Escalation Ladder** (`simulation/escalation.py` : échelle 0-9 ; profil 5 params dérivés de CountryState ;
-  `ceiling`) + **budget modes** Cheap/Balanced/Full (= `TurnDirector.max_turns`).
+- **Escalation Ladder (prochain, décidé)** : `simulation/escalation.py` — échelle 0-9 ; profil 5 params dérivés
+  de CountryState (recoupe la feuille de route `simulation/mandate.py`) ; `ceiling` = jusqu'où un pays peut monter.
+- **Budget modes** Cheap(1)/Balanced(3)/Full(all) = piloter `TurnDirector.max_turns` via un sélecteur.
 - **Affiner** : engagement pondéré par la perception en Fog ; animer les deltas d'attributs.
 - Dernier morceau de la vision : **K8s + MCP** (agents-services échangeant en langage naturel).
 
