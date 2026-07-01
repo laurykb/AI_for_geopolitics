@@ -44,6 +44,8 @@ class CountryState(BaseModel):
     political_system: str = "unknown"
     political_stability: float = Field(0.5, ge=0.0, le=1.0)
     technology_level: float = Field(0.5, ge=0.0, le=1.0)
+    # M6 — capacité de calcul (le « pétrole » de l'ère IA) : les SI la consomment pour raisonner.
+    compute: float = Field(50.0, ge=0.0, description="Capacité de compute (unités abstraites)")
     ideology: list[str] = Field(default_factory=list)
     strategic_priorities: list[str] = Field(default_factory=list)
     memory_summary: str = ""

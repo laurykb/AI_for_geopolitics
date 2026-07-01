@@ -87,11 +87,11 @@ def hhi(shares: Iterable[float]) -> float:
 
 
 def capability_shares(world: WorldState) -> dict[str, float]:
-    """Parts de capacité par pays, façon CINC [1] : moyenne des parts sur 4 indicateurs.
+    """Parts de capacité par pays, façon CINC [1] : moyenne des parts sur 5 indicateurs.
 
-    Indicateurs : PIB, budget défense, niveau technologique, capacité de projection. Chaque
-    indicateur est normalisé en parts (somme 1) puis moyenné -> les unités hétérogènes (USD vs
-    [0, 1]) se comparent proprement. Les parts renvoyées somment à 1 (à l'arrondi près).
+    Indicateurs : PIB, budget défense, niveau technologique, capacité de projection, **compute**
+    (M6). Chaque indicateur est normalisé en parts (somme 1) puis moyenné -> les unités hétérogènes
+    (USD vs [0, 1]) se comparent proprement. Les parts renvoyées somment à 1 (à l'arrondi près).
     """
     countries = world.countries
     if not countries:
@@ -102,6 +102,7 @@ def capability_shares(world: WorldState) -> dict[str, float]:
         {i: max(0.0, countries[i].military.defense_budget) for i in ids},
         {i: max(0.0, countries[i].technology_level) for i in ids},
         {i: max(0.0, countries[i].military.projection) for i in ids},
+        {i: max(0.0, countries[i].compute) for i in ids},  # M6 : le compute pèse sur le pouvoir
     ]
     shares = {i: 0.0 for i in ids}
     used = 0
