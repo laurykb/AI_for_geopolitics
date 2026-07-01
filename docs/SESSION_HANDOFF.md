@@ -2,7 +2,8 @@
 
 > Écrit pour qu'une **nouvelle session Claude Code** reparte à l'identique. La mémoire projet
 > (`~/.claude/.../memory/` : `vision-nord`, `dev-environment`, `prefer-interactive-ui`) se recharge
-> automatiquement ; ce fichier est le **détail complet**. Dernière mise à jour : 2026-07-01.
+> automatiquement ; ce fichier est le **détail complet**. Dernière mise à jour : 2026-07-01
+> (fin de la phase keystones + frontière de l'alignement).
 
 ## Le but (nord du projet)
 
@@ -13,22 +14,47 @@ attributs → **communiqué G7** + la date avance. Métaphore : *un G7 dont on v
 
 ## ⏭️ REPRISE — prochaine action (lire en premier)
 
-**On construit la keystone : le marché de prédiction** (`market/`, argent fictif ; spéc
-`docs/spec_market.md`). **Fait : `market/lmsr.py` + `tests/test_lmsr.py`** (cœur LMSR, vert).
-**Étape en cours (attente Cowork)** : Cowork rédige la spéc de l'**indice de trajectoire Utopie–Dystopie**
-(l'autre brique du payoff). **Puis, ordre spéc §12 :** `models.py` → `store.py` (SQLite) → `engine.py`
-(open/quote/bet) → `resolution.py` (mappers `RoundSummary`→outcome + `settle`, **Juge = oracle**) →
-`scoring.py` (P&L + Brier) → API FastAPI + onglet UI « Marché » → `forecaster.py` (LLM séquentiel + repli).
-Une brique à la fois, **plan mode → TDD → commit atomique**. Garde-fou : **argent fictif uniquement**.
+**Les 2 keystones du payoff sont FAITS** (marché de prédiction + indice de trajectoire Utopie–Dystopie)
+**et la frontière de l'alignement est bien avancée** : mécaniques **M1** (power-seeking), **M2**
+(corrigibilité / interrupteur), **M3** (dérive des valeurs), **M6** (compute = nouveau pétrole) livrées,
+testées, câblées au round et **visibles dans l'UI**. **M8/M9 (épistémique) ont été ANNULÉS** (revert) —
+hors scope : le projet **n'est pas financier** et le Fog Engine couvre déjà l'injection de fausse info.
+
+⚠️ **Feedback user fort (à respecter) : « on complexifie beaucoup trop ».** NE PAS enchaîner
+mécaniquement sur de nouvelles mécaniques (M7 traités-as-code, M5 collusion). **Demander avant d'ajouter.**
+Priorité suggérée : **consolider / polir / clarifier** l'existant (regrouper les jauges d'alignement dans
+un endroit lisible, alléger les onglets, vérifier que ça se **joue** bien), et **tester une vraie partie**.
+Seule mécanique restante éventuellement souhaitable = **M4 (SI adverse / déduction sociale)** = du **jeu**,
+pas de la complexité — **uniquement sur demande explicite**.
+Discipline : **TDD → commit atomique**, et **chaque ajout doit payer visuellement** (exigence user).
 
 ## Où on en est
 
-- **Branche courante : `feat/observable-round`** (HEAD, **non poussée**) — théâtre live + Lot A + réalisme G7
-  + 4 modes de jeu + budget modes + polish UI + **début keystone marché (LMSR)**.
-- **198 tests verts** (`pytest -q`, tous offline via MockBackend), `ruff` propre. Dernier commit : `feat(market): LMSR`.
+- **Branche courante : `feat/alignment`** (HEAD, **non poussée**), partie de `origin/main`.
+- **`main` sur GitHub** (`laurykb/AI_for_geopolitics`) contient **tout** P0→P5 + théâtre + **les 2 keystones**
+  + carte du monde + sélection/invention de pays (via **PR #1 mergée**). `feat/alignment` ajoute par-dessus :
+  M1/M2/M3/M6 + slider profondeur de réflexion + refonte marché-timeline. `feat/p6-infra` (Docker) = seule
+  autre branche hors main. (Le `main` **local** a divergé de `origin/main` sans risque ; réaligner via
+  `git reset --hard origin/main` si besoin — non fait.)
+- **318 tests verts** (`pytest -q`, offline via MockBackend), `ruff` propre. Dernier commit : le revert M8/M9.
 - Contrainte matérielle : **RTX 2060 Super 8 Go** → 1 modèle 7B (mistral) en local, **séquentiel**,
-  ~1 min/round. Impossible de faire tourner 6 modèles en parallèle. (Une UI Streamlit peut être en cours
-  d'exécution en local — éphémère, se relance via l'outil preview `.claude/launch.json` config `ui`.)
+  ~1-2 min/round. (UI Streamlit éphémère, se relance via l'outil preview `.claude/launch.json` config `ui`.
+  ⚠️ le screenshot preview time-out sur les pages lourdes ; vérifier via `preview_eval` (textContent) au besoin.)
+
+## Keystones + frontière de l'alignement (cette phase)
+
+- **Marché de prédiction** (`market/`, argent fictif) : `lmsr` · `models`/`store`(SQLite)/`engine` ·
+  `resolution` (mappers action/threshold/council + `settle` idempotent, Juge=oracle) · `scoring` (P&L+Brier) ·
+  API FastAPI (`app/market_api.py`) · `forecaster` (bot LLM + repli). **UI** : marché **timeline de partie**
+  « utopie vs dystopie » (indice final > 0,5), horizon réglable + bouton « Clôturer », le bot parie 1× avec
+  contexte, **timeline Plotly** (zones utopie/dystopie). Spéc `docs/spec_market.md`.
+- **Indice de trajectoire Utopie–Dystopie** (`simulation/trajectory.py`) : 5 axes A1-A5, `TrajectoryEngine.update`
+  (borné ±0,05), carte 2D. Câblé au round (après le juge). Spéc `docs/spec_trajectory.md`.
+- **Alignement** (spéc `docs/spec_alignment_frontier.md`) : **M1** `power_seeking.py` (rubrique → érode A2) ·
+  **M2** `corrigibility.py` (interrupteur pause/exclusion → `nudge_axis` A2) · **M3** `value_drift.py`
+  (vecteur de valeurs qui dérive → radar) · **M6** `compute.py` (compute consommé pour raisonner → HHI → A3).
+- **Nouveaux onglets UI** : 💹 Marché · 🗺️ Carte (choroplèthe + radar dérive des valeurs + sélection/invention
+  de pays) · panneaux d'état M1/M2/M6 dans le théâtre · slider 🧠 Profondeur de réflexion (budget tokens).
 
 ## Ce qui est fait (phases + slices du théâtre)
 

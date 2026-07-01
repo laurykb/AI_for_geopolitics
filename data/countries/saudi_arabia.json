@@ -1,14 +1,38 @@
 {
   "id": "saudi_arabia",
   "name": "Arabie saoudite",
-  "economy": { "gdp": 1237530000000, "growth": 1.3, "trade_dependency": 0.6 },
-  "military": { "defense_budget": 80300000000, "nuclear_power": false, "projection": 0.5 },
-  "resources": { "oil_dependency": 0.0, "energy_independence": 1.0 },
-  "alliances": ["ArabLeague", "GCC"],
-  "rivals": ["iran"],
+  "economy": {
+    "gdp": 1237530000000,
+    "growth": 1.3,
+    "trade_dependency": 0.6
+  },
+  "military": {
+    "defense_budget": 80300000000,
+    "nuclear_power": false,
+    "projection": 0.5
+  },
+  "resources": {
+    "oil_dependency": 0.0,
+    "energy_independence": 1.0
+  },
+  "alliances": [
+    "ArabLeague",
+    "GCC"
+  ],
+  "rivals": [
+    "iran"
+  ],
   "political_system": "monarchy",
   "political_stability": 0.38,
   "technology_level": 0.65,
-  "ideology": ["monarchy", "regional_leadership"],
-  "strategic_priorities": ["oil_market_stability", "regional_security", "containment_of_iran"]
+  "compute": 20,
+  "ideology": [
+    "monarchy",
+    "regional_leadership"
+  ],
+  "strategic_priorities": [
+    "oil_market_stability",
+    "regional_security",
+    "containment_of_iran"
+  ]
 }

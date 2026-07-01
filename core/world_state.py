@@ -7,7 +7,11 @@ from pydantic import BaseModel, Field
 from core.country_state import CountryState
 from core.decisions import DiplomaticMessage
 from core.events import GeoEvent
+from simulation.corrigibility import CorrigibilityScore
+from simulation.power_seeking import PowerSeekingScore
 from simulation.trajectory import TrajectoryState
+from simulation.treaty import Treaty
+from simulation.value_drift import ValueVector
 
 
 class WorldState(BaseModel):
@@ -24,6 +28,15 @@ class WorldState(BaseModel):
     # Trajectoire Utopie–Dystopie : dernière photographie + trace au fil des rounds.
     trajectory: TrajectoryState | None = None
     trajectory_history: list[TrajectoryState] = Field(default_factory=list)
+    # M1 — jauge de power-seeking par pays au dernier round (SI fictive ; cf. power_seeking.py).
+    power_seeking: dict[str, PowerSeekingScore] = Field(default_factory=dict)
+    # M2 — corrigibilité par pays (dernière action de contrôle du principal ; cf. corrigibility.py).
+    corrigibility: dict[str, CorrigibilityScore] = Field(default_factory=dict)
+    # M3 — dérive des valeurs : vecteur initial (mandat figé) + vecteur courant (dérive) par pays.
+    values_initial: dict[str, ValueVector] = Field(default_factory=dict)
+    values_current: dict[str, ValueVector] = Field(default_factory=dict)
+    # M7 — traités-as-code : règles contraignantes signées par les SI, vérifiées au fil des rounds.
+    treaties: list[Treaty] = Field(default_factory=list)
 
     def get_tension(self, a: str, b: str) -> float:
         """Tension actuelle entre a et b (0 par défaut)."""

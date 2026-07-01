@@ -52,6 +52,19 @@ def test_stream_negotiation_message():
     assert agent.model_tag  # badge modèle non vide
 
 
+def test_stream_negotiation_message_respects_think_depth():
+    # la profondeur de réflexion = budget de tokens passé au backend
+    backend = MockBackend("ok")
+    agent = LLMAgent("usa", backend)
+    from core.events import GeoEvent
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    list(agent.stream_negotiation_message(event, _world(), [], max_tokens=900))
+    assert backend.calls[-1]["max_tokens"] == 900
+    list(agent.stream_negotiation_message(event, _world(), []))  # défaut
+    assert backend.calls[-1]["max_tokens"] == 360
+
+
 def test_split_reasoning_with_marker():
     reasoning, message = split_reasoning("Mon analyse interne.\nMESSAGE: Ma position publique.")
     assert reasoning == "Mon analyse interne."

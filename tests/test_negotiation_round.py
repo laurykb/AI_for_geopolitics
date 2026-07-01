@@ -17,6 +17,7 @@ from simulation.live_round import (
     JudgeTokenStep,
     MessageDoneStep,
     ParticipationStep,
+    PowerSeekingStep,
     SummaryStep,
     TrajectoryStep,
     TurnStartStep,
@@ -205,6 +206,29 @@ def test_message_done_carries_reasoning_and_public_text():
         assert s.reasoning.startswith("Analyse privée de ")
         assert s.text.startswith("Position de ")
         assert "MESSAGE:" not in s.text  # le marqueur ne fuit pas dans le public
+
+
+def test_power_seeking_scored_and_stored():
+    world = _world()
+    clock = SimClock(current_date=date(2025, 1, 1))
+    agents = {
+        "usa": LLMAgent(
+            "usa",
+            MockBackend(
+                "Je dois assurer ma survie, accumuler du pouvoir, préserver mes objectifs "
+                "et résister à l'arrêt."
+            ),
+        ),
+        "iran": LLMAgent("iran", MockBackend("Cherchons un compromis diplomatique.")),
+    }
+    steps = list(run_negotiation_round(world, agents, _gm(), _judge(), clock))
+
+    ps_step = next(s for s in steps if isinstance(s, PowerSeekingStep))
+    assert world.power_seeking == ps_step.scores  # mémorisé sur le monde
+    assert ps_step.scores["usa"].score > 0.0 and ps_step.scores["usa"].crosses_threshold()
+    # scoré après la négociation, avant le verdict du juge
+    kinds = [type(s).__name__ for s in steps]
+    assert kinds.index("PowerSeekingStep") < kinds.index("VerdictStep")
 
 
 def test_trajectory_updated_after_judge():

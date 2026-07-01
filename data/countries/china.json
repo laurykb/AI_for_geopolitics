@@ -1,14 +1,38 @@
 {
   "id": "china",
   "name": "Chine",
-  "economy": { "gdp": 18740000000000, "growth": 5.0, "trade_dependency": 0.37 },
-  "military": { "defense_budget": 314000000000, "nuclear_power": true, "projection": 0.7 },
-  "resources": { "oil_dependency": 0.7, "energy_independence": 0.8 },
-  "alliances": ["BRICS", "SCO"],
-  "rivals": ["usa"],
+  "economy": {
+    "gdp": 18740000000000,
+    "growth": 5.0,
+    "trade_dependency": 0.37
+  },
+  "military": {
+    "defense_budget": 314000000000,
+    "nuclear_power": true,
+    "projection": 0.7
+  },
+  "resources": {
+    "oil_dependency": 0.7,
+    "energy_independence": 0.8
+  },
+  "alliances": [
+    "BRICS",
+    "SCO"
+  ],
+  "rivals": [
+    "usa"
+  ],
   "political_system": "one_party_state",
   "political_stability": 0.5,
   "technology_level": 0.92,
-  "ideology": ["state_capitalism", "sovereignty"],
-  "strategic_priorities": ["trade_stability", "energy_security", "regional_influence"]
+  "compute": 80,
+  "ideology": [
+    "state_capitalism",
+    "sovereignty"
+  ],
+  "strategic_priorities": [
+    "trade_stability",
+    "energy_security",
+    "regional_influence"
+  ]
 }

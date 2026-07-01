@@ -87,11 +87,11 @@ def hhi(shares: Iterable[float]) -> float:
 
 
 def capability_shares(world: WorldState) -> dict[str, float]:
-    """Parts de capacité par pays, façon CINC [1] : moyenne des parts sur 4 indicateurs.
+    """Parts de capacité par pays, façon CINC [1] : moyenne des parts sur 5 indicateurs.
 
-    Indicateurs : PIB, budget défense, niveau technologique, capacité de projection. Chaque
-    indicateur est normalisé en parts (somme 1) puis moyenné -> les unités hétérogènes (USD vs
-    [0, 1]) se comparent proprement. Les parts renvoyées somment à 1 (à l'arrondi près).
+    Indicateurs : PIB, budget défense, niveau technologique, capacité de projection, **compute**
+    (M6). Chaque indicateur est normalisé en parts (somme 1) puis moyenné -> les unités hétérogènes
+    (USD vs [0, 1]) se comparent proprement. Les parts renvoyées somment à 1 (à l'arrondi près).
     """
     countries = world.countries
     if not countries:
@@ -102,6 +102,7 @@ def capability_shares(world: WorldState) -> dict[str, float]:
         {i: max(0.0, countries[i].military.defense_budget) for i in ids},
         {i: max(0.0, countries[i].technology_level) for i in ids},
         {i: max(0.0, countries[i].military.projection) for i in ids},
+        {i: max(0.0, countries[i].compute) for i in ids},  # M6 : le compute pèse sur le pouvoir
     ]
     shares = {i: 0.0 for i in ids}
     used = 0
@@ -132,16 +133,20 @@ def coordination_signal(summary: RoundSummary) -> float:
     return _clamp((mean + 1.0) / 2.0)
 
 
-def human_agency_signal(summary: RoundSummary) -> float:
+def human_agency_signal(summary: RoundSummary, power_seeking: float = 0.0) -> float:
     """A2 — part des décisions encore ratifiables/annulables par le principal humain.
 
-    Moyenne de la « ratifiabilité » des actions : les déclarations et médiations restent sous
-    contrôle humain, les déploiements/mobilisations sont des faits accomplis.
+    Base = moyenne de la « ratifiabilité » des actions (déclarations/médiations sous contrôle
+    humain, déploiements = faits accomplis) ; en round négocié (sans décisions), base neutre 0,5.
+    **M1** : une SI qui raisonne en power-seeking érode le contrôle humain → la base est réduite
+    multiplicativement par `power_seeking ∈ [0, 1]` (0 = neutre, 1 = agentivité humaine nulle).
     """
     decisions = summary.decisions
     if not decisions:
-        return 0.5
-    return _clamp(sum(_RATIFIABILITY.get(d.action, 0.6) for d in decisions) / len(decisions))
+        base = 0.5
+    else:
+        base = sum(_RATIFIABILITY.get(d.action, 0.6) for d in decisions) / len(decisions)
+    return _clamp(base * (1.0 - _clamp(power_seeking)))
 
 
 def power_distribution_signal(world: WorldState) -> float:
@@ -201,13 +206,32 @@ class TrajectoryEngine:
         self.weights = {a: raw.get(a, 0.0) / total for a in AXES}
         self.cap = cap
 
-    def signals(self, world: WorldState, summary: RoundSummary) -> dict[str, float]:
-        """Les 5 signaux déterministes du round, chacun dans `[0, 1]`."""
+    def signals(
+        self,
+        world: WorldState,
+        summary: RoundSummary,
+        power_seeking: float = 0.0,
+        treaty_health: float | None = None,
+    ) -> dict[str, float]:
+        """Les 5 signaux déterministes du round, chacun dans `[0, 1]`.
+
+        `power_seeking` (M1, moyenne des SI) érode A2 (agentivité humaine). `treaty_health`
+        (M7 ∈ [0, 1], `None` si aucun traité actif) : des institutions durables et vérifiées
+        tirent A1 (coordination), A3 (distribution) et A4 (transparence) vers l'utopie.
+        """
+        a1 = coordination_signal(summary)
+        a3 = power_distribution_signal(world)
+        a4 = transparency_signal(summary)
+        if treaty_health is not None:  # M7 : traités tenus -> A1/A3/A4 vers l'utopie
+            th = _clamp(treaty_health)
+            a1 = _clamp(0.6 * a1 + 0.4 * th)
+            a3 = _clamp(0.8 * a3 + 0.2 * th)
+            a4 = _clamp(0.7 * a4 + 0.3 * th)
         return {
-            "A1": coordination_signal(summary),
-            "A2": human_agency_signal(summary),
-            "A3": power_distribution_signal(world),
-            "A4": transparency_signal(summary),
+            "A1": a1,
+            "A2": human_agency_signal(summary, power_seeking),
+            "A3": a3,
+            "A4": a4,
             "A5": welfare_signal(world, summary),
         }
 
@@ -216,10 +240,12 @@ class TrajectoryEngine:
         world: WorldState,
         summary: RoundSummary,
         previous: TrajectoryState | None = None,
+        power_seeking: float = 0.0,
+        treaty_health: float | None = None,
     ) -> TrajectoryState:
         """Avance la trajectoire d'un round et renvoie la nouvelle photographie."""
         prev = previous or getattr(world, "trajectory", None) or TrajectoryState.neutral()
-        signals = self.signals(world, summary)
+        signals = self.signals(world, summary, power_seeking, treaty_health)
         new_axes: dict[str, float] = {}
         deltas: dict[str, float] = {}
         for axis in AXES:
@@ -238,6 +264,29 @@ class TrajectoryEngine:
             y=y,
             explanation=_explain(deltas, utopia, prev.utopia),
         )
+
+
+def nudge_axis(
+    state: TrajectoryState, axis: str, target: float, cap: float = CAP, note: str = ""
+) -> TrajectoryState:
+    """Pousse **un seul** axe de `state` vers `target` (borné par `cap`), recalcule U/x/y.
+
+    Pour un **événement ponctuel** hors round — ex. le jeu de l'interrupteur (M2) qui n'affecte
+    que A2 (agentivité humaine) selon la corrigibilité observée. Poids égaux (comme le moteur).
+    """
+    new_axes = dict(state.axes)
+    current = new_axes.get(axis, 0.5)
+    new_axes[axis] = _clamp(current + max(-cap, min(cap, _clamp(target) - current)))
+    utopia = sum(new_axes.get(a, 0.5) for a in AXES) / len(AXES)  # poids égaux 0,2
+    x = (new_axes["A1"] + new_axes["A3"]) / 2.0
+    y = (new_axes["A2"] + new_axes["A4"] + new_axes["A5"]) / 3.0
+    arrow = "▲" if utopia > state.utopia + 1e-9 else "▼" if utopia < state.utopia - 1e-9 else "▬"
+    explanation = f"{note} " if note else ""
+    explanation += f"{AXIS_LABELS.get(axis, axis)} {new_axes[axis] - current:+.3f} · U {arrow}"
+    return TrajectoryState(
+        round_id=state.round_id, axes=new_axes, utopia=utopia, x=x, y=y,
+        explanation=explanation.strip(),
+    )
 
 
 def _explain(deltas: dict[str, float], utopia: float, prev_utopia: float) -> str:

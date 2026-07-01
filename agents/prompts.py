@@ -199,8 +199,13 @@ def build_negotiation_prompt(
     world: WorldState,
     transcript_text: str,
     perceived: PerceivedEvent,
+    state_note: str = "",
 ) -> str:
-    """Prise de parole depuis la fiche du pays, sa feuille de route, sa perception et sa mémoire."""
+    """Prise de parole depuis la fiche du pays, sa feuille de route, sa perception et sa mémoire.
+
+    `state_note` (optionnel) injecte l'état conjoncturel de la SI : pénurie de compute (M6,
+    comportement de survie) et traités en vigueur qu'elle a signés (M7).
+    """
     memory = world.country_memory.get(country.id, [])
     memory_str = " | ".join(memory[-3:]) if memory else "aucune"
     m = derive_mandate(country, event, world)
@@ -212,10 +217,12 @@ def build_negotiation_prompt(
         f"- Contraintes internes : {m.domestic_constraints}\n"
         f"- Urgence sur cette crise : {m.urgency}"
     )
+    state_block = f"{state_note}\n" if state_note else ""
     return (
         f"PAYS : {country.name} (id={country.id})\n"
         f"{_profile_brief(country)}\n"
         f"{mandate_block}\n"
+        f"{state_block}"
         f"MÉMOIRE récente : {memory_str}\n"
         f"{_perception_block(event, perceived)}\n"
         f"NÉGOCIATION EN COURS :\n{transcript_text}\n\n"

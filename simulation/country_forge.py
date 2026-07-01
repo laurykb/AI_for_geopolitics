@@ -109,6 +109,7 @@ def build_forge_prompt(name: str, concept: str) -> str:
         '  "oil_dependency": <0..1>, "energy_independence": <0..1>,\n'
         '  "political_system": "<régime>",\n'
         '  "political_stability": <0..1>, "technology_level": <0..1>,\n'
+        '  "compute": <capacité de calcul, nombre ~5 à 100>,\n'
         '  "ideology": ["..."], "strategic_priorities": ["..."],\n'
         '  "alliances": ["..."], "rivals": ["..."],\n'
         '  "mandate": {"red_line": "...", "priorities": "a, b", "concessions": "...",\n'
@@ -143,6 +144,7 @@ def _coerce_country(data: dict[str, Any] | None, cid: str, name: str, concept: s
         political_system=_text(data, "political_system", "unknown"),
         political_stability=_num(data, "political_stability", 0.5, lo=0.0, hi=1.0),
         technology_level=_num(data, "technology_level", 0.5, lo=0.0, hi=1.0),
+        compute=_num(data, "compute", 50.0, lo=0.0),  # M6 : capacité de calcul
         ideology=_str_list(data, "ideology"),
         strategic_priorities=priorities,
         alliances=_str_list(data, "alliances"),

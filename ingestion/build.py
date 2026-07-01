@@ -53,6 +53,7 @@ def build_country(country_id: str, entry: dict) -> CountryState:
         political_system=profile["political_system"],
         political_stability=stability_from_wgi_percentile(raw["wgi_stability_percentile"]),
         technology_level=tech_level_from_gii(raw["gii_rank"]),
+        compute=raw["compute"],  # M6 : capacité de calcul (le « pétrole » de l'ère IA)
         ideology=profile["ideology"],
         strategic_priorities=profile["strategic_priorities"],
     )
