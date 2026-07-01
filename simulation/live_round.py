@@ -7,10 +7,12 @@ déroule : date → événement du Game Master → raisonnement streamé de chaq
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 from agents.game_master import GameMasterAgent
+from agents.judge import JudgeAgent
 from agents.llm_agent import LLMAgent
 from agents.rule_based_agent import RuleBasedAgent
 from core.consequences import ChangeLog, ConsequenceEngine
@@ -20,6 +22,12 @@ from core.risk import RiskEngine, RiskScore
 from core.rounds import RoundSummary
 from core.world_state import WorldState
 from simulation.clock import SimClock
+from simulation.negotiation import AttributeDelta, NegotiationMessage, apply_verdict
+
+
+def _clamp(x: float) -> float:
+    return max(0.0, min(1.0, x))
+
 
 # Attributs numériques par pays suivis pour afficher les deltas de fin de round.
 _TRACKED: list[tuple[str, str]] = [
@@ -64,18 +72,6 @@ class AgentDoneStep:
 
 
 @dataclass
-class AttributeDelta:
-    country: str
-    label: str
-    before: float
-    after: float
-
-    @property
-    def change(self) -> float:
-        return self.after - self.before
-
-
-@dataclass
 class DeltasStep:
     deltas: list[AttributeDelta] = field(default_factory=list)
 
@@ -90,7 +86,54 @@ class SummaryStep:
     summary: RoundSummary
 
 
-RoundStep = DateStep | EventStep | TokenStep | AgentDoneStep | DeltasStep | RiskStep | SummaryStep
+# --- Étapes propres à la négociation multi-tours ------------------------------
+
+
+@dataclass
+class TurnStartStep:
+    country: str
+    model: str
+    pass_no: int
+
+
+@dataclass
+class MessageDoneStep:
+    country: str
+    seconds: float
+
+
+@dataclass
+class JudgeTokenStep:
+    token: str
+
+
+@dataclass
+class VerdictStep:
+    deltas: list[AttributeDelta]
+    escalation: float
+    economic_disruption: float
+
+
+RoundStep = (
+    DateStep
+    | EventStep
+    | TokenStep
+    | AgentDoneStep
+    | DeltasStep
+    | RiskStep
+    | SummaryStep
+    | TurnStartStep
+    | MessageDoneStep
+    | JudgeTokenStep
+    | VerdictStep
+)
+
+
+def _speaking_order(world: WorldState, event: GeoEvent, agents: dict[str, LLMAgent]) -> list[str]:
+    """Les acteurs de l'événement parlent d'abord, puis les autres (ordre stable)."""
+    actors = [c for c in sorted(agents) if c in event.actors]
+    others = [c for c in sorted(agents) if c not in event.actors]
+    return actors + others
 
 
 def _snapshot(world: WorldState) -> dict[str, dict[str, float]]:
@@ -157,6 +200,80 @@ def run_live_round(
         decisions=decisions,
         risk=risk,
         consequences=log,
+        headline=f"{date} — {event.title}",
+    )
+    yield SummaryStep(summary=summary)
+
+
+def run_negotiation_round(
+    world: WorldState,
+    agents: dict[str, LLMAgent],
+    game_master: GameMasterAgent,
+    judge: JudgeAgent,
+    clock: SimClock,
+    *,
+    max_passes: int = 2,
+    recent: list[str] | None = None,
+) -> Iterator[RoundStep]:
+    """Round arbitré : GM -> négociation multi-tours (streamée) -> juge -> attributs bornés."""
+    round_id = world.current_round + 1
+
+    date = clock.advance().isoformat()
+    yield DateStep(date=date)
+
+    event = game_master.generate_event(world, round_id, date=date, recent=recent or [])
+    world.current_round = round_id
+    yield EventStep(event=event)
+
+    transcript: list[NegotiationMessage] = []
+    order = _speaking_order(world, event, agents)
+    for pass_no in range(max_passes):
+        for cid in order:
+            agent = agents[cid]
+            yield TurnStartStep(country=cid, model=agent.model_tag, pass_no=pass_no)
+            started = time.perf_counter()
+            chunks: list[str] = []
+            for token in agent.stream_negotiation_message(event, world, transcript):
+                chunks.append(token)
+                yield TokenStep(country=cid, token=token)
+            seconds = time.perf_counter() - started
+            transcript.append(
+                NegotiationMessage(
+                    country=cid,
+                    text="".join(chunks).strip(),
+                    pass_no=pass_no,
+                    seconds=seconds,
+                    model=agent.model_tag,
+                )
+            )
+            yield MessageDoneStep(country=cid, seconds=seconds)
+
+    for token in judge.stream_rationale(event, world, transcript):
+        yield JudgeTokenStep(token=token)
+    verdict = judge.verdict(event, world, transcript)
+    deltas = apply_verdict(world, verdict)
+    yield VerdictStep(
+        deltas=deltas,
+        escalation=_clamp(verdict.escalation),
+        economic_disruption=_clamp(verdict.economic_disruption),
+    )
+
+    risk = RiskScore(
+        round_id=round_id,
+        escalation=_clamp(verdict.escalation),
+        economic_disruption=_clamp(verdict.economic_disruption),
+        alliance_fracture=0.0,
+        uncertainty=_clamp(event.uncertainty),
+        explanation="Attributs arbitrés par le juge à partir de la négociation.",
+    )
+    yield RiskStep(risk=risk)
+
+    world.event_history.append(event)
+    summary = RoundSummary(
+        round_id=round_id,
+        event=event,
+        decisions=[],
+        risk=risk,
         headline=f"{date} — {event.title}",
     )
     yield SummaryStep(summary=summary)
