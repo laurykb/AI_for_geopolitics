@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any
 
 from inference.backend import InferenceBackend, InferenceResult
@@ -56,3 +57,25 @@ class MockBackend(InferenceBackend):
             completion_tokens=self.completion_tokens,
             duration_s=self.duration_s,
         )
+
+    def stream_generate(
+        self,
+        prompt: str,
+        *,
+        system: str | None = None,
+        max_tokens: int = 512,
+        temperature: float = 0.7,
+    ) -> Iterator[str]:
+        self.calls.append(
+            {
+                "prompt": prompt,
+                "system": system,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "stream": True,
+            }
+        )
+        text = self._queue.pop(0) if len(self._queue) > 1 else self._queue[0]
+        # Émet mot par mot pour simuler le flux (concat == texte complet).
+        for i, word in enumerate(text.split(" ")):
+            yield word if i == 0 else " " + word

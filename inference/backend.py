@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -46,3 +47,20 @@ class InferenceBackend(ABC):
     ) -> InferenceResult:
         """Génère une complétion pour `prompt` et renvoie le texte + la télémétrie."""
         raise NotImplementedError
+
+    def stream_generate(
+        self,
+        prompt: str,
+        *,
+        system: str | None = None,
+        max_tokens: int = 512,
+        temperature: float = 0.7,
+    ) -> Iterator[str]:
+        """Génère en streaming : yield des fragments de texte au fil de l'eau.
+
+        Défaut : repli non-streamé (un seul fragment). Les backends « live » surchargent
+        pour émettre les tokens en direct (raisonnement visible dans l'UI).
+        """
+        yield self.generate(
+            prompt, system=system, max_tokens=max_tokens, temperature=temperature
+        ).text

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import time
+from collections.abc import Iterator
 from typing import Any
 
 import ollama
@@ -67,3 +68,26 @@ class OllamaBackend(InferenceBackend):
             completion_tokens=getattr(resp, "eval_count", None) or 0,
             duration_s=gen_s,
         )
+
+    def stream_generate(
+        self,
+        prompt: str,
+        *,
+        system: str | None = None,
+        max_tokens: int = 512,
+        temperature: float = 0.7,
+    ) -> Iterator[str]:
+        # Texte libre (pas de `format`) : on streame le raisonnement au fil de l'eau.
+        options = {"num_predict": max_tokens, "temperature": temperature}
+        stream = self._client.generate(
+            model=self.model,
+            prompt=prompt,
+            system=system,
+            options=options,
+            keep_alive=self.keep_alive,
+            stream=True,
+        )
+        for chunk in stream:
+            piece = getattr(chunk, "response", "") or ""
+            if piece:
+                yield piece
