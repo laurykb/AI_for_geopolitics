@@ -22,7 +22,7 @@ from simulation.clock import SimClock
 from simulation.loader import load_world
 from simulation.negotiation import (
     NegotiationMessage,
-    TurnCursor,
+    TurnDirector,
     apply_verdict,
     speaking_order,
     split_reasoning,
@@ -54,9 +54,10 @@ def init_session() -> None:
     st.session_state.elapsed = 0.0
     st.session_state.phase = "idle"  # idle | negotiating | done
     st.session_state.event = None
-    st.session_state.cursor = None
+    st.session_state.director = None
     st.session_state.human_country = None
     st.session_state.round_start = 0.0
+    st.session_state.last_silent = []
 
 
 if "world" not in st.session_state:
@@ -77,7 +78,9 @@ def stream_ai_turn(country: str, pass_no: int) -> None:
     agent: LLMAgent = S.agents[country]
     msg = chat.chat_message(country, avatar=_AGENT_AVATAR)
     with msg:
-        st.markdown(f"**{country}** · `{agent.model_tag}` · passe {pass_no + 1} — réfléchit…")
+        st.markdown(
+            f"**{country}** · `{agent.model_tag}` · prise de parole n°{pass_no + 1} — réfléchit…"
+        )
         think_holder = st.expander("🧠 Réflexion privée", expanded=True).empty()
         public_holder = st.empty()
 
@@ -140,6 +143,7 @@ def run_judge_and_finalize() -> None:
     add_display("Communiqué", _COMMUNIQUE_AVATAR, comm_md)
 
     S.last_deltas, S.last_escalation = deltas, escalation
+    S.last_silent = S.director.silent() if S.director else []
     S.round_no += 1
     S.elapsed = time.perf_counter() - S.round_start
     S.phase = "done"
@@ -148,7 +152,10 @@ def run_judge_and_finalize() -> None:
 def begin_round(event: GeoEvent, human_country: str | None) -> None:
     S.event = event
     S.messages = []
-    S.cursor = TurnCursor(speaking_order(list(S.agents), event), _MAX_PASSES)
+    budget = _MAX_PASSES * len(S.agents)
+    S.director = TurnDirector(
+        speaking_order(list(S.agents), event), max_turns=budget, priority=human_country
+    )
     S.human_country = human_country
     S.round_start = time.perf_counter()
     gm_md = (
@@ -175,8 +182,9 @@ if role == "Joueur-pays":
         "Ton pays", sorted(world.countries), disabled=S.phase != "idle"
     )
 st.sidebar.caption(
-    f"Négociation sur **{_MAX_PASSES} passes** (mistral 7B local), puis un **juge** arbitre. "
-    "En Joueur-pays, la table **s'arrête à ton tour**. Repli rule-based si Ollama est éteint."
+    "Négociation **dynamique** (mistral 7B local) : les pays parlent selon leur **engagement** "
+    "(reprendre la parole, réagir quand on les interpelle, ou se taire), puis un **juge** arbitre. "
+    "En Joueur-pays, la table **s'arrête à ton tour**. Repli rule-based si Ollama éteint."
 )
 
 # ------------------------------ Bandeau ------------------------------
@@ -220,6 +228,8 @@ with state_col:
         st.dataframe(df, use_container_width=True, hide_index=True)
     else:
         st.caption("Aucun round joué pour l'instant.")
+    if S.last_silent:
+        st.caption(f"🔇 Restés en retrait : {', '.join(S.last_silent)}")
 
 
 # ------------------------------ Contrôles par phase ------------------------------
@@ -259,34 +269,39 @@ if S.phase == "idle":
             st.rerun()
 
 elif S.phase == "negotiating":
-    cursor: TurnCursor = S.cursor
+    director: TurnDirector = S.director
     with chat_col:
-        # enchaîne les tours IA jusqu'au tour humain ou la fin
-        while not cursor.done:
-            country, pass_no = cursor.current
-            if country == S.human_country:
+        # enchaîne les tours IA (choisis par engagement) jusqu'au tour humain ou la fin
+        next_cid = None
+        while True:
+            next_cid = director.next_speaker(S.event, world, S.messages)
+            if next_cid is None or next_cid == S.human_country:
                 break
-            stream_ai_turn(country, pass_no)
-            cursor.advance()
-        if cursor.done:
+            stream_ai_turn(next_cid, director.spoke_count.get(next_cid, 0))
+            director.commit(next_cid)
+        if next_cid is None:
             run_judge_and_finalize()
             st.rerun()
         else:
-            country, pass_no = cursor.current
-            with st.form(f"human_turn_{cursor.pos}"):
-                st.markdown(f"🙋 **Ton tour — {country} (passe {pass_no + 1})**")
+            speak_no = director.spoke_count.get(next_cid, 0)
+            with st.form(f"human_turn_{director.turns_taken}"):
+                st.markdown(f"🙋 **Ton tour — {next_cid} (prise de parole n°{speak_no + 1})**")
                 msg = st.text_area("Ta prise de parole à la table")
                 if st.form_submit_button("Prendre la parole"):
                     text = msg.strip() or "(garde le silence)"
                     S.messages.append(
                         NegotiationMessage(
-                            country=country, text=text, pass_no=pass_no, seconds=0.0, model="humain"
+                            country=next_cid,
+                            text=text,
+                            pass_no=speak_no,
+                            seconds=0.0,
+                            model="humain",
                         )
                     )
                     add_display(
-                        f"{country} (toi)", _HUMAN_AVATAR, f"**🙋 {country} (toi)**\n\n{text}"
+                        f"{next_cid} (toi)", _HUMAN_AVATAR, f"**🙋 {next_cid} (toi)**\n\n{text}"
                     )
-                    cursor.advance()
+                    director.commit(next_cid)
                     st.rerun()
 
 elif S.phase == "done":

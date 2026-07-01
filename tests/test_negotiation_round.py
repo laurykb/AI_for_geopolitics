@@ -16,6 +16,7 @@ from simulation.live_round import (
     EventStep,
     JudgeTokenStep,
     MessageDoneStep,
+    ParticipationStep,
     SummaryStep,
     TurnStartStep,
     VerdictStep,
@@ -63,7 +64,7 @@ def _judge() -> JudgeAgent:
     )
 
 
-def test_step_sequence_and_passes():
+def test_step_sequence_and_dynamic_turns():
     world = _world()
     clock = SimClock(current_date=date(2025, 1, 1))
     steps = list(run_negotiation_round(world, _agents(world), _gm(), _judge(), clock, max_passes=2))
@@ -71,12 +72,27 @@ def test_step_sequence_and_passes():
     kinds = [type(s).__name__ for s in steps]
     assert kinds[0] == "DateStep" and kinds[1] == "EventStep"
     assert kinds[-1] == "SummaryStep"
-    # 2 passes x 2 pays = 4 prises de parole
-    assert sum(isinstance(s, TurnStartStep) for s in steps) == 4
-    assert sum(isinstance(s, MessageDoneStep) for s in steps) == 4
+    # prises de parole dynamiques : autant de débuts que de fins, bornées par le budget (2x2)
+    n_start = sum(isinstance(s, TurnStartStep) for s in steps)
+    n_done = sum(isinstance(s, MessageDoneStep) for s in steps)
+    assert n_start == n_done
+    assert 1 <= n_start <= 4
+    # un bilan de participation est émis
+    assert any(isinstance(s, ParticipationStep) for s in steps)
     # le juge a raisonné puis rendu un verdict
     assert any(isinstance(s, JudgeTokenStep) for s in steps)
     assert any(isinstance(s, VerdictStep) for s in steps)
+
+
+def test_max_turns_caps_speaking():
+    world = _world()
+    world.adjust_tension("usa", "iran", 0.9)  # forte tension -> beaucoup d'envie de parler
+    steps = list(
+        run_negotiation_round(world, _agents(world), _gm(), _judge(), SimClock(), max_turns=1)
+    )
+    assert sum(isinstance(s, TurnStartStep) for s in steps) == 1  # budget respecté
+    part = next(s for s in steps if isinstance(s, ParticipationStep))
+    assert sum(part.spoke.values()) == 1
 
 
 def test_provided_event_skips_game_master():

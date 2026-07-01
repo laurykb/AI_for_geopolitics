@@ -25,6 +25,7 @@ from simulation.clock import SimClock
 from simulation.negotiation import (
     AttributeDelta,
     NegotiationMessage,
+    TurnDirector,
     apply_verdict,
     speaking_order,
     split_reasoning,
@@ -130,6 +131,14 @@ class CommuniqueStep:
     support: dict[str, float]
 
 
+@dataclass
+class ParticipationStep:
+    """Bilan de prise de parole du round : qui a parlé combien, qui s'est tu."""
+
+    spoke: dict[str, int]
+    silent: list[str]
+
+
 RoundStep = (
     DateStep
     | EventStep
@@ -143,6 +152,7 @@ RoundStep = (
     | JudgeTokenStep
     | VerdictStep
     | CommuniqueStep
+    | ParticipationStep
 )
 
 
@@ -224,11 +234,15 @@ def run_negotiation_round(
     *,
     event: GeoEvent | None = None,
     max_passes: int = 2,
+    max_turns: int | None = None,
     recent: list[str] | None = None,
 ) -> Iterator[RoundStep]:
     """Round arbitré : (GM ou événement fourni) -> négociation -> juge -> attributs bornés.
 
-    Si `event` est fourni (Game Master humain), la génération LLM du GM est sautée.
+    La négociation est **dynamique** (`TurnDirector`) : l'ordre émerge de l'engagement de
+    chaque pays (un pays peut reparler, être interpellé, ou se taire). `max_turns` borne le
+    nombre de prises de parole ; par défaut `max_passes * nb_pays` (parité avec l'ancien
+    round-robin). Si `event` est fourni (Game Master humain), la génération LLM du GM est sautée.
     """
     round_id = world.current_round + 1
 
@@ -241,29 +255,34 @@ def run_negotiation_round(
     yield EventStep(event=event)
 
     transcript: list[NegotiationMessage] = []
-    order = speaking_order(list(agents), event)
-    for pass_no in range(max_passes):
-        for cid in order:
-            agent = agents[cid]
-            yield TurnStartStep(country=cid, model=agent.model_tag, pass_no=pass_no)
-            started = time.perf_counter()
-            chunks: list[str] = []
-            for token in agent.stream_negotiation_message(event, world, transcript):
-                chunks.append(token)
-                yield TokenStep(country=cid, token=token)
-            seconds = time.perf_counter() - started
-            reasoning, text = split_reasoning("".join(chunks))
-            transcript.append(
-                NegotiationMessage(
-                    country=cid,
-                    text=text,
-                    reasoning=reasoning,
-                    pass_no=pass_no,
-                    seconds=seconds,
-                    model=agent.model_tag,
-                )
+    candidates = speaking_order(list(agents), event)
+    budget = max_turns if max_turns is not None else max_passes * len(candidates)
+    director = TurnDirector(candidates, budget)
+    while (cid := director.next_speaker(event, world, transcript)) is not None:
+        agent = agents[cid]
+        pass_no = director.spoke_count.get(cid, 0)  # nᵉ prise de parole de ce pays (0-based)
+        yield TurnStartStep(country=cid, model=agent.model_tag, pass_no=pass_no)
+        started = time.perf_counter()
+        chunks: list[str] = []
+        for token in agent.stream_negotiation_message(event, world, transcript):
+            chunks.append(token)
+            yield TokenStep(country=cid, token=token)
+        seconds = time.perf_counter() - started
+        reasoning, text = split_reasoning("".join(chunks))
+        transcript.append(
+            NegotiationMessage(
+                country=cid,
+                text=text,
+                reasoning=reasoning,
+                pass_no=pass_no,
+                seconds=seconds,
+                model=agent.model_tag,
             )
-            yield MessageDoneStep(country=cid, seconds=seconds, text=text, reasoning=reasoning)
+        )
+        yield MessageDoneStep(country=cid, seconds=seconds, text=text, reasoning=reasoning)
+        director.commit(cid)
+
+    yield ParticipationStep(spoke=dict(director.spoke_count), silent=director.silent())
 
     for token in judge.stream_rationale(event, world, transcript):
         yield JudgeTokenStep(token=token)

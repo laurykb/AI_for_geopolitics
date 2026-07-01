@@ -8,13 +8,14 @@ ce verdict **borné** (garde-fou déterministe) — le LLM interprète, mais ne 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from pydantic import BaseModel, Field
 
 from core.events import GeoEvent
 from core.world_state import WorldState
 from simulation.diplomacy import pact_id
+from simulation.engagement import SPEAK_THRESHOLD, engagement_score
 
 _MEMORY_MAX = 4
 
@@ -75,6 +76,50 @@ class TurnCursor:
 
     def advance(self) -> None:
         self.pos += 1
+
+
+@dataclass
+class TurnDirector:
+    """Ordonnanceur de parole dynamique : décide qui parle ensuite, ou personne.
+
+    Contrairement à `TurnCursor` (round-robin figé), l'ordre émerge de l'engagement de
+    chaque pays à l'instant t : un même pays peut reparler, un interpellé peut couper la
+    file, un pays peu concerné est ignoré (silence). `max_turns` borne le nombre total de
+    prises de parole LLM du round — c'est le levier des *budget modes* (Cheap/Balanced/Full).
+    """
+
+    candidates: list[str]
+    max_turns: int
+    priority: str | None = None  # pays humain à faire participer de façon fiable (Joueur-pays)
+    turns_taken: int = 0
+    spoke_count: dict[str, int] = field(default_factory=dict)
+
+    def _score(self, cid: str, event: GeoEvent, world: WorldState, transcript: list) -> float:
+        score = engagement_score(cid, event, world, transcript, self.spoke_count)
+        if cid == self.priority:
+            score += 0.5  # le joueur humain reste dans la conversation (mais subit la fatigue)
+        return score
+
+    def next_speaker(self, event: GeoEvent, world: WorldState, transcript: list) -> str | None:
+        """Pays le plus engagé au-dessus du seuil, ou None (budget épuisé / personne d'engagé)."""
+        if self.turns_taken >= self.max_turns:
+            return None
+        best_cid: str | None = None
+        best_score = SPEAK_THRESHOLD
+        for cid in self.candidates:  # ordre stable (speaking_order) -> acteurs favorisés à égalité
+            score = self._score(cid, event, world, transcript)
+            if score > best_score:
+                best_cid, best_score = cid, score
+        return best_cid
+
+    def commit(self, cid: str) -> None:
+        """Enregistre que `cid` vient de parler (avance le budget + la fatigue)."""
+        self.turns_taken += 1
+        self.spoke_count[cid] = self.spoke_count.get(cid, 0) + 1
+
+    def silent(self) -> list[str]:
+        """Pays qui n'ont jamais pris la parole ce round (pour l'affichage)."""
+        return [c for c in self.candidates if self.spoke_count.get(c, 0) == 0]
 
 
 class NegotiationMessage(BaseModel):
