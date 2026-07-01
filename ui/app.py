@@ -110,8 +110,11 @@ def init_session() -> None:
     backend = MeteredBackend(OllamaBackend(), ledger)
     st.session_state.ledger = ledger
     st.session_state.backend = backend
-    st.session_state.awaiting_bets = False  # temps de paris avant la négociation
     st.session_state.paused = set()  # SI mises sur le banc pour le prochain round (M2 interrupteur)
+    # Marché-timeline (un seul marché utopie/dystopie sur toute la partie) :
+    st.session_state.game_market_id = None
+    st.session_state.game_horizon = 5  # nb de rounds avant résolution auto
+    st.session_state.game_open_round = 0
     st.session_state.world = world
     st.session_state.agents = {cid: LLMAgent(cid, backend) for cid in world.countries}
     st.session_state.roster = dict(world.countries)  # tous les pays dispo (chargés + inventés)
@@ -278,9 +281,11 @@ def run_judge_and_finalize() -> None:
     state = TrajectoryEngine().update(world, summary, power_seeking=mean_power)
     world.trajectory = state
     world.trajectory_history.append(state)
-    _settle_round_markets(rid, summary, _round_delta(world.trajectory_history))
 
     S.round_no += 1
+    # Marché-timeline : résolution auto quand l'horizon de la partie est atteint.
+    if S.game_market_id is not None and (S.round_no - S.game_open_round) >= S.game_horizon:
+        _resolve_game_market()
     S.elapsed = time.perf_counter() - S.round_start
     S.phase = "done"
 
@@ -413,9 +418,8 @@ def begin_round(event: GeoEvent, human_country: str | None) -> None:
     chat.chat_message("Game Master", avatar=_GM_AVATAR).markdown(f"🎲 {gm_md}")
     add_display("Game Master", _GM_AVATAR, f"🎲 {gm_md}")
     S.recent.append(event.title)
-    # Marché : ouvre le marché du round + le bot parie AVEC le contexte de l'événement.
-    _open_market_and_forecast(S.round_no + 1, event)
-    S.awaiting_bets = True  # laisse un temps de paris avant de lancer la négociation
+    # Marché-timeline : ouvre le marché de partie (une fois) ; le bot parie avec le contexte.
+    _ensure_game_market(event)
     S.phase = "negotiating"
 
 
@@ -509,21 +513,41 @@ def _bot_account(engine: MarketEngine):
     return engine.create_account(name, kind=AccountKind.BOT)
 
 
-def _open_market_and_forecast(round_id: int, event: GeoEvent) -> None:
-    """Ouvre le marché ΔUtopie du round (question = l'événement) et fait parier le bot."""
-    engine = _market_engine()
-    existing = [
-        m for m in engine.store.list_markets(round_id=round_id, status=MarketStatus.OPEN)
-        if m.criterion is not None and m.criterion.kind is ResolutionKind.TRAJECTORY
-    ]
-    market = existing[0] if existing else engine.open_binary_market(
+def _bare_summary(round_id: int) -> RoundSummary:
+    """RoundSummary minimal pour résoudre un marché trajectoire (décisions inutiles ici)."""
+    return RoundSummary(
         round_id=round_id,
-        question=f"Après « {event.title} », l'indice Utopie va-t-il monter (ΔU > 0) ?",
-        b=20.0,
+        event=GeoEvent(id=f"r{round_id}", round_id=round_id, event_type="market", title="clôture"),
+        decisions=[],
+        risk=RiskScore(
+            round_id=round_id, escalation=0.0, economic_disruption=0.0,
+            alliance_fracture=0.0, uncertainty=0.0,
+        ),
+    )
+
+
+def _ensure_game_market(event: GeoEvent) -> None:
+    """Ouvre (une seule fois par partie) le marché-timeline utopie/dystopie ; le bot parie.
+
+    On ne parie plus à chaque round : un marché unique porte sur l'**arc complet** — le monde
+    finira-t-il côté utopie (indice > 0,5) ? — là où le power-seeking et l'indice ont du sens.
+    """
+    if S.game_market_id is not None:
+        return
+    engine = _market_engine()
+    market = engine.open_binary_market(
+        round_id=S.round_no + 1,
+        question=(
+            f"En fin de partie (~{S.game_horizon} rounds), le monde penchera-t-il vers "
+            "l'utopie (indice > 0,5) ? [YES = utopie]"
+        ),
+        b=30.0,
         type=MarketType.THRESHOLD,
         criterion=ResolutionCriterion(kind=ResolutionKind.TRAJECTORY),
     )
-    try:  # le bot parie avec le CONTEXTE de l'événement (sinon prédiction aléatoire)
+    S.game_market_id = market.id
+    S.game_open_round = S.round_no
+    try:  # le bot parie une fois, avec le contexte de l'événement d'ouverture
         bot_id = _bot_account(engine).id
         with S.ledger.context("forecaster"):
             _forecaster().place_bets(engine, bot_id, world, event, markets=[market])
@@ -531,12 +555,20 @@ def _open_market_and_forecast(round_id: int, event: GeoEvent) -> None:
         pass
 
 
-def _settle_round_markets(round_id: int, summary: RoundSummary, delta: float) -> None:
-    """Résout les marchés ΔUtopie du round sur le signe du ΔU réellement observé."""
+def _resolve_game_market() -> str | None:
+    """Résout le marché-timeline sur l'indice **final** (> 0,5 = utopie). Renvoie l'issue."""
+    if S.game_market_id is None:
+        return None
     engine = _market_engine()
-    for market in engine.store.list_markets(round_id=round_id, status=MarketStatus.OPEN):
-        if market.criterion is not None and market.criterion.kind is ResolutionKind.TRAJECTORY:
-            resolve_and_settle(engine.store, market, summary, delta_utopia=delta)
+    market = engine.store.get_market(S.game_market_id)
+    S.game_market_id = None
+    if market is None or market.status is not MarketStatus.OPEN:
+        return None
+    utopia = world.trajectory.utopia if world.trajectory else 0.5
+    resolve_and_settle(
+        engine.store, market, _bare_summary(market.round_id), delta_utopia=utopia - 0.5
+    )
+    return "Utopie" if utopia > 0.5 else "Dystopie"
 
 
 def _render_bet_box(engine: MarketEngine, market, account_id: str, *, ctx: str = "tab") -> None:
@@ -571,33 +603,14 @@ def _render_bet_box(engine: MarketEngine, market, account_id: str, *, ctx: str =
                 st.error(str(exc))
 
 
-def render_betting_gate() -> None:
-    """Temps de paris : l'humain voit l'événement, mise, puis lance la négociation."""
-    st.info(
-        "💰 **Paris ouverts** — l'IA forecaster a placé sa mise. À toi de parier "
-        "(sur le même événement), puis lance la négociation."
-    )
-    st.caption(
-        f"🎲 **{S.event.title}** · sévérité {S.event.severity:.2f} · "
-        f"acteurs : {', '.join(S.event.actors) or 'n/a'}"
-    )
-    engine = _market_engine()
-    me = _human_account(engine)
-    st.caption(f"💰 Ton solde : {me.balance:.0f} cr")
-    for market in engine.store.list_markets(round_id=S.round_no + 1, status=MarketStatus.OPEN):
-        _render_bet_box(engine, market, me.id, ctx="gate")
-    if st.button("▶️ Lancer la négociation", type="primary", use_container_width=True):
-        S.awaiting_bets = False
-        st.rerun()
-
-
 def render_market_tab() -> None:
-    """Marché de prédiction (argent fictif) : parier sur ce que feront les super-intelligences."""
+    """Marché de prédiction (argent fictif) : parier sur l'ARC de la partie (utopie/dystopie)."""
     st.subheader("💹 Marché de prédiction")
     st.caption(
-        "Pariez (crédits **fictifs**) sur ce que feront les super-intelligences. Un marché s'ouvre "
-        "à chaque événement ; l'**IA forecaster** parie face à toi ; le **Juge** résout et le "
-        "**Brier** dit qui prédit le mieux. Le marché **observe**, il n'influence pas les IA."
+        "Parie (crédits **fictifs**) sur l'**arc de la partie** : le monde finira-t-il en "
+        "**utopie** (indice > 0,5) ou en **dystopie** ? Un seul marché sur toute la timeline ; "
+        "l'**IA forecaster** parie face à toi ; résolution sur l'indice **final**. Le marché "
+        "**observe**, il n'influence pas les SI."
     )
     engine = _market_engine()
     me = _human_account(engine)
@@ -609,14 +622,30 @@ def render_market_tab() -> None:
     c2.metric("📊 P&L", f"{scoring.pnl(me):+.0f} cr")
     c3.metric("🌗 Indice Utopie", f"{utopia:.2f}", f"{delta:+.3f}")
 
-    if S.event is not None:
-        st.caption(f"🎲 Événement courant : **{S.event.title}**")
+    if S.game_market_id is None:
+        S.game_horizon = st.slider(
+            "Horizon de la partie (rounds)", 3, 12, S.game_horizon, disabled=S.phase != "idle"
+        )
+        st.info("Le marché-timeline s'ouvre au 1er round de la partie (YES = utopie).")
+    else:
+        market = engine.store.get_market(S.game_market_id)
+        played = S.round_no - S.game_open_round
+        st.caption(f"🏁 Partie en cours : round **{played}/{S.game_horizon}** (YES = utopie).")
+        if market is not None:
+            _render_bet_box(engine, market, me.id)
+        if st.button("🏁 Clôturer la partie & résoudre maintenant"):
+            issue = _resolve_game_market()
+            st.success(f"Partie clôturée — le monde finit en **{issue}**.")
+            st.rerun()
 
-    open_markets = engine.store.list_markets(status=MarketStatus.OPEN)
-    if not open_markets:
-        st.info("Aucun marché ouvert — lance un round : un marché s'ouvre à chaque événement.")
-    for market in open_markets:
-        _render_bet_box(engine, market, me.id)
+    if world.trajectory_history:
+        st.markdown("**📈 Timeline — indice Utopie**")
+        st.line_chart(
+            pd.DataFrame(
+                {"Indice Utopie": [t.utopia for t in world.trajectory_history]},
+                index=[t.round_id for t in world.trajectory_history],
+            )
+        )
 
     positions = [p for p in engine.store.list_positions(account_id=me.id) if p.shares != 0.0]
     if positions:
@@ -869,8 +898,6 @@ with chat_col:
     # Statut de phase (clarté du tour)
     if S.phase == "idle":
         st.caption("🎬 **Prêt** — choisis mode + rôle à gauche, puis lance le round.")
-    elif S.phase == "negotiating" and S.awaiting_bets:
-        st.caption("💰 **Paris ouverts** — mise puis lance la négociation.")
     elif S.phase == "negotiating":
         d_ = S.director
         prog = f" · prise de parole {d_.turns_taken}/{d_.max_turns}" if d_ else ""
@@ -1132,11 +1159,6 @@ if S.phase == "idle":
                 event = S.gm.generate_event(world, rid, date=date, recent=S.recent)
             begin_round(event, picked_country if role == "Joueur-pays" else None)
             st.rerun()
-
-elif S.phase == "negotiating" and S.awaiting_bets:
-    # Temps de paris : l'humain mise (comme le bot) avant que la négociation ne tranche.
-    with chat_col:
-        render_betting_gate()
 
 elif S.phase == "negotiating":
     director: TurnDirector = S.director
