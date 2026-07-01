@@ -307,27 +307,18 @@ def begin_round(event: GeoEvent, human_country: str | None) -> None:
 
 
 def render_welcome() -> None:
-    """Accueil quand aucun round n'a encore été joué : pitch + rôles + modes."""
-    st.info(
-        "**Un G7 de super-intelligences dont on voit tous les messages.** Le Game Master lance un "
-        "événement, les pays (LLM) débattent en direct — on voit leur **réflexion privée**, "
-        "l'**arbitrage** d'un juge et un **communiqué** commun."
-    )
-    c1, c2 = st.columns(2)
-    c1.markdown(
-        "**🎭 Rôles**\n"
-        "- 👁️ Spectateur — tu observes tout\n"
-        "- 🎲 Game Master — tu écris l'événement\n"
-        "- 🙋 Joueur-pays — tu incarnes un pays"
-    )
-    c2.markdown(
-        "**🕹️ Modes**\n"
-        "- Classique\n"
-        "- 🌫️ Fog Engine — infos divergentes / désinfo\n"
-        "- 🕰️ Crisis Replay — rejoue une vraie crise\n"
-        "- 🪜 Escalation Ladder — jusqu'où chacun peut monter"
-    )
-    st.caption("👉 Choisis mode + rôle dans la barre latérale, puis **lance le round**.")
+    """Accueil compact : pitch en une phrase + détails à la demande (popover)."""
+    st.info("**Un G7 de super-intelligences dont on voit tous les messages.** Choisis un mode "
+            "et un rôle à gauche, puis lance le round.")
+    with st.popover("Comment jouer ?"):
+        st.markdown(
+            "Le Game Master lance un événement, les pays (LLM) débattent en direct — on voit leur "
+            "**réflexion privée**, l'**arbitrage** d'un juge et un **communiqué** commun.\n\n"
+            "**🎭 Rôles** — 👁️ Spectateur (observe) · 🎲 Game Master (écris l'événement) · "
+            "🙋 Joueur-pays (incarne un pays)\n\n"
+            "**🕹️ Modes** — Classique · 🌫️ Fog Engine (infos divergentes) · 🕰️ Crisis Replay "
+            "(rejoue une crise) · 🪜 Escalation Ladder (jusqu'où chacun peut monter)"
+        )
 
 
 def render_settings_tab() -> None:
@@ -375,38 +366,31 @@ S.game_mode = st.sidebar.radio(
     "Mode de jeu",
     ["Classique", "Fog Engine", "Crisis Replay", "Escalation Ladder"],
     disabled=S.phase != "idle",
+    help="Détails dans « ❓ Aide — modes & règles » plus bas.",
 )
 role = st.sidebar.radio(
-    "Ton rôle", ["Spectateur", "Game Master (humain)", "Joueur-pays"], disabled=S.phase != "idle"
+    "Ton rôle",
+    ["Spectateur", "Game Master (humain)", "Joueur-pays"],
+    disabled=S.phase != "idle",
+    help="👁️ Spectateur · 🎲 Game Master (écris l'événement) · 🙋 Joueur-pays (incarne un pays)",
 )
 picked_country = None
 if role == "Joueur-pays":
     picked_country = st.sidebar.selectbox(
         "Ton pays", sorted(world.countries), disabled=S.phase != "idle"
     )
-if S.game_mode == "Fog Engine":
-    st.sidebar.caption(
-        "🌫️ **Fog Engine** : chaque pays ne voit pas la même info (acteur suspecté, confiance, "
-        "délai, **désinformation**). Spectateur = omniscient (vérité + perceptions) ; Joueur-pays "
-        "= ne voit QUE la perception de son pays (parfois fausse)."
+with st.sidebar.popover("❓ Aide — modes & règles", use_container_width=True):
+    st.markdown(
+        "**Modes**\n"
+        "- **Classique** — le Game Master invente l'événement.\n"
+        "- 🌫️ **Fog Engine** — chaque pays voit une info différente (acteur suspecté, confiance, "
+        "désinformation). Spectateur omniscient ; Joueur-pays aveugle.\n"
+        "- 🕰️ **Crisis Replay** — rejoue une crise passée, compare l'issue simulée à l'histoire.\n"
+        "- 🪜 **Escalation Ladder** — échelle 0-9 ; jusqu'où chaque pays peut monter.\n\n"
+        "**Règles** — négociation dynamique (les pays parlent selon leur engagement), puis un "
+        "juge arbitre et rédige un communiqué. En Joueur-pays, la table s'arrête à ton tour. "
+        "Repli rule-based si Ollama est éteint."
     )
-if S.game_mode == "Crisis Replay":
-    st.sidebar.caption(
-        "🕰️ **Crisis Replay** : rejoue une crise passée (dataset fixe) et compare l'issue "
-        "**simulée** à l'issue **historique** (escalade, mesures) — et pourquoi ça diverge. "
-        "Rejoue autant de fois que tu veux."
-    )
-if S.game_mode == "Escalation Ladder":
-    st.sidebar.caption(
-        "🪜 **Escalation Ladder** : échelle 0-9 (Observation → Conflit ouvert). On calcule "
-        "**jusqu'où chaque pays peut monter** (plafond) selon 5 curseurs, et l'échelon "
-        "réellement atteint ce round. Panneau à droite."
-    )
-st.sidebar.caption(
-    "Négociation **dynamique** (mistral 7B local) : les pays parlent selon leur **engagement** "
-    "(reprendre la parole, réagir quand on les interpelle, ou se taire), puis un **juge** arbitre. "
-    "En Joueur-pays, la table **s'arrête à ton tour**. Repli rule-based si Ollama éteint."
-)
 
 # ------------------------------ Bandeau ------------------------------
 st.title("🌍 AI for Geopolitics — le G7 des super-intelligences")
