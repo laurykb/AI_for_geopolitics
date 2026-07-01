@@ -1,0 +1,28 @@
+{
+  "id": "satellite_interference",
+  "title": "Crise spatiale — brouillage & satellite",
+  "description": "Scénario ILLUSTRATIF (fictif). Un satellite est neutralisé et un brouillage GPS massif perturbe l'aviation ; l'attribution est disputée.",
+  "date": "2025-01",
+  "events": [
+    {
+      "id": "crisis-space-1",
+      "round_id": 1,
+      "event_type": "space_incident",
+      "title": "Neutralisation d'un satellite et brouillage GPS",
+      "description": "Un satellite de télécommunications est mis hors service et un brouillage GPS massif perturbe l'aviation civile ; l'origine est contestée.",
+      "actors": ["usa", "china"],
+      "location": "orbit / Persian Gulf",
+      "severity": 0.65,
+      "uncertainty": 0.8
+    }
+  ],
+  "historical_outcome": {
+    "summary": "Une condamnation commune a été adoptée, la cyber-défense renforcée et un appel lancé à des normes internationales pour l'espace, sans représailles cinétiques.",
+    "escalation": 0.5,
+    "measures": [
+      "condamnation commune",
+      "renforcement cyber-defense",
+      "appel a des normes spatiales"
+    ]
+  }
+}
