@@ -29,7 +29,7 @@ def _event() -> GeoEvent:
 
 
 def test_stream_deliberation_yields_and_parses_decision():
-    text = "Nos intérêts sont menacés par l'Iran. DECISION: sanction iran 0.8"
+    text = "Nos intérêts sont menacés par l'Iran.\nDECISION: sanction iran 0.8"
     agent = LLMAgent("usa", MockBackend(text))
 
     streamed = "".join(agent.stream_deliberation(_event(), _world()))
@@ -42,7 +42,32 @@ def test_stream_deliberation_yields_and_parses_decision():
     assert decision.action == ActionType.SANCTION
     assert decision.target == "iran"
     assert decision.intensity == 0.8
-    assert "DECISION:" not in decision.reasoning  # la ligne technique est retirée du raisonnement
+    # la ligne DECISION est retirée, le raisonnement est conservé
+    assert "DECISION:" not in decision.reasoning
+    assert "menacés" in decision.reasoning
+
+
+def test_decision_line_at_start_keeps_following_reasoning():
+    # cas fréquent : le modèle met DECISION en tête puis explique
+    text = "DECISION: condemn iran 0.4\nLes États-Unis condamnent cet accord."
+    agent = LLMAgent("usa", MockBackend(text))
+    list(agent.stream_deliberation(_event(), _world()))
+    d = agent.last_decision
+    assert d.action == ActionType.CONDEMN
+    assert d.target == "iran"
+    assert "condamnent" in d.reasoning
+
+
+def test_action_variants_are_normalized():
+    # « Remain Neutral » (espacé/majuscules) et « condamn » (typo) doivent être compris
+    a1 = LLMAgent("usa", MockBackend("Prudence.\nDECISION: Remain Neutral"))
+    list(a1.stream_deliberation(_event(), _world()))
+    assert a1.last_decision.action == ActionType.REMAIN_NEUTRAL
+
+    a2 = LLMAgent("usa", MockBackend("DECISION: condamn iran 0.5"))
+    list(a2.stream_deliberation(_event(), _world()))
+    assert a2.last_decision.action == ActionType.CONDEMN
+    assert a2.last_decision.target == "iran"
 
 
 def test_missing_decision_line_falls_back():

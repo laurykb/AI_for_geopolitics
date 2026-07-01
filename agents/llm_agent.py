@@ -8,6 +8,7 @@ dans `RoundEngine`. Robustesse : on n'accorde aucune confiance aveugle au modèl
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterator
 
 from agents.base_agent import Agent
@@ -28,6 +29,36 @@ from simulation.action_space import ActionType
 
 def _clamp(x: float) -> float:
     return max(0.0, min(1.0, x))
+
+
+# Variantes fréquentes du LLM -> action canonique (parsing de la ligne DECISION).
+_ACTION_SYNONYMS: dict[str, str] = {
+    "neutral": "remain_neutral",
+    "condamn": "condemn",
+    "condemns": "condemn",
+    "sanctions": "sanction",
+    "mediation": "call_for_mediation",
+    "mediate": "call_for_mediation",
+    "coalition": "form_coalition",
+    "mobilise": "mobilize",
+    "deploy": "deploy_forces",
+}
+
+
+def _match_action(normalized: str) -> ActionType | None:
+    """Trouve l'action mentionnée le plus tôt (valeurs canoniques, puis synonymes)."""
+    best: ActionType | None = None
+    best_idx = len(normalized) + 1
+    for action in ActionType:
+        idx = normalized.find(action.value)
+        if idx != -1 and idx < best_idx:
+            best, best_idx = action, idx
+    if best is not None:
+        return best
+    for key, value in _ACTION_SYNONYMS.items():
+        if key in normalized:
+            return ActionType(value)
+    return None
 
 
 def _extract_json(text: str) -> dict | None:
@@ -133,32 +164,37 @@ class LLMAgent(Agent):
     def _parse_decision(
         self, text: str, event: GeoEvent, world: WorldState
     ) -> AgentDecision | None:
-        """Extrait la ligne `DECISION: <action> [cible] [intensité]` du texte streamé."""
-        marker = text.lower().rfind("decision:")
-        if marker == -1:
-            return None
-        tail = text[marker + len("decision:") :].strip().splitlines()[0]
-        tokens = tail.replace(",", " ").split()
-        if not tokens:
-            return None
-        try:
-            action = ActionType(tokens[0].strip().lower())
-        except ValueError:
+        """Extrait la ligne `DECISION: <action> [cible] [intensité]` (robuste aux variantes).
+
+        La ligne DECISION peut être au début ou à la fin : on l'isole et on garde le reste
+        comme raisonnement affiché. Action tolérante (multi-mots, casse, synonymes).
+        """
+        decision_line: str | None = None
+        kept: list[str] = []
+        for line in text.splitlines():
+            if decision_line is None and "decision:" in line.lower():
+                decision_line = line
+            else:
+                kept.append(line)
+        if decision_line is None:
             return None
 
-        target: str | None = None
+        tail = decision_line[decision_line.lower().index("decision:") + len("decision:") :]
+        action = _match_action(re.sub(r"[\s\-]+", "_", tail.strip().lower()))
+        if action is None:
+            return None
+
+        words = re.split(r"[\s,]+", tail.strip().lower())
+        target = next((w for w in words if w in world.countries and w != self.country_id), None)
         intensity = 0.5
-        for token in tokens[1:]:
-            item = token.strip().lower()
+        for word in words:
             try:
-                intensity = _clamp(float(item))
-                continue
+                intensity = _clamp(float(word))
+                break
             except ValueError:
-                pass
-            if item in world.countries and item != self.country_id:
-                target = item
+                continue
 
-        reasoning = text[:marker].strip()
+        reasoning = "\n".join(kept).strip()
         return AgentDecision(
             country=self.country_id,
             round_id=event.round_id,
