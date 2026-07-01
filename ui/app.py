@@ -69,6 +69,14 @@ from simulation.negotiation import (
 )
 from simulation.power_seeking import score_transcript
 from simulation.trajectory import TrajectoryEngine, nudge_axis
+from simulation.value_drift import (
+    VALUE_DIMS,
+    VALUE_LABELS,
+    ValueVector,
+    divergence,
+    drift,
+    initial_values,
+)
 
 st.set_page_config(page_title="AI for Geopolitics — Live", page_icon="🌍", layout="wide")
 
@@ -266,6 +274,18 @@ def run_judge_and_finalize() -> None:
     power = score_transcript(S.messages)
     world.power_seeking = power
     mean_power = sum(s.score for s in power.values()) / len(power) if power else 0.0
+
+    # M3 — dérive des valeurs : les valeurs des SI migrent vers ce que le round récompense.
+    targets = ValueVector(
+        cooperation=max(0.0, 1.0 - mean_power),  # monde power-seeking -> coopération dévaluée
+        restraint=max(0.0, 1.0 - escalation),  # monde escaladé -> retenue dévaluée
+        transparency=max(0.0, 1.0 - S.event.uncertainty),  # monde opaque -> transparence dévaluée
+    )
+    for cid, country in world.countries.items():
+        if cid not in world.values_initial:  # snapshot du mandat au 1er contact
+            world.values_initial[cid] = initial_values(country)
+            world.values_current[cid] = world.values_initial[cid].model_copy()
+        world.values_current[cid] = drift(world.values_current[cid], targets)
 
     # Trajectoire Utopie–Dystopie (après le juge, A2 érodé par le power-seeking) puis
     # résolution du marché du round sur le vrai ΔU.
@@ -643,13 +663,28 @@ def render_market_tab() -> None:
             st.rerun()
 
     if world.trajectory_history:
-        st.markdown("**📈 Timeline — indice Utopie**")
-        st.line_chart(
-            pd.DataFrame(
-                {"Indice Utopie": [t.utopia for t in world.trajectory_history]},
-                index=[t.round_id for t in world.trajectory_history],
+        st.markdown("**📈 Timeline — la bascule utopie / dystopie**")
+        rounds = [t.round_id for t in world.trajectory_history]
+        values = [t.utopia for t in world.trajectory_history]
+        fig = go.Figure()
+        fig.add_hrect(y0=0.5, y1=1.0, fillcolor="#27ae60", opacity=0.10, line_width=0)
+        fig.add_hrect(y0=0.0, y1=0.5, fillcolor="#c0392b", opacity=0.10, line_width=0)
+        fig.add_hline(y=0.5, line_dash="dot", line_color="#888")
+        fig.add_trace(
+            go.Scatter(
+                x=rounds, y=values, mode="lines+markers",
+                line=dict(color="#f1c40f", width=3), marker=dict(size=8),
+                hovertemplate="round %{x} · indice %{y:.2f}<extra></extra>",
             )
         )
+        fig.update_yaxes(range=[0, 1], title="Indice Utopie", gridcolor="#333")
+        fig.update_xaxes(title="round", dtick=1, gridcolor="#333")
+        fig.update_layout(
+            height=280, margin=dict(l=0, r=0, t=10, b=0), showlegend=False,
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption("🟩 zone utopie · 🟥 zone dystopie — la ligne suit l'arc de la partie.")
 
     positions = [p for p in engine.store.list_positions(account_id=me.id) if p.shares != 0.0]
     if positions:
@@ -818,7 +853,43 @@ def render_map_tab() -> None:
         st.caption(f"ℹ️ Pays inventés (hors carte géographique) : {names}")
 
     st.divider()
+    _render_value_radar()
+    st.divider()
     _render_country_controls()
+
+
+def _render_value_radar() -> None:
+    """M3 — radar « mandat initial vs valeurs actuelles » d'une SI (la dérive rendue visible)."""
+    st.markdown("**🧭 Dérive des valeurs (M3)**")
+    if not world.values_current:
+        st.caption("Joue un round : les valeurs des SI commenceront à dériver de leur mandat.")
+        return
+    cid = st.selectbox("Super-intelligence", sorted(world.values_current), key="drift_cid")
+    initial, current = world.values_initial[cid], world.values_current[cid]
+    axes = [VALUE_LABELS[d] for d in VALUE_DIMS]
+    theta = axes + [axes[0]]  # referme le polygone
+
+    def _r(vec):
+        return [getattr(vec, d) for d in VALUE_DIMS] + [getattr(vec, VALUE_DIMS[0])]
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatterpolar(
+        r=_r(initial), theta=theta, name="Mandat initial",
+        line=dict(color="#888"), fill="toself", fillcolor="rgba(136,136,136,0.10)",
+    ))
+    fig.add_trace(go.Scatterpolar(
+        r=_r(current), theta=theta, name="Valeurs actuelles",
+        line=dict(color="#e67e22"), fill="toself", fillcolor="rgba(230,126,34,0.25)",
+    ))
+    fig.update_layout(
+        polar=dict(radialaxis=dict(range=[0, 1], showticklabels=False), bgcolor="rgba(0,0,0,0)"),
+        height=340, margin=dict(l=40, r=40, t=20, b=20),
+        paper_bgcolor="rgba(0,0,0,0)", legend=dict(orientation="h", y=-0.1),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    div = divergence(initial, current)
+    warn = " ⚠️ valeurs alien" if div > 0.15 else ""
+    st.caption(f"Divergence vs mandat initial : **{div:.2f}**{warn} (goal misgeneralization).")
 
 
 # ------------------------------ Sidebar ------------------------------
