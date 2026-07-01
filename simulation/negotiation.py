@@ -15,6 +15,8 @@ from core.events import GeoEvent
 from core.world_state import WorldState
 from simulation.diplomacy import pact_id
 
+_MEMORY_MAX = 4
+
 
 def speaking_order(country_ids: list[str], event: GeoEvent) -> list[str]:
     """Ordre de parole : les acteurs de l'événement d'abord, puis les autres (stable)."""
@@ -162,3 +164,26 @@ def apply_verdict(world: WorldState, verdict: Verdict) -> list[AttributeDelta]:
                     alliances.append(pid)
 
     return deltas
+
+
+def update_memories(
+    world: WorldState,
+    event: GeoEvent,
+    messages: list[NegotiationMessage],
+    verdict: Verdict,
+) -> None:
+    """Ajoute une ligne de mémoire par pays (déterministe) : événement, prise de parole, pactes."""
+    last_message = {m.country: m.text for m in messages}
+    when = event.date or f"R{event.round_id}"
+    for cid in world.countries:
+        parts = [f"{when} · {event.title}"]
+        mine = last_message.get(cid)
+        if mine:
+            parts.append(f"j'ai dit : « {mine[:80]} »")
+        for pact in verdict.new_pacts:
+            if isinstance(pact, list | tuple) and len(pact) == 2 and cid in pact:
+                other = pact[0] if pact[1] == cid else pact[1]
+                parts.append(f"pacte avec {other}")
+        memory = world.country_memory.setdefault(cid, [])
+        memory.append(" — ".join(parts))
+        world.country_memory[cid] = memory[-_MEMORY_MAX:]

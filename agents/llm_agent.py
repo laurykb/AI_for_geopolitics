@@ -28,6 +28,7 @@ from core.world_state import WorldState
 from inference.backend import InferenceBackend, InferenceResult
 from simulation.action_space import ActionType
 from simulation.negotiation import NegotiationMessage, format_transcript
+from simulation.perception import perceive
 
 
 def _clamp(x: float) -> float:
@@ -118,7 +119,10 @@ class LLMAgent(Agent):
     ) -> Iterator[str]:
         """Streame une prise de parole dans la négociation (tient compte du transcript)."""
         country = world.countries[self.country_id]
-        prompt = build_negotiation_prompt(country, event, world, format_transcript(transcript))
+        perceived = perceive(event, country)
+        prompt = build_negotiation_prompt(
+            country, event, world, format_transcript(transcript), perceived
+        )
         try:
             yield from self.backend.stream_generate(
                 prompt, system=NEGOTIATION_SYSTEM, max_tokens=180, temperature=self.temperature

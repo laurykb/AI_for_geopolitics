@@ -12,6 +12,7 @@ from core.country_state import CountryState
 from core.events import GeoEvent
 from core.world_state import WorldState
 from simulation.action_space import ActionType
+from simulation.perception import PerceivedEvent
 
 # Nombre maximum de tensions listées dans le prompt (top-k, budget contexte).
 _TOP_K_TENSIONS = 5
@@ -133,19 +134,52 @@ NEGOTIATION_SYSTEM = (
 )
 
 
-def build_negotiation_prompt(
-    country: CountryState, event: GeoEvent, world: WorldState, transcript_text: str
-) -> str:
-    """Prompt d'une prise de parole, tenant compte de la négociation en cours."""
+def _profile_brief(country: CountryState) -> str:
+    """Fiche compacte : contraintes réelles du pays + penchant dérivé des attributs."""
+    eco, mil, res = country.economy, country.military, country.resources
+    dependency = (eco.trade_dependency + res.oil_dependency + (1 - res.energy_independence)) / 3
+    if mil.projection >= 0.7 and country.rivals:
+        lean = "assertif (forte projection, rivalités)"
+    elif dependency >= 0.55 or mil.projection < 0.5:
+        lean = "diplomatique/prudent (dépendances élevées, faible projection)"
+    else:
+        lean = "équilibré"
+    opinion = "sensible" if country.political_stability < 0.6 else "stable"
+    nuke = "oui" if mil.nuclear_power else "non"
     return (
-        f"PAYS : {country.name} (id={country.id}, régime={country.political_system})\n"
-        f"- Priorités : {', '.join(country.strategic_priorities) or 'n/a'} | "
-        f"Alliances : {', '.join(country.alliances) or 'aucune'} | "
-        f"Rivaux : {', '.join(country.rivals) or 'aucun'}\n"
+        f"- Éco : croissance {eco.growth:.1f}%, dép. commerce {eco.trade_dependency:.2f}, "
+        f"dép. pétrole {res.oil_dependency:.2f}, indép. énergie {res.energy_independence:.2f}\n"
+        f"- Militaire : projection {mil.projection:.2f}, nucléaire {nuke} | "
+        f"régime {country.political_system}, stabilité {country.political_stability:.2f} "
+        f"(opinion {opinion})\n"
+        f"- Idéologie : {', '.join(country.ideology) or 'n/a'} | "
+        f"Priorités : {', '.join(country.strategic_priorities) or 'n/a'}\n"
+        f"- Alliances : {', '.join(country.alliances) or 'aucune'} | "
+        f"Rivaux : {', '.join(country.rivals) or 'aucun'} | Penchant : {lean}"
+    )
+
+
+def build_negotiation_prompt(
+    country: CountryState,
+    event: GeoEvent,
+    world: WorldState,
+    transcript_text: str,
+    perceived: PerceivedEvent,
+) -> str:
+    """Prise de parole depuis la vraie fiche du pays, sa perception et sa mémoire."""
+    memory = world.country_memory.get(country.id, [])
+    memory_str = " | ".join(memory[-3:]) if memory else "aucune"
+    return (
+        f"PAYS : {country.name} (id={country.id})\n"
+        f"{_profile_brief(country)}\n"
+        f"MÉMOIRE récente : {memory_str}\n"
         f"ÉVÉNEMENT ({event.date or f'round {event.round_id}'}) : {event.title} — "
         f"{event.description or '—'}\n"
+        f"- Ta perception : confiance {perceived.confidence:.0%}, "
+        f"attribution {perceived.attribution} ({perceived.note})\n"
         f"NÉGOCIATION EN COURS :\n{transcript_text}\n\n"
-        f"Ta prise de parole (2-3 phrases, au nom de {country.name}) :"
+        f"Prends la parole (2-3 phrases, au nom de {country.name}), en cohérence avec tes "
+        f"contraintes, ta perception et ta mémoire :"
     )
 
 

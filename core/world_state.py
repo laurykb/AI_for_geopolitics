@@ -18,6 +18,8 @@ class WorldState(BaseModel):
     tensions: dict[str, dict[str, float]] = Field(default_factory=dict)
     event_history: list[GeoEvent] = Field(default_factory=list)
     diplomatic_history: list[DiplomaticMessage] = Field(default_factory=list)
+    # Mémoire courte par pays (lignes inter-rounds réinjectées dans les prompts).
+    country_memory: dict[str, list[str]] = Field(default_factory=dict)
 
     def get_tension(self, a: str, b: str) -> float:
         """Tension actuelle entre a et b (0 par défaut)."""
