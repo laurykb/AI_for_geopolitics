@@ -22,6 +22,7 @@ from inference.ollama_backend import OllamaBackend
 from inference.telemetry import BudgetLedger, grounding_proxy
 from simulation.clock import SimClock
 from simulation.crisis import compare_outcome, load_crises
+from simulation.escalation import LADDER, ceiling, derive_profile, reached_rung, rung_label
 from simulation.fog import FogScenario, load_fog_scenarios, resolve_perception
 from simulation.loader import load_world
 from simulation.negotiation import (
@@ -271,7 +272,9 @@ if st.sidebar.button("♻️ Nouvelle partie", use_container_width=True):
     init_session()
     st.rerun()
 S.game_mode = st.sidebar.radio(
-    "Mode de jeu", ["Classique", "Fog Engine", "Crisis Replay"], disabled=S.phase != "idle"
+    "Mode de jeu",
+    ["Classique", "Fog Engine", "Crisis Replay", "Escalation Ladder"],
+    disabled=S.phase != "idle",
 )
 role = st.sidebar.radio(
     "Ton rôle", ["Spectateur", "Game Master (humain)", "Joueur-pays"], disabled=S.phase != "idle"
@@ -292,6 +295,12 @@ if S.game_mode == "Crisis Replay":
         "🕰️ **Crisis Replay** : rejoue une crise passée (dataset fixe) et compare l'issue "
         "**simulée** à l'issue **historique** (escalade, mesures) — et pourquoi ça diverge. "
         "Rejoue autant de fois que tu veux."
+    )
+if S.game_mode == "Escalation Ladder":
+    st.sidebar.caption(
+        "🪜 **Escalation Ladder** : échelle 0-9 (Observation → Conflit ouvert). On calcule "
+        "**jusqu'où chaque pays peut monter** (plafond) selon 5 curseurs, et l'échelon "
+        "réellement atteint ce round. Panneau à droite."
     )
 st.sidebar.caption(
     "Négociation **dynamique** (mistral 7B local) : les pays parlent selon leur **engagement** "
@@ -387,6 +396,33 @@ with state_col:
         if c.missed_measures:
             st.caption(f"❌ Mesures non retenues : {', '.join(c.missed_measures)}")
         st.info(c.explanation)
+
+    # Escalation Ladder : plafond atteignable par pays + échelon réellement atteint.
+    if S.game_mode == "Escalation Ladder" and S.event:
+        st.markdown("**🪜 Escalation Ladder**")
+        if S.last_escalation is not None:
+            r = reached_rung(S.last_escalation)
+            st.caption(f"Escalade atteinte ce round : **échelon {r} — {rung_label(r)}**")
+        rows = []
+        for cid in sorted(world.countries):
+            country = world.countries[cid]
+            p = derive_profile(country)
+            cap = ceiling(p, S.event, world, country)
+            rows.append(
+                {
+                    "pays": cid,
+                    "seuil": round(p.escalation_threshold, 2),
+                    "risk": round(p.risk_tolerance, 2),
+                    "allié": round(p.alliance_pressure, 2),
+                    "interne": round(p.domestic_pressure, 2),
+                    "éco": round(p.economic_exposure, 2),
+                    "plafond": cap,
+                    "échelon max": rung_label(cap),
+                }
+            )
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        with st.expander("Échelle 0-9"):
+            st.markdown("\n".join(f"{i}. {label}" for i, label in enumerate(LADDER)))
 
 
 # ------------------------------ Contrôles par phase ------------------------------
