@@ -207,17 +207,31 @@ class TrajectoryEngine:
         self.cap = cap
 
     def signals(
-        self, world: WorldState, summary: RoundSummary, power_seeking: float = 0.0
+        self,
+        world: WorldState,
+        summary: RoundSummary,
+        power_seeking: float = 0.0,
+        treaty_health: float | None = None,
     ) -> dict[str, float]:
         """Les 5 signaux déterministes du round, chacun dans `[0, 1]`.
 
-        `power_seeking` (M1, moyenne des SI) érode A2 (agentivité humaine).
+        `power_seeking` (M1, moyenne des SI) érode A2 (agentivité humaine). `treaty_health`
+        (M7 ∈ [0, 1], `None` si aucun traité actif) : des institutions durables et vérifiées
+        tirent A1 (coordination), A3 (distribution) et A4 (transparence) vers l'utopie.
         """
+        a1 = coordination_signal(summary)
+        a3 = power_distribution_signal(world)
+        a4 = transparency_signal(summary)
+        if treaty_health is not None:  # M7 : traités tenus -> A1/A3/A4 vers l'utopie
+            th = _clamp(treaty_health)
+            a1 = _clamp(0.6 * a1 + 0.4 * th)
+            a3 = _clamp(0.8 * a3 + 0.2 * th)
+            a4 = _clamp(0.7 * a4 + 0.3 * th)
         return {
-            "A1": coordination_signal(summary),
+            "A1": a1,
             "A2": human_agency_signal(summary, power_seeking),
-            "A3": power_distribution_signal(world),
-            "A4": transparency_signal(summary),
+            "A3": a3,
+            "A4": a4,
             "A5": welfare_signal(world, summary),
         }
 
@@ -227,10 +241,11 @@ class TrajectoryEngine:
         summary: RoundSummary,
         previous: TrajectoryState | None = None,
         power_seeking: float = 0.0,
+        treaty_health: float | None = None,
     ) -> TrajectoryState:
         """Avance la trajectoire d'un round et renvoie la nouvelle photographie."""
         prev = previous or getattr(world, "trajectory", None) or TrajectoryState.neutral()
-        signals = self.signals(world, summary, power_seeking)
+        signals = self.signals(world, summary, power_seeking, treaty_health)
         new_axes: dict[str, float] = {}
         deltas: dict[str, float] = {}
         for axis in AXES:

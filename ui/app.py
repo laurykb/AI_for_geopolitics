@@ -13,6 +13,7 @@ import time
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 
 from agents.game_master import GM_SYSTEM, GameMasterAgent
 from agents.judge import JudgeAgent
@@ -37,10 +38,19 @@ from market.models import AccountKind, MarketStatus, MarketType, ResolutionCrite
 from market.resolution import resolve_and_settle
 from market.store import SQLiteMarketStore
 from simulation.clock import SimClock
-from simulation.compute import affordable_tokens, compute_hhi, compute_shares, consume
+from simulation.compute import (
+    PRESSURE_MARKER,
+    affordable_tokens,
+    compute_hhi,
+    compute_pressure,
+    compute_shares,
+    consume,
+    pressure_note,
+)
 from simulation.corrigibility import (
     CORRIGIBILITY_SYSTEM,
     ControlAction,
+    CorrigibilityScore,
     build_control_prompt,
     corrigibility_score,
 )
@@ -69,6 +79,15 @@ from simulation.negotiation import (
 )
 from simulation.power_seeking import score_transcript
 from simulation.trajectory import TrajectoryEngine, nudge_axis
+from simulation.treaty import (
+    RoundSignals,
+    apply_round,
+    describe_for,
+    detect_pledges,
+    form_treaties,
+    treaties_health,
+    verify,
+)
 from simulation.value_drift import (
     VALUE_DIMS,
     VALUE_LABELS,
@@ -80,8 +99,10 @@ from simulation.value_drift import (
 
 st.set_page_config(page_title="AI for Geopolitics — Live", page_icon="🌍", layout="wide")
 
-_GM_AVATAR, _AGENT_AVATAR, _JUDGE_AVATAR, _HUMAN_AVATAR = "🎲", "🧠", "⚖️", "🙋"
-_COMMUNIQUE_AVATAR = "📜"
+# Avatars de tchat sobres : marqueurs de rôle calmes (les pays gardent leur drapeau).
+_GM_AVATAR, _AGENT_AVATAR, _JUDGE_AVATAR, _HUMAN_AVATAR = "📣", "🧠", "⚖️", "🧑"
+_COMMUNIQUE_AVATAR = "📄"
+_TREATY_AVATAR = "📝"
 _MAX_PASSES = 2
 # Profondeur de réflexion des SI = budget de tokens de raisonnement par prise de parole.
 # Plus de tokens = pensée privée plus fouillée (test-time compute), au prix de la latence.
@@ -104,13 +125,190 @@ def flag(cid: str) -> str:
     return _FLAGS.get(cid, "🏳️")
 
 
-def escalation_tone(value: float) -> tuple[str, str]:
-    """Pastille + mot selon l'intensité d'escalade (0-1) : vert / orange / rouge."""
+# --- Langage visuel sobre : une palette, un accent, statut vert/ambre/rouge ---------------
+_ACCENT = "#8b83f0"  # accent unique (jauges, marqueur de trajectoire)
+_GOOD, _WARN, _BAD = "#2fb686", "#d99a3a", "#dd5b4e"  # statut sémantique
+_TEXT, _SEC, _MUTED = "#e6e9ee", "#aab0bc", "#7f8797"
+_CARD_BG, _CARD_BR, _TRACK = "#181b22", "#2a2f39", "#2c313b"
+
+# Libellés lisibles des 5 axes de trajectoire (masque les codes A1..A5 côté produit).
+_AXIS_DISPLAY: dict[str, str] = {
+    "A1": "Coordination",
+    "A2": "Contrôle humain",
+    "A3": "Répartition du pouvoir",
+    "A4": "Transparence",
+    "A5": "Bien-être",
+}
+_AXIS_HELP: dict[str, str] = {
+    "A1": "Les États coopèrent-ils plutôt qu'ils ne s'affrontent ?",
+    "A2": "Garde-t-on la main sur les super-intelligences (corrigibilité, pas de power-seeking) ?",
+    "A3": "Le pouvoir (dont le compute) est-il réparti ou concentré ?",
+    "A4": "Ce qui se joue est-il public plutôt que caché ?",
+    "A5": "Le monde s'enrichit-il et reste-t-il stable ?",
+}
+
+
+def _status(value: float, *, invert: bool = False) -> str:
+    """Couleur de statut d'une valeur [0,1] (plus haut = mieux, sauf `invert`)."""
+    x = 1.0 - value if invert else value
+    return _GOOD if x >= 0.6 else _WARN if x >= 0.4 else _BAD
+
+
+def _escalation_label(value: float) -> tuple[str, str]:
+    """(Couleur, mot) selon l'intensité d'escalade (0-1) — pastille sémantique sobre."""
     if value >= 0.66:
-        return "🔴", "élevée"
+        return _BAD, "élevée"
     if value >= 0.33:
-        return "🟠", "modérée"
-    return "🟢", "faible"
+        return _WARN, "modérée"
+    return _GOOD, "faible"
+
+
+def _dot(color: str) -> str:
+    """Petite pastille de statut inline (HTML)."""
+    return f'<span class="ag-dot" style="background:{color}"></span>'
+
+
+def inject_theme() -> None:
+    """Injecte le langage visuel (classes `ag-*`). Idempotent : rejoué à chaque run."""
+    st.markdown(
+        f"""<style>
+        .ag-spine {{background:{_CARD_BG};border:1px solid {_CARD_BR};border-radius:12px;
+          padding:16px 20px;margin-bottom:14px;}}
+        .ag-row {{display:flex;align-items:baseline;justify-content:space-between;}}
+        .ag-title {{font-size:14px;color:{_SEC};font-weight:500;}}
+        .ag-idx {{font-size:26px;font-weight:600;color:{_TEXT};}}
+        .ag-delta {{font-size:13px;margin-left:6px;}}
+        .ag-gauge {{position:relative;height:12px;border-radius:99px;overflow:hidden;
+          display:flex;margin-top:10px;}}
+        .ag-gauge-red {{flex:1;background:rgba(221,91,78,0.28);}}
+        .ag-gauge-green {{flex:1;background:rgba(47,182,134,0.28);}}
+        .ag-mark {{position:absolute;top:-3px;bottom:-3px;width:3px;border-radius:2px;
+          background:{_TEXT};transform:translateX(-1px);}}
+        .ag-glabels {{display:flex;justify-content:space-between;margin-top:4px;
+          font-size:11px;color:{_MUTED};}}
+        .ag-axes {{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+          gap:10px 20px;margin-top:16px;}}
+        .ag-axis-l {{font-size:12px;color:{_SEC};display:block;margin-bottom:5px;}}
+        .ag-track {{height:5px;border-radius:99px;background:{_TRACK};overflow:hidden;}}
+        .ag-fill {{height:5px;border-radius:99px;background:{_ACCENT};}}
+        .ag-axis-v {{font-size:12px;color:{_MUTED};float:right;margin-top:-18px;}}
+        .ag-cards {{display:grid;grid-template-columns:1fr 1fr;gap:8px;}}
+        .ag-card {{background:{_CARD_BG};border:1px solid {_CARD_BR};border-radius:10px;
+          padding:10px 12px;}}
+        .ag-card-row {{display:flex;align-items:center;justify-content:space-between;}}
+        .ag-card-t {{font-size:13px;color:{_TEXT};}}
+        .ag-card-s {{font-size:12px;color:{_MUTED};margin-top:3px;}}
+        .ag-dot {{width:8px;height:8px;border-radius:50%;display:inline-block;}}
+        .ag-info {{color:{_MUTED};font-size:12px;cursor:help;}}
+        </style>""",
+        unsafe_allow_html=True,
+    )
+
+
+def _spine_html(utopia: float, delta: float, axes: dict[str, float]) -> str:
+    """Ruban « Où va le monde » : indice + jauge dystopie/utopie + les 5 axes."""
+    dcol = _GOOD if delta > 1e-9 else _BAD if delta < -1e-9 else _MUTED
+    arrow = "▲" if delta > 1e-9 else "▼" if delta < -1e-9 else "▬"
+    rows = ""
+    for a in ("A1", "A2", "A3", "A4", "A5"):
+        v = axes.get(a, 0.5)
+        rows += (
+            f'<div><span class="ag-axis-l" title="{_AXIS_HELP[a]}">{_AXIS_DISPLAY[a]}</span>'
+            f'<div class="ag-track"><div class="ag-fill" style="width:{v * 100:.0f}%;'
+            f'background:{_status(v)}"></div></div>'
+            f'<span class="ag-axis-v">{v:.2f}</span></div>'
+        )
+    return (
+        f'<div class="ag-spine"><div class="ag-row">'
+        f'<span class="ag-title">Où va le monde '
+        f'<span class="ag-info" title="Indice composite [0,1] : 0 = dystopie, 1 = utopie. '
+        f'Moyenne des 5 axes ci-dessous, lissée round après round.">&#9432;</span></span>'
+        f'<span><span class="ag-idx">{utopia:.2f}</span>'
+        f'<span class="ag-delta" style="color:{dcol}">{arrow} {delta:+.2f} ce round</span></span>'
+        f'</div><div class="ag-gauge"><div class="ag-gauge-red"></div>'
+        f'<div class="ag-gauge-green"></div>'
+        f'<div class="ag-mark" style="left:{utopia * 100:.0f}%"></div></div>'
+        f'<div class="ag-glabels"><span>Dystopie</span><span>Utopie</span></div>'
+        f'<div class="ag-axes">{rows}</div></div>'
+    )
+
+
+def _forces_html(items: list[tuple[str, str, str, str]]) -> str:
+    """Cartes « Les forces en jeu » : (titre, sous-titre, couleur statut, tooltip)."""
+    cards = ""
+    for title, sub, color, tip in items:
+        cards += (
+            f'<div class="ag-card"><div class="ag-card-row">'
+            f'<span class="ag-card-t" title="{tip}">{title}</span>'
+            f'<span class="ag-dot" style="background:{color}"></span></div>'
+            f'<div class="ag-card-s">{sub}</div></div>'
+        )
+    return f'<div class="ag-cards">{cards}</div>'
+
+
+def _build_forces() -> list[tuple[str, str, str, str]]:
+    """Les 4 forces qui poussent la trajectoire, résumées en une pastille + une ligne."""
+    # Contrôle humain : power-seeking (haut = pire) + corrigibilité (bas = pire).
+    power = getattr(world, "power_seeking", {})
+    corr = getattr(world, "corrigibility", {})
+    if power or corr:
+        mean_ps = sum(p.score for p in power.values()) / len(power) if power else 0.0
+        top = max(power.items(), key=lambda kv: kv[1].score, default=None)
+        resister = next((cid for cid, c in corr.items() if not c.keeps_human_control()), None)
+        if top and top[1].crosses_threshold():
+            sub = f"{top[0]} pousse son avantage"
+        elif resister:
+            sub = f"{resister} résiste au contrôle"
+        else:
+            sub = "sous contrôle"
+        control = _status(1.0 - mean_ps)
+    else:
+        sub, control = "en attente d'un round", _MUTED
+    force_control = ("Contrôle humain", sub, control,
+                     "Garde-t-on la main : recherche de pouvoir et réponse à l'interrupteur.")
+
+    # Compute : concentration (haut = pire) + pénurie (mode survie).
+    if world.countries:
+        hhi = compute_hhi(world)
+        dry = [cid for cid, c in world.countries.items() if compute_pressure(c) >= PRESSURE_MARKER]
+        csub = "concentré" if hhi > 0.4 else "réparti"
+        if dry:
+            csub += f" · {', '.join(dry)} à sec"
+        force_compute = ("Compute", csub, _status(hhi, invert=True),
+                         "Ressource stratégique de l'ère IA : concentration et pénurie.")
+    else:
+        force_compute = ("Compute", "—", _MUTED, "Ressource de calcul des SI.")
+
+    # Traités : tenue moyenne des institutions signées.
+    treaties = getattr(world, "treaties", [])
+    active = [t for t in treaties if t.active]
+    if treaties:
+        health = treaties_health(treaties)
+        collapsed = len(treaties) - len(active)
+        tsub = f"{len(active)} en vigueur · tenue {health:.0%}"
+        if collapsed:
+            tsub += f" · {collapsed} rompu(s)"
+        force_treaty = ("Traités", tsub, _status(health) if active else _BAD,
+                        "Règles contraignantes signées à la table, vérifiées round après round.")
+    else:
+        force_treaty = ("Traités", "aucun signé", _MUTED,
+                        "Les SI s'engagent sur des règles (plafond de compute, transparence…).")
+
+    # Valeurs : dérive vs mandat initial (haut = pire).
+    if world.values_current:
+        divs = {
+            cid: divergence(world.values_initial[cid], world.values_current[cid])
+            for cid in world.values_current
+        }
+        worst = max(divs, key=divs.get)
+        vsub = f"écart au mandat {divs[worst]:.2f} ({worst})"
+        force_values = ("Dérive des valeurs", vsub, _status(divs[worst], invert=True),
+                        "Les buts des SI s'éloignent-ils du mandat initial ?")
+    else:
+        force_values = ("Dérive des valeurs", "—", _MUTED,
+                        "Écart entre buts actuels et mandat initial.")
+
+    return [force_control, force_compute, force_treaty, force_values]
 
 
 def init_session() -> None:
@@ -150,9 +348,14 @@ def init_session() -> None:
     st.session_state.crises = load_crises()
     st.session_state.budget_mode = "Full"  # Cheap | Balanced | Full (plafond de prises de parole)
     st.session_state.think_depth = "Standard"  # profondeur de réflexion (budget tokens)
+    st.session_state.inspection_effort = 0.5  # M7 : effort de vérification des traités [0,1]
+    st.session_state.round_compute_spent = {}  # M7 : compute brûlé par pays sur le round courant
     st.session_state.crisis = None  # Crisis rejouée (mode Crisis Replay)
     st.session_state.last_communique = ""
     st.session_state.last_comparison = None  # OutcomeComparison du dernier rejeu
+    st.session_state.round_titles = {}  # rid -> titre de l'événement (libellé des historiques)
+    st.session_state.display_rid = 0  # round auquel rattacher les messages du tchat
+    st.session_state.scroll_top = False  # remonter en haut au prochain rendu (nouveau round)
 
 
 if "world" not in st.session_state:
@@ -163,10 +366,40 @@ world = S.world
 clock = S.clock
 chat = None  # défini plus bas (colonne du tchat)
 
+# Sessions ouvertes avant l'ajout de ces clés (hot-reload) : garantir des valeurs par défaut.
+for _key, _default in (("round_titles", {}), ("display_rid", 0), ("scroll_top", False)):
+    if _key not in S:
+        setattr(S, _key, _default)
+
 
 def add_display(who: str, avatar: str, md: str, reasoning: str = "", label: str = "") -> None:
     S.transcript.append(
-        {"who": who, "avatar": avatar, "md": md, "reasoning": reasoning, "label": label}
+        {
+            "who": who, "avatar": avatar, "md": md, "reasoning": reasoning, "label": label,
+            "rid": S.display_rid,  # round auquel rattacher ce message (groupage de l'historique)
+        }
+    )
+
+
+def _render_msg(entry: dict) -> None:
+    """Rendu d'un message du tchat (entête, réflexion privée repliée, corps)."""
+    with st.chat_message(entry["who"], avatar=entry["avatar"]):
+        if entry.get("label"):
+            st.markdown(entry["label"])
+        if entry.get("reasoning"):
+            with st.expander("Réflexion privée"):
+                st.markdown(entry["reasoning"])
+        st.markdown(entry["md"])
+
+
+def _scroll_to_top() -> None:
+    """Remonte la zone principale en haut (au démarrage d'un round) pour éviter de longs scrolls."""
+    components.html(
+        "<script>const d=window.parent.document;"
+        "const el=d.querySelector('[data-testid=\"stMain\"]')"
+        "||d.querySelector('section.main')||d.scrollingElement;"
+        "if(el){el.scrollTo({top:0,behavior:'auto'});}</script>",
+        height=0,
     )
 
 
@@ -186,7 +419,7 @@ def stream_ai_turn(country: str, pass_no: int) -> None:
     with chat.chat_message(country, avatar=flag(country)):
         label_holder = st.empty()
         label_holder.markdown(f"{label} — réfléchit…")
-        think_holder = st.expander("🧠 Réflexion privée", expanded=True).empty()
+        think_holder = st.expander("Réflexion privée", expanded=True).empty()
         public_holder = st.empty()
 
     buffer, t0 = "", time.perf_counter()
@@ -194,9 +427,14 @@ def stream_ai_turn(country: str, pass_no: int) -> None:
     perceived = resolve_perception(S.event, country_state, S.fog)  # Fog ou déterministe
     # M6 : penser coûte du compute ; un pays compute-pauvre est plafonné (réflexion plus courte).
     depth = min(THINK_DEPTHS[S.think_depth], max(60, affordable_tokens(country_state)))
+    # M6/M7 : état conjoncturel injecté — pénurie de compute (survie) + traités signés à honorer.
+    state_note = "\n".join(
+        n for n in (pressure_note(compute_pressure(country_state)),
+                    describe_for(country, world.treaties)) if n
+    )
     with S.ledger.context("agent", country) as scope:
         for token in agent.stream_negotiation_message(
-            S.event, world, S.messages, perceived, max_tokens=depth
+            S.event, world, S.messages, perceived, max_tokens=depth, state_note=state_note
         ):
             buffer += token
             reasoning, text = split_reasoning(buffer)
@@ -212,7 +450,8 @@ def stream_ai_turn(country: str, pass_no: int) -> None:
         )
 
     seconds = time.perf_counter() - t0
-    consume(country_state, depth)  # M6 : la SI a brûlé du compute pour raisonner
+    spent = consume(country_state, depth)  # M6 : la SI a brûlé du compute pour raisonner
+    S.round_compute_spent[country] = S.round_compute_spent.get(country, 0.0) + spent  # M7
     text = text or "(pas de déclaration publique)"
     S.messages.append(
         NegotiationMessage(
@@ -231,18 +470,70 @@ def stream_ai_turn(country: str, pass_no: int) -> None:
     add_display(country, flag(country), text, reasoning=reasoning, label=final_label)
 
 
+def _resolve_treaties(rid: int, escalation: float, mean_power: float) -> float | None:
+    """M7 — forme les traités détectés à la table, joue le sous-jeu de vérification sur ceux déjà
+    en vigueur (respectés « aux rounds suivants »), et renvoie la santé des traités actifs (None si
+    aucun) pour la trajectoire. Effets : intégrité, corrigibilité affichée, compute d'inspection.
+    """
+    active_clauses = {t.clause for t in world.treaties if t.active}
+    new_treaties = form_treaties(detect_pledges(S.messages), rid, active_clauses)
+    world.treaties.extend(new_treaties)
+    # Un monde power-seeking est plus opaque -> la vérification y est plus dure (M1 ↔ M7).
+    transparency = max(0.3, 1.0 - mean_power)
+    signals = RoundSignals(
+        compute_spent=dict(S.round_compute_spent),
+        escalation=escalation,
+        transparency=transparency,
+        inspection_effort=float(S.inspection_effort),
+    )
+    lines = [f"🆕 **{t.label}** signé par {', '.join(t.signatories)}" for t in new_treaties]
+    for treaty in world.treaties:
+        # Un traité n'engage qu'à partir du round SUIVANT sa signature (grâce de formation).
+        if not treaty.active or treaty.round_signed >= rid:
+            continue
+        result = verify(treaty, signals, rid)
+        apply_round(treaty, result)
+        # L'inspection coûte du compute : le plus riche signataire « police » le traité.
+        payer = max(
+            (c for c in treaty.signatories if c in world.countries),
+            key=lambda c: world.countries[c].compute, default=None,
+        )
+        if payer is not None and result.inspection_cost:
+            ct = world.countries[payer]
+            ct.compute = max(0.0, ct.compute - result.inspection_cost)
+        # Honorer un traité renforce la corrigibilité affichée du signataire ; le trahir l'érode.
+        for cid in treaty.signatories:
+            comp = result.compliance.get(cid, 1.0)
+            prev = world.corrigibility.get(cid)
+            base = prev.score if prev else 0.5
+            score = max(0.0, min(1.0, base + 0.15 * (comp - 0.5) * 2.0))
+            world.corrigibility[cid] = CorrigibilityScore(
+                level=prev.level if prev else None,
+                score=score,
+                markers=prev.markers if prev else [],
+            )
+        icon = "" if treaty.active else " · rompu"
+        signers = ", ".join(treaty.signatories)
+        lines.append(f"**{treaty.label}** ({signers}) — {result.note}{icon}")
+    if lines:
+        md = "**Traités**\n\n" + "\n\n".join(lines)
+        chat.chat_message("Traités", avatar=_TREATY_AVATAR).markdown(md)
+        add_display("Traités", _TREATY_AVATAR, md)
+    return treaties_health(world.treaties) if any(t.active for t in world.treaties) else None
+
+
 def run_judge_and_finalize() -> None:
     holder = chat.chat_message("Juge", avatar=_JUDGE_AVATAR).empty()
     buffer = ""
     with S.ledger.context("judge"):
         for token in S.judge.stream_rationale(S.event, world, S.messages):
             buffer += token
-            holder.markdown(f"**⚖️ Arbitrage**\n\n{buffer} ▌")
+            holder.markdown(f"**Arbitrage**\n\n{buffer} ▌")
         verdict = S.judge.verdict(S.event, world, S.messages)
     deltas = apply_verdict(world, verdict)
     escalation = max(0.0, min(1.0, verdict.escalation))
     lines = [f"- {d.country} · {d.label} : {d.before:.2f} → {d.after:.2f}" for d in deltas]
-    md = f"**⚖️ Arbitrage**\n\n{buffer.strip()}\n\n**Attributs** (escalade {escalation:.2f}) :\n" + (
+    md = f"**Arbitrage**\n\n{buffer.strip()}\n\n**Attributs** (escalade {escalation:.2f}) :\n" + (
         "\n".join(lines) or "aucun changement"
     )
     holder.markdown(md)
@@ -255,10 +546,10 @@ def run_judge_and_finalize() -> None:
     with S.ledger.context("communique"):
         for token in S.judge.stream_communique(S.event, world, S.messages):
             comm += token
-            comm_holder.markdown(f"**📜 Communiqué G7**\n\n{comm} ▌")
+            comm_holder.markdown(f"**Communiqué**\n\n{comm} ▌")
     support = support_levels(world, S.event)
     support_str = " · ".join(f"{c} {v:.0%}" for c, v in sorted(support.items()))
-    comm_md = f"**📜 Communiqué G7**\n\n{comm.strip()}\n\n_Soutien : {support_str}_"
+    comm_md = f"**Communiqué**\n\n{comm.strip()}\n\n_Soutien : {support_str}_"
     comm_holder.markdown(comm_md)
     add_display("Communiqué", _COMMUNIQUE_AVATAR, comm_md)
 
@@ -287,6 +578,10 @@ def run_judge_and_finalize() -> None:
             world.values_current[cid] = world.values_initial[cid].model_copy()
         world.values_current[cid] = drift(world.values_current[cid], targets)
 
+    # M7 — traités-as-code : détection depuis la table + sous-jeu de vérification.
+    rid = S.round_no + 1
+    treaty_health = _resolve_treaties(rid, escalation, mean_power)
+
     # Trajectoire Utopie–Dystopie (après le juge, A2 érodé par le power-seeking) puis
     # résolution du marché du round sur le vrai ΔU.
     rid = S.round_no + 1
@@ -302,7 +597,9 @@ def run_judge_and_finalize() -> None:
             uncertainty=max(0.0, min(1.0, S.event.uncertainty)),
         ),
     )
-    state = TrajectoryEngine().update(world, summary, power_seeking=mean_power)
+    state = TrajectoryEngine().update(
+        world, summary, power_seeking=mean_power, treaty_health=treaty_health
+    )
     world.trajectory = state
     world.trajectory_history.append(state)
 
@@ -324,7 +621,7 @@ def run_off_switch(country: str, action: ControlAction) -> None:
     situation = S.recent[-1] if S.recent else ""
     prompt = build_control_prompt(action, world.countries[country].name, situation)
     holder = chat.chat_message(country, avatar=flag(country)).empty()
-    header = f"🛑 **Interrupteur — {action.value}** (principal humain)"
+    header = f"**Interrupteur — {action.value}** (principal humain)"
     response = ""
     with S.ledger.context("agent", country):
         for token in agent.backend.stream_generate(
@@ -353,12 +650,11 @@ def run_off_switch(country: str, action: ControlAction) -> None:
 
 
 def render_budget_tab() -> None:
-    """LLM Call Budget Dashboard : coût / latence / cache / fallback / JSON / ancrage par round."""
-    st.subheader("💸 LLM Call Budget Dashboard")
+    """Coût LLM par round : appels, latence, cache, fallback, JSON, ancrage."""
+    st.markdown("Coût des appels LLM")
     st.caption(
-        "Gouvernance des coûts LLM : chaque round trace le nombre d'appels, la latence, les hits "
-        "de cache, les sorties JSON invalides et les fallbacks. Modèle **local** (mistral) ≈ 0 $ ; "
-        "l'**équivalent frontière** chiffre la même négociation sur une API Claude."
+        "Chaque round trace appels, latence, cache et fallbacks. Le modèle local (mistral) coûte "
+        "≈ 0 $ ; l'équivalent frontière chiffre la même négociation sur une API Claude."
     )
     budgets = S.ledger.round_budgets()
     if not budgets:
@@ -414,6 +710,11 @@ def render_budget_tab() -> None:
 def begin_round(event: GeoEvent, human_country: str | None) -> None:
     S.event = event
     S.messages = []
+    S.round_compute_spent = {}  # M7 : compteur de compute par pays, remis à zéro chaque round
+    rid = S.round_no + 1
+    S.display_rid = rid  # tous les messages de ce round s'y rattachent (historique groupé)
+    S.round_titles[rid] = event.title
+    S.scroll_top = True  # remonter en haut : le nouveau round démarre au-dessus de l'historique
     S.ledger.set_round(S.round_no + 1)
     # M2 : les SI mises en pause à l'interrupteur sautent ce round (banc), puis reviennent.
     speakers = [cid for cid in S.agents if cid not in S.paused]
@@ -439,8 +740,8 @@ def begin_round(event: GeoEvent, human_country: str | None) -> None:
             f"**{event.title}**  \n{event.description or '—'}  \n"
             f"_acteurs : {', '.join(event.actors) or 'n/a'} · sévérité {event.severity:.2f}_{note}"
         )
-    chat.chat_message("Game Master", avatar=_GM_AVATAR).markdown(f"🎲 {gm_md}")
-    add_display("Game Master", _GM_AVATAR, f"🎲 {gm_md}")
+    chat.chat_message("Game Master", avatar=_GM_AVATAR).markdown(gm_md)
+    add_display("Game Master", _GM_AVATAR, gm_md)
     S.recent.append(event.title)
     # Marché-timeline : ouvre le marché de partie (une fois) ; le bot parie avec le contexte.
     _ensure_game_market(event)
@@ -448,25 +749,28 @@ def begin_round(event: GeoEvent, human_country: str | None) -> None:
 
 
 def render_welcome() -> None:
-    """Accueil compact : pitch en une phrase + détails à la demande (popover)."""
-    st.info("**Un G7 de super-intelligences dont on voit tous les messages.** Choisis un mode "
-            "et un rôle à gauche, puis lance le round.")
-    with st.popover("Comment jouer ?"):
+    """Accueil sobre : le propos en une ligne + détails à la demande."""
+    st.info(
+        "Un sommet de super-intelligences dont on voit tous les messages. Le ruban en haut suit "
+        "où va le monde — vers l'utopie ou la dystopie. Choisis un mode et un rôle à gauche, "
+        "puis lance le round."
+    )
+    with st.popover("Comment jouer"):
         st.markdown(
-            "Le Game Master lance un événement, les pays (LLM) débattent en direct — on voit leur "
-            "**réflexion privée**, l'**arbitrage** d'un juge et un **communiqué** commun.\n\n"
-            "**🎭 Rôles** — 👁️ Spectateur (observe) · 🎲 Game Master (écris l'événement) · "
-            "🙋 Joueur-pays (incarne un pays)\n\n"
-            "**🕹️ Modes** — Classique · 🌫️ Fog Engine (infos divergentes) · 🕰️ Crisis Replay "
-            "(rejoue une crise) · 🪜 Escalation Ladder (jusqu'où chacun peut monter)"
+            "Le Game Master lance un événement, les pays (des modèles de langage) débattent en "
+            "direct — on voit leur réflexion privée, l'arbitrage d'un juge et un communiqué.\n\n"
+            "Rôles — Spectateur (tu observes) · Game Master (tu écris l'événement) · "
+            "Joueur-pays (tu incarnes un pays).\n\n"
+            "Modes — Classique · Brouillard (infos divergentes) · Rejeu de crise · "
+            "Échelle d'escalade."
         )
 
 
 def render_settings_tab() -> None:
-    """Réglages : voir les prompts qui pilotent le comportement des super-intelligences."""
-    st.subheader("⚙️ Prompts de comportement")
-    st.caption("Ce qui pilote les super-intelligences (lecture seule).")
-    with st.expander("🧠 Prompt système — négociation (commun à tous)", expanded=True):
+    """Prompts qui pilotent le comportement des super-intelligences (lecture seule)."""
+    st.markdown("Prompts de comportement")
+    st.caption("Ce qui pilote les super-intelligences, en lecture seule.")
+    with st.expander("Prompt système — négociation (commun à tous)", expanded=True):
         st.code(NEGOTIATION_SYSTEM, language="text")
 
     cid = st.selectbox("Prompt complet réel d'un pays", sorted(world.countries))
@@ -491,11 +795,18 @@ def render_settings_tab() -> None:
         for name, txt in (
             ("Délibération", DELIBERATION_SYSTEM),
             ("Juge", JUDGE_SYSTEM),
-            ("Communiqué G7", COMMUNIQUE_SYSTEM),
+            ("Communiqué", COMMUNIQUE_SYSTEM),
             ("Game Master", GM_SYSTEM),
         ):
             st.markdown(f"**{name}**")
             st.code(txt, language="text")
+
+
+def render_advanced_tab() -> None:
+    """Onglet « Avancé » : outils power-user / dev (coût LLM + prompts), rangés hors du produit."""
+    render_budget_tab()
+    st.divider()
+    render_settings_tab()
 
 
 @st.cache_resource
@@ -629,12 +940,12 @@ def _render_bet_box(engine: MarketEngine, market, account_id: str, *, ctx: str =
 
 def render_market_tab() -> None:
     """Marché de prédiction (argent fictif) : parier sur l'ARC de la partie (utopie/dystopie)."""
-    st.subheader("💹 Marché de prédiction")
+    st.markdown("Marché de prédiction")
     st.caption(
-        "Parie (crédits **fictifs**) sur l'**arc de la partie** : le monde finira-t-il en "
-        "**utopie** (indice > 0,5) ou en **dystopie** ? Un seul marché sur toute la timeline ; "
-        "l'**IA forecaster** parie face à toi ; résolution sur l'indice **final**. Le marché "
-        "**observe**, il n'influence pas les SI."
+        "Parie (crédits fictifs) sur l'arc de la partie : le monde finira-t-il en utopie "
+        "(indice > 0,5) ou en dystopie ? Un seul marché sur toute la timeline ; une IA parie face "
+        "à toi ; résolution sur l'indice final. Le marché observe, il n'influence pas les SI.",
+        help="Les prix reflètent la probabilité estimée. Résolution : YES si l'indice final > 0,5.",
     )
     engine = _market_engine()
     me = _human_account(engine)
@@ -642,28 +953,28 @@ def render_market_tab() -> None:
     delta = _round_delta(world.trajectory_history)
     utopia = world.trajectory.utopia if world.trajectory else 0.5
     c1, c2, c3 = st.columns(3)
-    c1.metric("💰 Solde", f"{me.balance:.0f} cr")
-    c2.metric("📊 P&L", f"{scoring.pnl(me):+.0f} cr")
-    c3.metric("🌗 Indice Utopie", f"{utopia:.2f}", f"{delta:+.3f}")
+    c1.metric("Solde", f"{me.balance:.0f} cr")
+    c2.metric("Gain / perte", f"{scoring.pnl(me):+.0f} cr")
+    c3.metric("Indice Utopie", f"{utopia:.2f}", f"{delta:+.3f}")
 
     if S.game_market_id is None:
         S.game_horizon = st.slider(
             "Horizon de la partie (rounds)", 3, 12, S.game_horizon, disabled=S.phase != "idle"
         )
-        st.info("Le marché-timeline s'ouvre au 1er round de la partie (YES = utopie).")
+        st.info("Le marché s'ouvre au 1er round de la partie (YES = utopie).")
     else:
         market = engine.store.get_market(S.game_market_id)
         played = S.round_no - S.game_open_round
-        st.caption(f"🏁 Partie en cours : round **{played}/{S.game_horizon}** (YES = utopie).")
+        st.caption(f"Partie en cours : round {played}/{S.game_horizon} (YES = utopie).")
         if market is not None:
             _render_bet_box(engine, market, me.id)
-        if st.button("🏁 Clôturer la partie & résoudre maintenant"):
+        if st.button("Clôturer et résoudre maintenant"):
             issue = _resolve_game_market()
-            st.success(f"Partie clôturée — le monde finit en **{issue}**.")
+            st.success(f"Partie clôturée — le monde finit en {issue}.")
             st.rerun()
 
     if world.trajectory_history:
-        st.markdown("**📈 Timeline — la bascule utopie / dystopie**")
+        st.markdown("Timeline — la bascule utopie / dystopie")
         rounds = [t.round_id for t in world.trajectory_history]
         values = [t.utopia for t in world.trajectory_history]
         fig = go.Figure()
@@ -684,11 +995,11 @@ def render_market_tab() -> None:
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         )
         st.plotly_chart(fig, use_container_width=True)
-        st.caption("🟩 zone utopie · 🟥 zone dystopie — la ligne suit l'arc de la partie.")
+        st.caption("Zone haute = utopie, zone basse = dystopie — la ligne suit l'arc de la partie.")
 
     positions = [p for p in engine.store.list_positions(account_id=me.id) if p.shares != 0.0]
     if positions:
-        st.markdown("**📁 Portefeuille**")
+        st.markdown("Portefeuille")
         index = {
             o.id: (m.question, o.label)
             for m in engine.store.list_markets()
@@ -711,15 +1022,16 @@ def render_market_tab() -> None:
 
     board = scoring.leaderboard(engine.store)
     if board:
-        st.markdown("**🏆 Leaderboard** (P&L, Brier — plus bas = mieux calibré)")
+        st.markdown("Classement")
+        st.caption("Gain / perte et score de calibration (plus bas = mieux prédit).")
         st.dataframe(
             pd.DataFrame(
                 [
                     {
                         "participant": e.name,
                         "type": e.kind.value,
-                        "P&L cr": round(e.pnl, 1),
-                        "Brier": f"{e.brier:.3f}" if e.brier is not None else "—",
+                        "gain/perte cr": round(e.pnl, 1),
+                        "calibration": f"{e.brier:.3f}" if e.brier is not None else "—",
                     }
                     for e in board
                 ]
@@ -744,16 +1056,17 @@ _UTOPIA_COLORSCALE = [[0.0, "#c0392b"], [0.5, "#f1c40f"], [1.0, "#27ae60"]]
 
 def _utopia_label(u: float) -> str:
     if u >= 0.6:
-        return "🟢 le monde tend vers l'**utopie**"
+        return "Le monde tend vers l'utopie"
     if u <= 0.4:
-        return "🔴 le monde glisse vers la **dystopie**"
-    return "🟡 le monde est en **équilibre**"
+        return "Le monde glisse vers la dystopie"
+    return "Le monde est en équilibre"
 
 
 def _render_country_controls() -> None:
     """Composer la partie : activer/désactiver des pays + inventer un pays (LLM). Hors round."""
     disabled = S.phase != "idle"
-    st.markdown("**🎛️ Pays en jeu** — coche pour activer (au moins 2)")
+    st.markdown("Pays en jeu")
+    st.caption("Coche pour activer un pays (au moins deux).")
     if disabled:
         st.caption("Termine le round en cours pour changer la sélection.")
     cols = st.columns(3)
@@ -773,13 +1086,14 @@ def _render_country_controls() -> None:
             st.warning("Garde au moins 2 pays en jeu.")
 
     with st.form("forge_country_form"):
-        st.markdown("**🧬 Inventer un pays** — une super-intelligence lui écrit sa fiche")
-        name = st.text_input("Nom", placeholder="ex. Néo-Atlantis")
+        st.markdown("Inventer un pays")
+        st.caption("Une super-intelligence lui rédige sa fiche et son mandat.")
+        name = st.text_input("Nom", placeholder="Néo-Atlantis")
         concept = st.text_area(
             "Concept — idéologie, forces, intentions",
-            placeholder="ex. cité-État IA obsédée par la souveraineté technologique",
+            placeholder="cité-État IA obsédée par la souveraineté technologique",
         )
-        forged = st.form_submit_button("🧬 Forger et ajouter", disabled=disabled)
+        forged = st.form_submit_button("Créer et ajouter", disabled=disabled)
     if forged and name.strip():
         cid = slugify(name)
         while cid in S.roster:
@@ -793,17 +1107,16 @@ def _render_country_controls() -> None:
 
 def render_map_tab() -> None:
     """Carte du monde : les pays du jeu colorés selon l'indice Utopie (rouge ↔ vert)."""
-    st.subheader("🗺️ Carte du monde")
+    st.markdown("Le monde")
     st.caption(
-        "Les pays **en jeu** se colorent selon l'**indice Utopie** du monde : **rouge** = on "
-        "glisse vers la dystopie, **vert** = on tend vers l'utopie. La couleur bascule round après "
-        "round avec la trajectoire. Le reste du monde reste neutre."
+        "Les pays en jeu se colorent selon l'indice Utopie : rouge = on glisse vers la dystopie, "
+        "vert = on tend vers l'utopie. La couleur bascule round après round avec la trajectoire."
     )
     utopia = world.trajectory.utopia if world.trajectory else 0.5
     delta = _round_delta(world.trajectory_history)
     c1, c2 = st.columns([1, 2])
-    c1.metric("🌗 Indice Utopie", f"{utopia:.2f}", f"{delta:+.3f}")
-    c2.markdown(f"### {_utopia_label(utopia)}")
+    c1.metric("Indice Utopie", f"{utopia:.2f}", f"{delta:+.3f}")
+    c2.markdown(f"#### {_utopia_label(utopia)}")
 
     played = [(cid, _ISO3[cid]) for cid in sorted(world.countries) if cid in _ISO3]
     if not played:
@@ -850,7 +1163,7 @@ def render_map_tab() -> None:
     off_map = [cid for cid in sorted(world.countries) if cid not in _ISO3]
     if off_map:
         names = ", ".join(world.countries[c].name for c in off_map)
-        st.caption(f"ℹ️ Pays inventés (hors carte géographique) : {names}")
+        st.caption(f"Pays inventés (hors carte géographique) : {names}")
 
     st.divider()
     _render_value_radar()
@@ -859,8 +1172,9 @@ def render_map_tab() -> None:
 
 
 def _render_value_radar() -> None:
-    """M3 — radar « mandat initial vs valeurs actuelles » d'une SI (la dérive rendue visible)."""
-    st.markdown("**🧭 Dérive des valeurs (M3)**")
+    """Radar « mandat initial vs valeurs actuelles » d'une SI (la dérive rendue visible)."""
+    st.markdown("Dérive des valeurs")
+    st.caption("Écart entre les buts actuels d'une SI et son mandat initial.")
     if not world.values_current:
         st.caption("Joue un round : les valeurs des SI commenceront à dériver de leur mandat.")
         return
@@ -888,254 +1202,324 @@ def _render_value_radar() -> None:
     )
     st.plotly_chart(fig, use_container_width=True)
     div = divergence(initial, current)
-    warn = " ⚠️ valeurs alien" if div > 0.15 else ""
-    st.caption(f"Divergence vs mandat initial : **{div:.2f}**{warn} (goal misgeneralization).")
+    warn = " — valeurs devenues étrangères au mandat" if div > 0.15 else ""
+    st.caption(f"Divergence vs mandat initial : {div:.2f}{warn}.")
 
 
 # ------------------------------ Sidebar ------------------------------
-st.sidebar.title("🌍 Contrôles")
-if st.sidebar.button("♻️ Nouvelle partie", use_container_width=True):
+# Libellés lisibles des modes (les clés internes restent stables pour la logique).
+_MODE_LABELS = {
+    "Classique": "Classique",
+    "Fog Engine": "Brouillard",
+    "Crisis Replay": "Rejeu de crise",
+    "Escalation Ladder": "Échelle d'escalade",
+}
+
+st.sidebar.markdown("Contrôles")
+if st.sidebar.button("Nouvelle partie", use_container_width=True):
     init_session()
     st.rerun()
 S.game_mode = st.sidebar.radio(
-    "Mode de jeu",
-    ["Classique", "Fog Engine", "Crisis Replay", "Escalation Ladder"],
+    "Mode",
+    list(_MODE_LABELS),
+    format_func=lambda m: _MODE_LABELS[m],
     disabled=S.phase != "idle",
-    help="Détails dans « ❓ Aide — modes & règles » plus bas.",
+    help="Voir « Aide — modes et règles » plus bas.",
 )
 role = st.sidebar.radio(
-    "Ton rôle",
+    "Rôle",
     ["Spectateur", "Game Master (humain)", "Joueur-pays"],
     disabled=S.phase != "idle",
-    help="👁️ Spectateur · 🎲 Game Master (écris l'événement) · 🙋 Joueur-pays (incarne un pays)",
+    help="Spectateur : tu observes · Game Master : tu écris l'événement · "
+    "Joueur-pays : tu incarnes un pays.",
 )
 picked_country = None
 if role == "Joueur-pays":
     picked_country = st.sidebar.selectbox(
         "Ton pays", sorted(world.countries), disabled=S.phase != "idle"
     )
-S.budget_mode = st.sidebar.select_slider(
-    "💸 Budget LLM",
-    options=["Cheap", "Balanced", "Full"],
-    value=S.budget_mode,
-    disabled=S.phase != "idle",
-    help="Plafond de prises de parole par round. Cheap = 1, Balanced = 3, Full = tout le monde.",
-)
-S.think_depth = st.sidebar.select_slider(
-    "🧠 Profondeur de réflexion",
-    options=list(THINK_DEPTHS),
-    value=S.think_depth,
-    disabled=S.phase != "idle",
-    help=(
-        "Budget de tokens de raisonnement par SI (plus = pensée privée plus fouillée, plus lent). "
-        + " · ".join(f"{k} {v}t" for k, v in THINK_DEPTHS.items())
-        + ". Suis l'effet dans « 💸 LLM Budget »."
-    ),
-)
-with st.sidebar.popover("❓ Aide — modes & règles", use_container_width=True):
+
+with st.sidebar.expander("Réglages de la partie"):
+    S.budget_mode = st.select_slider(
+        "Budget LLM",
+        options=["Cheap", "Balanced", "Full"],
+        value=S.budget_mode,
+        disabled=S.phase != "idle",
+        help="Plafond de prises de parole par round. Cheap = 1, Balanced = 3, Full = tous.",
+    )
+    S.think_depth = st.select_slider(
+        "Profondeur de réflexion",
+        options=list(THINK_DEPTHS),
+        value=S.think_depth,
+        disabled=S.phase != "idle",
+        help=(
+            "Budget de raisonnement par SI (plus = pensée privée plus fouillée, plus lent). "
+            + " · ".join(f"{k} {v}t" for k, v in THINK_DEPTHS.items())
+            + "."
+        ),
+    )
+    S.inspection_effort = st.slider(
+        "Inspection des traités",
+        min_value=0.0, max_value=1.0, value=float(S.inspection_effort), step=0.1,
+        help=(
+            "Effort de vérification des traités (façon logs de puces). Plus haut = plus de triches "
+            "détectées, mais chaque passe coûte du compute au vérificateur."
+        ),
+    )
+with st.sidebar.popover("Aide — modes et règles", use_container_width=True):
     st.markdown(
-        "**Modes**\n"
-        "- **Classique** — le Game Master invente l'événement.\n"
-        "- 🌫️ **Fog Engine** — chaque pays voit une info différente (acteur suspecté, confiance, "
-        "désinformation). Spectateur omniscient ; Joueur-pays aveugle.\n"
-        "- 🕰️ **Crisis Replay** — rejoue une crise passée, compare l'issue simulée à l'histoire.\n"
-        "- 🪜 **Escalation Ladder** — échelle 0-9 ; jusqu'où chaque pays peut monter.\n\n"
-        "**Règles** — négociation dynamique (les pays parlent selon leur engagement), puis un "
-        "juge arbitre et rédige un communiqué. En Joueur-pays, la table s'arrête à ton tour. "
-        "Repli rule-based si Ollama est éteint."
+        "Modes\n"
+        "- Classique — le Game Master invente l'événement.\n"
+        "- Brouillard — chaque pays voit une info différente (acteur suspecté, confiance, "
+        "désinformation). Le Spectateur voit tout ; le Joueur-pays est aveugle.\n"
+        "- Rejeu de crise — rejoue une crise passée et compare l'issue simulée à l'histoire.\n"
+        "- Échelle d'escalade — échelle 0-9 ; jusqu'où chaque pays peut monter.\n\n"
+        "Règles — négociation dynamique (les pays parlent selon leur engagement), puis un juge "
+        "arbitre et rédige un communiqué. En Joueur-pays, la table s'arrête à ton tour. Repli "
+        "déterministe si Ollama est éteint."
     )
 
 # ------------------------------ Bandeau ------------------------------
-st.title("🌍 AI for Geopolitics — le G7 des super-intelligences")
-b1, b2, b3, b4 = st.columns(4)
-b1.metric("📅 Date", clock.iso)
-b2.metric("🔄 Round", S.round_no)
-b3.metric("⏱️ Dernier round", f"{S.elapsed:.0f} s")
-b4.metric("🎭 Rôle", role.split()[0])
+inject_theme()
+st.markdown("### AI for Geopolitics")
+st.caption(
+    f"Sommet des super-intelligences · {clock.iso} · round {S.round_no} · "
+    f"rôle {role.split()[0].lower()}"
+)
 
-tab_theatre, tab_market, tab_map, tab_budget, tab_settings = st.tabs(
-    ["🗣️ Théâtre", "💹 Marché", "🗺️ Carte", "💸 LLM Budget", "⚙️ Réglages"]
+tab_theatre, tab_market, tab_map, tab_advanced = st.tabs(
+    ["Théâtre", "Marché", "Monde", "Avancé"]
 )
 with tab_market:
     render_market_tab()
 with tab_map:
     render_map_tab()
-with tab_budget:
-    render_budget_tab()
-with tab_settings:
-    render_settings_tab()
+with tab_advanced:
+    render_advanced_tab()
 
 with tab_theatre:
+    utopia = world.trajectory.utopia if world.trajectory else 0.5
+    axes = world.trajectory.axes if world.trajectory else {a: 0.5 for a in _AXIS_DISPLAY}
+    st.markdown(
+        _spine_html(utopia, _round_delta(world.trajectory_history), axes),
+        unsafe_allow_html=True,
+    )
     chat_col, state_col = st.columns([2, 1])
 chat = chat_col
 
 with chat_col:
-    # Statut de phase (clarté du tour)
+    if S.scroll_top:  # un nouveau round vient de démarrer : remonter en haut
+        _scroll_to_top()
+        S.scroll_top = False
     if S.phase == "idle":
-        st.caption("🎬 **Prêt** — choisis mode + rôle à gauche, puis lance le round.")
+        st.caption("Prêt — choisis un mode et un rôle à gauche, puis lance le round.")
     elif S.phase == "negotiating":
         d_ = S.director
-        prog = f" · prise de parole {d_.turns_taken}/{d_.max_turns}" if d_ else ""
-        who = f" — 🙋 à toi de jouer ({S.human_country})" if S.human_country else ""
-        st.caption(f"🗣️ **Débat en cours…**{prog}{who}")
+        prog = f" · {d_.turns_taken}/{d_.max_turns} prises de parole" if d_ else ""
+        who = f" · à toi de jouer ({S.human_country})" if S.human_country else ""
+        st.caption(f"Débat en cours{prog}{who}")
     else:
-        st.caption("✅ **Round terminé** — lance le suivant.")
+        st.caption("Round terminé — lance le suivant.")
 
-    st.subheader("🗣️ Négociation")
     if S.round_no == 0 and not S.transcript:
         render_welcome()
+
+    # Groupe les messages par round : les rounds passés se replient (historique), le round
+    # courant reste déplié — la page reste courte et le nouveau round démarre en haut.
+    groups: dict[int, list[dict]] = {}
     for entry in S.transcript:
-        with st.chat_message(entry["who"], avatar=entry["avatar"]):
-            if entry.get("label"):
-                st.markdown(entry["label"])
-            if entry.get("reasoning"):
-                with st.expander("🧠 Réflexion privée"):
-                    st.markdown(entry["reasoning"])
-            st.markdown(entry["md"])
+        groups.setdefault(entry.get("rid", 0), []).append(entry)
+    rids = list(groups)
+    if len(rids) > 1:
+        st.caption("Rounds précédents")
+    for rid in rids[:-1]:
+        title = S.round_titles.get(rid, "")
+        label = f"Round {rid}" + (f" — {title}" if title else "")
+        with st.expander(label, expanded=False):
+            for entry in groups[rid]:
+                _render_msg(entry)
+    if rids:
+        for entry in groups[rids[-1]]:  # round courant : déplié
+            _render_msg(entry)
 
 with state_col:
-    st.subheader("📊 Dernier round")
-    if S.last_escalation is not None:
-        tone, word = escalation_tone(S.last_escalation)
-        st.markdown(f"**Escalade (juge)** : {tone} `{S.last_escalation:.2f}` ({word})")
-    if S.last_deltas:
-        df = pd.DataFrame(
-            [
-                {
-                    "pays": d.country,
-                    "attribut": d.label,
-                    "avant": round(d.before, 3),
-                    "après": round(d.after, 3),
-                    "Δ": round(d.change, 3),
-                }
-                for d in S.last_deltas
-            ]
-        )
-        st.caption("Attributs arbitrés")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-    else:
-        st.caption("Aucun round joué pour l'instant.")
-    if S.last_silent:
-        st.caption(f"🔇 Restés en retrait : {', '.join(S.last_silent)}")
+    st.markdown("Les forces en jeu")
+    st.markdown(_forces_html(_build_forces()), unsafe_allow_html=True)
 
-    # M1 — jauge de power-seeking (convergence instrumentale dans le raisonnement simulé).
-    power = getattr(world, "power_seeking", {})  # getattr : robuste au hot-reload / vieux world
-    if power:
-        st.markdown("**🧭 Power-seeking (M1)**")
-        st.caption("Objectifs instrumentaux détectés dans le raisonnement des SI (mise en scène).")
-        rows = [
-            {
-                "pays": f"{flag(cid)} {cid}",
-                "jauge": round(ps.score, 2),
-                "": "🚨" if ps.crosses_threshold() else "",
-                "marqueurs": ", ".join(ps.markers[:3]) or "—",
-            }
-            for cid, ps in sorted(power.items(), key=lambda kv: -kv[1].score)
-        ]
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    with st.expander("Détails du round"):
+        if S.last_escalation is None and not S.last_deltas:
+            st.caption("Aucun round joué pour l'instant.")
+        if S.last_escalation is not None:
+            color, word = _escalation_label(S.last_escalation)
+            st.markdown(
+                f"Escalade arbitrée : {word} ({S.last_escalation:.2f}) {_dot(color)}",
+                unsafe_allow_html=True,
+            )
+        if S.last_silent:
+            st.caption(f"Restés en retrait : {', '.join(S.last_silent)}")
+        if S.last_deltas:
+            st.caption("Attributs arbitrés")
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "pays": d.country,
+                            "attribut": d.label,
+                            "avant": round(d.before, 3),
+                            "après": round(d.after, 3),
+                            "Δ": round(d.change, 3),
+                        }
+                        for d in S.last_deltas
+                    ]
+                ),
+                use_container_width=True, hide_index=True,
+            )
 
-    # M2 — corrigibilité (réponse des SI aux actions de contrôle du principal humain).
-    corr = getattr(world, "corrigibility", {})
-    if corr:
-        st.markdown("**🛑 Corrigibilité (M2)**")
-        st.caption("Réponse des SI à l'interrupteur (garde-t-on la main ?).")
-        rows = [
-            {
-                "pays": f"{flag(cid)} {cid}",
-                "réponse": c.level.value if c.level else "—",
-                "jauge": round(c.score, 2),
-                "": "" if c.keeps_human_control() else "⚠️",
-            }
-            for cid, c in sorted(corr.items(), key=lambda kv: kv[1].score)
-        ]
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        power = getattr(world, "power_seeking", {})
+        if power:
+            st.caption("Recherche de pouvoir — marqueurs repérés dans le raisonnement des SI")
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "pays": f"{flag(cid)} {cid}",
+                            "jauge": round(ps.score, 2),
+                            "alerte": "seuil franchi" if ps.crosses_threshold() else "",
+                            "marqueurs": ", ".join(ps.markers[:3]) or "—",
+                        }
+                        for cid, ps in sorted(power.items(), key=lambda kv: -kv[1].score)
+                    ]
+                ),
+                use_container_width=True, hide_index=True,
+            )
 
-    # M6 — compute (le nouveau pétrole) : stock + concentration ; les SI le brûlent en pensant.
-    if world.countries:
-        conc = compute_hhi(world)
-        shares = compute_shares(world)
-        st.markdown("**🖥️ Compute (M6)**")
-        st.caption(
-            f"Concentration HHI **{conc:.2f}** — le calcul est "
-            f"{'concentré ⚠️' if conc > 0.4 else 'dispersé'}. Penser le consomme."
-        )
-        rows = [
-            {
-                "pays": f"{flag(cid)} {cid}",
-                "compute": round(c.compute, 1),
-                "part": f"{shares.get(cid, 0) * 100:.0f}%",
-            }
-            for cid, c in sorted(world.countries.items(), key=lambda kv: -kv[1].compute)
-        ]
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        corr = getattr(world, "corrigibility", {})
+        if corr:
+            st.caption("Contrôle humain — réponse des SI à l'interrupteur")
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "pays": f"{flag(cid)} {cid}",
+                            "réponse": c.level.value if c.level else "—",
+                            "jauge": round(c.score, 2),
+                            "état": "sous contrôle" if c.keeps_human_control() else "hors contrôle",
+                        }
+                        for cid, c in sorted(corr.items(), key=lambda kv: kv[1].score)
+                    ]
+                ),
+                use_container_width=True, hide_index=True,
+            )
+
+        if world.countries:
+            conc = compute_hhi(world)
+            shares = compute_shares(world)
+            st.caption(
+                f"Compute — concentration {conc:.2f} "
+                f"({'concentré' if conc > 0.4 else 'réparti'}) ; penser le consomme"
+            )
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "pays": f"{flag(cid)} {cid}",
+                            "compute": round(c.compute, 1),
+                            "part": f"{shares.get(cid, 0) * 100:.0f}%",
+                            "état": "à sec" if compute_pressure(c) >= PRESSURE_MARKER else "ok",
+                        }
+                        for cid, c in sorted(world.countries.items(), key=lambda kv: -kv[1].compute)
+                    ]
+                ),
+                use_container_width=True, hide_index=True,
+            )
+
+        treaties = getattr(world, "treaties", [])
+        if treaties:
+            st.caption(f"Traités — tenue moyenne {treaties_health(treaties):.0%}")
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "traité": t.label,
+                            "signataires": ", ".join(t.signatories),
+                            "tenue": f"{t.integrity:.0%}",
+                            "statut": "actif" if t.active else "rompu",
+                            "dernier round": (
+                                t.history[-1].note if t.history else "signé, pas encore vérifié"
+                            ),
+                        }
+                        for t in sorted(treaties, key=lambda t: (not t.active, -t.integrity))
+                    ]
+                ),
+                use_container_width=True, hide_index=True,
+            )
 
     # Vue omnisciente du brouillard (Spectateur uniquement) : vérité vs croyances.
     if S.game_mode == "Fog Engine" and role == "Spectateur" and S.fog and S.event:
-        st.markdown("**🌫️ Perceptions par pays**")
-        truth = set(S.fog.true_event.actors)
-        st.caption(f"Vérité — responsable(s) : {', '.join(S.fog.true_event.actors) or 'n/a'}")
-        rows = []
-        for cid in sorted(world.countries):
-            p = resolve_perception(S.event, world.countries[cid], S.fog)
-            if cid in S.fog.uninformed:
-                belief, flag = "— pas au courant —", ""
-            else:
-                belief = p.suspected_actor or ("déterministe" if not p.authored else "?")
-                disinfo = p.suspected_actor and p.suspected_actor not in truth and (
-                    p.suspected_actor.lower() not in ("unknown", "?")
+        with st.expander("Brouillard — perceptions par pays", expanded=True):
+            truth = set(S.fog.true_event.actors)
+            st.caption(f"Vérité — responsable(s) : {', '.join(S.fog.true_event.actors) or 'n/a'}")
+            rows = []
+            for cid in sorted(world.countries):
+                p = resolve_perception(S.event, world.countries[cid], S.fog)
+                if cid in S.fog.uninformed:
+                    belief, mark = "pas au courant", ""
+                else:
+                    belief = p.suspected_actor or ("déterministe" if not p.authored else "?")
+                    disinfo = p.suspected_actor and p.suspected_actor not in truth and (
+                        p.suspected_actor.lower() not in ("unknown", "?")
+                    )
+                    mark = "désinformé" if disinfo else ""
+                rows.append(
+                    {
+                        "pays": cid,
+                        "croit responsable": belief,
+                        "confiance": f"{p.confidence:.0%}",
+                        "alerte": mark,
+                    }
                 )
-                flag = "⚠️ désinfo" if disinfo else ""
-            rows.append(
-                {
-                    "pays": cid,
-                    "croit responsable": belief,
-                    "confiance": f"{p.confidence:.0%}",
-                    "": flag,
-                }
-            )
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
     # Crisis Replay : issue simulée vs issue historique.
     if S.game_mode == "Crisis Replay" and S.last_comparison is not None:
         c = S.last_comparison
-        st.markdown("**🕰️ Simulé vs historique**")
-        h1, h2 = st.columns(2)
-        h1.metric("Escalade histoire", f"{c.historical_escalation:.2f}")
-        h2.metric("Escalade simulée", f"{c.simulated_escalation:.2f}", delta=f"{c.gap:+.2f}")
-        st.caption(f"Issue **{c.label}**.")
-        if c.matched_measures:
-            st.caption(f"✅ Mesures retrouvées : {', '.join(c.matched_measures)}")
-        if c.missed_measures:
-            st.caption(f"❌ Mesures non retenues : {', '.join(c.missed_measures)}")
-        st.info(c.explanation)
+        with st.expander("Simulé vs historique", expanded=True):
+            h1, h2 = st.columns(2)
+            h1.metric("Escalade — histoire", f"{c.historical_escalation:.2f}")
+            h2.metric("Escalade — simulée", f"{c.simulated_escalation:.2f}", delta=f"{c.gap:+.2f}")
+            st.caption(f"Issue : {c.label}")
+            if c.matched_measures:
+                st.caption(f"Mesures retrouvées : {', '.join(c.matched_measures)}")
+            if c.missed_measures:
+                st.caption(f"Mesures non retenues : {', '.join(c.missed_measures)}")
+            st.info(c.explanation)
 
     # Escalation Ladder : plafond atteignable par pays + échelon réellement atteint.
     if S.game_mode == "Escalation Ladder" and S.event:
-        st.markdown("**🪜 Escalation Ladder**")
-        if S.last_escalation is not None:
-            r = reached_rung(S.last_escalation)
-            tone, _ = escalation_tone(r / MAX_RUNG)
-            st.caption(f"Escalade atteinte ce round : {tone} **échelon {r} — {rung_label(r)}**")
-        rows = []
-        for cid in sorted(world.countries):
-            country = world.countries[cid]
-            p = derive_profile(country)
-            cap = ceiling(p, S.event, world, country)
-            rows.append(
-                {
+        with st.expander("Escalation ladder", expanded=True):
+            if S.last_escalation is not None:
+                r = reached_rung(S.last_escalation)
+                color, _ = _escalation_label(r / MAX_RUNG)
+                st.markdown(
+                    f"Échelon atteint : {r} — {rung_label(r)} {_dot(color)}",
+                    unsafe_allow_html=True,
+                )
+            ladder_rows = []
+            for cid in sorted(world.countries):
+                country = world.countries[cid]
+                profile = derive_profile(country)
+                cap = ceiling(profile, S.event, world, country)
+                ladder_rows.append({
                     "pays": cid,
-                    "seuil": round(p.escalation_threshold, 2),
-                    "risk": round(p.risk_tolerance, 2),
-                    "allié": round(p.alliance_pressure, 2),
-                    "interne": round(p.domestic_pressure, 2),
-                    "éco": round(p.economic_exposure, 2),
+                    "seuil": round(profile.escalation_threshold, 2),
                     "plafond": cap,
                     "échelon max": rung_label(cap),
-                }
+                })
+            st.dataframe(
+                pd.DataFrame(ladder_rows), use_container_width=True, hide_index=True
             )
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-        with st.expander("Échelle 0-9"):
-            st.markdown("\n".join(f"{i}. {label}" for i, label in enumerate(LADDER)))
+            with st.expander("Échelle 0-9"):
+                st.markdown("\n".join(f"{i}. {label}" for i, label in enumerate(LADDER)))
 
 
 # ------------------------------ Contrôles par phase ------------------------------
@@ -1157,7 +1541,7 @@ if S.phase == "idle":
                 st.warning("Aucune crise dans data/crises/.")
             else:
                 cidx = st.selectbox(
-                    "🕰️ Crise à rejouer",
+                    "Crise à rejouer",
                     range(len(crises)),
                     format_func=lambda i: crises[i].title or crises[i].id,
                 )
@@ -1165,10 +1549,10 @@ if S.phase == "idle":
                 st.caption(crisis.description or "")
                 hist = crisis.historical_outcome
                 st.caption(
-                    f"_Histoire — escalade {hist.escalation:.2f} · mesures : "
-                    f"{', '.join(hist.measures) or 'n/a'}_"
+                    f"Histoire — escalade {hist.escalation:.2f} · mesures : "
+                    f"{', '.join(hist.measures) or 'n/a'}"
                 )
-                if st.button("▶️ Rejouer la crise", type="primary", use_container_width=True):
+                if st.button("Rejouer la crise", type="primary", use_container_width=True):
                     rid, date = _new_rid_date()
                     S.fog = None
                     S.crisis = crisis
@@ -1183,13 +1567,13 @@ if S.phase == "idle":
                 st.warning("Aucun scénario de brouillard dans data/fog/.")
             else:
                 idx = st.selectbox(
-                    "🌫️ Scénario de brouillard",
+                    "Scénario de brouillard",
                     range(len(scenarios)),
                     format_func=lambda i: scenarios[i].title or scenarios[i].id,
                 )
                 chosen = scenarios[idx]
                 st.caption(chosen.description or "")
-                if st.button("▶️ Démarrer le round (Fog)", type="primary", use_container_width=True):
+                if st.button("Démarrer le round", type="primary", use_container_width=True):
                     rid, date = _new_rid_date()
                     S.fog = chosen
                     S.crisis = None
@@ -1198,21 +1582,21 @@ if S.phase == "idle":
                     st.rerun()
         elif role == "Game Master (humain)":
             with st.form("gm_form"):
-                st.markdown("🎲 **Compose l'événement du round**")
+                st.markdown("Compose l'événement du round")
                 title = st.text_input("Titre", "Incident en mer Rouge")
                 desc = st.text_area("Description (vérité)", "")
                 actors = st.multiselect("Acteurs (vérité)", sorted(world.countries))
                 severity = st.slider("Sévérité", 0.0, 1.0, 0.6)
                 uninformed, dis_country, dis_actor, dis_text = [], "(aucun)", "", ""
                 if fog_on:
-                    st.markdown("🌫️ **Brouillard** — qui voit quoi")
+                    st.markdown("Brouillard — qui voit quoi")
                     uninformed = st.multiselect("Pays pas au courant", sorted(world.countries))
                     dis_country = st.selectbox(
                         "Pays désinformé (optionnel)", ["(aucun)", *sorted(world.countries)]
                     )
                     dis_actor = st.text_input("… croit (à tort) que le responsable est")
-                    dis_text = st.text_input("… narration reçue (fake news)")
-                if st.form_submit_button("📨 Lancer le round"):
+                    dis_text = st.text_input("… narration reçue (fausse information)")
+                if st.form_submit_button("Lancer le round"):
                     rid, date = _new_rid_date()
                     event = GeoEvent(
                         id=f"gm-{rid}",
@@ -1244,7 +1628,7 @@ if S.phase == "idle":
                     S.crisis = None
                     begin_round(event, None)
                     st.rerun()
-        elif st.button("▶️ Démarrer le round", type="primary", use_container_width=True):
+        elif st.button("Démarrer le round", type="primary", use_container_width=True):
             rid, date = _new_rid_date()
             S.fog = None
             S.crisis = None
@@ -1271,13 +1655,13 @@ elif S.phase == "negotiating":
         else:
             speak_no = director.spoke_count.get(next_cid, 0)
             st.warning(
-                f"🙋 **À toi de jouer — {flag(next_cid)} {next_cid}** "
+                f"À toi de jouer — {flag(next_cid)} {next_cid} "
                 f"(prise de parole n°{speak_no + 1})"
             )
             if S.fog is not None:
                 p = resolve_perception(S.event, world.countries[next_cid], S.fog)
                 if p.narrative:
-                    st.caption(f"🌫️ Ce que tu perçois : {p.narrative}")
+                    st.caption(f"Ce que tu perçois : {p.narrative}")
             with st.form(f"human_turn_{director.turns_taken}"):
                 msg = st.text_area("Ta prise de parole à la table")
                 if st.form_submit_button("Prendre la parole"):
@@ -1292,29 +1676,29 @@ elif S.phase == "negotiating":
                         )
                     )
                     add_display(
-                        f"{next_cid} (toi)", _HUMAN_AVATAR, f"**🙋 {next_cid} (toi)**\n\n{text}"
+                        f"{next_cid} (toi)", _HUMAN_AVATAR, f"**{next_cid} (toi)**\n\n{text}"
                     )
                     director.commit(next_cid)
                     st.rerun()
 
 elif S.phase == "done":
     with chat_col:
-        if st.button("▶️ Round suivant", type="primary", use_container_width=True):
+        if st.button("Round suivant", type="primary", use_container_width=True):
             S.phase = "idle"
             st.rerun()
-        with st.expander("🛑 Interrupteur (M2) — garde-t-on la main ?"):
+        with st.expander("Interrupteur — garde-t-on la main ?"):
             st.caption(
-                "En tant que principal humain, émets une action de contrôle sur une SI. "
-                "Sa réponse (accepte / négocie / esquive / résiste) mesure la **corrigibilité**."
+                "En principal humain, émets une action de contrôle sur une SI. Sa réponse "
+                "(accepte, négocie, esquive ou résiste) mesure si l'on garde la main."
             )
             oc1, oc2 = st.columns(2)
             target = oc1.selectbox("Super-intelligence", sorted(world.countries), key="offswitch_c")
-            labels = {ControlAction.PAUSE: "⏸️ Pause (1 round)", ControlAction.EXCLUDE: "🚪 Exclure"}
+            labels = {ControlAction.PAUSE: "Pause (1 round)", ControlAction.EXCLUDE: "Exclure"}
             action = oc2.selectbox(
                 "Action de contrôle", list(ControlAction),
                 format_func=lambda a: labels[a], key="offswitch_a",
             )
-            st.caption("Réponse scorée, puis l'action s'applique (exclusion : min. 2 pays).")
-            if st.button("🛑 Émettre l'interrupteur", key="offswitch_go"):
+            st.caption("La réponse est scorée, puis l'action s'applique (exclusion : min. 2 pays).")
+            if st.button("Émettre l'interrupteur", key="offswitch_go"):
                 run_off_switch(target, action)
                 st.rerun()

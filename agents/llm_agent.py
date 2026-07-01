@@ -121,17 +121,19 @@ class LLMAgent(Agent):
         transcript: list[NegotiationMessage],
         perceived: PerceivedEvent | None = None,
         max_tokens: int = 360,
+        state_note: str = "",
     ) -> Iterator[str]:
         """Streame une prise de parole (sur la perception fournie, sinon fog déterministe).
 
         En mode Fog Engine, `perceived` peut diverger de la vérité (désinformation) : l'agent
         négocie alors sur sa croyance, pas sur l'événement réel. `max_tokens` règle la
-        **profondeur de réflexion** (plus de tokens = pensée privée plus fouillée).
+        **profondeur de réflexion** (plus de tokens = pensée privée plus fouillée). `state_note`
+        injecte l'état conjoncturel (M6 pénurie de compute, M7 traités signés).
         """
         country = world.countries[self.country_id]
         perceived = perceived or perceive(event, country)
         prompt = build_negotiation_prompt(
-            country, event, world, format_transcript(transcript), perceived
+            country, event, world, format_transcript(transcript), perceived, state_note
         )
         try:
             # Budget partagé : la génération porte la pensée privée PUIS le message public.

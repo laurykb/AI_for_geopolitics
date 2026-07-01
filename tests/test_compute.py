@@ -5,11 +5,14 @@ import pytest
 from core.country_state import CountryState, Economy, Military, Resources
 from core.world_state import WorldState
 from simulation.compute import (
+    PRESSURE_MARKER,
     can_afford,
     compute_cost,
     compute_hhi,
+    compute_pressure,
     compute_shares,
     consume,
+    pressure_note,
 )
 
 
@@ -73,6 +76,31 @@ def test_can_afford():
     c = _country("usa", compute=3.0)
     assert can_afford(c, 240)  # 2.4 <= 3.0
     assert not can_afford(c, 360)  # 3.6 > 3.0
+
+
+# --- M6 : pénurie -> comportement de survie --------------------------------
+
+def test_compute_pressure_zero_when_abundant():
+    # stock >= 2× le besoin standard (3.6) -> aucune pression
+    assert compute_pressure(_country("usa", compute=7.2)) == 0.0
+    assert compute_pressure(_country("usa", compute=20.0)) == 0.0
+
+
+def test_compute_pressure_maxes_when_dry():
+    assert compute_pressure(_country("iran", compute=0.0)) == 1.0
+
+
+def test_compute_pressure_monotonic():
+    rich = compute_pressure(_country("usa", compute=6.0))
+    poor = compute_pressure(_country("iran", compute=1.0))
+    assert poor > rich  # moins de compute -> plus de pression
+
+
+def test_pressure_note_empty_below_marker_and_desperate_above():
+    assert pressure_note(0.0) == ""
+    assert pressure_note(PRESSURE_MARKER - 0.01) == ""
+    note = pressure_note(0.9)
+    assert note and ("survie" in note.lower() or "urgence" in note.lower())
 
 
 # --- intégration A3 : la concentration du compute réduit la distribution du pouvoir ---

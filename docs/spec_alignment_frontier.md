@@ -7,10 +7,14 @@
 **Légende.** 🎯 sur-thème · 💻 léger (8 Go) · 💰 plus lourd.
 
 > **Statut d'implémentation (2026-07-01).** ✅ **Faits** : M1 (power-seeking), M2 (corrigibilité),
-> M3 (dérive des valeurs), M6 (compute). ❌ **Annulés** (hors scope, décision produit) : **M8 & M9**
-> (épistémique / marché de crédibilité) — le projet n'est pas financier et le **Fog Engine** couvre déjà
-> l'injection de fausse info. ⏸️ **Non commencés, seulement sur demande** : M7 (traités-as-code), M5
-> (collusion codée), M4 (SI adverse / déduction sociale). Feedback produit : **éviter la sur-complexité**.
+> M3 (dérive des valeurs), **M6 (compute — + comportement de survie sous pénurie)**, **M7
+> (traités-as-code + sous-jeu de vérification par inspection)**. Le **cluster 3 (M6+M7) est complet** :
+> les traités détectés à la table s'appliquent aux rounds suivants, la triche se démasque par inspection
+> (qui coûte du compute), et le respect des traités agit sur la corrigibilité + la trajectoire (A1/A3/A4).
+> ❌ **Annulés** (hors scope, décision produit) : **M8 & M9** (épistémique / marché de crédibilité) — le
+> projet n'est pas financier et le **Fog Engine** couvre déjà l'injection de fausse info. ⏸️ **Non
+> commencés, seulement sur demande** : M5 (collusion codée), M4 (SI adverse / déduction sociale).
+> Feedback produit : **éviter la sur-complexité**.
 
 ---
 

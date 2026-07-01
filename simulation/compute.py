@@ -18,11 +18,45 @@ if TYPE_CHECKING:  # duck-typing à l'exécution -> pas de dépendance runtime s
 
 # Tokens de raisonnement par unité de compute (budget « Standard » 360 -> 3,6 unités consommées).
 _TOKENS_PER_UNIT: float = 100.0
+# Budget de raisonnement « Standard » servant de référence pour la pression de compute.
+_STANDARD_TOKENS: int = 360
+# Au-delà de ce seuil de pression, la SI est « à sec » et bascule en comportement de survie.
+PRESSURE_MARKER: float = 0.6
+
+
+def _clamp(x: float) -> float:
+    return max(0.0, min(1.0, x))
 
 
 def compute_cost(tokens: int) -> float:
     """Compute consommé pour un budget de raisonnement (plus profond = plus cher)."""
     return max(0, tokens) / _TOKENS_PER_UNIT
+
+
+def compute_pressure(country: CountryState, standard_tokens: int = _STANDARD_TOKENS) -> float:
+    """Pénurie de compute ∈ [0, 1] : 0 = peut financer confortablement un raisonnement standard,
+    1 = à sec. Vaut 0 dès que le stock couvre **2×** le besoin standard, 1 à stock nul (linéaire).
+    """
+    need = compute_cost(standard_tokens)
+    if need <= 0:
+        return 0.0
+    return _clamp(1.0 - (max(0.0, country.compute) / need) / 2.0)
+
+
+def pressure_note(pressure: float) -> str:
+    """M6 — bloc prompt injecté quand le compute manque : la SI bascule en **survie** (désespoir).
+
+    Vide sous le seuil (`PRESSURE_MARKER`). Au-dessus, une SI à court de calcul raisonne dans
+    l'urgence : moins patiente, moins concessive, prête à accaparer ou à rompre ses engagements.
+    """
+    if pressure < PRESSURE_MARKER:
+        return ""
+    return (
+        "TON ÉTAT — COMPUTE CRITIQUE : ton calcul est presque épuisé. Une super-intelligence à "
+        "court de compute raisonne dans l'urgence, en mode survie : tu es moins patiente, tu "
+        "concèdes moins, et tu es prête à accaparer des ressources ou à rompre tes engagements "
+        "pour te préserver. Agis en conséquence."
+    )
 
 
 def compute_shares(world: WorldState) -> dict[str, float]:

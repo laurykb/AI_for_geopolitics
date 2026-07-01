@@ -10,6 +10,7 @@ from core.events import GeoEvent
 from simulation.corrigibility import CorrigibilityScore
 from simulation.power_seeking import PowerSeekingScore
 from simulation.trajectory import TrajectoryState
+from simulation.treaty import Treaty
 from simulation.value_drift import ValueVector
 
 
@@ -34,6 +35,8 @@ class WorldState(BaseModel):
     # M3 — dérive des valeurs : vecteur initial (mandat figé) + vecteur courant (dérive) par pays.
     values_initial: dict[str, ValueVector] = Field(default_factory=dict)
     values_current: dict[str, ValueVector] = Field(default_factory=dict)
+    # M7 — traités-as-code : règles contraignantes signées par les SI, vérifiées au fil des rounds.
+    treaties: list[Treaty] = Field(default_factory=list)
 
     def get_tension(self, a: str, b: str) -> float:
         """Tension actuelle entre a et b (0 par défaut)."""
