@@ -13,8 +13,8 @@ attributs → **communiqué G7** + la date avance. Métaphore : *un G7 dont on v
 
 ## Où on en est
 
-- **Branche courante : `feat/observable-round`** (HEAD, **non poussée**) — porte tout le théâtre live + le Lot A.
-- **154 tests verts** (`pytest -q`, tous offline via MockBackend), `ruff` propre.
+- **Branche courante : `feat/observable-round`** (HEAD, **non poussée**) — théâtre live + Lot A + mode Fog Engine.
+- **163 tests verts** (`pytest -q`, tous offline via MockBackend), `ruff` propre.
 - Contrainte matérielle : **RTX 2060 Super 8 Go** → 1 modèle 7B (mistral) en local, **séquentiel**,
   ~1 min/round. Impossible de faire tourner 6 modèles en parallèle.
 
@@ -48,9 +48,19 @@ Puis **refonte vers le théâtre observable** (branche `feat/observable-round`),
   round/rôle/pays, 9 indicateurs/round + `by_country`), `inference/pricing.py` (local≈0$ + équivalent
   frontière Claude), `inference/metered_backend.py` (`MeteredBackend` : cache de prompts, JSON valide,
   estimation tokens en streaming). UI = onglet `st.tabs` « 💸 LLM Budget ». Vérifié live (Ollama/mistral).
-- **Lot B (à faire, décidé avec l'user)** : **budget modes** Cheap(1)/Balanced(3)/Full(all) = piloter
-  `TurnDirector.max_turns` via un sélecteur ; **mode Escalation Ladder** (`simulation/escalation.py` :
-  échelle 0-9 + profil 5 params dérivés de CountryState + `ceiling`).
+**Modes de jeu LIVRÉS** (dimension orthogonale aux 3 rôles ; sélecteur « Mode de jeu » en sidebar) :
+- **Fog Engine** (2 commits) : chaque pays réagit à ce qu'il **croit** voir, pas à la vérité. `PerceivedEvent`
+  enrichi (suspected_actor/narrative/delay_hours/authored) ; `simulation/fog.py` (`FogScenario`,
+  `resolve_perception` = fournie > uninformed > `perceive`, `load_fog_scenarios`) ; prompt **belief-aware**
+  (montre la croyance, masque la vérité si authored) ; `stream_negotiation_message(perceived=…)` ;
+  `run_negotiation_round(fog=…)` ; `data/fog/*.json`. UI : **Spectateur omniscient** (vérité + panneau
+  perceptions, désinfo ⚠️/uninformed), **Joueur-pays aveugle** (voit UNIQUEMENT sa perception), **GM** auteur
+  du fog. Juge = arbitre omniscient. Vérifié live (china croit « faux drapeau US »).
+- **À faire (décidé)** : **Crisis Replay** (rejeu `data/crises/*.json` + `historical_outcome` + comparaison
+  historique/simulé — réutilise le seam mode/sélecteur) ; puis **Escalation Ladder** (`simulation/escalation.py`,
+  échelle 0-9 + profil 5 params) + **budget modes** Cheap/Balanced/Full (= `TurnDirector.max_turns`).
+- **Raffinement noté** : en Fog, `engagement_score` se base sur les VRAIS acteurs ; à terme, pondérer par la
+  perception (un pays accusé/se croyant visé devrait plus parler).
 
 ## Architecture (modules)
 
@@ -62,11 +72,13 @@ Puis **refonte vers le théâtre observable** (branche `feat/observable-round`),
 - `inference/` : `InferenceBackend` (+`stream_generate`), `OllamaBackend`, `MockBackend`, `bench` ;
   **`telemetry`** (`BudgetLedger`, `CallRecord`, `RoundBudget`, `grounding_proxy`), **`pricing`**
   (barème + équivalent frontière), **`metered_backend`** (`MeteredBackend` = enveloppe mesurée + cache).
-- `simulation/` : `action_space`, `diplomacy` (P2), `clock`, `loader`, `perception`, **`engagement`**
-  (`engagement_score`, `SPEAK_THRESHOLD`), `negotiation` (NegotiationMessage +`reasoning`, `split_reasoning`,
-  Verdict, `apply_verdict`, `TurnCursor`, **`TurnDirector`**, `speaking_order`, `update_memories`,
-  `support_levels`, `AttributeDelta`), `live_round` (RoundStep +`ParticipationStep` + `run_live_round` +
-  **`run_negotiation_round`** = orchestrateur headless/tests, `ledger` optionnel).
+- `simulation/` : `action_space`, `diplomacy` (P2), `clock`, `loader`, `perception` (`PerceivedEvent`
+  +suspected_actor/narrative/delay_hours/authored), **`fog`** (`FogScenario`, `resolve_perception`,
+  `load_fog_scenarios` — Fog Engine), **`engagement`** (`engagement_score`, `SPEAK_THRESHOLD`),
+  `negotiation` (NegotiationMessage +`reasoning`, `split_reasoning`, Verdict, `apply_verdict`, `TurnCursor`,
+  **`TurnDirector`**, `speaking_order`, `update_memories`, `support_levels`, `AttributeDelta`), `live_round`
+  (RoundStep +`ParticipationStep` + `run_live_round` + **`run_negotiation_round`** = orchestrateur
+  headless/tests, `ledger`/`fog` optionnels).
 - `rag/` (P3), `ingestion/` (P4), `app/` (backend FastAPI `/health`+`/api/run`),
   `ui/` : **`ui/app.py`** = théâtre live (machine à états, c'est L'UI) ; `ui/game.py` = `GameSession` (legacy P5, encore testé).
 
@@ -107,10 +119,11 @@ Preview via l'outil `.claude/launch.json` (configs `ui` port 8501, `api` port 80
 
 ## Prochaines pistes (au choix de l'user)
 
-- **Lot B (décidé, prioritaire)** : **budget modes** Cheap(1)/Balanced(3)/Full(all) — un sélecteur qui
-  pilote `TurnDirector.max_turns` (au-delà du budget, silence déterministe) ; puis **mode Escalation
-  Ladder** (`simulation/escalation.py` : échelle 0-9 ; profil 5 params dérivés de CountryState ; `ceiling`).
-- **Affiner** : rendre la perception/mémoire plus visibles dans l'UI ; animer les deltas d'attributs.
+- **Crisis Replay (prochain mode, décidé)** : biblio de crises `data/crises/*.json` (événement + `historical_outcome`)
+  + rejeu + panneau comparaison historique vs simulé. Réutilise le seam mode/sélecteur posé par Fog Engine.
+- **Escalation Ladder** (`simulation/escalation.py` : échelle 0-9 ; profil 5 params dérivés de CountryState ;
+  `ceiling`) + **budget modes** Cheap/Balanced/Full (= `TurnDirector.max_turns`).
+- **Affiner** : engagement pondéré par la perception en Fog ; animer les deltas d'attributs.
 - Dernier morceau de la vision : **K8s + MCP** (agents-services échangeant en langage naturel).
 
 ## Manière de travailler (attendue)
