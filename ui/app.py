@@ -1,175 +1,173 @@
-"""App Streamlit interactive — jouer la simulation géopolitique (Phase 5).
+"""Théâtre live — on regarde les super-intelligences délibérer en temps réel (Phase live).
 
-Rôles : Spectateur / Incarner un pays / Game Master. Lancer :
-    streamlit run ui/app.py
-
-La logique de partie vit dans `ui.game` (testée) ; ce module n'est que la couche UI.
+Un G7 dont on voit tous les messages : le Game Master génère un événement, chaque
+super-intelligence **raisonne en direct** (streaming), puis le moteur déterministe applique
+les deltas d'attributs. Lancer : streamlit run ui/app.py  (Ollama + mistral pour le LLM ;
+repli rule-based si Ollama absent).
 """
 
 from __future__ import annotations
 
+import time
+
 import pandas as pd
 import streamlit as st
 
-from core.decisions import AgentDecision
-from core.events import GeoEvent
-from simulation.action_space import ActionType
-from ui.game import AGENT_LLM, AGENT_RULE_BASED, GameSession
+from agents.game_master import GameMasterAgent
+from agents.llm_agent import LLMAgent
+from inference.ollama_backend import OllamaBackend
+from simulation.clock import SimClock
+from simulation.live_round import (
+    AgentDoneStep,
+    DeltasStep,
+    EventStep,
+    RiskStep,
+    SummaryStep,
+    TokenStep,
+    run_live_round,
+)
+from simulation.loader import load_world
 
-st.set_page_config(page_title="AI for Geopolitics", page_icon="🌍", layout="wide")
+st.set_page_config(page_title="AI for Geopolitics — Live", page_icon="🌍", layout="wide")
+
+_AGENT_AVATAR = "🧠"
+_GM_AVATAR = "🎲"
 
 
-def _game() -> GameSession:
-    if "game" not in st.session_state:
-        st.session_state.game = GameSession()
-    return st.session_state.game
+def init_session() -> None:
+    world = load_world()
+    backend = OllamaBackend()
+    st.session_state.world = world
+    st.session_state.agents = {cid: LLMAgent(cid, backend) for cid in world.countries}
+    st.session_state.gm = GameMasterAgent(backend)
+    st.session_state.clock = SimClock()
+    st.session_state.transcript = []  # entrées {who, avatar, md} persistantes
+    st.session_state.recent = []
+    st.session_state.round_no = 0
+    st.session_state.last_deltas = []
+    st.session_state.last_risk = None
+    st.session_state.elapsed = 0.0
 
 
-game = _game()
+if "world" not in st.session_state:
+    init_session()
 
-# ----------------------------- Sidebar (contrôles) -----------------------------
+world = st.session_state.world
+clock = st.session_state.clock
+
+# ------------------------------ Sidebar ------------------------------
 st.sidebar.title("🌍 Contrôles")
-
 if st.sidebar.button("♻️ Nouvelle partie", use_container_width=True):
-    game.reset()
+    init_session()
+    st.rerun()
+st.sidebar.caption(
+    "**Spectateur** — les super-intelligences (mistral 7B local) réfléchissent chacune leur "
+    "tour, en direct. Un round ≈ 1-3 min. Repli rule-based si Ollama est éteint."
+)
+
+# ------------------------------ Bandeau ------------------------------
+st.title("🌍 AI for Geopolitics — le G7 des super-intelligences")
+b1, b2, b3, b4 = st.columns(4)
+b1.metric("📅 Date", clock.iso)
+b2.metric("🔄 Round", st.session_state.round_no)
+b3.metric("⏱️ Dernier round", f"{st.session_state.elapsed:.0f} s")
+b4.metric("🎭 Acteurs", len(world.countries))
+
+play = st.button("▶️ Jouer le round", type="primary", use_container_width=True)
+
+chat_col, state_col = st.columns([2, 1])
+
+# Transcript persistant (rounds déjà joués)
+with chat_col:
+    st.subheader("🗣️ Délibérations")
+    for entry in st.session_state.transcript:
+        with st.chat_message(entry["who"], avatar=entry["avatar"]):
+            st.markdown(entry["md"])
+
+# Panneau d'état (deltas + risque du dernier round)
+with state_col:
+    st.subheader("📊 Dernier round")
+    if st.session_state.last_risk is not None:
+        r = st.session_state.last_risk
+        st.markdown(
+            f"**Risque** — escalade `{r.escalation:.2f}` · éco `{r.economic_disruption:.2f}` · "
+            f"fracture `{r.alliance_fracture:.2f}`"
+        )
+    if st.session_state.last_deltas:
+        df = pd.DataFrame(
+            [
+                {
+                    "pays": d.country,
+                    "attribut": d.label,
+                    "avant": round(d.before, 3),
+                    "après": round(d.after, 3),
+                    "Δ": round(d.change, 3),
+                }
+                for d in st.session_state.last_deltas
+            ]
+        )
+        st.caption("Attributs modifiés")
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    else:
+        st.caption("Aucun round joué pour l'instant.")
+
+
+def play_round() -> None:
+    """Itère le round observable et streame chaque étape dans le tchat."""
+    start = time.perf_counter()
+    current: str | None = None
+    placeholder = None
+    buffer = ""
+
+    for step in run_live_round(
+        world,
+        st.session_state.agents,
+        st.session_state.gm,
+        clock,
+        recent=st.session_state.recent,
+    ):
+        if isinstance(step, EventStep):
+            ev = step.event
+            md = (
+                f"**{ev.title}**  \n{ev.description or '—'}  \n"
+                f"_acteurs : {', '.join(ev.actors) or 'n/a'} · sévérité {ev.severity:.2f}_"
+            )
+            with chat_col.chat_message("Game Master", avatar=_GM_AVATAR):
+                st.markdown(md)
+            st.session_state.transcript.append(
+                {"who": "Game Master", "avatar": _GM_AVATAR, "md": f"🎲 {md}"}
+            )
+            st.session_state.recent.append(ev.title)
+
+        elif isinstance(step, TokenStep):
+            if step.country != current:
+                current = step.country
+                buffer = ""
+                placeholder = chat_col.chat_message(step.country, avatar=_AGENT_AVATAR).empty()
+            buffer += step.token
+            placeholder.markdown(buffer + " ▌")
+
+        elif isinstance(step, AgentDoneStep):
+            dec = step.decision
+            target = f" → {dec.target}" if dec.target else ""
+            md = f"{step.text}\n\n**➡️ {dec.action.value}{target}** · intensité {dec.intensity:.2f}"
+            if placeholder is not None:
+                placeholder.markdown(md)
+            st.session_state.transcript.append(
+                {"who": step.country, "avatar": _AGENT_AVATAR, "md": md}
+            )
+            current, placeholder = None, ""
+
+        elif isinstance(step, DeltasStep):
+            st.session_state.last_deltas = step.deltas
+        elif isinstance(step, RiskStep):
+            st.session_state.last_risk = step.risk
+        elif isinstance(step, SummaryStep):
+            st.session_state.round_no = step.summary.round_id
+
+    st.session_state.elapsed = time.perf_counter() - start
     st.rerun()
 
-use_llm = st.sidebar.checkbox(
-    "Agents LLM (Ollama, ~20 s/round)", value=game.agent_type == AGENT_LLM
-)
-if use_llm and game.agent_type != AGENT_LLM:
-    from inference.ollama_backend import OllamaBackend
 
-    game.set_agent_type(AGENT_LLM, backend=OllamaBackend())
-    st.sidebar.info("Agents LLM actifs (repli rule-based si Ollama indisponible).")
-elif not use_llm and game.agent_type != AGENT_RULE_BASED:
-    game.set_agent_type(AGENT_RULE_BASED)
-
-role = st.sidebar.radio("Ton rôle", ["Spectateur", "Incarner un pays", "Game Master"])
-controlled = None
-if role == "Incarner un pays":
-    controlled = st.sidebar.selectbox("Ton pays", game.country_ids)
-
-st.sidebar.caption("Outil d'analyse de signaux de risque explicables — pas un oracle.")
-
-# ----------------------------- En-tête -----------------------------
-st.title("Simulation géopolitique — crise de la mer Rouge")
-st.caption(f"Round {game.round_no} · {len(game.country_ids)} acteurs · moteur : {game.agent_type}")
-
-col_ctrl, col_state = st.columns(2)
-
-# ----------------------------- Contrôle du round -----------------------------
-with col_ctrl:
-    st.subheader("🎬 Jouer le round")
-    next_ev = game.next_scenario_event
-
-    if role == "Game Master":
-        with st.form("gm_form"):
-            title = st.text_input("Titre de l'événement", "Nouvel incident")
-            desc = st.text_area("Description", "")
-            actors = st.multiselect(
-                "Acteurs", game.country_ids, default=next_ev.actors if next_ev else []
-            )
-            severity = st.slider("Sévérité", 0.0, 1.0, 0.6)
-            uncertainty = st.slider("Incertitude", 0.0, 1.0, 0.5)
-            if st.form_submit_button("📨 Envoyer l'événement"):
-                event = GeoEvent(
-                    id=f"gm-{game.round_no + 1}",
-                    round_id=game.round_no + 1,
-                    event_type="game_master",
-                    title=title,
-                    description=desc,
-                    actors=actors,
-                    severity=severity,
-                    uncertainty=uncertainty,
-                )
-                game.play_event(event)
-                st.rerun()
-
-    elif next_ev is None:
-        st.info("Scénario terminé. Passe en **Game Master** pour envoyer de nouveaux événements.")
-
-    else:
-        st.markdown(f"**Prochain événement :** {next_ev.title}")
-        st.caption(f"{next_ev.description or '—'}")
-        st.caption(f"Acteurs : {', '.join(next_ev.actors)} · sévérité {next_ev.severity:.2f}")
-
-        if role == "Incarner un pays":
-            with st.form("human_form"):
-                st.markdown(f"Décision de **{controlled}**")
-                action = st.selectbox("Action", [a.value for a in ActionType])
-                targets = ["(aucune)"] + [c for c in game.country_ids if c != controlled]
-                target = st.selectbox("Cible", targets)
-                intensity = st.slider("Intensité", 0.0, 1.0, 0.5)
-                statement = st.text_input("Déclaration publique", "")
-                if st.form_submit_button("🎯 Jouer mon tour"):
-                    decision = AgentDecision(
-                        country=controlled,
-                        round_id=next_ev.round_id,
-                        action=ActionType(action),
-                        target=None if target == "(aucune)" else target,
-                        intensity=intensity,
-                        public_statement=statement,
-                    )
-                    game.play_next_scenario(human_country=controlled, human_decision=decision)
-                    st.rerun()
-        elif st.button("▶️ Round suivant", use_container_width=True):
-            game.play_next_scenario()
-            st.rerun()
-
-# ----------------------------- État du monde -----------------------------
-with col_state:
-    st.subheader("🌐 État du monde")
-    ids = game.country_ids
-    matrix = pd.DataFrame(
-        [[round(game.world.get_tension(a, b), 2) if a != b else None for b in ids] for a in ids],
-        index=ids,
-        columns=ids,
-    )
-    st.caption("Tensions bilatérales (0 apaisé → 1 tendu)")
-    st.dataframe(matrix, use_container_width=True)
-    st.caption("Alliances & pactes")
-    for cid in ids:
-        alliances = game.world.countries[cid].alliances
-        st.write(f"**{cid}** : {', '.join(alliances) if alliances else '—'}")
-
-# ----------------------------- Résultats / historique -----------------------------
-if game.history:
-    st.divider()
-    last = game.history[-1]
-    st.subheader(f"📋 Round {last.round_id} — {last.event.title}")
-    st.markdown(f"**{last.headline}**")
-    decisions = pd.DataFrame(
-        [
-            {
-                "pays": d.country,
-                "action": d.action.value,
-                "cible": d.target or "—",
-                "intensité": round(d.intensity, 2),
-            }
-            for d in last.decisions
-        ]
-    )
-    st.dataframe(decisions, use_container_width=True, hide_index=True)
-    st.info(f"🕊️ {last.diplomatic_summary}")
-
-    st.subheader("📈 Risque par round")
-    risk = pd.DataFrame(
-        [
-            {
-                "round": s.round_id,
-                "escalade": s.risk.escalation,
-                "perturb. éco": s.risk.economic_disruption,
-                "fracture": s.risk.alliance_fracture,
-            }
-            for s in game.history
-        ]
-    ).set_index("round")
-    st.bar_chart(risk)
-
-    if game.world.diplomatic_history:
-        st.subheader("🕊️ Journal diplomatique")
-        for m in game.world.diplomatic_history:
-            st.write(f"`R{m.round_id}` **{m.sender}** → **{m.recipient}** : {m.content}")
-else:
-    st.info("Aucun round joué. Choisis un rôle dans la barre latérale et lance le premier round.")
+if play:
+    play_round()
