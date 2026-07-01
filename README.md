@@ -42,6 +42,17 @@ Pipeline de retrieval **hybride et explicable**, isolé dans `rag/` :
 
 > Corpus seed **illustratif** (`data/corpus_seed/`) ; l'ingestion de données réelles est la **Phase 4**.
 
+## Phase 4 — données réelles ✅
+
+Les profils pays sont **sourcés** (World Bank/IMF/SIPRI/WIPO 2024) et **reproductibles** :
+
+- `data/sources/indicators.json` : entrées brutes sourcées + provenance ; `docs/data_governance.md` documente source/année/confiance/normalisation/licences par champ.
+- **Build déterministe** (`ingestion/`) : `python -m ingestion.build --check` garantit que chaque `data/countries/*.json` **est reproductible** depuis les sources (testé en CI).
+
+## Phase 5 — dashboard ✅
+
+**Dashboard FastAPI** (lecture seule) : rejoue le scénario mer Rouge (rule-based) et rend, dans une page server-rendered avec **SVG inline** (aucune dépendance JS) : **timeline** + headlines, **scores de risque** par round, **heatmap de tensions**, **alliances/pactes**, **journal diplomatique**.
+
 ## Installation & tests
 
 ```bash
@@ -67,6 +78,13 @@ python -m rag.demo "freedom of navigation in the Red Sea"   # retrieval + brief 
 python -m rag.demo --eval                                    # recall@k / MRR
 ```
 
+Dashboard (aucun GPU) :
+
+```bash
+python -m ingestion.build            # vérifie la reproductibilité des profils pays
+uvicorn app.main:app                 # puis http://127.0.0.1:8000/
+```
+
 ## Structure
 
 ```
@@ -75,11 +93,13 @@ agents/      # base_agent + rule_based_agent (P0) + prompts + llm_agent (P1)
 inference/   # InferenceBackend + OllamaBackend / MockBackend + bench (P1)
 simulation/  # action_space (P0) + diplomacy (P2)
 rag/         # corpus, embedder, BM25, vector index, RRF, retriever, brief, eval (P3)
-data/        # countries + scenarios + corpus_seed (P3)
-tests/       # unitaires + intégration (rounds, LLM, diplomatie, RAG)
-docs/        # plan d'action ; (état de l'art à la racine)
+ingestion/   # build reproductible des profils pays depuis data/sources (P4)
+app/         # dashboard FastAPI + charts SVG + gabarit (P5)
+data/        # countries + sources + scenarios + corpus_seed
+tests/       # unitaires + intégration (rounds, LLM, diplomatie, RAG, données, dashboard)
+docs/        # plan d'action, gouvernance des données ; (état de l'art à la racine)
 ```
 
 ## Prochaine étape
 
-**Phase 4** — données réelles : ingestion World Bank / SIPRI / GDELT → `CountryState` (recherche sourcée ; **bascule Cowork**), puis `docs/data_governance.md`. Voir `CLAUDE.md` et `docs/PLAN_ACTION_CLAUDE_CODE.md`.
+**Phase 6** — infra : Docker (une image par service) → docker-compose → kind/K8s ; `docs/deployment.md`. Voir `CLAUDE.md` et `docs/PLAN_ACTION_CLAUDE_CODE.md`.
