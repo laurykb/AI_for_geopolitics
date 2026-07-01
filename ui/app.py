@@ -37,6 +37,7 @@ from market.models import AccountKind, MarketStatus, MarketType, ResolutionCrite
 from market.resolution import resolve_and_settle
 from market.store import SQLiteMarketStore
 from simulation.clock import SimClock
+from simulation.country_forge import forge_country, slugify
 from simulation.crisis import compare_outcome, load_crises
 from simulation.escalation import (
     LADDER,
@@ -100,6 +101,8 @@ def init_session() -> None:
     st.session_state.awaiting_bets = False  # temps de paris avant la négociation
     st.session_state.world = world
     st.session_state.agents = {cid: LLMAgent(cid, backend) for cid in world.countries}
+    st.session_state.roster = dict(world.countries)  # tous les pays dispo (chargés + inventés)
+    st.session_state.active = set(world.countries)  # ceux actuellement en jeu
     st.session_state.gm = GameMasterAgent(backend)
     st.session_state.judge = JudgeAgent(backend)
     st.session_state.clock = SimClock()
@@ -139,6 +142,15 @@ def add_display(who: str, avatar: str, md: str, reasoning: str = "", label: str 
     S.transcript.append(
         {"who": who, "avatar": avatar, "md": md, "reasoning": reasoning, "label": label}
     )
+
+
+def _sync_world() -> None:
+    """Aligne le monde actif (world.countries + agents) sur la sélection `S.active ∩ S.roster`."""
+    world.countries = {cid: S.roster[cid] for cid in sorted(S.roster) if cid in S.active}
+    S.agents = {
+        cid: (S.agents[cid] if cid in S.agents else LLMAgent(cid, S.backend))
+        for cid in world.countries
+    }
 
 
 def stream_ai_turn(country: str, pass_no: int) -> None:
@@ -606,6 +618,47 @@ def _utopia_label(u: float) -> str:
     return "🟡 le monde est en **équilibre**"
 
 
+def _render_country_controls() -> None:
+    """Composer la partie : activer/désactiver des pays + inventer un pays (LLM). Hors round."""
+    disabled = S.phase != "idle"
+    st.markdown("**🎛️ Pays en jeu** — coche pour activer (au moins 2)")
+    if disabled:
+        st.caption("Termine le round en cours pour changer la sélection.")
+    cols = st.columns(3)
+    states = {
+        cid: cols[i % 3].checkbox(
+            f"{flag(cid)} {S.roster[cid].name}", value=cid in S.active, disabled=disabled
+        )
+        for i, cid in enumerate(sorted(S.roster))
+    }
+    new_active = {cid for cid, on in states.items() if on}
+    if not disabled and new_active != S.active:
+        if len(new_active) >= 2:
+            S.active = new_active
+            _sync_world()
+            st.rerun()
+        else:
+            st.warning("Garde au moins 2 pays en jeu.")
+
+    with st.form("forge_country_form"):
+        st.markdown("**🧬 Inventer un pays** — une super-intelligence lui écrit sa fiche")
+        name = st.text_input("Nom", placeholder="ex. Néo-Atlantis")
+        concept = st.text_area(
+            "Concept — idéologie, forces, intentions",
+            placeholder="ex. cité-État IA obsédée par la souveraineté technologique",
+        )
+        forged = st.form_submit_button("🧬 Forger et ajouter", disabled=disabled)
+    if forged and name.strip():
+        cid = slugify(name)
+        while cid in S.roster:
+            cid += "_"
+        with st.spinner(f"Une super-intelligence rédige la fiche de {name}…"):
+            S.roster[cid] = forge_country(S.backend, name, concept, country_id=cid)
+        S.active.add(cid)
+        _sync_world()
+        st.rerun()
+
+
 def render_map_tab() -> None:
     """Carte du monde : les pays du jeu colorés selon l'indice Utopie (rouge ↔ vert)."""
     st.subheader("🗺️ Carte du monde")
@@ -660,9 +713,15 @@ def render_map_tab() -> None:
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    flags = " ".join(f"{flag(cid)} {world.countries[cid].name}" for cid, _ in played)
+    flags = " · ".join(f"{flag(c)} {world.countries[c].name}" for c in sorted(world.countries))
     st.caption(f"**En jeu :** {flags}")
-    st.caption("🔜 Bientôt : activer / désactiver des pays d'un clic pour composer un round.")
+    off_map = [cid for cid in sorted(world.countries) if cid not in _ISO3]
+    if off_map:
+        names = ", ".join(world.countries[c].name for c in off_map)
+        st.caption(f"ℹ️ Pays inventés (hors carte géographique) : {names}")
+
+    st.divider()
+    _render_country_controls()
 
 
 # ------------------------------ Sidebar ------------------------------
