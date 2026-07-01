@@ -4,7 +4,7 @@ Simulation géopolitique **agentique** : des pays-agents, contraints par des don
 
 > Voir `docs/` pour l'**état de l'art** et le **plan d'action Claude Code**, et `CLAUDE.md` pour le guide projet.
 
-## Phase 0 — moteur déterministe (sans LLM) ✅
+## Phase 0 — moteur déterministe (sans LLM) 
 
 La boucle de simulation tourne déjà, **sans aucun LLM** :
 
@@ -13,7 +13,7 @@ La boucle de simulation tourne déjà, **sans aucun LLM** :
 - **Moteurs** : conséquences déterministes, risque explicable (escalade, perturbation éco, fracture d'alliance), round engine.
 - **Scénario seed** : crise de la **mer Rouge**, 6 acteurs (USA, Chine, France, Égypte, Iran, Arabie saoudite), 3 événements.
 
-## Phase 1 — agents LLM + service d'inférence local ✅
+## Phase 1 — agents LLM + service d'inférence local 
 
 Les pays-agents décident désormais via un **LLM local**, en **JSON validé** :
 
@@ -23,7 +23,7 @@ Les pays-agents décident désormais via un **LLM local**, en **JSON validé** :
 
 > Baseline mesurée (mistral 7B Q4, RTX 2060 Super 8 Go) : **~56 tok/s**, ~3,4 s/agent, **~6,0 Go VRAM**, **0 fallback** sur 18 appels.
 
-## Phase 2 — diplomatie ✅
+## Phase 2 — diplomatie 
 
 Une **phase de négociation** s'intercale dans le round (`décisions → conséquences → diplomatie → risque`) :
 
@@ -31,7 +31,7 @@ Une **phase de négociation** s'intercale dans le round (`décisions → conséq
 - **Pactes** : à l'acceptation, un pacte partagé `pact:<a>+<b>` est ajouté aux deux pays (`share_alliance` devient vrai) et la tension baisse — ce qui alimente la **fracture d'alliance** du moteur de risque.
 - **Négociation visible** : `DiplomaticMessage` bilatéraux (offre + réponse) + **résumé public** dans `RoundSummary`, tracés dans `WorldState.diplomatic_history`.
 
-## Phase 3 — RAG sourcé ✅
+## Phase 3 — RAG sourcé 
 
 Pipeline de retrieval **hybride et explicable**, isolé dans `rag/` :
 
@@ -42,14 +42,14 @@ Pipeline de retrieval **hybride et explicable**, isolé dans `rag/` :
 
 > Corpus seed **illustratif** (`data/corpus_seed/`) ; l'ingestion de données réelles est la **Phase 4**.
 
-## Phase 4 — données réelles ✅
+## Phase 4 — données réelles 
 
 Les profils pays sont **sourcés** (World Bank/IMF/SIPRI/WIPO 2024) et **reproductibles** :
 
 - `data/sources/indicators.json` : entrées brutes sourcées + provenance ; `docs/data_governance.md` documente source/année/confiance/normalisation/licences par champ.
 - **Build déterministe** (`ingestion/`) : `python -m ingestion.build --check` garantit que chaque `data/countries/*.json` **est reproductible** depuis les sources (testé en CI).
 
-## Interface — théâtre live des super-intelligences ⭐
+## Interface — théâtre live des super-intelligences 
 
 Le cœur du projet : un **théâtre temps réel** où l'on **rend visibles les boîtes noires** du système
 multi-agent. En spectateur, un round se déroule sous les yeux :
@@ -59,7 +59,7 @@ multi-agent. En spectateur, un round se déroule sous les yeux :
    **streaming**, avec **badge du modèle** (`🧠 usa · mistral:latest`) et **chrono** (traçabilité du séquentiel) ;
 3. un **Juge LLM** lit toute la négociation, **arbitre** qui a gagné / les alliances (raisonnement streamé),
    et fixe les **deltas d'attributs** — comme un G7, **non déterministe**, mais **borné** par un garde-fou ;
-4. un **📜 communiqué G7** commun clôt le round (+ soutien par pays) ; la **date avance** (~6 mois).
+4. un ** communiqué G7** commun clôt le round (+ soutien par pays) ; la **date avance** (~6 mois).
 
 **Réalisme (coût ~nul, déterministe)** : chaque super-intelligence négocie **depuis sa vraie fiche**
 (`CountryState` : éco/armée/ressources/stabilité/idéologie + un **penchant** dérivé), **perçoit**
