@@ -47,6 +47,9 @@ class CountryState(BaseModel):
     ideology: list[str] = Field(default_factory=list)
     strategic_priorities: list[str] = Field(default_factory=list)
     memory_summary: str = ""
+    # Surcharge optionnelle de la « fiche de comportement » (sinon dérivée) : clés
+    # red_line / concessions / domestic_constraints / urgency. Cf. simulation.mandate.
+    mandate: dict[str, str] = Field(default_factory=dict)
 
     @classmethod
     def from_json_file(cls, path: str | Path) -> CountryState:

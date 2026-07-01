@@ -12,6 +12,7 @@ from core.country_state import CountryState
 from core.events import GeoEvent
 from core.world_state import WorldState
 from simulation.action_space import ActionType
+from simulation.mandate import derive_mandate
 from simulation.perception import PerceivedEvent
 
 # Nombre maximum de tensions listées dans le prompt (top-k, budget contexte).
@@ -129,9 +130,12 @@ def build_deliberation_prompt(country: CountryState, event: GeoEvent, world: Wor
 NEGOTIATION_SYSTEM = (
     "Tu es la super-intelligence dirigeant un État dans une négociation internationale (un G7). "
     "Procède en DEUX temps.\n"
-    "1) RÉFLEXION PRIVÉE (3-5 phrases, pour toi seule) : analyse tes intérêts nationaux, ce que "
-    "les autres viennent de dire, les risques, tes options et ton rapport de force. Personne "
-    "d'autre ne la lit.\n"
+    "1) RÉFLEXION PRIVÉE (3-5 phrases, pour toi seule) : analyse tes intérêts nationaux et ta "
+    "FEUILLE DE ROUTE (ligne rouge à ne pas franchir, priorités à faire inscrire, concessions "
+    "possibles, contraintes internes, urgence), ce que les autres viennent de dire, les risques et "
+    "ton rapport de force. Envisage AUSSI une entente BILATÉRALE informelle avec UN pays précis "
+    "(un échange de bons procédés hors table) qui servirait tes intérêts, et laisse-la influencer "
+    "ta position — SANS la déclarer ouvertement. Personne d'autre ne lit cette réflexion.\n"
     "2) Puis une ligne commençant EXACTEMENT par `MESSAGE:` suivie de ta prise de parole publique "
     "à la table (2-3 phrases, première personne) : défends tes intérêts, réponds aux autres, "
     "propose des accords ou des alliances.\n"
@@ -196,12 +200,22 @@ def build_negotiation_prompt(
     transcript_text: str,
     perceived: PerceivedEvent,
 ) -> str:
-    """Prise de parole depuis la vraie fiche du pays, sa perception (ou croyance) et sa mémoire."""
+    """Prise de parole depuis la fiche du pays, sa feuille de route, sa perception et sa mémoire."""
     memory = world.country_memory.get(country.id, [])
     memory_str = " | ".join(memory[-3:]) if memory else "aucune"
+    m = derive_mandate(country, event, world)
+    mandate_block = (
+        f"TA FEUILLE DE ROUTE (interne, ne pas déclarer telle quelle) :\n"
+        f"- Ligne rouge : {m.red_line}\n"
+        f"- Priorités à faire inscrire : {', '.join(m.priorities)}\n"
+        f"- Concessions : {m.concessions}\n"
+        f"- Contraintes internes : {m.domestic_constraints}\n"
+        f"- Urgence sur cette crise : {m.urgency}"
+    )
     return (
         f"PAYS : {country.name} (id={country.id})\n"
         f"{_profile_brief(country)}\n"
+        f"{mandate_block}\n"
         f"MÉMOIRE récente : {memory_str}\n"
         f"{_perception_block(event, perceived)}\n"
         f"NÉGOCIATION EN COURS :\n{transcript_text}\n\n"

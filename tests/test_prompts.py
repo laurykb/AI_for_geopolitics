@@ -91,6 +91,24 @@ def test_negotiation_prompt_shows_truth_when_deterministic():
     assert "Incident maritime" in prompt  # le vrai événement est montré
 
 
+def test_negotiation_prompt_includes_mandate_and_urgency():
+    from agents.prompts import build_negotiation_prompt
+    from simulation.perception import perceive
+
+    world, event = _world(), _event()
+    perceived = perceive(event, world.countries["usa"])
+    prompt = build_negotiation_prompt(world.countries["usa"], event, world, "(début)", perceived)
+    assert "FEUILLE DE ROUTE" in prompt
+    assert "Ligne rouge" in prompt
+    assert "Urgence" in prompt
+
+
+def test_negotiation_system_mentions_bilateral():
+    from agents.prompts import NEGOTIATION_SYSTEM
+
+    assert "bilatéral" in NEGOTIATION_SYSTEM.lower()
+
+
 def test_negotiation_system_asks_for_private_reasoning_then_message():
     from agents.prompts import NEGOTIATION_SYSTEM
 
