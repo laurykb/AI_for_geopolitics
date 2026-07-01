@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class MarketType(StrEnum):
@@ -54,12 +54,19 @@ class ResolutionCriterion(BaseModel):
 
 
 class Account(BaseModel):
-    """Solde de crédits d'un participant."""
+    """Solde de crédits d'un participant ; `initial_balance` = base du P&L (spéc §5)."""
 
     id: str
     name: str
     kind: AccountKind = AccountKind.HUMAN
     balance: float = 0.0
+    initial_balance: float | None = None  # défaut = balance à la création
+
+    @model_validator(mode="after")
+    def _default_initial(self) -> Account:
+        if self.initial_balance is None:
+            self.initial_balance = self.balance
+        return self
 
 
 class Outcome(BaseModel):

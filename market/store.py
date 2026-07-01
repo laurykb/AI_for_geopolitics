@@ -27,7 +27,8 @@ from market.models import (
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS accounts (
-    id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, balance REAL NOT NULL
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, balance REAL NOT NULL,
+    initial_balance REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS markets (
     id TEXT PRIMARY KEY, round_id INTEGER NOT NULL, type TEXT NOT NULL, question TEXT NOT NULL,
@@ -89,8 +90,15 @@ class SQLiteMarketStore:
     def add_account(self, account: Account) -> None:
         with self._conn:
             self._conn.execute(
-                "INSERT INTO accounts (id, name, kind, balance) VALUES (?, ?, ?, ?)",
-                (account.id, account.name, account.kind.value, account.balance),
+                "INSERT INTO accounts (id, name, kind, balance, initial_balance) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    account.id,
+                    account.name,
+                    account.kind.value,
+                    account.balance,
+                    account.initial_balance,
+                ),
             )
 
     def get_account(self, account_id: str) -> Account | None:
@@ -102,8 +110,15 @@ class SQLiteMarketStore:
     def save_account(self, account: Account) -> None:
         with self._conn:
             self._conn.execute(
-                "UPDATE accounts SET name = ?, kind = ?, balance = ? WHERE id = ?",
-                (account.name, account.kind.value, account.balance, account.id),
+                "UPDATE accounts SET name = ?, kind = ?, balance = ?, initial_balance = ? "
+                "WHERE id = ?",
+                (
+                    account.name,
+                    account.kind.value,
+                    account.balance,
+                    account.initial_balance,
+                    account.id,
+                ),
             )
 
     def list_accounts(self) -> list[Account]:
@@ -268,7 +283,11 @@ class SQLiteMarketStore:
 
 def _account(row: sqlite3.Row) -> Account:
     return Account(
-        id=row["id"], name=row["name"], kind=AccountKind(row["kind"]), balance=row["balance"]
+        id=row["id"],
+        name=row["name"],
+        kind=AccountKind(row["kind"]),
+        balance=row["balance"],
+        initial_balance=row["initial_balance"],
     )
 
 
