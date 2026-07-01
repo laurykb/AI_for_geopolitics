@@ -8,6 +8,10 @@ dependencies = [
     "ollama>=0.4",  # client backend d'inférence local (P1)
     "numpy>=1.26",  # index vectoriel in-memory (P3)
     "rank-bm25>=0.2",  # retrieval lexical (P3)
+    "fastapi>=0.110",  # dashboard / API (P5)
+    "uvicorn>=0.29",  # serveur ASGI (P5)
+    "jinja2>=3.1",  # gabarits HTML (P5)
+    "httpx>=0.27",  # client (TestClient FastAPI) (P5)
 ]
 
 [project.optional-dependencies]

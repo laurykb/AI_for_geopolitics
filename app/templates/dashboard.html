@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI for Geopolitics — Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<header>
+  <h1>AI for Geopolitics — crise de la mer Rouge</h1>
+  <p class="sub">Simulation déterministe (rule-based) · {{ data.countries|length }} acteurs ·
+     {{ data.summaries|length }} rounds · {{ data.pacts|length }} pacte(s)</p>
+</header>
+
+<main>
+  <section class="card">
+    <h2>Risque par round</h2>
+    <div class="legend">
+      {% for label, color in risk_legend %}
+      <span class="chip"><span class="swatch" style="background:{{ color }}"></span>{{ label }}</span>
+      {% endfor %}
+    </div>
+    <div class="chart">{{ risk_svg|safe }}</div>
+  </section>
+
+  <section class="card">
+    <h2>Timeline</h2>
+    {% for s in data.summaries %}
+    <article class="round">
+      <h3>Round {{ s.round_id }} — {{ s.event.title }}</h3>
+      <p class="headline">{{ s.headline }}</p>
+      <p class="risk">
+        escalade <b>{{ '%.2f'|format(s.risk.escalation) }}</b> ·
+        perturb. éco <b>{{ '%.2f'|format(s.risk.economic_disruption) }}</b> ·
+        fracture <b>{{ '%.2f'|format(s.risk.alliance_fracture) }}</b> ·
+        incertitude <b>{{ '%.2f'|format(s.risk.uncertainty) }}</b>
+      </p>
+      <table class="decisions">
+        <thead><tr><th>Pays</th><th>Action</th><th>Cible</th><th>Intensité</th></tr></thead>
+        <tbody>
+        {% for d in s.decisions %}
+          <tr>
+            <td>{{ d.country }}</td>
+            <td>{{ d.action.value }}</td>
+            <td>{{ d.target or '—' }}</td>
+            <td>{{ '%.2f'|format(d.intensity) }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <p class="diplo">🕊️ {{ s.diplomatic_summary }}</p>
+    </article>
+    {% endfor %}
+  </section>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Tensions bilatérales (état final)</h2>
+      <div class="chart">{{ heatmap_svg|safe }}</div>
+    </section>
+
+    <section class="card">
+      <h2>Alliances &amp; pactes</h2>
+      <ul class="alliances">
+        {% for cid, al in data.alliances.items() %}
+        <li><b>{{ cid }}</b> : {{ al|join(', ') if al else '—' }}</li>
+        {% endfor %}
+      </ul>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>Journal diplomatique</h2>
+    {% if data.messages %}
+    <ul class="messages">
+      {% for m in data.messages %}
+      <li><span class="tag">R{{ m.round_id }}</span>
+          <b>{{ m.sender }}</b> → <b>{{ m.recipient }}</b> : {{ m.content }}</li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p>Aucun message diplomatique sur ce run.</p>
+    {% endif %}
+  </section>
+</main>
+
+<footer>
+  <p>Outil d'analyse de signaux de risque explicables — pas un oracle.
+     Données : profils pays sourcés (P4).</p>
+</footer>
+</body>
+</html>
