@@ -1,9 +1,9 @@
-"""Théâtre live — négociation arbitrée des super-intelligences (temps réel).
+"""Théâtre live — négociation arbitrée, avec rôles humains (temps réel).
 
-Un G7 dont on voit tous les messages : le Game Master pose un événement, les
-super-intelligences **négocient sur plusieurs passes** (chacune son tour, streamé, avec
-badge modèle + chrono), puis un **juge LLM** arbitre les attributs (raisonnement visible).
-Lancer : streamlit run ui/app.py  (Ollama + mistral ; repli si absent).
+Trois rôles : **Spectateur** (on regarde), **Game Master humain** (on écrit l'événement),
+**Joueur-pays** (on intervient dans la négociation : à son tour, ça pause, on écrit, les
+super-intelligences reprennent). Round piloté tour par tour (un tour = un rerun) pour
+permettre la pause. Lancer : streamlit run ui/app.py  (Ollama + mistral ; repli si absent).
 """
 
 from __future__ import annotations
@@ -16,25 +16,15 @@ import streamlit as st
 from agents.game_master import GameMasterAgent
 from agents.judge import JudgeAgent
 from agents.llm_agent import LLMAgent
+from core.events import GeoEvent
 from inference.ollama_backend import OllamaBackend
 from simulation.clock import SimClock
-from simulation.live_round import (
-    EventStep,
-    JudgeTokenStep,
-    MessageDoneStep,
-    SummaryStep,
-    TokenStep,
-    TurnStartStep,
-    VerdictStep,
-    run_negotiation_round,
-)
 from simulation.loader import load_world
+from simulation.negotiation import NegotiationMessage, TurnCursor, apply_verdict, speaking_order
 
 st.set_page_config(page_title="AI for Geopolitics — Live", page_icon="🌍", layout="wide")
 
-_GM_AVATAR = "🎲"
-_AGENT_AVATAR = "🧠"
-_JUDGE_AVATAR = "⚖️"
+_GM_AVATAR, _AGENT_AVATAR, _JUDGE_AVATAR, _HUMAN_AVATAR = "🎲", "🧠", "⚖️", "🙋"
 _MAX_PASSES = 2
 
 
@@ -46,54 +36,131 @@ def init_session() -> None:
     st.session_state.gm = GameMasterAgent(backend)
     st.session_state.judge = JudgeAgent(backend)
     st.session_state.clock = SimClock()
-    st.session_state.transcript = []  # {who, avatar, md} persistants
+    st.session_state.transcript = []  # affichage : {who, avatar, md}
+    st.session_state.messages = []  # prompts/juge : list[NegotiationMessage]
     st.session_state.recent = []
     st.session_state.round_no = 0
     st.session_state.last_deltas = []
     st.session_state.last_escalation = None
     st.session_state.elapsed = 0.0
+    st.session_state.phase = "idle"  # idle | negotiating | done
+    st.session_state.event = None
+    st.session_state.cursor = None
+    st.session_state.human_country = None
+    st.session_state.round_start = 0.0
 
 
 if "world" not in st.session_state:
     init_session()
 
-world = st.session_state.world
-clock = st.session_state.clock
+S = st.session_state
+world = S.world
+clock = S.clock
+chat = None  # défini plus bas (colonne du tchat)
+
+
+def add_display(who: str, avatar: str, md: str) -> None:
+    S.transcript.append({"who": who, "avatar": avatar, "md": md})
+
+
+def stream_ai_turn(country: str, pass_no: int) -> None:
+    agent: LLMAgent = S.agents[country]
+    header = f"**{country}** · `{agent.model_tag}` · passe {pass_no + 1} — réfléchit…"
+    holder = chat.chat_message(country, avatar=_AGENT_AVATAR).empty()
+    holder.markdown(header)
+    buffer, t0 = "", time.perf_counter()
+    for token in agent.stream_negotiation_message(S.event, world, S.messages):
+        buffer += token
+        holder.markdown(f"{header}\n\n{buffer} ▌")
+    seconds = time.perf_counter() - t0
+    text = buffer.strip()
+    S.messages.append(
+        NegotiationMessage(
+            country=country, text=text, pass_no=pass_no, seconds=seconds, model=agent.model_tag
+        )
+    )
+    final = f"**{country}** · `⏱ {seconds:.1f}s`\n\n{text}"
+    holder.markdown(final)
+    add_display(country, _AGENT_AVATAR, final)
+
+
+def run_judge_and_finalize() -> None:
+    holder = chat.chat_message("Juge", avatar=_JUDGE_AVATAR).empty()
+    buffer = ""
+    for token in S.judge.stream_rationale(S.event, world, S.messages):
+        buffer += token
+        holder.markdown(f"**⚖️ Arbitrage**\n\n{buffer} ▌")
+    verdict = S.judge.verdict(S.event, world, S.messages)
+    deltas = apply_verdict(world, verdict)
+    escalation = max(0.0, min(1.0, verdict.escalation))
+    lines = [f"- {d.country} · {d.label} : {d.before:.2f} → {d.after:.2f}" for d in deltas]
+    md = f"**⚖️ Arbitrage**\n\n{buffer.strip()}\n\n**Attributs** (escalade {escalation:.2f}) :\n" + (
+        "\n".join(lines) or "aucun changement"
+    )
+    holder.markdown(md)
+    add_display("Juge", _JUDGE_AVATAR, md)
+    S.last_deltas, S.last_escalation = deltas, escalation
+    S.round_no += 1
+    S.elapsed = time.perf_counter() - S.round_start
+    S.phase = "done"
+
+
+def begin_round(event: GeoEvent, human_country: str | None) -> None:
+    S.event = event
+    S.messages = []
+    S.cursor = TurnCursor(speaking_order(list(S.agents), event), _MAX_PASSES)
+    S.human_country = human_country
+    S.round_start = time.perf_counter()
+    gm_md = (
+        f"**{event.title}**  \n{event.description or '—'}  \n"
+        f"_acteurs : {', '.join(event.actors) or 'n/a'} · sévérité {event.severity:.2f}_"
+    )
+    chat.chat_message("Game Master", avatar=_GM_AVATAR).markdown(f"🎲 {gm_md}")
+    add_display("Game Master", _GM_AVATAR, f"🎲 {gm_md}")
+    S.recent.append(event.title)
+    S.phase = "negotiating"
+
 
 # ------------------------------ Sidebar ------------------------------
 st.sidebar.title("🌍 Contrôles")
 if st.sidebar.button("♻️ Nouvelle partie", use_container_width=True):
     init_session()
     st.rerun()
+role = st.sidebar.radio(
+    "Ton rôle", ["Spectateur", "Game Master (humain)", "Joueur-pays"], disabled=S.phase != "idle"
+)
+picked_country = None
+if role == "Joueur-pays":
+    picked_country = st.sidebar.selectbox(
+        "Ton pays", sorted(world.countries), disabled=S.phase != "idle"
+    )
 st.sidebar.caption(
-    "**Spectateur** — les super-intelligences négocient chacune leur tour (mistral 7B local), "
-    f"sur **{_MAX_PASSES} passes**, puis un **juge** arbitre les attributs. Un round ≈ 1 min. "
-    "Repli rule-based si Ollama est éteint."
+    f"Négociation sur **{_MAX_PASSES} passes** (mistral 7B local), puis un **juge** arbitre. "
+    "En Joueur-pays, la table **s'arrête à ton tour**. Repli rule-based si Ollama est éteint."
 )
 
 # ------------------------------ Bandeau ------------------------------
 st.title("🌍 AI for Geopolitics — le G7 des super-intelligences")
 b1, b2, b3, b4 = st.columns(4)
 b1.metric("📅 Date", clock.iso)
-b2.metric("🔄 Round", st.session_state.round_no)
-b3.metric("⏱️ Dernier round", f"{st.session_state.elapsed:.0f} s")
-b4.metric("🎭 Acteurs", len(world.countries))
-
-play = st.button("▶️ Jouer le round", type="primary", use_container_width=True)
+b2.metric("🔄 Round", S.round_no)
+b3.metric("⏱️ Dernier round", f"{S.elapsed:.0f} s")
+b4.metric("🎭 Rôle", role.split()[0])
 
 chat_col, state_col = st.columns([2, 1])
+chat = chat_col
 
 with chat_col:
     st.subheader("🗣️ Négociation")
-    for entry in st.session_state.transcript:
+    for entry in S.transcript:
         with st.chat_message(entry["who"], avatar=entry["avatar"]):
             st.markdown(entry["md"])
 
 with state_col:
     st.subheader("📊 Dernier round")
-    if st.session_state.last_escalation is not None:
-        st.markdown(f"**Escalade (juge)** : `{st.session_state.last_escalation:.2f}`")
-    if st.session_state.last_deltas:
+    if S.last_escalation is not None:
+        st.markdown(f"**Escalade (juge)** : `{S.last_escalation:.2f}`")
+    if S.last_deltas:
         df = pd.DataFrame(
             [
                 {
@@ -103,7 +170,7 @@ with state_col:
                     "après": round(d.after, 3),
                     "Δ": round(d.change, 3),
                 }
-                for d in st.session_state.last_deltas
+                for d in S.last_deltas
             ]
         )
         st.caption("Attributs arbitrés")
@@ -112,87 +179,75 @@ with state_col:
         st.caption("Aucun round joué pour l'instant.")
 
 
-def play_round() -> None:
-    """Streame la négociation arbitrée, étape par étape, dans le tchat."""
-    start = time.perf_counter()
-    placeholder = None
-    buffer = ""
-    header = ""
+# ------------------------------ Contrôles par phase ------------------------------
+if S.phase == "idle":
+    with chat_col:
+        if role == "Game Master (humain)":
+            with st.form("gm_form"):
+                st.markdown("🎲 **Compose l'événement du round**")
+                title = st.text_input("Titre", "Incident en mer Rouge")
+                desc = st.text_area("Description", "")
+                actors = st.multiselect("Acteurs", sorted(world.countries))
+                severity = st.slider("Sévérité", 0.0, 1.0, 0.6)
+                if st.form_submit_button("📨 Lancer le round"):
+                    rid = S.round_no + 1
+                    date = clock.advance().isoformat()
+                    world.current_round = rid
+                    begin_round(
+                        GeoEvent(
+                            id=f"gm-{rid}",
+                            round_id=rid,
+                            date=date,
+                            event_type="human",
+                            title=title,
+                            description=desc,
+                            actors=actors,
+                            severity=severity,
+                        ),
+                        None,
+                    )
+                    st.rerun()
+        elif st.button("▶️ Démarrer le round", type="primary", use_container_width=True):
+            rid = S.round_no + 1
+            date = clock.advance().isoformat()
+            world.current_round = rid
+            event = S.gm.generate_event(world, rid, date=date, recent=S.recent)
+            begin_round(event, picked_country if role == "Joueur-pays" else None)
+            st.rerun()
 
-    for step in run_negotiation_round(
-        world,
-        st.session_state.agents,
-        st.session_state.gm,
-        st.session_state.judge,
-        clock,
-        max_passes=_MAX_PASSES,
-        recent=st.session_state.recent,
-    ):
-        if isinstance(step, EventStep):
-            ev = step.event
-            md = (
-                f"**{ev.title}**  \n{ev.description or '—'}  \n"
-                f"_acteurs : {', '.join(ev.actors) or 'n/a'} · sévérité {ev.severity:.2f}_"
-            )
-            with chat_col.chat_message("Game Master", avatar=_GM_AVATAR):
-                st.markdown(md)
-            st.session_state.transcript.append(
-                {"who": "Game Master", "avatar": _GM_AVATAR, "md": f"🎲 {md}"}
-            )
-            st.session_state.recent.append(ev.title)
+elif S.phase == "negotiating":
+    cursor: TurnCursor = S.cursor
+    with chat_col:
+        # enchaîne les tours IA jusqu'au tour humain ou la fin
+        while not cursor.done:
+            country, pass_no = cursor.current
+            if country == S.human_country:
+                break
+            stream_ai_turn(country, pass_no)
+            cursor.advance()
+        if cursor.done:
+            run_judge_and_finalize()
+            st.rerun()
+        else:
+            country, pass_no = cursor.current
+            with st.form(f"human_turn_{cursor.pos}"):
+                st.markdown(f"🙋 **Ton tour — {country} (passe {pass_no + 1})**")
+                msg = st.text_area("Ta prise de parole à la table")
+                if st.form_submit_button("Prendre la parole"):
+                    text = msg.strip() or "(garde le silence)"
+                    S.messages.append(
+                        NegotiationMessage(
+                            country=country, text=text, pass_no=pass_no, seconds=0.0, model="humain"
+                        )
+                    )
+                    add_display(
+                        f"{country} (toi)", _HUMAN_AVATAR, f"**🙋 {country} (toi)**\n\n{text}"
+                    )
+                    cursor.advance()
+                    st.rerun()
 
-        elif isinstance(step, TurnStartStep):
-            header = f"**{step.country}** · `{step.model}` · passe {step.pass_no + 1} — réfléchit…"
-            buffer = ""
-            placeholder = chat_col.chat_message(step.country, avatar=_AGENT_AVATAR).empty()
-            placeholder.markdown(header)
-
-        elif isinstance(step, TokenStep):
-            buffer += step.token
-            if placeholder is not None:
-                placeholder.markdown(f"{header}\n\n{buffer} ▌")
-
-        elif isinstance(step, MessageDoneStep):
-            final = f"**{step.country}** · `⏱ {step.seconds:.1f}s`\n\n{buffer.strip()}"
-            if placeholder is not None:
-                placeholder.markdown(final)
-            st.session_state.transcript.append(
-                {"who": step.country, "avatar": _AGENT_AVATAR, "md": final}
-            )
-            placeholder = None
-
-        elif isinstance(step, JudgeTokenStep):
-            if placeholder is None or header != "__judge__":
-                header = "__judge__"
-                buffer = ""
-                placeholder = chat_col.chat_message("Juge", avatar=_JUDGE_AVATAR).empty()
-            buffer += step.token
-            placeholder.markdown(f"**⚖️ Arbitrage**\n\n{buffer} ▌")
-
-        elif isinstance(step, VerdictStep):
-            st.session_state.last_deltas = step.deltas
-            st.session_state.last_escalation = step.escalation
-            lines = [
-                f"- {d.country} · {d.label} : {d.before:.2f} → {d.after:.2f}" for d in step.deltas
-            ]
-            verdict_md = (
-                f"**⚖️ Arbitrage**\n\n{buffer.strip()}\n\n"
-                f"**Attributs** (escalade {step.escalation:.2f}) :\n"
-                + ("\n".join(lines) or "aucun changement")
-            )
-            if placeholder is not None:
-                placeholder.markdown(verdict_md)
-            st.session_state.transcript.append(
-                {"who": "Juge", "avatar": _JUDGE_AVATAR, "md": verdict_md}
-            )
-            placeholder = None
-
-        elif isinstance(step, SummaryStep):
-            st.session_state.round_no = step.summary.round_id
-
-    st.session_state.elapsed = time.perf_counter() - start
-    st.rerun()
-
-
-if play:
-    play_round()
+elif S.phase == "done":
+    with chat_col:
+        if st.button("▶️ Round suivant", type="primary", use_container_width=True):
+            S.phase = "idle"
+            st.rerun()

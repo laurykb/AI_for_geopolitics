@@ -66,8 +66,11 @@ Métaphore : un **G7 dont on voit tous les messages**. Sur RTX 2060 Super (8 Go)
 L'orchestration (`simulation/live_round.py`, `simulation/negotiation.py`, `agents/judge.py`) est
 **testée sans Streamlit** ; le back-end **FastAPI** reste (`/health` + `/api/run`) pour l'archi services.
 
-> À venir : rôles humains (GM humain, **joueur-pays** qui interjecte dans la négociation), puis substrat
-> distribué **Kubernetes + MCP** (agents-services échangeant en langage naturel).
+**Trois rôles** (sélecteur) : **Spectateur** ; **Game Master humain** (tu composes l'événement) ;
+**Joueur-pays** — à ton tour, la table **s'arrête**, tu écris ton message, puis les super-intelligences
+**reprennent** (round piloté tour par tour pour permettre la pause).
+
+> À venir : substrat distribué **Kubernetes + MCP** (agents-services échangeant en langage naturel).
 
 > Slice 1 (spectateur). À venir : messages **bilatéraux** multi-tours, rôles humains (incarner/GM) en live, attributs animés.
 
