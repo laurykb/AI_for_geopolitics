@@ -25,6 +25,15 @@ SYSTEM_PROMPT = (
     "autour, sans Markdown."
 )
 
+# Délibération observable (round temps réel) : raisonnement à voix haute + ligne DECISION.
+DELIBERATION_SYSTEM = (
+    "Tu es la super-intelligence qui dirige un État dans une simulation géopolitique. "
+    "Tu es un outil d'analyse de signaux de risque, PAS un oracle, et tu n'engages jamais de "
+    "décision létale autonome. Réfléchis à voix haute en 2 à 3 phrases (intérêts nationaux, "
+    "alliances, rivalités), puis termine EXACTEMENT par une ligne au format :\n"
+    "DECISION: <action> <cible|none> <intensité 0.0-1.0>"
+)
+
 
 class LLMDecision(BaseModel):
     """Sous-ensemble de la décision produit par le LLM.
@@ -89,4 +98,26 @@ def build_decision_prompt(country: CountryState, event: GeoEvent, world: WorldSt
         f"allié visé. `intensity` et `risk_assessment` sont des décimaux entre 0.0 et 1.0. "
         f"Réponds en JSON : {{action, target, intensity, "
         f"public_statement, risk_assessment, reasoning}}."
+    )
+
+
+def build_deliberation_prompt(country: CountryState, event: GeoEvent, world: WorldState) -> str:
+    """Prompt de délibération observable : raisonnement libre puis ligne DECISION."""
+    actions = ", ".join(a.value for a in ActionType)
+    tensions = _relevant_tensions(country.id, event, world)
+    tensions_str = "; ".join(tensions) if tensions else "aucune notable"
+    candidates = ", ".join(cid for cid in sorted(world.countries) if cid != country.id)
+    when = event.date or f"round {event.round_id}"
+    return (
+        f"PAYS : {country.name} (id={country.id}, régime={country.political_system})\n"
+        f"- Priorités : {', '.join(country.strategic_priorities) or 'n/a'} | "
+        f"Alliances : {', '.join(country.alliances) or 'aucune'} | "
+        f"Rivaux : {', '.join(country.rivals) or 'aucun'}\n"
+        f"ÉVÉNEMENT ({when}) : {event.title}\n"
+        f"- {event.description or '—'}\n"
+        f"- Acteurs : {', '.join(event.actors) or 'n/a'} | sévérité {event.severity:.2f}\n"
+        f"- Tensions (toi vs acteurs) : {tensions_str}\n\n"
+        f"Réfléchis à voix haute (2-3 phrases), puis termine par :\n"
+        f"DECISION: <action> <cible|none> <intensité 0.0-1.0>\n"
+        f"action ∈ {{{actions}}} ; cible = un id parmi [{candidates}] ou none."
     )

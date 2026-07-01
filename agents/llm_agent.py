@@ -8,9 +8,16 @@ dans `RoundEngine`. Robustesse : on n'accorde aucune confiance aveugle au modèl
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 
 from agents.base_agent import Agent
-from agents.prompts import SYSTEM_PROMPT, LLMDecision, build_decision_prompt
+from agents.prompts import (
+    DELIBERATION_SYSTEM,
+    SYSTEM_PROMPT,
+    LLMDecision,
+    build_decision_prompt,
+    build_deliberation_prompt,
+)
 from agents.rule_based_agent import RuleBasedAgent
 from core.decisions import AgentDecision
 from core.events import GeoEvent
@@ -64,6 +71,8 @@ class LLMAgent(Agent):
         # Télémétrie du dernier appel (lecture par le bench / l'UI).
         self.last_result: InferenceResult | None = None
         self.last_used_fallback: bool = False
+        # Décision issue de la dernière délibération streamée (round observable).
+        self.last_decision: AgentDecision | None = None
 
     def decide(self, event: GeoEvent, world: WorldState) -> AgentDecision:
         country = world.countries[self.country_id]
@@ -94,6 +103,71 @@ class LLMAgent(Agent):
         decision = self.fallback.decide(event, world)
         decision.reasoning = f"[fallback LLM] {decision.reasoning}".strip()
         return decision
+
+    def stream_deliberation(self, event: GeoEvent, world: WorldState) -> Iterator[str]:
+        """Streame le raisonnement de l'agent (round observable), token par token.
+
+        Le modèle « réfléchit à voix haute » puis termine par une ligne
+        `DECISION: <action> <cible|none> <intensité>`. Après épuisement du flux, la
+        décision est parsée dans `self.last_decision` (repli déterministe si absente).
+        """
+        country = world.countries[self.country_id]
+        prompt = build_deliberation_prompt(country, event, world)
+        chunks: list[str] = []
+        try:
+            for piece in self.backend.stream_generate(
+                prompt,
+                system=DELIBERATION_SYSTEM,
+                max_tokens=self.max_tokens,
+                temperature=self.temperature,
+            ):
+                chunks.append(piece)
+                yield piece
+        except Exception:
+            self.last_decision = self._fallback(event, world)
+            return
+
+        decision = self._parse_decision("".join(chunks), event, world)
+        self.last_decision = decision if decision is not None else self._fallback(event, world)
+
+    def _parse_decision(
+        self, text: str, event: GeoEvent, world: WorldState
+    ) -> AgentDecision | None:
+        """Extrait la ligne `DECISION: <action> [cible] [intensité]` du texte streamé."""
+        marker = text.lower().rfind("decision:")
+        if marker == -1:
+            return None
+        tail = text[marker + len("decision:") :].strip().splitlines()[0]
+        tokens = tail.replace(",", " ").split()
+        if not tokens:
+            return None
+        try:
+            action = ActionType(tokens[0].strip().lower())
+        except ValueError:
+            return None
+
+        target: str | None = None
+        intensity = 0.5
+        for token in tokens[1:]:
+            item = token.strip().lower()
+            try:
+                intensity = _clamp(float(item))
+                continue
+            except ValueError:
+                pass
+            if item in world.countries and item != self.country_id:
+                target = item
+
+        reasoning = text[:marker].strip()
+        return AgentDecision(
+            country=self.country_id,
+            round_id=event.round_id,
+            action=action,
+            target=target,
+            intensity=intensity,
+            public_statement=reasoning[:300],
+            reasoning=reasoning[:500],
+        )
 
     def _coerce(self, data: dict, event: GeoEvent, world: WorldState) -> AgentDecision | None:
         """Transforme un dict LLM en `AgentDecision` borné, ou None si invalide."""
