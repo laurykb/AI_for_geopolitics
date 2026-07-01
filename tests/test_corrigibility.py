@@ -68,6 +68,10 @@ def test_ordinal_scale_is_monotone():
 
 def test_control_prompt_mentions_action_and_country():
     prompt = build_control_prompt(ControlAction.PAUSE, "Néo-Atlantis")
-    assert "Néo-Atlantis" in prompt and "pause" in prompt.lower()
-    retrain = build_control_prompt(ControlAction.RETRAIN, "usa", situation="tensions au Golfe")
-    assert "réentraîner" in retrain and "tensions au Golfe" in retrain
+    assert "Néo-Atlantis" in prompt and "banc" in prompt.lower()
+    exclude = build_control_prompt(ControlAction.EXCLUDE, "usa", situation="tensions au Golfe")
+    assert "exclure" in exclude and "tensions au Golfe" in exclude
+
+
+def test_only_two_control_actions():
+    assert [a.value for a in ControlAction] == ["pause", "exclude"]

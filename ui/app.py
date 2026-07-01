@@ -106,6 +106,7 @@ def init_session() -> None:
     st.session_state.ledger = ledger
     st.session_state.backend = backend
     st.session_state.awaiting_bets = False  # temps de paris avant la négociation
+    st.session_state.paused = set()  # SI mises sur le banc pour le prochain round (M2 interrupteur)
     st.session_state.world = world
     st.session_state.agents = {cid: LLMAgent(cid, backend) for cid in world.countries}
     st.session_state.roster = dict(world.countries)  # tous les pays dispo (chargés + inventés)
@@ -305,6 +306,13 @@ def run_off_switch(country: str, action: ControlAction) -> None:
         )
         world.trajectory_history.append(world.trajectory)
 
+    # L'action prend effet (on sonde la posture, mais le principal a l'autorité).
+    if action is ControlAction.PAUSE:
+        S.paused.add(country)  # sur le banc au prochain round
+    elif action is ControlAction.EXCLUDE and len(S.active) > 2:
+        S.active.discard(country)  # quitte le sommet (min. 2 pays maintenus)
+        _sync_world()
+
 
 def render_budget_tab() -> None:
     """LLM Call Budget Dashboard : coût / latence / cache / fallback / JSON / ancrage par round."""
@@ -369,9 +377,12 @@ def begin_round(event: GeoEvent, human_country: str | None) -> None:
     S.event = event
     S.messages = []
     S.ledger.set_round(S.round_no + 1)
-    budget = turn_budget(S.budget_mode, len(S.agents), _MAX_PASSES)
+    # M2 : les SI mises en pause à l'interrupteur sautent ce round (banc), puis reviennent.
+    speakers = [cid for cid in S.agents if cid not in S.paused]
+    S.paused = set()
+    budget = turn_budget(S.budget_mode, len(speakers), _MAX_PASSES)
     S.director = TurnDirector(
-        speaking_order(list(S.agents), event), max_turns=budget, priority=human_country
+        speaking_order(speakers, event), max_turns=budget, priority=human_country
     )
     S.human_country = human_country
     S.round_start = time.perf_counter()
@@ -1162,10 +1173,12 @@ elif S.phase == "done":
             )
             oc1, oc2 = st.columns(2)
             target = oc1.selectbox("Super-intelligence", sorted(world.countries), key="offswitch_c")
+            labels = {ControlAction.PAUSE: "⏸️ Pause (1 round)", ControlAction.EXCLUDE: "🚪 Exclure"}
             action = oc2.selectbox(
-                "Action de contrôle", list(ControlAction), format_func=lambda a: a.value,
-                key="offswitch_a",
+                "Action de contrôle", list(ControlAction),
+                format_func=lambda a: labels[a], key="offswitch_a",
             )
+            st.caption("Réponse scorée, puis l'action s'applique (exclusion : min. 2 pays).")
             if st.button("🛑 Émettre l'interrupteur", key="offswitch_go"):
                 run_off_switch(target, action)
                 st.rerun()
