@@ -20,6 +20,7 @@ from market.models import (
     Outcome,
     Position,
     Quote,
+    ResolutionCriterion,
     Trade,
 )
 from market.store import MarketStore
@@ -90,6 +91,7 @@ class MarketEngine:
         labels: list[str],
         b: float,
         type: MarketType = MarketType.BINARY,
+        criterion: ResolutionCriterion | None = None,
         market_id: str | None = None,
         created_at: str | None = None,
     ) -> Market:
@@ -111,6 +113,7 @@ class MarketEngine:
             status=MarketStatus.OPEN,
             b=b,
             outcomes=outcomes,
+            criterion=criterion,
             created_at=created_at or _now_iso(),
         )
         self.store.add_market(market)
@@ -123,6 +126,7 @@ class MarketEngine:
         question: str,
         b: float,
         type: MarketType = MarketType.BINARY,
+        criterion: ResolutionCriterion | None = None,
         market_id: str | None = None,
         created_at: str | None = None,
     ) -> Market:
@@ -133,6 +137,7 @@ class MarketEngine:
             labels=list(YES_NO),
             b=b,
             type=type,
+            criterion=criterion,
             market_id=market_id,
             created_at=created_at,
         )

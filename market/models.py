@@ -35,6 +35,24 @@ class AccountKind(StrEnum):
     BOT = "bot"
 
 
+class ResolutionKind(StrEnum):
+    """Comment le Juge (oracle) résout un marché — cf. `market.resolution` (spéc §4)."""
+
+    ACTION = "action"  # une décision (pays, action[, cible]) a-t-elle eu lieu ce round ?
+    TRAJECTORY = "trajectory"  # l'indice Utopie a-t-il monté (ΔU > 0) ?
+    COUNCIL = "council"  # quelle SI a gagné le Conseil (catégoriel) ?
+
+
+class ResolutionCriterion(BaseModel):
+    """Critère porté par un marché pour le résoudre automatiquement à la fin du round."""
+
+    kind: ResolutionKind
+    # Spécifiques à l'action (les autres kinds les laissent à None) :
+    country: str | None = None
+    action: str | None = None
+    target: str | None = None
+
+
 class Account(BaseModel):
     """Solde de crédits d'un participant."""
 
@@ -63,6 +81,7 @@ class Market(BaseModel):
     status: MarketStatus = MarketStatus.OPEN
     b: float = Field(gt=0.0, description="Liquidité LMSR (perte bornée = b·ln(N))")
     outcomes: list[Outcome] = Field(default_factory=list)
+    criterion: ResolutionCriterion | None = None  # comment le Juge le résout
     resolved_outcome: str | None = None  # id de l'outcome gagnant, une fois résolu
     created_at: str = ""
 

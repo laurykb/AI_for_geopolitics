@@ -21,6 +21,7 @@ from market.models import (
     MarketType,
     Outcome,
     Position,
+    ResolutionCriterion,
     Trade,
 )
 
@@ -30,7 +31,8 @@ CREATE TABLE IF NOT EXISTS accounts (
 );
 CREATE TABLE IF NOT EXISTS markets (
     id TEXT PRIMARY KEY, round_id INTEGER NOT NULL, type TEXT NOT NULL, question TEXT NOT NULL,
-    status TEXT NOT NULL, b REAL NOT NULL, resolved_outcome TEXT, created_at TEXT NOT NULL
+    status TEXT NOT NULL, b REAL NOT NULL, criterion TEXT, resolved_outcome TEXT,
+    created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS outcomes (
     id TEXT PRIMARY KEY, market_id TEXT NOT NULL, label TEXT NOT NULL, q REAL NOT NULL
@@ -111,11 +113,12 @@ class SQLiteMarketStore:
     # --- marchés + outcomes -------------------------------------------------
 
     def add_market(self, market: Market) -> None:
+        criterion = market.criterion.model_dump_json() if market.criterion else None
         with self._conn:
             self._conn.execute(
                 "INSERT INTO markets "
-                "(id, round_id, type, question, status, b, resolved_outcome, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "(id, round_id, type, question, status, b, criterion, resolved_outcome, "
+                "created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     market.id,
                     market.round_id,
@@ -123,6 +126,7 @@ class SQLiteMarketStore:
                     market.question,
                     market.status.value,
                     market.b,
+                    criterion,
                     market.resolved_outcome,
                     market.created_at,
                 ),
@@ -173,6 +177,9 @@ class SQLiteMarketStore:
         ]
 
     def _market(self, row: sqlite3.Row) -> Market:
+        criterion = (
+            ResolutionCriterion.model_validate_json(row["criterion"]) if row["criterion"] else None
+        )
         return Market(
             id=row["id"],
             round_id=row["round_id"],
@@ -180,6 +187,7 @@ class SQLiteMarketStore:
             type=MarketType(row["type"]),
             status=MarketStatus(row["status"]),
             b=row["b"],
+            criterion=criterion,
             resolved_outcome=row["resolved_outcome"],
             created_at=row["created_at"],
             outcomes=self._outcomes(row["id"]),
