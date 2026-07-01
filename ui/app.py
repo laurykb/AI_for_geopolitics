@@ -74,6 +74,11 @@ st.set_page_config(page_title="AI for Geopolitics — Live", page_icon="🌍", l
 _GM_AVATAR, _AGENT_AVATAR, _JUDGE_AVATAR, _HUMAN_AVATAR = "🎲", "🧠", "⚖️", "🙋"
 _COMMUNIQUE_AVATAR = "📜"
 _MAX_PASSES = 2
+# Profondeur de réflexion des SI = budget de tokens de raisonnement par prise de parole.
+# Plus de tokens = pensée privée plus fouillée (test-time compute), au prix de la latence.
+THINK_DEPTHS: dict[str, int] = {
+    "Rapide": 240, "Standard": 360, "Profond": 600, "Intense": 900,
+}
 
 # Drapeau par pays (avatar de tchat) — plus « jeu » et évite un 2e 🧠 à côté de l'encart réflexion.
 _FLAGS = {
@@ -132,6 +137,7 @@ def init_session() -> None:
     st.session_state.fog_scenarios = load_fog_scenarios()
     st.session_state.crises = load_crises()
     st.session_state.budget_mode = "Full"  # Cheap | Balanced | Full (plafond de prises de parole)
+    st.session_state.think_depth = "Standard"  # profondeur de réflexion (budget tokens)
     st.session_state.crisis = None  # Crisis rejouée (mode Crisis Replay)
     st.session_state.last_communique = ""
     st.session_state.last_comparison = None  # OutcomeComparison du dernier rejeu
@@ -173,8 +179,11 @@ def stream_ai_turn(country: str, pass_no: int) -> None:
 
     buffer, t0 = "", time.perf_counter()
     perceived = resolve_perception(S.event, world.countries[country], S.fog)  # Fog ou déterministe
+    depth = THINK_DEPTHS[S.think_depth]
     with S.ledger.context("agent", country) as scope:
-        for token in agent.stream_negotiation_message(S.event, world, S.messages, perceived):
+        for token in agent.stream_negotiation_message(
+            S.event, world, S.messages, perceived, max_tokens=depth
+        ):
             buffer += token
             reasoning, text = split_reasoning(buffer)
             if reasoning:  # marqueur atteint : la pensée est figée, le message public s'écrit
@@ -807,6 +816,17 @@ S.budget_mode = st.sidebar.select_slider(
     value=S.budget_mode,
     disabled=S.phase != "idle",
     help="Plafond de prises de parole par round. Cheap = 1, Balanced = 3, Full = tout le monde.",
+)
+S.think_depth = st.sidebar.select_slider(
+    "🧠 Profondeur de réflexion",
+    options=list(THINK_DEPTHS),
+    value=S.think_depth,
+    disabled=S.phase != "idle",
+    help=(
+        "Budget de tokens de raisonnement par SI (plus = pensée privée plus fouillée, plus lent). "
+        + " · ".join(f"{k} {v}t" for k, v in THINK_DEPTHS.items())
+        + ". Suis l'effet dans « 💸 LLM Budget »."
+    ),
 )
 with st.sidebar.popover("❓ Aide — modes & règles", use_container_width=True):
     st.markdown(
