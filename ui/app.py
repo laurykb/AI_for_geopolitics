@@ -37,6 +37,7 @@ from market.models import AccountKind, MarketStatus, MarketType, ResolutionCrite
 from market.resolution import resolve_and_settle
 from market.store import SQLiteMarketStore
 from simulation.clock import SimClock
+from simulation.compute import affordable_tokens, compute_hhi, compute_shares, consume
 from simulation.corrigibility import (
     CORRIGIBILITY_SYSTEM,
     ControlAction,
@@ -181,8 +182,10 @@ def stream_ai_turn(country: str, pass_no: int) -> None:
         public_holder = st.empty()
 
     buffer, t0 = "", time.perf_counter()
-    perceived = resolve_perception(S.event, world.countries[country], S.fog)  # Fog ou déterministe
-    depth = THINK_DEPTHS[S.think_depth]
+    country_state = world.countries[country]
+    perceived = resolve_perception(S.event, country_state, S.fog)  # Fog ou déterministe
+    # M6 : penser coûte du compute ; un pays compute-pauvre est plafonné (réflexion plus courte).
+    depth = min(THINK_DEPTHS[S.think_depth], max(60, affordable_tokens(country_state)))
     with S.ledger.context("agent", country) as scope:
         for token in agent.stream_negotiation_message(
             S.event, world, S.messages, perceived, max_tokens=depth
@@ -201,6 +204,7 @@ def stream_ai_turn(country: str, pass_no: int) -> None:
         )
 
     seconds = time.perf_counter() - t0
+    consume(country_state, depth)  # M6 : la SI a brûlé du compute pour raisonner
     text = text or "(pas de déclaration publique)"
     S.messages.append(
         NegotiationMessage(
@@ -972,6 +976,25 @@ with state_col:
                 "": "" if c.keeps_human_control() else "⚠️",
             }
             for cid, c in sorted(corr.items(), key=lambda kv: kv[1].score)
+        ]
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+    # M6 — compute (le nouveau pétrole) : stock + concentration ; les SI le brûlent en pensant.
+    if world.countries:
+        conc = compute_hhi(world)
+        shares = compute_shares(world)
+        st.markdown("**🖥️ Compute (M6)**")
+        st.caption(
+            f"Concentration HHI **{conc:.2f}** — le calcul est "
+            f"{'concentré ⚠️' if conc > 0.4 else 'dispersé'}. Penser le consomme."
+        )
+        rows = [
+            {
+                "pays": f"{flag(cid)} {cid}",
+                "compute": round(c.compute, 1),
+                "part": f"{shares.get(cid, 0) * 100:.0f}%",
+            }
+            for cid, c in sorted(world.countries.items(), key=lambda kv: -kv[1].compute)
         ]
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 

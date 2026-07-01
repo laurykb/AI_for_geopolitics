@@ -47,6 +47,11 @@ def can_afford(country: CountryState, tokens: int) -> bool:
     return country.compute >= compute_cost(tokens)
 
 
+def affordable_tokens(country: CountryState) -> int:
+    """Budget maximal de tokens de raisonnement que le pays peut financer avec son compute."""
+    return int(max(0.0, country.compute) * _TOKENS_PER_UNIT)
+
+
 def consume(country: CountryState, tokens: int) -> float:
     """Débite le compute du pays pour un raisonnement (borné ≥ 0). Renvoie le coût réel."""
     cost = min(country.compute, compute_cost(tokens))
