@@ -11,8 +11,10 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from app.dashboard import DashboardData, run_red_sea
+from app.market_api import router as market_router
 
 app = FastAPI(title="AI for Geopolitics — API")
+app.include_router(market_router)
 
 
 @app.get("/health")
