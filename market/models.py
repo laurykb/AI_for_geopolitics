@@ -1,0 +1,113 @@
+"""Modèles de domaine du marché de prédiction (Pydantic).
+
+Reflètent les tables SQLite de `docs/spec_market.md` §8 : Account, Market, Outcome, Position,
+Trade. Argent **fictif** (crédits) uniquement. Le marché **observe** les super-intelligences,
+il ne les **influence pas**.
+"""
+
+from __future__ import annotations
+
+from enum import StrEnum
+
+from pydantic import BaseModel, Field
+
+
+class MarketType(StrEnum):
+    """Type de question. Le seuil (ex. « ΔUtopie > 0 ») est ramené au binaire."""
+
+    BINARY = "binary"
+    CATEGORICAL = "categorical"
+    THRESHOLD = "threshold"
+
+
+class MarketStatus(StrEnum):
+    """Cycle de vie d'un marché (spéc §3) : ouvert -> verrouillé -> résolu."""
+
+    OPEN = "open"
+    LOCKED = "locked"
+    RESOLVED = "resolved"
+
+
+class AccountKind(StrEnum):
+    """Nature d'un participant : humain ou bot forecaster."""
+
+    HUMAN = "human"
+    BOT = "bot"
+
+
+class Account(BaseModel):
+    """Solde de crédits d'un participant."""
+
+    id: str
+    name: str
+    kind: AccountKind = AccountKind.HUMAN
+    balance: float = 0.0
+
+
+class Outcome(BaseModel):
+    """Une issue d'un marché ; `q` = parts nettes émises (état LMSR)."""
+
+    id: str
+    market_id: str
+    label: str
+    q: float = 0.0
+
+
+class Market(BaseModel):
+    """Une question résolue à la fin d'un round par le Juge (oracle)."""
+
+    id: str
+    round_id: int
+    question: str
+    type: MarketType = MarketType.BINARY
+    status: MarketStatus = MarketStatus.OPEN
+    b: float = Field(gt=0.0, description="Liquidité LMSR (perte bornée = b·ln(N))")
+    outcomes: list[Outcome] = Field(default_factory=list)
+    resolved_outcome: str | None = None  # id de l'outcome gagnant, une fois résolu
+    created_at: str = ""
+
+    def q_vector(self) -> list[float]:
+        """Vecteur `q` (parts nettes) dans l'ordre des outcomes — entrée du market maker."""
+        return [o.q for o in self.outcomes]
+
+    def find_outcome(self, outcome_id: str) -> Outcome | None:
+        return next((o for o in self.outcomes if o.id == outcome_id), None)
+
+    def outcome_index(self, outcome_id: str) -> int:
+        """Index de l'outcome dans le vecteur `q` (lève `KeyError` si inconnu)."""
+        for i, o in enumerate(self.outcomes):
+            if o.id == outcome_id:
+                return i
+        raise KeyError(f"outcome inconnu : {outcome_id}")
+
+
+class Position(BaseModel):
+    """Parts détenues par un compte sur un outcome."""
+
+    account_id: str
+    outcome_id: str
+    shares: float = 0.0
+
+
+class Trade(BaseModel):
+    """Achat (shares > 0) ou vente (shares < 0) de parts au prix LMSR, en crédits."""
+
+    id: str
+    account_id: str
+    market_id: str
+    outcome_id: str
+    shares: float
+    cost: float
+    price: float  # prix implicite de l'outcome APRÈS le trade
+    ts: str
+
+
+class Quote(BaseModel):
+    """Devis d'un pari (sans exécution) : coût et impact sur le prix."""
+
+    market_id: str
+    outcome_id: str
+    shares: float
+    cost: float
+    price_before: float
+    price_after: float
