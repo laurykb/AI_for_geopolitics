@@ -34,7 +34,7 @@ from market import scoring
 from market.engine import MarketEngine, MarketError
 from market.forecaster import LLMForecaster
 from market.models import AccountKind, MarketStatus, MarketType, ResolutionCriterion, ResolutionKind
-from market.resolution import resolve_and_settle
+from market.resolution import resolve_and_settle, settle
 from market.store import SQLiteMarketStore
 from simulation.clock import SimClock
 from simulation.compute import affordable_tokens, compute_hhi, compute_shares, consume
@@ -902,10 +902,9 @@ def _reveal_claim(claim: Claim) -> None:
     if claim.market_id:
         market = engine.store.get_market(claim.market_id)
         if market is not None and market.status is MarketStatus.OPEN:
-            resolve_and_settle(
-                engine.store, market, _bare_summary(S.round_no),
-                delta_utopia=(1.0 if claim.veracity else -1.0),
-            )
+            # marché sans critère (résolu sur la véracité) : YES=vraie gagne, sinon NO.
+            winning = market.outcomes[0].id if claim.veracity else market.outcomes[1].id
+            settle(engine.store, market, winning)
     reveal(claim)
 
 
