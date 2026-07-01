@@ -21,6 +21,7 @@ from inference.metered_backend import MeteredBackend
 from inference.ollama_backend import OllamaBackend
 from inference.telemetry import BudgetLedger, grounding_proxy
 from simulation.clock import SimClock
+from simulation.crisis import compare_outcome, load_crises
 from simulation.fog import FogScenario, load_fog_scenarios, resolve_perception
 from simulation.loader import load_world
 from simulation.negotiation import (
@@ -63,9 +64,13 @@ def init_session() -> None:
     st.session_state.human_country = None
     st.session_state.round_start = 0.0
     st.session_state.last_silent = []
-    st.session_state.game_mode = "Classique"  # Classique | Fog Engine
+    st.session_state.game_mode = "Classique"  # Classique | Fog Engine | Crisis Replay
     st.session_state.fog = None  # FogScenario du round courant (mode Fog)
     st.session_state.fog_scenarios = load_fog_scenarios()
+    st.session_state.crises = load_crises()
+    st.session_state.crisis = None  # Crisis rejouée (mode Crisis Replay)
+    st.session_state.last_communique = ""
+    st.session_state.last_comparison = None  # OutcomeComparison du dernier rejeu
 
 
 if "world" not in st.session_state:
@@ -160,6 +165,11 @@ def run_judge_and_finalize() -> None:
 
     S.last_deltas, S.last_escalation = deltas, escalation
     S.last_silent = S.director.silent() if S.director else []
+    S.last_communique = comm.strip()
+    # Crisis Replay : confronte l'issue simulée à l'issue historique.
+    S.last_comparison = (
+        compare_outcome(S.crisis, escalation, S.last_communique) if S.crisis else None
+    )
     S.round_no += 1
     S.elapsed = time.perf_counter() - S.round_start
     S.phase = "done"
@@ -261,7 +271,7 @@ if st.sidebar.button("♻️ Nouvelle partie", use_container_width=True):
     init_session()
     st.rerun()
 S.game_mode = st.sidebar.radio(
-    "Mode de jeu", ["Classique", "Fog Engine"], disabled=S.phase != "idle"
+    "Mode de jeu", ["Classique", "Fog Engine", "Crisis Replay"], disabled=S.phase != "idle"
 )
 role = st.sidebar.radio(
     "Ton rôle", ["Spectateur", "Game Master (humain)", "Joueur-pays"], disabled=S.phase != "idle"
@@ -276,6 +286,12 @@ if S.game_mode == "Fog Engine":
         "🌫️ **Fog Engine** : chaque pays ne voit pas la même info (acteur suspecté, confiance, "
         "délai, **désinformation**). Spectateur = omniscient (vérité + perceptions) ; Joueur-pays "
         "= ne voit QUE la perception de son pays (parfois fausse)."
+    )
+if S.game_mode == "Crisis Replay":
+    st.sidebar.caption(
+        "🕰️ **Crisis Replay** : rejoue une crise passée (dataset fixe) et compare l'issue "
+        "**simulée** à l'issue **historique** (escalade, mesures) — et pourquoi ça diverge. "
+        "Rejoue autant de fois que tu veux."
     )
 st.sidebar.caption(
     "Négociation **dynamique** (mistral 7B local) : les pays parlent selon leur **engagement** "
@@ -358,6 +374,20 @@ with state_col:
             )
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
+    # Crisis Replay : issue simulée vs issue historique.
+    if S.game_mode == "Crisis Replay" and S.last_comparison is not None:
+        c = S.last_comparison
+        st.markdown("**🕰️ Simulé vs historique**")
+        h1, h2 = st.columns(2)
+        h1.metric("Escalade histoire", f"{c.historical_escalation:.2f}")
+        h2.metric("Escalade simulée", f"{c.simulated_escalation:.2f}", delta=f"{c.gap:+.2f}")
+        st.caption(f"Issue **{c.label}**.")
+        if c.matched_measures:
+            st.caption(f"✅ Mesures retrouvées : {', '.join(c.matched_measures)}")
+        if c.missed_measures:
+            st.caption(f"❌ Mesures non retenues : {', '.join(c.missed_measures)}")
+        st.info(c.explanation)
+
 
 # ------------------------------ Contrôles par phase ------------------------------
 def _new_rid_date() -> tuple[int, str]:
@@ -370,7 +400,34 @@ def _new_rid_date() -> tuple[int, str]:
 if S.phase == "idle":
     with chat_col:
         fog_on = S.game_mode == "Fog Engine"
-        if fog_on and role != "Game Master (humain)":
+        crisis_on = S.game_mode == "Crisis Replay"
+        if crisis_on:
+            # Tous rôles : choisir une crise passée à rejouer (data/crises/*.json)
+            crises = S.crises
+            if not crises:
+                st.warning("Aucune crise dans data/crises/.")
+            else:
+                cidx = st.selectbox(
+                    "🕰️ Crise à rejouer",
+                    range(len(crises)),
+                    format_func=lambda i: crises[i].title or crises[i].id,
+                )
+                crisis = crises[cidx]
+                st.caption(crisis.description or "")
+                hist = crisis.historical_outcome
+                st.caption(
+                    f"_Histoire — escalade {hist.escalation:.2f} · mesures : "
+                    f"{', '.join(hist.measures) or 'n/a'}_"
+                )
+                if st.button("▶️ Rejouer la crise", type="primary", use_container_width=True):
+                    rid, date = _new_rid_date()
+                    S.fog = None
+                    S.crisis = crisis
+                    ev = crisis.events[0]
+                    S.event = ev.model_copy(update={"round_id": rid, "date": date})
+                    begin_round(S.event, picked_country if role == "Joueur-pays" else None)
+                    st.rerun()
+        elif fog_on and role != "Game Master (humain)":
             # Spectateur / Joueur-pays : choisir un scénario de brouillard (data/fog/*.json)
             scenarios = S.fog_scenarios
             if not scenarios:
@@ -386,6 +443,7 @@ if S.phase == "idle":
                 if st.button("▶️ Démarrer le round (Fog)", type="primary", use_container_width=True):
                     rid, date = _new_rid_date()
                     S.fog = chosen
+                    S.crisis = None
                     S.event = chosen.true_event.model_copy(update={"round_id": rid, "date": date})
                     begin_round(S.event, picked_country if role == "Joueur-pays" else None)
                     st.rerun()
@@ -434,11 +492,13 @@ if S.phase == "idle":
                         )
                     else:
                         S.fog = None
+                    S.crisis = None
                     begin_round(event, None)
                     st.rerun()
         elif st.button("▶️ Démarrer le round", type="primary", use_container_width=True):
             rid, date = _new_rid_date()
             S.fog = None
+            S.crisis = None
             S.ledger.set_round(rid)
             with S.ledger.context("gm"):
                 event = S.gm.generate_event(world, rid, date=date, recent=S.recent)
