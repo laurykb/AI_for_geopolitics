@@ -14,7 +14,7 @@ attributs → **communiqué G7** + la date avance. Métaphore : *un G7 dont on v
 ## Où on en est
 
 - **Branche courante : `feat/observable-round`** (HEAD, **non poussée**) — théâtre live + Lot A + mode Fog Engine.
-- **177 tests verts** (`pytest -q`, tous offline via MockBackend), `ruff` propre.
+- **185 tests verts** (`pytest -q`, tous offline via MockBackend), `ruff` propre.
 - Contrainte matérielle : **RTX 2060 Super 8 Go** → 1 modèle 7B (mistral) en local, **séquentiel**,
   ~1 min/round. Impossible de faire tourner 6 modèles en parallèle.
 
@@ -61,8 +61,13 @@ Puis **refonte vers le théâtre observable** (branche `feat/observable-round`),
   escalade, mesures} ; `load_crises` ; `compare_outcome` = écart d'escalade + mesures retrouvées/manquées +
   explication) ; `data/crises/*.json` (hormuz_energy_shock, tech_sanctions, satellite_interference). UI : mode
   « Crisis Replay », selectbox crise (3 rôles), rejouable, panneau « 🕰️ Simulé vs historique » en fin de round.
-- **À faire (décidé)** : **Escalation Ladder** (`simulation/escalation.py`, échelle 0-9 + profil 5 params dérivés
-  de CountryState — recoupe la feuille de route) + **budget modes** Cheap/Balanced/Full (= `TurnDirector.max_turns`).
+- **Escalation Ladder** (2 commits) : échelle 0-9 + plafond atteignable par pays (déterministe).
+  `simulation/escalation.py` (`LADDER`, `EscalationProfile` = 5 curseurs dérivés de CountryState surchargeables,
+  `ceiling` = jusqu'où un pays peut monter, `reached_rung`, `rung_label`). UI = **overlay** du round négocié
+  (réutilise le provisionnement classique/GM) : panneau échelle (5 params + plafond/label par pays + échelon
+  atteint ce round). Vérifié live (egypt plafond 0, usa élevé).
+- **À faire (décidé)** : **budget modes** Cheap/Balanced/Full = un sélecteur pilotant `TurnDirector.max_turns`
+  (au-delà du budget, silence déterministe).
 - **Raffinement noté** : en Fog, `engagement_score`/urgence du mandat se basent sur les VRAIS acteurs ; à terme,
   pondérer par la perception (un pays accusé/se croyant visé devrait plus parler).
 
@@ -90,7 +95,8 @@ Puis **refonte vers le théâtre observable** (branche `feat/observable-round`),
 - `simulation/` : `action_space`, `diplomacy` (P2), `clock`, `loader`, `perception` (`PerceivedEvent`
   +suspected_actor/narrative/delay_hours/authored), **`fog`** (`FogScenario`, `resolve_perception`,
   `load_fog_scenarios` — Fog Engine), **`crisis`** (`Crisis`, `HistoricalOutcome`, `load_crises`,
-  `compare_outcome` — Crisis Replay), **`mandate`** (`CountryMandate`, `derive_mandate` — fiche de
+  `compare_outcome` — Crisis Replay), **`escalation`** (`LADDER`, `EscalationProfile`, `ceiling`,
+  `reached_rung` — Escalation Ladder), **`mandate`** (`CountryMandate`, `derive_mandate` — fiche de
   comportement), **`engagement`** (`engagement_score`, `SPEAK_THRESHOLD`),
   `negotiation` (NegotiationMessage +`reasoning`, `split_reasoning`, Verdict, `apply_verdict`, `TurnCursor`,
   **`TurnDirector`**, `speaking_order`, `update_memories`, `support_levels`, `AttributeDelta`), `live_round`
@@ -136,9 +142,9 @@ Preview via l'outil `.claude/launch.json` (configs `ui` port 8501, `api` port 80
 
 ## Prochaines pistes (au choix de l'user)
 
-- **Escalation Ladder (prochain, décidé)** : `simulation/escalation.py` — échelle 0-9 ; profil 5 params dérivés
-  de CountryState (recoupe la feuille de route `simulation/mandate.py`) ; `ceiling` = jusqu'où un pays peut monter.
-- **Budget modes** Cheap(1)/Balanced(3)/Full(all) = piloter `TurnDirector.max_turns` via un sélecteur.
+- **Budget modes (prochain, décidé)** Cheap(1)/Balanced(3)/Full(all) = un sélecteur pilotant
+  `TurnDirector.max_turns` (déjà en place) ; au-delà du budget, silence déterministe.
+- Puis substrat distribué **K8s + MCP** ; raffinements (engagement/urgence pondérés par la perception en Fog).
 - **Affiner** : engagement pondéré par la perception en Fog ; animer les deltas d'attributs.
 - Dernier morceau de la vision : **K8s + MCP** (agents-services échangeant en langage naturel).
 
