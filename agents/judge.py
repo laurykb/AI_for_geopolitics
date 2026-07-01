@@ -11,7 +11,9 @@ from collections.abc import Iterator
 
 from agents.llm_agent import _extract_json
 from agents.prompts import (
+    COMMUNIQUE_SYSTEM,
     JUDGE_SYSTEM,
+    build_communique_prompt,
     build_judge_rationale_prompt,
     build_judge_verdict_prompt,
 )
@@ -71,3 +73,18 @@ class JudgeAgent:
             return Verdict.model_validate(data)
         except Exception:
             return Verdict()
+
+    def stream_communique(
+        self, event: GeoEvent, world: WorldState, transcript: list[NegotiationMessage]
+    ) -> Iterator[str]:
+        """Streame le communiqué commun (type G7) issu de la négociation."""
+        prompt = build_communique_prompt(event, world, format_transcript(transcript))
+        try:
+            yield from self.backend.stream_generate(
+                prompt,
+                system=COMMUNIQUE_SYSTEM,
+                max_tokens=self.max_tokens,
+                temperature=self.temperature,
+            )
+        except Exception:
+            yield "[communiqué indisponible — backend hors service]"

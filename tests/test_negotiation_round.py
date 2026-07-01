@@ -11,6 +11,7 @@ from core.world_state import WorldState
 from inference.mock_backend import MockBackend
 from simulation.clock import SimClock
 from simulation.live_round import (
+    CommuniqueStep,
     DateStep,
     EventStep,
     JudgeTokenStep,
@@ -55,7 +56,11 @@ def _judge() -> JudgeAgent:
             "economic_disruption": 0.3,
         }
     )
-    return JudgeAgent(MockBackend(["Les USA dominent la négociation.", verdict]))
+    return JudgeAgent(
+        MockBackend(
+            ["Les USA dominent la négociation.", verdict, "Communiqué : appel au dialogue."]
+        )
+    )
 
 
 def test_step_sequence_and_passes():
@@ -94,6 +99,17 @@ def test_provided_event_skips_game_master():
     )
     event_step = next(s for s in steps if isinstance(s, EventStep))
     assert event_step.event.title == "Crise décrétée par l'humain"
+
+
+def test_communique_and_memory_after_round():
+    world = _world()
+    steps = list(run_negotiation_round(world, _agents(world), _gm(), _judge(), SimClock()))
+    communique = next(s for s in steps if isinstance(s, CommuniqueStep))
+    assert communique.text  # communiqué G7 produit
+    assert set(communique.support) == set(world.countries)
+    assert all(0.0 <= v <= 1.0 for v in communique.support.values())
+    # les pays ont mémorisé le round
+    assert world.country_memory and all(world.country_memory[c] for c in world.countries)
 
 
 def test_turn_carries_model_tag_and_timer():

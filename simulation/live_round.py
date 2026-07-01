@@ -27,6 +27,8 @@ from simulation.negotiation import (
     NegotiationMessage,
     apply_verdict,
     speaking_order,
+    support_levels,
+    update_memories,
 )
 
 
@@ -119,6 +121,12 @@ class VerdictStep:
     economic_disruption: float
 
 
+@dataclass
+class CommuniqueStep:
+    text: str
+    support: dict[str, float]
+
+
 RoundStep = (
     DateStep
     | EventStep
@@ -131,6 +139,7 @@ RoundStep = (
     | MessageDoneStep
     | JudgeTokenStep
     | VerdictStep
+    | CommuniqueStep
 )
 
 
@@ -260,6 +269,10 @@ def run_negotiation_round(
         escalation=_clamp(verdict.escalation),
         economic_disruption=_clamp(verdict.economic_disruption),
     )
+
+    update_memories(world, event, transcript, verdict)
+    communique = "".join(judge.stream_communique(event, world, transcript)).strip()
+    yield CommuniqueStep(text=communique, support=support_levels(world, event))
 
     risk = RiskScore(
         round_id=round_id,

@@ -51,3 +51,9 @@ def test_invalid_verdict_falls_back_to_neutral():
     verdict = judge.verdict(_event(), _world(), [])
     assert verdict.attribute_deltas == {}
     assert verdict.escalation == 0.5  # neutre
+
+
+def test_stream_communique():
+    judge = JudgeAgent(MockBackend("Les pays condamnent l'attaque et appellent au dialogue."))
+    text = "".join(judge.stream_communique(_event(), _world(), []))
+    assert "condamnent" in text

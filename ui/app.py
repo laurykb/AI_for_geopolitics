@@ -20,11 +20,19 @@ from core.events import GeoEvent
 from inference.ollama_backend import OllamaBackend
 from simulation.clock import SimClock
 from simulation.loader import load_world
-from simulation.negotiation import NegotiationMessage, TurnCursor, apply_verdict, speaking_order
+from simulation.negotiation import (
+    NegotiationMessage,
+    TurnCursor,
+    apply_verdict,
+    speaking_order,
+    support_levels,
+    update_memories,
+)
 
 st.set_page_config(page_title="AI for Geopolitics — Live", page_icon="🌍", layout="wide")
 
 _GM_AVATAR, _AGENT_AVATAR, _JUDGE_AVATAR, _HUMAN_AVATAR = "🎲", "🧠", "⚖️", "🙋"
+_COMMUNIQUE_AVATAR = "📜"
 _MAX_PASSES = 2
 
 
@@ -99,6 +107,20 @@ def run_judge_and_finalize() -> None:
     )
     holder.markdown(md)
     add_display("Juge", _JUDGE_AVATAR, md)
+
+    # Mémoire des pays + communiqué commun (type G7)
+    update_memories(world, S.event, S.messages, verdict)
+    comm_holder = chat.chat_message("Communiqué", avatar=_COMMUNIQUE_AVATAR).empty()
+    comm = ""
+    for token in S.judge.stream_communique(S.event, world, S.messages):
+        comm += token
+        comm_holder.markdown(f"**📜 Communiqué G7**\n\n{comm} ▌")
+    support = support_levels(world, S.event)
+    support_str = " · ".join(f"{c} {v:.0%}" for c, v in sorted(support.items()))
+    comm_md = f"**📜 Communiqué G7**\n\n{comm.strip()}\n\n_Soutien : {support_str}_"
+    comm_holder.markdown(comm_md)
+    add_display("Communiqué", _COMMUNIQUE_AVATAR, comm_md)
+
     S.last_deltas, S.last_escalation = deltas, escalation
     S.round_no += 1
     S.elapsed = time.perf_counter() - S.round_start

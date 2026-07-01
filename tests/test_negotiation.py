@@ -75,3 +75,16 @@ def test_apply_verdict_ignores_unknown_ids_and_labels():
         attribute_deltas={"atlantis": {"croissance": 1.0}, "usa": {"bogus": 5.0}},
     )
     assert apply_verdict(world, verdict) == []  # rien d'applicable
+
+
+def test_support_levels_bounded_and_reflects_tension():
+    from core.events import GeoEvent
+    from simulation.negotiation import support_levels
+
+    world = _world()
+    world.adjust_tension("usa", "iran", 0.8)
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="t", actors=["iran"])
+    levels = support_levels(world, event)
+    assert set(levels) == {"usa", "iran"}
+    assert all(0.0 <= v <= 1.0 for v in levels.values())
+    assert levels["usa"] < 1.0  # forte tension avec l'acteur -> soutien moindre

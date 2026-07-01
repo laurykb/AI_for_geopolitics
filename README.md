@@ -59,7 +59,12 @@ multi-agent. En spectateur, un round se déroule sous les yeux :
    **streaming**, avec **badge du modèle** (`🧠 usa · mistral:latest`) et **chrono** (traçabilité du séquentiel) ;
 3. un **Juge LLM** lit toute la négociation, **arbitre** qui a gagné / les alliances (raisonnement streamé),
    et fixe les **deltas d'attributs** — comme un G7, **non déterministe**, mais **borné** par un garde-fou ;
-4. la **date avance** (~6 mois) → timeline réaliste.
+4. un **📜 communiqué G7** commun clôt le round (+ soutien par pays) ; la **date avance** (~6 mois).
+
+**Réalisme (coût ~nul, déterministe)** : chaque super-intelligence négocie **depuis sa vraie fiche**
+(`CountryState` : éco/armée/ressources/stabilité/idéologie + un **penchant** dérivé), **perçoit**
+l'événement selon son renseignement (**fog of war** : confiance/attribution, `simulation/perception.py`),
+et garde une **mémoire** inter-rounds (`WorldState.country_memory`) réinjectée dans son prompt.
 
 Métaphore : un **G7 dont on voit tous les messages**. Sur RTX 2060 Super (8 Go), les agents parlent
 **à tour de rôle** (mistral 7B local) — un round de négociation ≈ **1 min** ; repli si Ollama est éteint.

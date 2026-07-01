@@ -187,3 +187,14 @@ def update_memories(
         memory = world.country_memory.setdefault(cid, [])
         memory.append(" — ".join(parts))
         world.country_memory[cid] = memory[-_MEMORY_MAX:]
+
+
+def support_levels(world: WorldState, event: GeoEvent) -> dict[str, float]:
+    """Soutien estimé de chaque pays au communiqué : 1 − tension moyenne vs acteurs (borné)."""
+    actors = event.actors or list(world.countries)
+    levels: dict[str, float] = {}
+    for cid in world.countries:
+        others = [a for a in actors if a != cid]
+        avg = sum(world.get_tension(cid, a) for a in others) / len(others) if others else 0.0
+        levels[cid] = round(max(0.0, min(1.0, 1.0 - avg)), 2)
+    return levels

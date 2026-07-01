@@ -214,3 +214,21 @@ def build_judge_verdict_prompt(event: GeoEvent, world: WorldState, transcript_te
         f'"new_pacts": [[id, id]], "escalation": 0-1, "economic_disruption": 0-1}}. '
         f"Ne renseigne que ce qui a réellement changé pendant la négociation."
     )
+
+
+# --- Communiqué commun (type G7) ----------------------------------------------
+
+COMMUNIQUE_SYSTEM = (
+    "Tu rédiges le communiqué commun d'un sommet type G7, à l'issue d'une négociation. "
+    "Un seul paragraphe court, diplomatique, en français : position commune, mesures envisagées, "
+    "langage consensuel qui masque les désaccords. Pas de JSON, pas de liste."
+)
+
+
+def build_communique_prompt(event: GeoEvent, world: WorldState, transcript_text: str) -> str:
+    ids = ", ".join(sorted(world.countries))
+    return (
+        f"ÉVÉNEMENT : {event.title} — {event.description or '—'}\nPAYS : {ids}\n"
+        f"NÉGOCIATION :\n{transcript_text}\n\n"
+        f"Rédige le communiqué commun (un paragraphe) :"
+    )
