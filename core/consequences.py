@@ -66,7 +66,9 @@ class ConsequenceEngine:
             world.adjust_tension(d.country, d.target, -0.05 * d.intensity)
         log["diplomatic"].append(f"{d.country} soutient {d.target}")
 
-    def _apply_call_for_mediation(self, world: WorldState, d: AgentDecision, log: ChangeLog) -> None:
+    def _apply_call_for_mediation(
+        self, world: WorldState, d: AgentDecision, log: ChangeLog
+    ) -> None:
         if d.target is not None:
             world.adjust_tension(d.country, d.target, -0.03 * d.intensity)
         log["diplomatic"].append(f"{d.country} appelle à la médiation")

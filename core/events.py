@@ -12,6 +12,7 @@ class GeoEvent(BaseModel):
     round_id: int
     event_type: str
     title: str
+    date: str = ""  # date ISO du round (horloge de simulation)
     description: str = ""
     actors: list[str] = Field(default_factory=list)
     location: str = ""

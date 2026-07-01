@@ -35,3 +35,4 @@ def test_defaults_are_applied():
     )
     assert country.political_stability == 0.5
     assert country.alliances == []
+    assert country.mandate == {}  # fiche de comportement surchargeable, vide par défaut

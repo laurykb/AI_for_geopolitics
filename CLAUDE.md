@@ -7,6 +7,11 @@
 Simulation géopolitique **agentique** : des pays-agents LLM, **contraints par des données réelles**, réagissent par **rounds** sous la supervision d'un **Game Master** ; **RAG sourcé** + **moteur de risque explicable**. Double objectif : un système crédible **et** un vecteur d'apprentissage d'AI Engineer.
 Référence complète : `AI_for_Geopolitics_Etat_de_lart.pdf` (état de l'art & positionnement).
 
+## Le nord (vision) ⭐
+
+Au fond, le projet met en scène un **futur peuplé de super-intelligences** (plus intelligentes que les humains) dont les **États se servent pour négocier** à la plus haute instance ; on **mesure** si ce monde penche vers l'**utopie ou la dystopie**, et un **marché de prédiction** (argent fictif, façon Polymarket) laisse le public **parier sur ce que feront ces IA** — *prédire une super-intelligence* est le cœur intellectuel.
+→ Nord détaillé : **`docs/vision.md`**. Feuille de route des mécaniques (ancrage réel + découpage Cowork/Claude Code) : **`docs/roadmap_features.md`**.
+
 ## Contrainte matérielle (toujours en tête)
 
 Poste local : **NVIDIA RTX 2060 Super (8 Go VRAM, Turing)**, **Ryzen 7 3700X (8c/16t)**, **32 Go RAM**.
@@ -38,7 +43,8 @@ Poste local : **NVIDIA RTX 2060 Super (8 Go VRAM, Turing)**, **Ryzen 7 3700X (8c
 
 ## Roadmap (rester dans la phase courante)
 
-`P0` moteur déterministe (sans LLM) → `P1` agents LLM (sortie JSON validée) → `P2` diplomatie → `P3` RAG → `P4` données réelles → `P5` interface → `P6` infra (Docker → K8s) → `P7` MCP / distribué.
+Fait : `P0` moteur déterministe → `P1` agents LLM → `P2` diplomatie → `P3` RAG → `P4` données réelles → **interface (théâtre live)**. Ensuite : `P6` infra (Docker → K8s) → `P7` MCP / distribué.
+**Enrichissement** (ludique × réel) : voir `docs/roadmap_features.md` — keystone = **marché de prédiction** + **couche recherche**.
 **MVP** : 1 zone (ex. mer Rouge), 6–8 acteurs, 1 scénario, 1 risk score, dashboard simple.
 
 ## Structure de repo cible

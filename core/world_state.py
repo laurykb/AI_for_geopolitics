@@ -5,7 +5,9 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from core.country_state import CountryState
+from core.decisions import DiplomaticMessage
 from core.events import GeoEvent
+from simulation.trajectory import TrajectoryState
 
 
 class WorldState(BaseModel):
@@ -16,6 +18,12 @@ class WorldState(BaseModel):
     # tensions[a][b] = niveau de tension symétrique entre a et b, dans [0, 1].
     tensions: dict[str, dict[str, float]] = Field(default_factory=dict)
     event_history: list[GeoEvent] = Field(default_factory=list)
+    diplomatic_history: list[DiplomaticMessage] = Field(default_factory=list)
+    # Mémoire courte par pays (lignes inter-rounds réinjectées dans les prompts).
+    country_memory: dict[str, list[str]] = Field(default_factory=dict)
+    # Trajectoire Utopie–Dystopie : dernière photographie + trace au fil des rounds.
+    trajectory: TrajectoryState | None = None
+    trajectory_history: list[TrajectoryState] = Field(default_factory=list)
 
     def get_tension(self, a: str, b: str) -> float:
         """Tension actuelle entre a et b (0 par défaut)."""

@@ -1,0 +1,28 @@
+{
+  "id": "hormuz_energy_shock",
+  "title": "Choc énergétique — détroit d'Ormuz",
+  "description": "Scénario ILLUSTRATIF (non factuel). Une escalade Iran–Arabie saoudite menace les flux pétroliers du détroit d'Ormuz ; les marchés énergétiques s'affolent.",
+  "date": "2024-03",
+  "events": [
+    {
+      "id": "crisis-hormuz-1",
+      "round_id": 1,
+      "event_type": "energy_disruption",
+      "title": "Blocage partiel du détroit d'Ormuz",
+      "description": "Des incidents entre l'Iran et l'Arabie saoudite perturbent le trafic pétrolier dans le détroit d'Ormuz ; le prix du brut bondit.",
+      "actors": ["iran", "saudi_arabia"],
+      "location": "Strait of Hormuz",
+      "severity": 0.75,
+      "uncertainty": 0.5
+    }
+  ],
+  "historical_outcome": {
+    "summary": "Une coalition maritime a sécurisé la navigation, des réserves stratégiques ont été libérées et une médiation diplomatique a désamorcé la crise sans conflit ouvert.",
+    "escalation": 0.6,
+    "measures": [
+      "coalition maritime internationale",
+      "libération de réserves stratégiques",
+      "médiation diplomatique"
+    ]
+  }
+}

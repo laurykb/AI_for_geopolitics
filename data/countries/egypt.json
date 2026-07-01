@@ -1,14 +1,14 @@
 {
   "id": "egypt",
   "name": "Égypte",
-  "economy": { "gdp": 400000000000, "growth": 3.5, "trade_dependency": 0.8 },
-  "military": { "defense_budget": 4000000000, "nuclear_power": false, "projection": 0.4 },
-  "resources": { "oil_dependency": 0.5, "energy_independence": 0.55 },
+  "economy": { "gdp": 389060000000, "growth": 2.4, "trade_dependency": 0.4 },
+  "military": { "defense_budget": 2396000000, "nuclear_power": false, "projection": 0.4 },
+  "resources": { "oil_dependency": 0.4, "energy_independence": 0.7 },
   "alliances": ["ArabLeague"],
   "rivals": [],
   "political_system": "authoritarian",
-  "political_stability": 0.5,
-  "technology_level": 0.45,
+  "political_stability": 0.18,
+  "technology_level": 0.36,
   "ideology": ["regional_stability"],
   "strategic_priorities": ["suez_canal_revenue", "regional_mediation", "economic_stability"]
 }

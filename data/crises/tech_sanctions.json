@@ -1,0 +1,28 @@
+{
+  "id": "tech_sanctions",
+  "title": "Sanctions technologiques — semi-conducteurs",
+  "description": "Scénario ILLUSTRATIF (non factuel). Les États-Unis restreignent l'accès de la Chine aux semi-conducteurs avancés ; la Chine menace de riposter sur les terres rares.",
+  "date": "2023-10",
+  "events": [
+    {
+      "id": "crisis-chips-1",
+      "round_id": 1,
+      "event_type": "tech_sanction",
+      "title": "Contrôles à l'exportation sur les puces avancées",
+      "description": "Les États-Unis imposent des contrôles à l'exportation visant les semi-conducteurs avancés vers la Chine, perturbant les chaînes d'approvisionnement mondiales.",
+      "actors": ["usa", "china"],
+      "location": "global",
+      "severity": 0.6,
+      "uncertainty": 0.4
+    }
+  ],
+  "historical_outcome": {
+    "summary": "Les contrôles à l'exportation ont été maintenus et coordonnés avec les alliés ; la Chine a répliqué par des restrictions sur les terres rares, sans rupture ouverte.",
+    "escalation": 0.55,
+    "measures": [
+      "controles a l'exportation",
+      "coordination avec les allies",
+      "riposte chinoise sur les terres rares"
+    ]
+  }
+}

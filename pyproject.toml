@@ -3,7 +3,25 @@ name = "ai-for-geopolitics"
 version = "0.0.1"
 description = "Simulation géopolitique agentique — moteur déterministe (Phase 0)."
 requires-python = ">=3.11"
-dependencies = ["pydantic>=2.5"]
+dependencies = [
+    "pydantic>=2.5",
+    "ollama>=0.4",  # client backend d'inférence local (P1)
+    "numpy>=1.26",  # index vectoriel in-memory (P3)
+    "rank-bm25>=0.2",  # retrieval lexical (P3)
+    "fastapi>=0.110",  # API backend (P5)
+    "uvicorn>=0.29",  # serveur ASGI (P5)
+    "httpx>=0.27",  # client (TestClient FastAPI) (P5)
+]
+
+[project.optional-dependencies]
+# Embeddings + reranking sur CPU pour le RAG réel (tire torch). Tests offline sans cet extra.
+rag = ["sentence-transformers>=2.2"]
+# UI interactive (tire pandas/altair). Tests offline sans cet extra (on teste ui.game).
+# plotly : carte du monde (choroplèthe hors-ligne, géométries intégrées).
+ui = ["streamlit>=1.30", "plotly>=5.20"]
+
+[tool.setuptools.packages.find]
+include = ["app*", "core*", "agents*", "inference*", "ingestion*", "rag*", "simulation*", "storage*", "ui*"]
 
 [tool.ruff]
 line-length = 100

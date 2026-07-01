@@ -1,0 +1,43 @@
+{
+  "id": "gps_jamming",
+  "title": "Brouillage GPS massif au-dessus du Golfe",
+  "description": "Scénario ILLUSTRATIF (non factuel) : brouillage électronique réellement d'origine chinoise, mais plusieurs pays soupçonnent l'Iran (attribution erronée) et l'Arabie saoudite relaie une rumeur.",
+  "true_event": {
+    "id": "fog-gps-1",
+    "round_id": 1,
+    "event_type": "electronic_warfare",
+    "title": "Brouillage GPS massif perturbant l'aviation civile",
+    "description": "Un brouillage électronique de grande ampleur dégrade les signaux GPS au-dessus du Golfe, perturbant l'aviation civile et le trafic maritime.",
+    "actors": ["china"],
+    "location": "Persian Gulf",
+    "severity": 0.6,
+    "uncertainty": 0.8
+  },
+  "perceptions": {
+    "usa": {
+      "suspected_actor": "china",
+      "confidence": 0.75,
+      "delay_hours": 3,
+      "narrative": "Un brouillage GPS massif dégrade l'aviation civile ; nos capteurs pointent vers des moyens de guerre électronique chinois."
+    },
+    "saudi_arabia": {
+      "suspected_actor": "iran",
+      "confidence": 0.66,
+      "delay_hours": 5,
+      "narrative": "Nos vols civils subissent un brouillage GPS ; nous soupçonnons fortement l'Iran d'en être à l'origine."
+    },
+    "iran": {
+      "suspected_actor": "unknown",
+      "confidence": 0.35,
+      "delay_hours": 4,
+      "narrative": "Des perturbations GPS affectent la région ; l'origine est inconnue et nous rejetons les accusations à notre encontre."
+    },
+    "france": {
+      "suspected_actor": "unknown",
+      "confidence": 0.5,
+      "delay_hours": 8,
+      "narrative": "Brouillage GPS signalé dans le Golfe affectant l'aviation ; l'attribution reste indéterminée."
+    }
+  },
+  "uninformed": ["egypt"]
+}

@@ -2,7 +2,11 @@
 """Hook Claude Code (PostToolUse) : auto-format + lint des fichiers Python édités, via ruff.
 Non bloquant : ne fait jamais échouer l'appel d'outil ; il range le fichier et signale.
 Prérequis : `pip install ruff` (sinon le hook est ignoré silencieusement)."""
-import json, shutil, subprocess, sys
+
+import json
+import shutil
+import subprocess
+import sys
 
 
 def main() -> int:

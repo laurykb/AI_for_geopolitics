@@ -9,14 +9,18 @@ from simulation.action_space import ActionType
 
 def _two_country_world() -> WorldState:
     a = CountryState(
-        id="a", name="A",
+        id="a",
+        name="A",
         economy={"gdp": 2000000000000, "growth": 2.0},
-        military={"defense_budget": 100000000000}, resources={},
+        military={"defense_budget": 100000000000},
+        resources={},
     )
     b = CountryState(
-        id="b", name="B",
+        id="b",
+        name="B",
         economy={"gdp": 1000000000000, "growth": 1.0},
-        military={"defense_budget": 10000000000}, resources={},
+        military={"defense_budget": 10000000000},
+        resources={},
     )
     return WorldState.from_countries([a, b])
 
