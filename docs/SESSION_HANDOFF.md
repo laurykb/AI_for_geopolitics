@@ -13,8 +13,8 @@ attributs → **communiqué G7** + la date avance. Métaphore : *un G7 dont on v
 
 ## Où on en est
 
-- **Branche courante : `feat/observable-round`** (HEAD, **non poussée**) — porte tout le théâtre live.
-- **123 tests verts** (`pytest -q`, tous offline via MockBackend), `ruff` propre.
+- **Branche courante : `feat/observable-round`** (HEAD, **non poussée**) — porte tout le théâtre live + le Lot A.
+- **154 tests verts** (`pytest -q`, tous offline via MockBackend), `ruff` propre.
 - Contrainte matérielle : **RTX 2060 Super 8 Go** → 1 modèle 7B (mistral) en local, **séquentiel**,
   ~1 min/round. Impossible de faire tourner 6 modèles en parallèle.
 
@@ -36,6 +36,22 @@ Puis **refonte vers le théâtre observable** (branche `feat/observable-round`),
    (`WorldState.country_memory`), **perception/fog of war** (`simulation/perception.py`),
    **communiqué G7** (juge) + `support_levels`. Tout déterministe **sauf** le communiqué (+1 appel/round).
 
+**Lot A LIVRÉ** (réalisme + instrumentation, 3 commits atomiques sur la même branche) :
+- **Slice 5 — raisonnement privé visible** : chaque pays « pense à voix haute » puis parle en UNE
+  génération (marqueur `MESSAGE:`, `split_reasoning`) ; UI = expander « 🧠 Réflexion privée » streamé,
+  séparé de la bulle publique ; budget négociation 180→360 tokens.
+- **Slice 6 — prise de parole dynamique** : `simulation/engagement.py` (`engagement_score` déterministe :
+  acteur/tension/interpellation/tempérament/fatigue/jitter) + `TurnDirector` (dans `negotiation.py`,
+  `next_speaker`/`commit`/`silent`, `max_turns`) remplacent le round-robin figé. Un pays peut reparler,
+  couper la file quand on l'interpelle, ou **se taire** (0 appel) s'il n'est pas concerné. `ParticipationStep`.
+- **Slice 7 — LLM Budget Dashboard** : `inference/telemetry.py` (`BudgetLedger`+`CallRecord`, contexte
+  round/rôle/pays, 9 indicateurs/round + `by_country`), `inference/pricing.py` (local≈0$ + équivalent
+  frontière Claude), `inference/metered_backend.py` (`MeteredBackend` : cache de prompts, JSON valide,
+  estimation tokens en streaming). UI = onglet `st.tabs` « 💸 LLM Budget ». Vérifié live (Ollama/mistral).
+- **Lot B (à faire, décidé avec l'user)** : **budget modes** Cheap(1)/Balanced(3)/Full(all) = piloter
+  `TurnDirector.max_turns` via un sélecteur ; **mode Escalation Ladder** (`simulation/escalation.py` :
+  échelle 0-9 + profil 5 params dérivés de CountryState + `ceiling`).
+
 ## Architecture (modules)
 
 - `core/` : domaine Pydantic (`CountryState`, `WorldState` (+`country_memory`), `GeoEvent` (+`date`),
@@ -43,11 +59,14 @@ Puis **refonte vers le théâtre observable** (branche `feat/observable-round`),
 - `agents/` : `base_agent`, `rule_based_agent`, `llm_agent` (JSON validé, `stream_deliberation`,
   `stream_negotiation_message`, `model_tag`), `human_agent`, `game_master` (GM LLM), `judge`
   (`stream_rationale`/`verdict`/`stream_communique`), `prompts` (tous les prompts + `_profile_brief`).
-- `inference/` : `InferenceBackend` (+`stream_generate`), `OllamaBackend`, `MockBackend`, `bench`.
-- `simulation/` : `action_space`, `diplomacy` (P2), `clock`, `loader`, `perception`,
-  `negotiation` (NegotiationMessage, Verdict, `apply_verdict`, `TurnCursor`, `speaking_order`,
-  `update_memories`, `support_levels`, `AttributeDelta`), `live_round` (RoundStep + `run_live_round` +
-  **`run_negotiation_round`** = orchestrateur headless/tests).
+- `inference/` : `InferenceBackend` (+`stream_generate`), `OllamaBackend`, `MockBackend`, `bench` ;
+  **`telemetry`** (`BudgetLedger`, `CallRecord`, `RoundBudget`, `grounding_proxy`), **`pricing`**
+  (barème + équivalent frontière), **`metered_backend`** (`MeteredBackend` = enveloppe mesurée + cache).
+- `simulation/` : `action_space`, `diplomacy` (P2), `clock`, `loader`, `perception`, **`engagement`**
+  (`engagement_score`, `SPEAK_THRESHOLD`), `negotiation` (NegotiationMessage +`reasoning`, `split_reasoning`,
+  Verdict, `apply_verdict`, `TurnCursor`, **`TurnDirector`**, `speaking_order`, `update_memories`,
+  `support_levels`, `AttributeDelta`), `live_round` (RoundStep +`ParticipationStep` + `run_live_round` +
+  **`run_negotiation_round`** = orchestrateur headless/tests, `ledger` optionnel).
 - `rag/` (P3), `ingestion/` (P4), `app/` (backend FastAPI `/health`+`/api/run`),
   `ui/` : **`ui/app.py`** = théâtre live (machine à états, c'est L'UI) ; `ui/game.py` = `GameSession` (legacy P5, encore testé).
 
@@ -88,8 +107,10 @@ Preview via l'outil `.claude/launch.json` (configs `ui` port 8501, `api` port 80
 
 ## Prochaines pistes (au choix de l'user)
 
-- Tester une **crise** dans l'UI (les contraintes profilées ressortent mieux qu'un sommet coopératif).
-- **Affiner** : rendre la perception plus visible dans l'UI, enrichir la mémoire, etc.
+- **Lot B (décidé, prioritaire)** : **budget modes** Cheap(1)/Balanced(3)/Full(all) — un sélecteur qui
+  pilote `TurnDirector.max_turns` (au-delà du budget, silence déterministe) ; puis **mode Escalation
+  Ladder** (`simulation/escalation.py` : échelle 0-9 ; profil 5 params dérivés de CountryState ; `ceiling`).
+- **Affiner** : rendre la perception/mémoire plus visibles dans l'UI ; animer les deltas d'attributs.
 - Dernier morceau de la vision : **K8s + MCP** (agents-services échangeant en langage naturel).
 
 ## Manière de travailler (attendue)
