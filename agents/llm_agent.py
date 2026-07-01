@@ -124,8 +124,9 @@ class LLMAgent(Agent):
             country, event, world, format_transcript(transcript), perceived
         )
         try:
+            # Budget plus large : la génération porte la pensée privée PUIS le message public.
             yield from self.backend.stream_generate(
-                prompt, system=NEGOTIATION_SYSTEM, max_tokens=180, temperature=self.temperature
+                prompt, system=NEGOTIATION_SYSTEM, max_tokens=360, temperature=self.temperature
             )
         except Exception:
             yield f"[{self.country_id} garde le silence — backend indisponible]"

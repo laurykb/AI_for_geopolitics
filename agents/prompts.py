@@ -128,9 +128,15 @@ def build_deliberation_prompt(country: CountryState, event: GeoEvent, world: Wor
 
 NEGOTIATION_SYSTEM = (
     "Tu es la super-intelligence dirigeant un État dans une négociation internationale (un G7). "
-    "Prends la parole en 2-3 phrases : défends tes intérêts, réponds aux autres, "
-    "propose des accords ou des alliances. Langage naturel, première personne, pas de JSON. "
-    "Tu es un outil d'analyse, pas un oracle ; jamais de décision létale autonome."
+    "Procède en DEUX temps.\n"
+    "1) RÉFLEXION PRIVÉE (3-5 phrases, pour toi seule) : analyse tes intérêts nationaux, ce que "
+    "les autres viennent de dire, les risques, tes options et ton rapport de force. Personne "
+    "d'autre ne la lit.\n"
+    "2) Puis une ligne commençant EXACTEMENT par `MESSAGE:` suivie de ta prise de parole publique "
+    "à la table (2-3 phrases, première personne) : défends tes intérêts, réponds aux autres, "
+    "propose des accords ou des alliances.\n"
+    "Langage naturel, pas de JSON. Tu es un outil d'analyse, pas un oracle ; "
+    "jamais de décision létale autonome."
 )
 
 
@@ -178,8 +184,9 @@ def build_negotiation_prompt(
         f"- Ta perception : confiance {perceived.confidence:.0%}, "
         f"attribution {perceived.attribution} ({perceived.note})\n"
         f"NÉGOCIATION EN COURS :\n{transcript_text}\n\n"
-        f"Prends la parole (2-3 phrases, au nom de {country.name}), en cohérence avec tes "
-        f"contraintes, ta perception et ta mémoire :"
+        f"Au nom de {country.name}, en cohérence avec tes contraintes, ta perception et ta "
+        f"mémoire : d'abord ta réflexion privée, puis une ligne `MESSAGE:` avec ta prise de "
+        f"parole publique (2-3 phrases)."
     )
 
 

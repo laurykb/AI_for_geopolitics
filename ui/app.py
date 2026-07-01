@@ -25,6 +25,7 @@ from simulation.negotiation import (
     TurnCursor,
     apply_verdict,
     speaking_order,
+    split_reasoning,
     support_levels,
     update_memories,
 )
@@ -67,29 +68,46 @@ clock = S.clock
 chat = None  # défini plus bas (colonne du tchat)
 
 
-def add_display(who: str, avatar: str, md: str) -> None:
-    S.transcript.append({"who": who, "avatar": avatar, "md": md})
+def add_display(who: str, avatar: str, md: str, reasoning: str = "") -> None:
+    S.transcript.append({"who": who, "avatar": avatar, "md": md, "reasoning": reasoning})
 
 
 def stream_ai_turn(country: str, pass_no: int) -> None:
+    """Streame la prise de parole : la pensée privée dans un expander, le message dans la bulle."""
     agent: LLMAgent = S.agents[country]
-    header = f"**{country}** · `{agent.model_tag}` · passe {pass_no + 1} — réfléchit…"
-    holder = chat.chat_message(country, avatar=_AGENT_AVATAR).empty()
-    holder.markdown(header)
+    msg = chat.chat_message(country, avatar=_AGENT_AVATAR)
+    with msg:
+        st.markdown(f"**{country}** · `{agent.model_tag}` · passe {pass_no + 1} — réfléchit…")
+        think_holder = st.expander("🧠 Réflexion privée", expanded=True).empty()
+        public_holder = st.empty()
+
     buffer, t0 = "", time.perf_counter()
     for token in agent.stream_negotiation_message(S.event, world, S.messages):
         buffer += token
-        holder.markdown(f"{header}\n\n{buffer} ▌")
+        reasoning, text = split_reasoning(buffer)
+        if reasoning:  # marqueur atteint : la pensée est figée, le message public s'écrit
+            think_holder.markdown(reasoning)
+            public_holder.markdown(f"{text} ▌")
+        else:  # pas encore de marqueur : tout ce qui arrive est la pensée en cours
+            think_holder.markdown(f"{buffer.strip()} ▌")
+
     seconds = time.perf_counter() - t0
-    text = buffer.strip()
+    reasoning, text = split_reasoning(buffer)
+    text = text or "(pas de déclaration publique)"
     S.messages.append(
         NegotiationMessage(
-            country=country, text=text, pass_no=pass_no, seconds=seconds, model=agent.model_tag
+            country=country,
+            text=text,
+            reasoning=reasoning,
+            pass_no=pass_no,
+            seconds=seconds,
+            model=agent.model_tag,
         )
     )
+    think_holder.markdown(reasoning or "_(pas de réflexion séparée)_")
     final = f"**{country}** · `⏱ {seconds:.1f}s`\n\n{text}"
-    holder.markdown(final)
-    add_display(country, _AGENT_AVATAR, final)
+    public_holder.markdown(final)
+    add_display(country, _AGENT_AVATAR, final, reasoning=reasoning)
 
 
 def run_judge_and_finalize() -> None:
@@ -176,6 +194,9 @@ with chat_col:
     st.subheader("🗣️ Négociation")
     for entry in S.transcript:
         with st.chat_message(entry["who"], avatar=entry["avatar"]):
+            if entry.get("reasoning"):
+                with st.expander("🧠 Réflexion privée"):
+                    st.markdown(entry["reasoning"])
             st.markdown(entry["md"])
 
 with state_col:

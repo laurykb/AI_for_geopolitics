@@ -27,6 +27,7 @@ from simulation.negotiation import (
     NegotiationMessage,
     apply_verdict,
     speaking_order,
+    split_reasoning,
     support_levels,
     update_memories,
 )
@@ -107,6 +108,8 @@ class TurnStartStep:
 class MessageDoneStep:
     country: str
     seconds: float
+    text: str = ""
+    reasoning: str = ""
 
 
 @dataclass
@@ -249,16 +252,18 @@ def run_negotiation_round(
                 chunks.append(token)
                 yield TokenStep(country=cid, token=token)
             seconds = time.perf_counter() - started
+            reasoning, text = split_reasoning("".join(chunks))
             transcript.append(
                 NegotiationMessage(
                     country=cid,
-                    text="".join(chunks).strip(),
+                    text=text,
+                    reasoning=reasoning,
                     pass_no=pass_no,
                     seconds=seconds,
                     model=agent.model_tag,
                 )
             )
-            yield MessageDoneStep(country=cid, seconds=seconds)
+            yield MessageDoneStep(country=cid, seconds=seconds, text=text, reasoning=reasoning)
 
     for token in judge.stream_rationale(event, world, transcript):
         yield JudgeTokenStep(token=token)

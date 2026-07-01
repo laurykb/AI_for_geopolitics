@@ -61,6 +61,15 @@ def test_prompt_is_budget_bounded():
     assert len(prompt) < 1500
 
 
+def test_negotiation_system_asks_for_private_reasoning_then_message():
+    from agents.prompts import NEGOTIATION_SYSTEM
+
+    # la super-intelligence pense en privé puis conclut par le marqueur MESSAGE:
+    assert "MESSAGE:" in NEGOTIATION_SYSTEM
+    lowered = NEGOTIATION_SYSTEM.lower()
+    assert "réfléch" in lowered or "réflexion" in lowered or "pens" in lowered
+
+
 def test_llm_decision_schema_has_expected_fields():
     schema = LLMDecision.model_json_schema()
     assert set(schema["properties"]) == {

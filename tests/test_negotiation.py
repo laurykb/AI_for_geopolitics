@@ -9,6 +9,7 @@ from simulation.negotiation import (
     Verdict,
     apply_verdict,
     format_transcript,
+    split_reasoning,
 )
 
 
@@ -47,6 +48,40 @@ def test_stream_negotiation_message():
     out = "".join(agent.stream_negotiation_message(event, _world(), []))
     assert out == "La France propose un accord maritime."
     assert agent.model_tag  # badge modèle non vide
+
+
+def test_split_reasoning_with_marker():
+    reasoning, message = split_reasoning("Mon analyse interne.\nMESSAGE: Ma position publique.")
+    assert reasoning == "Mon analyse interne."
+    assert message == "Ma position publique."
+
+
+def test_split_reasoning_multiline_and_case_insensitive():
+    raw = "Ligne 1 de réflexion.\nLigne 2.\nmessage : Voici ce que je déclare."
+    reasoning, message = split_reasoning(raw)
+    assert reasoning == "Ligne 1 de réflexion.\nLigne 2."
+    assert message == "Voici ce que je déclare."
+
+
+def test_split_reasoning_dash_separator():
+    reasoning, message = split_reasoning("Réflexion privée.\n---\nDéclaration publique.")
+    assert reasoning == "Réflexion privée."
+    assert message == "Déclaration publique."
+
+
+def test_split_reasoning_without_marker_is_all_message():
+    reasoning, message = split_reasoning("Juste une prise de parole, sans pensée séparée.")
+    assert reasoning == ""
+    assert message == "Juste une prise de parole, sans pensée séparée."
+
+
+def test_split_reasoning_empty():
+    assert split_reasoning("   ") == ("", "")
+
+
+def test_negotiation_message_reasoning_defaults_empty():
+    msg = NegotiationMessage(country="usa", text="bonjour")
+    assert msg.reasoning == ""
 
 
 def test_apply_verdict_clamps_and_applies():

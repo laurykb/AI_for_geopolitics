@@ -7,6 +7,7 @@ ce verdict **borné** (garde-fou déterministe) — le LLM interprète, mais ne 
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
@@ -16,6 +17,32 @@ from core.world_state import WorldState
 from simulation.diplomacy import pact_id
 
 _MEMORY_MAX = 4
+
+# Marqueur qui sépare la pensée privée du message public dans une prise de parole.
+# Tolérant : une variante en début de ligne ("Message :", "Déclaration :") OU le marqueur
+# canonique `MESSAGE:` en majuscules même inline (le LLM le pose souvent en fin de phrase).
+_MESSAGE_MARKER = re.compile(
+    r"(?m)(?:^[ \t]*(?i:message|réponse|déclaration)[ \t]*:[ \t]*|\bMESSAGE[ \t]*:[ \t]*)"
+)
+_DASH_MARKER = re.compile(r"(?m)^[ \t]*-{3,}[ \t]*$")
+
+
+def split_reasoning(raw: str) -> tuple[str, str]:
+    """Sépare la pensée privée du message public d'une prise de parole.
+
+    Coupe au premier marqueur `MESSAGE:` (tolérant à la casse/accents) ou à une ligne
+    de séparation `---`. Sans marqueur, tout est message public (pensée vide) — on ne
+    laisse jamais la pensée fuir par défaut.
+    """
+    text = raw.strip()
+    if not text:
+        return "", ""
+    match = _MESSAGE_MARKER.search(text) or _DASH_MARKER.search(text)
+    if match is None:
+        return "", text
+    reasoning = text[: match.start()].strip()
+    message = text[match.end() :].strip()
+    return reasoning, message
 
 
 def speaking_order(country_ids: list[str], event: GeoEvent) -> list[str]:
@@ -51,10 +78,15 @@ class TurnCursor:
 
 
 class NegotiationMessage(BaseModel):
-    """Une prise de parole d'un pays dans la négociation d'un round."""
+    """Une prise de parole d'un pays dans la négociation d'un round.
+
+    `text` est le message public (à la table) ; `reasoning` est la pensée privée qui l'a
+    précédé (raisonnement visible dans l'UI, non transmis aux autres agents).
+    """
 
     country: str
     text: str
+    reasoning: str = ""
     pass_no: int = 0
     seconds: float = 0.0
     model: str = ""

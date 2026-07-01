@@ -120,6 +120,22 @@ def test_turn_carries_model_tag_and_timer():
     assert all(s.seconds >= 0 for s in steps if isinstance(s, MessageDoneStep))
 
 
+def test_message_done_carries_reasoning_and_public_text():
+    world = _world()
+    # chaque pays "pense" puis parle : l'orchestrateur sépare les deux parties
+    agents = {
+        cid: LLMAgent(cid, MockBackend(f"Analyse privée de {cid}. MESSAGE: Position de {cid}."))
+        for cid in world.countries
+    }
+    steps = list(run_negotiation_round(world, agents, _gm(), _judge(), SimClock()))
+    done = [s for s in steps if isinstance(s, MessageDoneStep)]
+    assert done, "au moins une prise de parole"
+    for s in done:
+        assert s.reasoning.startswith("Analyse privée de ")
+        assert s.text.startswith("Position de ")
+        assert "MESSAGE:" not in s.text  # le marqueur ne fuit pas dans le public
+
+
 def test_judge_verdict_applied_and_bounded():
     world = _world()
     g0 = world.countries["iran"].economy.growth
