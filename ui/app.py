@@ -47,6 +47,7 @@ from simulation.negotiation import (
     speaking_order,
     split_reasoning,
     support_levels,
+    turn_budget,
     update_memories,
 )
 
@@ -107,6 +108,7 @@ def init_session() -> None:
     st.session_state.fog = None  # FogScenario du round courant (mode Fog)
     st.session_state.fog_scenarios = load_fog_scenarios()
     st.session_state.crises = load_crises()
+    st.session_state.budget_mode = "Full"  # Cheap | Balanced | Full (plafond de prises de parole)
     st.session_state.crisis = None  # Crisis rejouée (mode Crisis Replay)
     st.session_state.last_communique = ""
     st.session_state.last_comparison = None  # OutcomeComparison du dernier rejeu
@@ -279,7 +281,7 @@ def begin_round(event: GeoEvent, human_country: str | None) -> None:
     S.event = event
     S.messages = []
     S.ledger.set_round(S.round_no + 1)
-    budget = _MAX_PASSES * len(S.agents)
+    budget = turn_budget(S.budget_mode, len(S.agents), _MAX_PASSES)
     S.director = TurnDirector(
         speaking_order(list(S.agents), event), max_turns=budget, priority=human_country
     )
@@ -379,6 +381,13 @@ if role == "Joueur-pays":
     picked_country = st.sidebar.selectbox(
         "Ton pays", sorted(world.countries), disabled=S.phase != "idle"
     )
+S.budget_mode = st.sidebar.select_slider(
+    "💸 Budget LLM",
+    options=["Cheap", "Balanced", "Full"],
+    value=S.budget_mode,
+    disabled=S.phase != "idle",
+    help="Plafond de prises de parole par round. Cheap = 1, Balanced = 3, Full = tout le monde.",
+)
 with st.sidebar.popover("❓ Aide — modes & règles", use_container_width=True):
     st.markdown(
         "**Modes**\n"

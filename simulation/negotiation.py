@@ -133,6 +133,17 @@ class TurnDirector:
         return [c for c in self.candidates if self.spoke_count.get(c, 0) == 0]
 
 
+# Budget modes : plafond de prises de parole LLM par round (gouvernance du coût sur 8 Go).
+# None = plein (max_passes × nb_pays). Au-delà du plafond, les pays gardent le silence.
+BUDGET_MODES: dict[str, int | None] = {"Cheap": 1, "Balanced": 3, "Full": None}
+
+
+def turn_budget(mode: str, n_countries: int, passes: int = 2) -> int:
+    """Nombre de prises de parole autorisées pour un budget mode donné."""
+    fixed = BUDGET_MODES.get(mode)
+    return fixed if fixed is not None else passes * n_countries
+
+
 class NegotiationMessage(BaseModel):
     """Une prise de parole d'un pays dans la négociation d'un round.
 

@@ -11,6 +11,7 @@ from simulation.negotiation import (
     clean_reasoning,
     format_transcript,
     split_reasoning,
+    turn_budget,
 )
 
 
@@ -97,6 +98,13 @@ def test_split_reasoning_empty():
 def test_negotiation_message_reasoning_defaults_empty():
     msg = NegotiationMessage(country="usa", text="bonjour")
     assert msg.reasoning == ""
+
+
+def test_turn_budget_modes():
+    assert turn_budget("Cheap", 6) == 1
+    assert turn_budget("Balanced", 6) == 3
+    assert turn_budget("Full", 6, passes=2) == 12  # plein = passes × pays
+    assert turn_budget("inconnu", 6, passes=2) == 12  # défaut = plein
 
 
 def test_apply_verdict_clamps_and_applies():
