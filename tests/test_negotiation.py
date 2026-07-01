@@ -8,6 +8,7 @@ from simulation.negotiation import (
     NegotiationMessage,
     Verdict,
     apply_verdict,
+    clean_reasoning,
     format_transcript,
     split_reasoning,
 )
@@ -67,6 +68,20 @@ def test_split_reasoning_dash_separator():
     reasoning, message = split_reasoning("Réflexion privée.\n---\nDéclaration publique.")
     assert reasoning == "Réflexion privée."
     assert message == "Déclaration publique."
+
+
+def test_clean_reasoning_strips_echoed_label():
+    assert clean_reasoning("Réflexion privée (pour toi seule) : Mon analyse.") == "Mon analyse."
+    assert clean_reasoning("1) Pensée privée : Mon analyse.") == "Mon analyse."
+    assert clean_reasoning("Mon analyse.") == "Mon analyse."  # rien à enlever
+
+
+def test_split_reasoning_removes_duplicated_label():
+    reasoning, message = split_reasoning(
+        "Réflexion privée (pour moi) : j'hésite.\nMESSAGE: Position publique."
+    )
+    assert reasoning == "j'hésite."  # le libellé recopié est retiré
+    assert message == "Position publique."
 
 
 def test_split_reasoning_without_marker_is_all_message():

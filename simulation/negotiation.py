@@ -27,13 +27,24 @@ _MESSAGE_MARKER = re.compile(
 )
 _DASH_MARKER = re.compile(r"(?m)^[ \t]*-{3,}[ \t]*$")
 
+# Le modèle recopie parfois le libellé de l'étape ("Réflexion privée (…) :", "1) Pensée privée :")
+# que l'UI affiche déjà — on l'enlève en tête pour ne pas dupliquer l'entête de l'encart.
+_REASONING_LABEL = re.compile(
+    r"(?im)^[ \t]*(?:\d[.)]\s*)?(?:r[ée]flexion|pens[ée]e)\s+priv[ée]e[^:\n]*:[ \t]*"
+)
+
+
+def clean_reasoning(reasoning: str) -> str:
+    """Enlève un libellé recopié en tête (« Réflexion privée : », « 1) Pensée privée : »)."""
+    return _REASONING_LABEL.sub("", reasoning, count=1).strip()
+
 
 def split_reasoning(raw: str) -> tuple[str, str]:
     """Sépare la pensée privée du message public d'une prise de parole.
 
     Coupe au premier marqueur `MESSAGE:` (tolérant à la casse/accents) ou à une ligne
     de séparation `---`. Sans marqueur, tout est message public (pensée vide) — on ne
-    laisse jamais la pensée fuir par défaut.
+    laisse jamais la pensée fuir par défaut. La pensée est nettoyée d'un libellé recopié.
     """
     text = raw.strip()
     if not text:
@@ -41,7 +52,7 @@ def split_reasoning(raw: str) -> tuple[str, str]:
     match = _MESSAGE_MARKER.search(text) or _DASH_MARKER.search(text)
     if match is None:
         return "", text
-    reasoning = text[: match.start()].strip()
+    reasoning = clean_reasoning(text[: match.start()].strip())
     message = text[match.end() :].strip()
     return reasoning, message
 

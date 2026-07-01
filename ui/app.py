@@ -29,6 +29,7 @@ from simulation.negotiation import (
     NegotiationMessage,
     TurnDirector,
     apply_verdict,
+    clean_reasoning,
     speaking_order,
     split_reasoning,
     support_levels,
@@ -40,6 +41,20 @@ st.set_page_config(page_title="AI for Geopolitics — Live", page_icon="🌍", l
 _GM_AVATAR, _AGENT_AVATAR, _JUDGE_AVATAR, _HUMAN_AVATAR = "🎲", "🧠", "⚖️", "🙋"
 _COMMUNIQUE_AVATAR = "📜"
 _MAX_PASSES = 2
+
+# Drapeau par pays (avatar de tchat) — plus « jeu » et évite un 2e 🧠 à côté de l'encart réflexion.
+_FLAGS = {
+    "usa": "🇺🇸",
+    "china": "🇨🇳",
+    "iran": "🇮🇷",
+    "france": "🇫🇷",
+    "egypt": "🇪🇬",
+    "saudi_arabia": "🇸🇦",
+}
+
+
+def flag(cid: str) -> str:
+    return _FLAGS.get(cid, "🏳️")
 
 
 def init_session() -> None:
@@ -83,18 +98,19 @@ clock = S.clock
 chat = None  # défini plus bas (colonne du tchat)
 
 
-def add_display(who: str, avatar: str, md: str, reasoning: str = "") -> None:
-    S.transcript.append({"who": who, "avatar": avatar, "md": md, "reasoning": reasoning})
+def add_display(who: str, avatar: str, md: str, reasoning: str = "", label: str = "") -> None:
+    S.transcript.append(
+        {"who": who, "avatar": avatar, "md": md, "reasoning": reasoning, "label": label}
+    )
 
 
 def stream_ai_turn(country: str, pass_no: int) -> None:
-    """Streame la prise de parole : la pensée privée dans un expander, le message dans la bulle."""
+    """Streame la prise de parole : une entête, la pensée dans l'encart, puis le message."""
     agent: LLMAgent = S.agents[country]
-    msg = chat.chat_message(country, avatar=_AGENT_AVATAR)
-    with msg:
-        st.markdown(
-            f"**{country}** · `{agent.model_tag}` · prise de parole n°{pass_no + 1} — réfléchit…"
-        )
+    label = f"**{country}** · `{agent.model_tag}` · prise de parole n°{pass_no + 1}"
+    with chat.chat_message(country, avatar=flag(country)):
+        label_holder = st.empty()
+        label_holder.markdown(f"{label} — réfléchit…")
         think_holder = st.expander("🧠 Réflexion privée", expanded=True).empty()
         public_holder = st.empty()
 
@@ -108,7 +124,7 @@ def stream_ai_turn(country: str, pass_no: int) -> None:
                 think_holder.markdown(reasoning)
                 public_holder.markdown(f"{text} ▌")
             else:  # pas encore de marqueur : tout ce qui arrive est la pensée en cours
-                think_holder.markdown(f"{buffer.strip()} ▌")
+                think_holder.markdown(f"{clean_reasoning(buffer)} ▌")
         reasoning, text = split_reasoning(buffer)
         scope.mark(
             grounding=grounding_proxy(text, world.countries[country], perceived.confidence),
@@ -127,10 +143,11 @@ def stream_ai_turn(country: str, pass_no: int) -> None:
             model=agent.model_tag,
         )
     )
+    final_label = f"{label} · `⏱ {seconds:.1f}s`"
+    label_holder.markdown(final_label)
     think_holder.markdown(reasoning or "_(pas de réflexion séparée)_")
-    final = f"**{country}** · `⏱ {seconds:.1f}s`\n\n{text}"
-    public_holder.markdown(final)
-    add_display(country, _AGENT_AVATAR, final, reasoning=reasoning)
+    public_holder.markdown(text)
+    add_display(country, flag(country), text, reasoning=reasoning, label=final_label)
 
 
 def run_judge_and_finalize() -> None:
@@ -328,6 +345,8 @@ with chat_col:
     st.subheader("🗣️ Négociation")
     for entry in S.transcript:
         with st.chat_message(entry["who"], avatar=entry["avatar"]):
+            if entry.get("label"):
+                st.markdown(entry["label"])
             if entry.get("reasoning"):
                 with st.expander("🧠 Réflexion privée"):
                     st.markdown(entry["reasoning"])
