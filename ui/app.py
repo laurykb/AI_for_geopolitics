@@ -24,9 +24,16 @@ from agents.prompts import (
     build_negotiation_prompt,
 )
 from core.events import GeoEvent
+from core.risk import RiskScore
+from core.rounds import RoundSummary
 from inference.metered_backend import MeteredBackend
 from inference.ollama_backend import OllamaBackend
 from inference.telemetry import BudgetLedger, grounding_proxy
+from market import scoring
+from market.engine import MarketEngine, MarketError
+from market.models import MarketStatus, MarketType, ResolutionCriterion, ResolutionKind
+from market.resolution import resolve_and_settle, utopia_delta
+from market.store import SQLiteMarketStore
 from simulation.clock import SimClock
 from simulation.crisis import compare_outcome, load_crises
 from simulation.escalation import (
@@ -359,6 +366,154 @@ def render_settings_tab() -> None:
             st.code(txt, language="text")
 
 
+@st.cache_resource
+def _market_engine() -> MarketEngine:
+    """Moteur de marché du process (SQLite en mémoire, persistant le temps de la session)."""
+    return MarketEngine(SQLiteMarketStore(":memory:"))
+
+
+def _blank_summary(round_id: int) -> RoundSummary:
+    """RoundSummary minimal pour résoudre un marché trajectoire (décisions inutiles ici)."""
+    return RoundSummary(
+        round_id=round_id,
+        event=GeoEvent(
+            id=f"r{round_id}", round_id=round_id, event_type="market", title="résolution"
+        ),
+        decisions=[],
+        risk=RiskScore(
+            round_id=round_id, escalation=0.0, economic_disruption=0.0,
+            alliance_fracture=0.0, uncertainty=0.0,
+        ),
+    )
+
+
+def _render_bet_box(engine: MarketEngine, market, account_id: str) -> None:
+    """Une carte de marché : prix YES/NO + devis live + bouton parier."""
+    prices = engine.prices(market.id)
+    with st.container(border=True):
+        st.markdown(f"**{market.question}**  ·  _round {market.round_id}_")
+        cols = st.columns(len(market.outcomes))
+        for col, o in zip(cols, market.outcomes, strict=True):
+            col.metric(o.label, f"{prices[o.id] * 100:.0f}%")
+        choice = st.selectbox(
+            "Issue", [o.label for o in market.outcomes], key=f"oc_{market.id}"
+        )
+        shares = st.number_input(
+            "Parts", min_value=1.0, value=5.0, step=1.0, key=f"sh_{market.id}"
+        )
+        outcome_id = next(o.id for o in market.outcomes if o.label == choice)
+        quote = engine.quote(market.id, outcome_id, shares)
+        st.caption(
+            f"Coût ≈ **{quote.cost:.1f} cr** · prix {quote.price_before * 100:.0f}% → "
+            f"{quote.price_after * 100:.0f}%"
+        )
+        if st.button("Parier", key=f"bet_{market.id}", type="primary"):
+            try:
+                engine.place_bet(account_id, market.id, outcome_id, shares)
+                st.rerun()
+            except MarketError as exc:
+                st.error(str(exc))
+
+
+def render_market_tab() -> None:
+    """Marché de prédiction (argent fictif) : parier sur ce que feront les super-intelligences."""
+    st.subheader("💹 Marché de prédiction")
+    st.caption(
+        "Pariez (crédits **fictifs**) sur ce que feront les super-intelligences. Le **Juge** est "
+        "l'oracle de résolution ; le score de **Brier** mesure qui prédit le mieux. Le marché "
+        "**observe**, il n'influence pas les IA."
+    )
+    engine = _market_engine()
+    if "market_account" not in S or engine.store.get_account(S.market_account) is None:
+        S.market_account = engine.create_account("Vous").id
+    me = engine.store.get_account(S.market_account)
+
+    delta = utopia_delta(world.trajectory_history)
+    utopia = world.trajectory.utopia if world.trajectory else 0.5
+    c1, c2, c3 = st.columns(3)
+    c1.metric("💰 Solde", f"{me.balance:.0f} cr")
+    c2.metric("📊 P&L", f"{scoring.pnl(me):+.0f} cr")
+    c3.metric("🌗 Indice Utopie", f"{utopia:.2f}", f"{delta:+.3f}")
+
+    next_round = S.round_no + 1
+    already = any(
+        m.criterion is not None and m.criterion.kind is ResolutionKind.TRAJECTORY
+        for m in engine.store.list_markets(round_id=next_round, status=MarketStatus.OPEN)
+    )
+    if st.button(
+        "📈 Ouvrir « L'indice Utopie va-t-il monter ? » (prochain round)", disabled=already
+    ):
+        engine.open_binary_market(
+            round_id=next_round,
+            question="L'indice Utopie va-t-il monter (ΔU > 0) au prochain round ?",
+            b=20.0,
+            type=MarketType.THRESHOLD,
+            criterion=ResolutionCriterion(kind=ResolutionKind.TRAJECTORY),
+        )
+        st.rerun()
+    if already:
+        st.caption(f"Un marché trajectoire est déjà ouvert pour le round {next_round}.")
+
+    open_markets = engine.store.list_markets(status=MarketStatus.OPEN)
+    if not open_markets:
+        st.info("Aucun marché ouvert — ouvre-en un ci-dessus.")
+    for market in open_markets:
+        _render_bet_box(engine, market, me.id)
+
+    traj_open = [
+        m for m in open_markets
+        if m.criterion is not None and m.criterion.kind is ResolutionKind.TRAJECTORY
+    ]
+    if traj_open and st.button(f"🏦 Résoudre les marchés trajectoire (ΔU = {delta:+.3f})"):
+        for market in traj_open:
+            resolve_and_settle(
+                engine.store, market, _blank_summary(market.round_id), delta_utopia=delta
+            )
+        st.rerun()
+
+    positions = [p for p in engine.store.list_positions(account_id=me.id) if p.shares != 0.0]
+    if positions:
+        st.markdown("**📁 Portefeuille**")
+        index = {
+            o.id: (m.question, o.label)
+            for m in engine.store.list_markets()
+            for o in m.outcomes
+        }
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "marché": index.get(p.outcome_id, ("?", "?"))[0],
+                        "issue": index.get(p.outcome_id, ("?", "?"))[1],
+                        "parts": round(p.shares, 1),
+                    }
+                    for p in positions
+                ]
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    board = scoring.leaderboard(engine.store)
+    if board:
+        st.markdown("**🏆 Leaderboard** (P&L, Brier — plus bas = mieux calibré)")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "participant": e.name,
+                        "type": e.kind.value,
+                        "P&L cr": round(e.pnl, 1),
+                        "Brier": round(e.brier, 3) if e.brier is not None else "—",
+                    }
+                    for e in board
+                ]
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+
 # ------------------------------ Sidebar ------------------------------
 st.sidebar.title("🌍 Contrôles")
 if st.sidebar.button("♻️ Nouvelle partie", use_container_width=True):
@@ -409,7 +564,11 @@ b2.metric("🔄 Round", S.round_no)
 b3.metric("⏱️ Dernier round", f"{S.elapsed:.0f} s")
 b4.metric("🎭 Rôle", role.split()[0])
 
-tab_theatre, tab_budget, tab_settings = st.tabs(["🗣️ Théâtre", "💸 LLM Budget", "⚙️ Réglages"])
+tab_theatre, tab_market, tab_budget, tab_settings = st.tabs(
+    ["🗣️ Théâtre", "💹 Marché", "💸 LLM Budget", "⚙️ Réglages"]
+)
+with tab_market:
+    render_market_tab()
 with tab_budget:
     render_budget_tab()
 with tab_settings:
