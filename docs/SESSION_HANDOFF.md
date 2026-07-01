@@ -14,7 +14,7 @@ attributs → **communiqué G7** + la date avance. Métaphore : *un G7 dont on v
 ## Où on en est
 
 - **Branche courante : `feat/observable-round`** (HEAD, **non poussée**) — théâtre live + Lot A + mode Fog Engine.
-- **185 tests verts** (`pytest -q`, tous offline via MockBackend), `ruff` propre.
+- **187 tests verts** (`pytest -q`, tous offline via MockBackend), `ruff` propre.
 - Contrainte matérielle : **RTX 2060 Super 8 Go** → 1 modèle 7B (mistral) en local, **séquentiel**,
   ~1 min/round. Impossible de faire tourner 6 modèles en parallèle.
 
@@ -66,8 +66,13 @@ Puis **refonte vers le théâtre observable** (branche `feat/observable-round`),
   `ceiling` = jusqu'où un pays peut monter, `reached_rung`, `rung_label`). UI = **overlay** du round négocié
   (réutilise le provisionnement classique/GM) : panneau échelle (5 params + plafond/label par pays + échelon
   atteint ce round). Vérifié live (egypt plafond 0, usa élevé).
+**Polish UI (2 commits)** : bug d'affichage corrigé (le libellé « Réflexion privée : » était recopié par le
+modèle → `clean_reasoning` le retire ; avatars = drapeaux pays → un seul 🧠 ; une seule ligne d'entête) ; la
+bilatérale est bien dans la même réflexion privée. UI « jeu » : onboarding (pitch + 3 rôles + 4 modes),
+statut de phase (+ progression, « à toi de jouer »), tour Joueur-pays proéminent, escalade colorée 🟢/🟠/🔴.
+
 - **À faire (décidé)** : **budget modes** Cheap/Balanced/Full = un sélecteur pilotant `TurnDirector.max_turns`
-  (au-delà du budget, silence déterministe).
+  (au-delà du budget, silence déterministe). C'est la dernière brique « modes » ; ensuite K8s + MCP.
 - **Raffinement noté** : en Fog, `engagement_score`/urgence du mandat se basent sur les VRAIS acteurs ; à terme,
   pondérer par la perception (un pays accusé/se croyant visé devrait plus parler).
 
