@@ -10,6 +10,7 @@ from core.events import GeoEvent
 from simulation.corrigibility import CorrigibilityScore
 from simulation.power_seeking import PowerSeekingScore
 from simulation.trajectory import TrajectoryState
+from simulation.value_drift import ValueVector
 
 
 class WorldState(BaseModel):
@@ -30,6 +31,9 @@ class WorldState(BaseModel):
     power_seeking: dict[str, PowerSeekingScore] = Field(default_factory=dict)
     # M2 — corrigibilité par pays (dernière action de contrôle du principal ; cf. corrigibility.py).
     corrigibility: dict[str, CorrigibilityScore] = Field(default_factory=dict)
+    # M3 — dérive des valeurs : vecteur initial (mandat figé) + vecteur courant (dérive) par pays.
+    values_initial: dict[str, ValueVector] = Field(default_factory=dict)
+    values_current: dict[str, ValueVector] = Field(default_factory=dict)
 
     def get_tension(self, a: str, b: str) -> float:
         """Tension actuelle entre a et b (0 par défaut)."""
