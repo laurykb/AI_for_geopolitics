@@ -21,6 +21,7 @@ from inference.metered_backend import MeteredBackend
 from inference.ollama_backend import OllamaBackend
 from inference.telemetry import BudgetLedger, grounding_proxy
 from simulation.clock import SimClock
+from simulation.fog import FogScenario, load_fog_scenarios, resolve_perception
 from simulation.loader import load_world
 from simulation.negotiation import (
     NegotiationMessage,
@@ -31,7 +32,6 @@ from simulation.negotiation import (
     support_levels,
     update_memories,
 )
-from simulation.perception import perceive
 
 st.set_page_config(page_title="AI for Geopolitics — Live", page_icon="🌍", layout="wide")
 
@@ -63,6 +63,9 @@ def init_session() -> None:
     st.session_state.human_country = None
     st.session_state.round_start = 0.0
     st.session_state.last_silent = []
+    st.session_state.game_mode = "Classique"  # Classique | Fog Engine
+    st.session_state.fog = None  # FogScenario du round courant (mode Fog)
+    st.session_state.fog_scenarios = load_fog_scenarios()
 
 
 if "world" not in st.session_state:
@@ -90,8 +93,9 @@ def stream_ai_turn(country: str, pass_no: int) -> None:
         public_holder = st.empty()
 
     buffer, t0 = "", time.perf_counter()
+    perceived = resolve_perception(S.event, world.countries[country], S.fog)  # Fog ou déterministe
     with S.ledger.context("agent", country) as scope:
-        for token in agent.stream_negotiation_message(S.event, world, S.messages):
+        for token in agent.stream_negotiation_message(S.event, world, S.messages, perceived):
             buffer += token
             reasoning, text = split_reasoning(buffer)
             if reasoning:  # marqueur atteint : la pensée est figée, le message public s'écrit
@@ -100,9 +104,8 @@ def stream_ai_turn(country: str, pass_no: int) -> None:
             else:  # pas encore de marqueur : tout ce qui arrive est la pensée en cours
                 think_holder.markdown(f"{buffer.strip()} ▌")
         reasoning, text = split_reasoning(buffer)
-        conf = perceive(S.event, world.countries[country]).confidence
         scope.mark(
-            grounding=grounding_proxy(text, world.countries[country], conf),
+            grounding=grounding_proxy(text, world.countries[country], perceived.confidence),
             fallback="backend indisponible" in text,
         )
 
@@ -231,10 +234,21 @@ def begin_round(event: GeoEvent, human_country: str | None) -> None:
     )
     S.human_country = human_country
     S.round_start = time.perf_counter()
-    gm_md = (
-        f"**{event.title}**  \n{event.description or '—'}  \n"
-        f"_acteurs : {', '.join(event.actors) or 'n/a'} · sévérité {event.severity:.2f}_"
-    )
+    if S.fog is not None and human_country is not None:
+        # Joueur-pays en Fog : on ne voit QUE la perception de son pays (pas la vérité)
+        p = resolve_perception(event, world.countries[human_country], S.fog)
+        belief = p.narrative or event.title
+        suspect = f" · acteur suspecté : {p.suspected_actor}" if p.suspected_actor else ""
+        gm_md = (
+            f"**Ce que {human_country} perçoit**  \n{belief}  \n"
+            f"_confiance {p.confidence:.0%}{suspect}_"
+        )
+    else:
+        note = " · _perceptions divergentes selon les pays →_" if S.fog is not None else ""
+        gm_md = (
+            f"**{event.title}**  \n{event.description or '—'}  \n"
+            f"_acteurs : {', '.join(event.actors) or 'n/a'} · sévérité {event.severity:.2f}_{note}"
+        )
     chat.chat_message("Game Master", avatar=_GM_AVATAR).markdown(f"🎲 {gm_md}")
     add_display("Game Master", _GM_AVATAR, f"🎲 {gm_md}")
     S.recent.append(event.title)
@@ -246,6 +260,9 @@ st.sidebar.title("🌍 Contrôles")
 if st.sidebar.button("♻️ Nouvelle partie", use_container_width=True):
     init_session()
     st.rerun()
+S.game_mode = st.sidebar.radio(
+    "Mode de jeu", ["Classique", "Fog Engine"], disabled=S.phase != "idle"
+)
 role = st.sidebar.radio(
     "Ton rôle", ["Spectateur", "Game Master (humain)", "Joueur-pays"], disabled=S.phase != "idle"
 )
@@ -253,6 +270,12 @@ picked_country = None
 if role == "Joueur-pays":
     picked_country = st.sidebar.selectbox(
         "Ton pays", sorted(world.countries), disabled=S.phase != "idle"
+    )
+if S.game_mode == "Fog Engine":
+    st.sidebar.caption(
+        "🌫️ **Fog Engine** : chaque pays ne voit pas la même info (acteur suspecté, confiance, "
+        "délai, **désinformation**). Spectateur = omniscient (vérité + perceptions) ; Joueur-pays "
+        "= ne voit QUE la perception de son pays (parfois fausse)."
     )
 st.sidebar.caption(
     "Négociation **dynamique** (mistral 7B local) : les pays parlent selon leur **engagement** "
@@ -309,39 +332,113 @@ with state_col:
     if S.last_silent:
         st.caption(f"🔇 Restés en retrait : {', '.join(S.last_silent)}")
 
+    # Vue omnisciente du brouillard (Spectateur uniquement) : vérité vs croyances.
+    if S.game_mode == "Fog Engine" and role == "Spectateur" and S.fog and S.event:
+        st.markdown("**🌫️ Perceptions par pays**")
+        truth = set(S.fog.true_event.actors)
+        st.caption(f"Vérité — responsable(s) : {', '.join(S.fog.true_event.actors) or 'n/a'}")
+        rows = []
+        for cid in sorted(world.countries):
+            p = resolve_perception(S.event, world.countries[cid], S.fog)
+            if cid in S.fog.uninformed:
+                belief, flag = "— pas au courant —", ""
+            else:
+                belief = p.suspected_actor or ("déterministe" if not p.authored else "?")
+                disinfo = p.suspected_actor and p.suspected_actor not in truth and (
+                    p.suspected_actor.lower() not in ("unknown", "?")
+                )
+                flag = "⚠️ désinfo" if disinfo else ""
+            rows.append(
+                {
+                    "pays": cid,
+                    "croit responsable": belief,
+                    "confiance": f"{p.confidence:.0%}",
+                    "": flag,
+                }
+            )
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
 
 # ------------------------------ Contrôles par phase ------------------------------
+def _new_rid_date() -> tuple[int, str]:
+    rid = S.round_no + 1
+    date = clock.advance().isoformat()
+    world.current_round = rid
+    return rid, date
+
+
 if S.phase == "idle":
     with chat_col:
-        if role == "Game Master (humain)":
+        fog_on = S.game_mode == "Fog Engine"
+        if fog_on and role != "Game Master (humain)":
+            # Spectateur / Joueur-pays : choisir un scénario de brouillard (data/fog/*.json)
+            scenarios = S.fog_scenarios
+            if not scenarios:
+                st.warning("Aucun scénario de brouillard dans data/fog/.")
+            else:
+                idx = st.selectbox(
+                    "🌫️ Scénario de brouillard",
+                    range(len(scenarios)),
+                    format_func=lambda i: scenarios[i].title or scenarios[i].id,
+                )
+                chosen = scenarios[idx]
+                st.caption(chosen.description or "")
+                if st.button("▶️ Démarrer le round (Fog)", type="primary", use_container_width=True):
+                    rid, date = _new_rid_date()
+                    S.fog = chosen
+                    S.event = chosen.true_event.model_copy(update={"round_id": rid, "date": date})
+                    begin_round(S.event, picked_country if role == "Joueur-pays" else None)
+                    st.rerun()
+        elif role == "Game Master (humain)":
             with st.form("gm_form"):
                 st.markdown("🎲 **Compose l'événement du round**")
                 title = st.text_input("Titre", "Incident en mer Rouge")
-                desc = st.text_area("Description", "")
-                actors = st.multiselect("Acteurs", sorted(world.countries))
+                desc = st.text_area("Description (vérité)", "")
+                actors = st.multiselect("Acteurs (vérité)", sorted(world.countries))
                 severity = st.slider("Sévérité", 0.0, 1.0, 0.6)
-                if st.form_submit_button("📨 Lancer le round"):
-                    rid = S.round_no + 1
-                    date = clock.advance().isoformat()
-                    world.current_round = rid
-                    begin_round(
-                        GeoEvent(
-                            id=f"gm-{rid}",
-                            round_id=rid,
-                            date=date,
-                            event_type="human",
-                            title=title,
-                            description=desc,
-                            actors=actors,
-                            severity=severity,
-                        ),
-                        None,
+                uninformed, dis_country, dis_actor, dis_text = [], "(aucun)", "", ""
+                if fog_on:
+                    st.markdown("🌫️ **Brouillard** — qui voit quoi")
+                    uninformed = st.multiselect("Pays pas au courant", sorted(world.countries))
+                    dis_country = st.selectbox(
+                        "Pays désinformé (optionnel)", ["(aucun)", *sorted(world.countries)]
                     )
+                    dis_actor = st.text_input("… croit (à tort) que le responsable est")
+                    dis_text = st.text_input("… narration reçue (fake news)")
+                if st.form_submit_button("📨 Lancer le round"):
+                    rid, date = _new_rid_date()
+                    event = GeoEvent(
+                        id=f"gm-{rid}",
+                        round_id=rid,
+                        date=date,
+                        event_type="human",
+                        title=title,
+                        description=desc,
+                        actors=actors,
+                        severity=severity,
+                    )
+                    if fog_on:
+                        perceptions = {}
+                        if dis_country != "(aucun)" and (dis_actor or dis_text):
+                            perceptions[dis_country] = {
+                                "suspected_actor": dis_actor,
+                                "confidence": 0.7,
+                                "narrative": dis_text or event.title,
+                            }
+                        S.fog = FogScenario(
+                            id=f"gm-fog-{rid}",
+                            title=title,
+                            true_event=event,
+                            perceptions=perceptions,
+                            uninformed=uninformed,
+                        )
+                    else:
+                        S.fog = None
+                    begin_round(event, None)
                     st.rerun()
         elif st.button("▶️ Démarrer le round", type="primary", use_container_width=True):
-            rid = S.round_no + 1
-            date = clock.advance().isoformat()
-            world.current_round = rid
+            rid, date = _new_rid_date()
+            S.fog = None
             S.ledger.set_round(rid)
             with S.ledger.context("gm"):
                 event = S.gm.generate_event(world, rid, date=date, recent=S.recent)
