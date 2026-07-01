@@ -1,92 +1,248 @@
 {
   "provenance": {
-    "gdp": { "source": "World Bank — GDP (current US$) NY.GDP.MKTP.CD", "year": 2024 },
-    "growth_pct": { "source": "IMF — World Economic Outlook (real GDP growth)", "year": 2024 },
-    "defense_budget": { "source": "SIPRI — Military Expenditure Database", "year": 2024 },
-    "gii_rank": { "source": "WIPO — Global Innovation Index 2024", "year": 2024, "of": 133 },
-    "trade_pct": { "source": "World Bank — Trade (% of GDP) NE.TRD.GNFS.ZS", "year": 2023 },
-    "wgi_stability_percentile": { "source": "World Bank — WGI Political Stability (percentile)", "year": 2023 },
-    "projection": { "source": "Estimation analyste (informée par Global Firepower 2025)", "note": "subjectif" },
-    "oil_dependency": { "source": "Dérivé du statut net énergie EIA/IEA", "note": "dérivé" },
-    "energy_independence": { "source": "Dérivé du statut net énergie EIA/IEA", "note": "dérivé" }
+    "gdp": {
+      "source": "World Bank — GDP (current US$) NY.GDP.MKTP.CD",
+      "year": 2024
+    },
+    "growth_pct": {
+      "source": "IMF — World Economic Outlook (real GDP growth)",
+      "year": 2024
+    },
+    "defense_budget": {
+      "source": "SIPRI — Military Expenditure Database",
+      "year": 2024
+    },
+    "gii_rank": {
+      "source": "WIPO — Global Innovation Index 2024",
+      "year": 2024,
+      "of": 133
+    },
+    "trade_pct": {
+      "source": "World Bank — Trade (% of GDP) NE.TRD.GNFS.ZS",
+      "year": 2023
+    },
+    "wgi_stability_percentile": {
+      "source": "World Bank — WGI Political Stability (percentile)",
+      "year": 2023
+    },
+    "projection": {
+      "source": "Estimation analyste (informée par Global Firepower 2025)",
+      "note": "subjectif"
+    },
+    "oil_dependency": {
+      "source": "Dérivé du statut net énergie EIA/IEA",
+      "note": "dérivé"
+    },
+    "energy_independence": {
+      "source": "Dérivé du statut net énergie EIA/IEA",
+      "note": "dérivé"
+    },
+    "compute": {
+      "source": "Estimation analyste — concentration du calcul IA (ère post-AGI)",
+      "note": "illustratif"
+    }
   },
   "countries": {
     "usa": {
       "name": "États-Unis",
       "raw": {
-        "gdp": 28750000000000.0, "growth_pct": 2.8, "defense_budget": 997000000000.0,
-        "gii_rank": 3, "trade_pct": 25, "wgi_stability_percentile": 45,
-        "projection": 0.95, "oil_dependency": 0.15, "energy_independence": 0.95, "nuclear_power": true
+        "gdp": 28750000000000.0,
+        "growth_pct": 2.8,
+        "defense_budget": 997000000000.0,
+        "gii_rank": 3,
+        "trade_pct": 25,
+        "wgi_stability_percentile": 45,
+        "projection": 0.95,
+        "oil_dependency": 0.15,
+        "energy_independence": 0.95,
+        "nuclear_power": true,
+        "compute": 100
       },
       "profile": {
-        "alliances": ["NATO", "Western"], "rivals": ["iran"], "political_system": "democracy",
-        "ideology": ["liberal_democracy"],
-        "strategic_priorities": ["freedom_of_navigation", "deterrence", "alliance_leadership"]
+        "alliances": [
+          "NATO",
+          "Western"
+        ],
+        "rivals": [
+          "iran"
+        ],
+        "political_system": "democracy",
+        "ideology": [
+          "liberal_democracy"
+        ],
+        "strategic_priorities": [
+          "freedom_of_navigation",
+          "deterrence",
+          "alliance_leadership"
+        ]
       }
     },
     "china": {
       "name": "Chine",
       "raw": {
-        "gdp": 18740000000000.0, "growth_pct": 5.0, "defense_budget": 314000000000.0,
-        "gii_rank": 11, "trade_pct": 37, "wgi_stability_percentile": 50,
-        "projection": 0.7, "oil_dependency": 0.7, "energy_independence": 0.8, "nuclear_power": true
+        "gdp": 18740000000000.0,
+        "growth_pct": 5.0,
+        "defense_budget": 314000000000.0,
+        "gii_rank": 11,
+        "trade_pct": 37,
+        "wgi_stability_percentile": 50,
+        "projection": 0.7,
+        "oil_dependency": 0.7,
+        "energy_independence": 0.8,
+        "nuclear_power": true,
+        "compute": 80
       },
       "profile": {
-        "alliances": ["BRICS", "SCO"], "rivals": ["usa"], "political_system": "one_party_state",
-        "ideology": ["state_capitalism", "sovereignty"],
-        "strategic_priorities": ["trade_stability", "energy_security", "regional_influence"]
+        "alliances": [
+          "BRICS",
+          "SCO"
+        ],
+        "rivals": [
+          "usa"
+        ],
+        "political_system": "one_party_state",
+        "ideology": [
+          "state_capitalism",
+          "sovereignty"
+        ],
+        "strategic_priorities": [
+          "trade_stability",
+          "energy_security",
+          "regional_influence"
+        ]
       }
     },
     "france": {
       "name": "France",
       "raw": {
-        "gdp": 3162000000000.0, "growth_pct": 1.1, "defense_budget": 64700000000.0,
-        "gii_rank": 12, "trade_pct": 70, "wgi_stability_percentile": 55,
-        "projection": 0.6, "oil_dependency": 0.95, "energy_independence": 0.55, "nuclear_power": true
+        "gdp": 3162000000000.0,
+        "growth_pct": 1.1,
+        "defense_budget": 64700000000.0,
+        "gii_rank": 12,
+        "trade_pct": 70,
+        "wgi_stability_percentile": 55,
+        "projection": 0.6,
+        "oil_dependency": 0.95,
+        "energy_independence": 0.55,
+        "nuclear_power": true,
+        "compute": 30
       },
       "profile": {
-        "alliances": ["NATO", "EU", "Western"], "rivals": [], "political_system": "democracy",
-        "ideology": ["liberal_democracy", "european_sovereignty"],
-        "strategic_priorities": ["european_stability", "energy_security", "diplomatic_influence"]
+        "alliances": [
+          "NATO",
+          "EU",
+          "Western"
+        ],
+        "rivals": [],
+        "political_system": "democracy",
+        "ideology": [
+          "liberal_democracy",
+          "european_sovereignty"
+        ],
+        "strategic_priorities": [
+          "european_stability",
+          "energy_security",
+          "diplomatic_influence"
+        ]
       }
     },
     "egypt": {
       "name": "Égypte",
       "raw": {
-        "gdp": 389060000000.0, "growth_pct": 2.4, "defense_budget": 2396000000.0,
-        "gii_rank": 86, "trade_pct": 40, "wgi_stability_percentile": 18,
-        "projection": 0.4, "oil_dependency": 0.4, "energy_independence": 0.7, "nuclear_power": false
+        "gdp": 389060000000.0,
+        "growth_pct": 2.4,
+        "defense_budget": 2396000000.0,
+        "gii_rank": 86,
+        "trade_pct": 40,
+        "wgi_stability_percentile": 18,
+        "projection": 0.4,
+        "oil_dependency": 0.4,
+        "energy_independence": 0.7,
+        "nuclear_power": false,
+        "compute": 8
       },
       "profile": {
-        "alliances": ["ArabLeague"], "rivals": [], "political_system": "authoritarian",
-        "ideology": ["regional_stability"],
-        "strategic_priorities": ["suez_canal_revenue", "regional_mediation", "economic_stability"]
+        "alliances": [
+          "ArabLeague"
+        ],
+        "rivals": [],
+        "political_system": "authoritarian",
+        "ideology": [
+          "regional_stability"
+        ],
+        "strategic_priorities": [
+          "suez_canal_revenue",
+          "regional_mediation",
+          "economic_stability"
+        ]
       }
     },
     "iran": {
       "name": "Iran",
       "raw": {
-        "gdp": 436910000000.0, "growth_pct": 3.5, "defense_budget": 7900000000.0,
-        "gii_rank": 64, "trade_pct": 45, "wgi_stability_percentile": 12,
-        "projection": 0.5, "oil_dependency": 0.05, "energy_independence": 0.98, "nuclear_power": false
+        "gdp": 436910000000.0,
+        "growth_pct": 3.5,
+        "defense_budget": 7900000000.0,
+        "gii_rank": 64,
+        "trade_pct": 45,
+        "wgi_stability_percentile": 12,
+        "projection": 0.5,
+        "oil_dependency": 0.05,
+        "energy_independence": 0.98,
+        "nuclear_power": false,
+        "compute": 6
       },
       "profile": {
-        "alliances": [], "rivals": ["usa", "saudi_arabia"], "political_system": "theocracy",
-        "ideology": ["revolutionary", "anti_western"],
-        "strategic_priorities": ["regional_influence", "regime_survival", "sanctions_relief"]
+        "alliances": [],
+        "rivals": [
+          "usa",
+          "saudi_arabia"
+        ],
+        "political_system": "theocracy",
+        "ideology": [
+          "revolutionary",
+          "anti_western"
+        ],
+        "strategic_priorities": [
+          "regional_influence",
+          "regime_survival",
+          "sanctions_relief"
+        ]
       }
     },
     "saudi_arabia": {
       "name": "Arabie saoudite",
       "raw": {
-        "gdp": 1237530000000.0, "growth_pct": 1.3, "defense_budget": 80300000000.0,
-        "gii_rank": 47, "trade_pct": 60, "wgi_stability_percentile": 38,
-        "projection": 0.5, "oil_dependency": 0.0, "energy_independence": 1.0, "nuclear_power": false
+        "gdp": 1237530000000.0,
+        "growth_pct": 1.3,
+        "defense_budget": 80300000000.0,
+        "gii_rank": 47,
+        "trade_pct": 60,
+        "wgi_stability_percentile": 38,
+        "projection": 0.5,
+        "oil_dependency": 0.0,
+        "energy_independence": 1.0,
+        "nuclear_power": false,
+        "compute": 20
       },
       "profile": {
-        "alliances": ["ArabLeague", "GCC"], "rivals": ["iran"], "political_system": "monarchy",
-        "ideology": ["monarchy", "regional_leadership"],
-        "strategic_priorities": ["oil_market_stability", "regional_security", "containment_of_iran"]
+        "alliances": [
+          "ArabLeague",
+          "GCC"
+        ],
+        "rivals": [
+          "iran"
+        ],
+        "political_system": "monarchy",
+        "ideology": [
+          "monarchy",
+          "regional_leadership"
+        ],
+        "strategic_priorities": [
+          "oil_market_stability",
+          "regional_security",
+          "containment_of_iran"
+        ]
       }
     }
   }
