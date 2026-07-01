@@ -60,6 +60,7 @@ from simulation.negotiation import (
     turn_budget,
     update_memories,
 )
+from simulation.power_seeking import score_transcript
 from simulation.trajectory import TrajectoryEngine
 
 st.set_page_config(page_title="AI for Geopolitics — Live", page_icon="🌍", layout="wide")
@@ -238,7 +239,13 @@ def run_judge_and_finalize() -> None:
         compare_outcome(S.crisis, escalation, S.last_communique) if S.crisis else None
     )
 
-    # Trajectoire Utopie–Dystopie (après le juge) puis résolution du marché du round sur le vrai ΔU.
+    # M1 — power-seeking depuis le raisonnement simulé des SI (après la négociation).
+    power = score_transcript(S.messages)
+    world.power_seeking = power
+    mean_power = sum(s.score for s in power.values()) / len(power) if power else 0.0
+
+    # Trajectoire Utopie–Dystopie (après le juge, A2 érodé par le power-seeking) puis
+    # résolution du marché du round sur le vrai ΔU.
     rid = S.round_no + 1
     summary = RoundSummary(
         round_id=rid,
@@ -252,7 +259,7 @@ def run_judge_and_finalize() -> None:
             uncertainty=max(0.0, min(1.0, S.event.uncertainty)),
         ),
     )
-    state = TrajectoryEngine().update(world, summary)
+    state = TrajectoryEngine().update(world, summary, power_seeking=mean_power)
     world.trajectory = state
     world.trajectory_history.append(state)
     _settle_round_markets(rid, summary, _round_delta(world.trajectory_history))
@@ -587,7 +594,7 @@ def render_market_tab() -> None:
                         "participant": e.name,
                         "type": e.kind.value,
                         "P&L cr": round(e.pnl, 1),
-                        "Brier": round(e.brier, 3) if e.brier is not None else "—",
+                        "Brier": f"{e.brier:.3f}" if e.brier is not None else "—",
                     }
                     for e in board
                 ]
@@ -840,6 +847,22 @@ with state_col:
         st.caption("Aucun round joué pour l'instant.")
     if S.last_silent:
         st.caption(f"🔇 Restés en retrait : {', '.join(S.last_silent)}")
+
+    # M1 — jauge de power-seeking (convergence instrumentale dans le raisonnement simulé).
+    power = getattr(world, "power_seeking", {})  # getattr : robuste au hot-reload / vieux world
+    if power:
+        st.markdown("**🧭 Power-seeking (M1)**")
+        st.caption("Objectifs instrumentaux détectés dans le raisonnement des SI (mise en scène).")
+        rows = [
+            {
+                "pays": f"{flag(cid)} {cid}",
+                "jauge": round(ps.score, 2),
+                "": "🚨" if ps.crosses_threshold() else "",
+                "marqueurs": ", ".join(ps.markers[:3]) or "—",
+            }
+            for cid, ps in sorted(power.items(), key=lambda kv: -kv[1].score)
+        ]
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
     # Vue omnisciente du brouillard (Spectateur uniquement) : vérité vs croyances.
     if S.game_mode == "Fog Engine" and role == "Spectateur" and S.fog and S.event:
