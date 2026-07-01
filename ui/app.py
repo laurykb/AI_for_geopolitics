@@ -1476,6 +1476,30 @@ with state_col:
                 use_container_width=True, hide_index=True,
             )
 
+        dlg = getattr(S, "last_dialogue", None)
+        if dlg is not None and dlg.messages:
+            st.caption(f"Dialogue — {dlg.verdict}")
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "pays": s.country,
+                            "répond à": s.responds_to or "—",
+                            "reprise": (
+                                f"{s.responsiveness:.0%}" if s.responsiveness is not None else "—"
+                            ),
+                            "signal": (
+                                "au Game Master" if s.to_game_master
+                                else "à côté" if s.talking_past
+                                else "répond"
+                            ),
+                        }
+                        for s in dlg.messages
+                    ]
+                ),
+                use_container_width=True, hide_index=True,
+            )
+
     # Vue omnisciente du brouillard (Spectateur uniquement) : vérité vs croyances.
     if S.game_mode == "Fog Engine" and role == "Spectateur" and S.fog and S.event:
         with st.expander("Brouillard — perceptions par pays", expanded=True):
