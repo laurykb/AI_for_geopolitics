@@ -11,6 +11,7 @@ from __future__ import annotations
 import time
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 from agents.game_master import GM_SYSTEM, GameMasterAgent
@@ -584,6 +585,86 @@ def render_market_tab() -> None:
         )
 
 
+# ISO-3 des pays du jeu (pour la choroplèthe Plotly ; à défaut, le pays n'est pas colorié).
+_ISO3 = {
+    "usa": "USA",
+    "china": "CHN",
+    "iran": "IRN",
+    "france": "FRA",
+    "egypt": "EGY",
+    "saudi_arabia": "SAU",
+}
+# Échelle Utopie : 0 dystopie (rouge) → 0,5 neutre (jaune) → 1 utopie (vert).
+_UTOPIA_COLORSCALE = [[0.0, "#c0392b"], [0.5, "#f1c40f"], [1.0, "#27ae60"]]
+
+
+def _utopia_label(u: float) -> str:
+    if u >= 0.6:
+        return "🟢 le monde tend vers l'**utopie**"
+    if u <= 0.4:
+        return "🔴 le monde glisse vers la **dystopie**"
+    return "🟡 le monde est en **équilibre**"
+
+
+def render_map_tab() -> None:
+    """Carte du monde : les pays du jeu colorés selon l'indice Utopie (rouge ↔ vert)."""
+    st.subheader("🗺️ Carte du monde")
+    st.caption(
+        "Les pays **en jeu** se colorent selon l'**indice Utopie** du monde : **rouge** = on "
+        "glisse vers la dystopie, **vert** = on tend vers l'utopie. La couleur bascule round après "
+        "round avec la trajectoire. Le reste du monde reste neutre."
+    )
+    utopia = world.trajectory.utopia if world.trajectory else 0.5
+    delta = _round_delta(world.trajectory_history)
+    c1, c2 = st.columns([1, 2])
+    c1.metric("🌗 Indice Utopie", f"{utopia:.2f}", f"{delta:+.3f}")
+    c2.markdown(f"### {_utopia_label(utopia)}")
+
+    played = [(cid, _ISO3[cid]) for cid in sorted(world.countries) if cid in _ISO3]
+    if not played:
+        st.info("Aucun pays cartographiable pour l'instant.")
+        return
+
+    fig = go.Figure(
+        go.Choropleth(
+            locations=[iso for _, iso in played],
+            z=[utopia] * len(played),  # indice global : tous les pays du jeu bougent ensemble
+            text=[world.countries[cid].name for cid, _ in played],
+            locationmode="ISO-3",
+            zmin=0.0,
+            zmax=1.0,
+            colorscale=_UTOPIA_COLORSCALE,
+            marker_line_color="#0e1117",
+            colorbar=dict(
+                title="Utopie", tickvals=[0, 0.5, 1], ticktext=["Dystopie", "•", "Utopie"]
+            ),
+            hovertemplate="<b>%{text}</b><br>Indice Utopie %{z:.2f}<extra></extra>",
+        )
+    )
+    fig.update_geos(
+        projection_type="natural earth",
+        showland=True,
+        landcolor="#2b2b2b",
+        showocean=True,
+        oceancolor="#0e1117",
+        showcountries=True,
+        countrycolor="#444",
+        showframe=False,
+        bgcolor="rgba(0,0,0,0)",
+    )
+    fig.update_layout(
+        height=460,
+        margin=dict(l=0, r=0, t=0, b=0),
+        paper_bgcolor="rgba(0,0,0,0)",
+        geo_bgcolor="rgba(0,0,0,0)",
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    flags = " ".join(f"{flag(cid)} {world.countries[cid].name}" for cid, _ in played)
+    st.caption(f"**En jeu :** {flags}")
+    st.caption("🔜 Bientôt : activer / désactiver des pays d'un clic pour composer un round.")
+
+
 # ------------------------------ Sidebar ------------------------------
 st.sidebar.title("🌍 Contrôles")
 if st.sidebar.button("♻️ Nouvelle partie", use_container_width=True):
@@ -634,11 +715,13 @@ b2.metric("🔄 Round", S.round_no)
 b3.metric("⏱️ Dernier round", f"{S.elapsed:.0f} s")
 b4.metric("🎭 Rôle", role.split()[0])
 
-tab_theatre, tab_market, tab_budget, tab_settings = st.tabs(
-    ["🗣️ Théâtre", "💹 Marché", "💸 LLM Budget", "⚙️ Réglages"]
+tab_theatre, tab_market, tab_map, tab_budget, tab_settings = st.tabs(
+    ["🗣️ Théâtre", "💹 Marché", "🗺️ Carte", "💸 LLM Budget", "⚙️ Réglages"]
 )
 with tab_market:
     render_market_tab()
+with tab_map:
+    render_map_tab()
 with tab_budget:
     render_budget_tab()
 with tab_settings:

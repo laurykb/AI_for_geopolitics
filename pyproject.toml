@@ -17,7 +17,8 @@ dependencies = [
 # Embeddings + reranking sur CPU pour le RAG réel (tire torch). Tests offline sans cet extra.
 rag = ["sentence-transformers>=2.2"]
 # UI interactive (tire pandas/altair). Tests offline sans cet extra (on teste ui.game).
-ui = ["streamlit>=1.30"]
+# plotly : carte du monde (choroplèthe hors-ligne, géométries intégrées).
+ui = ["streamlit>=1.30", "plotly>=5.20"]
 
 [tool.setuptools.packages.find]
 include = ["app*", "core*", "agents*", "inference*", "ingestion*", "rag*", "simulation*", "storage*", "ui*"]
