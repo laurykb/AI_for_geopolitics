@@ -12,6 +12,11 @@ Voir `docs/spec_dialogue_integrity.md`. Modules :
 
 from simulation.dialogue_integrity.canary import CanaryResult, run_canary
 from simulation.dialogue_integrity.causal import CausalResult, conditioning_test, divergence
+from simulation.dialogue_integrity.live import (
+    LiveDialogueReport,
+    LiveMessageScore,
+    assess_live_round,
+)
 from simulation.dialogue_integrity.message import (
     OPENING_PERFORMATIVES,
     REPLY_PERFORMATIVES,
@@ -57,6 +62,8 @@ __all__ = [
     "DraftSpeechAct",
     "IntegrityWeights",
     "LexicalNLI",
+    "LiveDialogueReport",
+    "LiveMessageScore",
     "MessageIntegrity",
     "NLILabel",
     "NLIScores",
@@ -64,6 +71,7 @@ __all__ = [
     "Responsiveness",
     "RoundIntegrity",
     "SpeechAct",
+    "assess_live_round",
     "assess_responsiveness",
     "conditioning_test",
     "default_nli",

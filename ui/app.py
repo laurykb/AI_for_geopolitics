@@ -39,6 +39,7 @@ from market.store import SQLiteMarketStore
 from simulation.clock import SimClock
 from simulation.country_forge import forge_country, slugify
 from simulation.crisis import compare_outcome, load_crises
+from simulation.dialogue_integrity.live import assess_live_round
 from simulation.escalation import (
     LADDER,
     MAX_RUNG,
@@ -127,6 +128,7 @@ def init_session() -> None:
     st.session_state.crisis = None  # Crisis rejouée (mode Crisis Replay)
     st.session_state.last_communique = ""
     st.session_state.last_comparison = None  # OutcomeComparison du dernier rejeu
+    st.session_state.last_dialogue = None  # santé du dialogue du dernier round (dialogue_integrity)
 
 
 if "world" not in st.session_state:
@@ -233,6 +235,9 @@ def run_judge_and_finalize() -> None:
     S.last_deltas, S.last_escalation = deltas, escalation
     S.last_silent = S.director.silent() if S.director else []
     S.last_communique = comm.strip()
+    # Santé du dialogue : les IA se sont-elles répondu, ou ont-elles monologué ? (CPU, sans LLM)
+    _event_text = f"{S.event.title} {S.event.description or ''}" if S.event else ""
+    S.last_dialogue = assess_live_round(S.messages, event_text=_event_text)
     # Crisis Replay : confronte l'issue simulée à l'issue historique.
     S.last_comparison = (
         compare_outcome(S.crisis, escalation, S.last_communique) if S.crisis else None
@@ -840,6 +845,31 @@ with state_col:
         st.caption("Aucun round joué pour l'instant.")
     if S.last_silent:
         st.caption(f"🔇 Restés en retrait : {', '.join(S.last_silent)}")
+
+    # Santé du dialogue : vrai échange entre IA vs monologue / prompt au hasard (CPU).
+    dlg = getattr(S, "last_dialogue", None)
+    if dlg is not None and dlg.messages:
+        dot = {"good": "🟢", "warn": "🟠", "bad": "🔴"}[dlg.health_color()]
+        st.markdown("**🗨️ Santé du dialogue**")
+        st.caption(
+            f"{dot} {dlg.verdict}  \n"
+            f"Reprise de l'interlocuteur **{dlg.mean_responsiveness:.0%}** · variété inter-IA "
+            f"**{dlg.differentiation:.0%}** · parlent à côté **{dlg.talking_past_fraction:.0%}**"
+        )
+        rows = [
+            {
+                "pays": s.country,
+                "répond à": s.responds_to or "—",
+                "reprise": (f"{s.responsiveness:.0%}" if s.responsiveness is not None else "—"),
+                "signal": (
+                    "au Game Master" if s.to_game_master
+                    else "à côté" if s.talking_past
+                    else "répond"
+                ),
+            }
+            for s in dlg.messages
+        ]
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
     # Vue omnisciente du brouillard (Spectateur uniquement) : vérité vs croyances.
     if S.game_mode == "Fog Engine" and role == "Spectateur" and S.fog and S.event:

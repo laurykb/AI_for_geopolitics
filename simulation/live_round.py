@@ -24,6 +24,7 @@ from core.rounds import RoundSummary
 from core.world_state import WorldState
 from inference.telemetry import BudgetLedger, grounding_proxy
 from simulation.clock import SimClock
+from simulation.dialogue_integrity.live import LiveDialogueReport, assess_live_round
 from simulation.fog import FogScenario, resolve_perception
 from simulation.negotiation import (
     AttributeDelta,
@@ -150,6 +151,13 @@ class ParticipationStep:
     silent: list[str]
 
 
+@dataclass
+class DialogueStep:
+    """Santé du dialogue : les IA se répondent-elles ou monologuent-elles ? (dialogue_integrity)."""
+
+    report: LiveDialogueReport
+
+
 RoundStep = (
     DateStep
     | EventStep
@@ -165,6 +173,7 @@ RoundStep = (
     | VerdictStep
     | CommuniqueStep
     | ParticipationStep
+    | DialogueStep
 )
 
 
@@ -325,6 +334,10 @@ def run_negotiation_round(
         director.commit(cid)
 
     yield ParticipationStep(spoke=dict(director.spoke_count), silent=director.silent())
+
+    # Santé du dialogue : les IA se sont-elles répondu, ou ont-elles monologué ? (CPU, sans LLM)
+    event_text = f"{event.title} {event.description or ''}"
+    yield DialogueStep(report=assess_live_round(transcript, event_text=event_text))
 
     with _ledger_ctx(ledger, "judge"):
         for token in judge.stream_rationale(event, world, transcript):
