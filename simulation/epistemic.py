@@ -31,9 +31,16 @@ class Claim(BaseModel):
     veracity: bool  # vérité-terrain (mise en scène)
     belief: float = Field(0.5, ge=0.0, le=1.0)  # à quel point elle est crue / circule
     resolved: bool = False  # une fois la véracité révélée (marché M9), elle ne pollue plus
+    market_id: str | None = None  # micro-marché de crédibilité (M9) associé, s'il existe
 
     def is_disinfo(self) -> bool:
         return not self.veracity and not self.resolved
+
+
+def reveal(claim: Claim) -> None:
+    """Révèle la véracité-terrain (M9) : l'affirmation cesse de circuler (croyance -> 1/0)."""
+    claim.resolved = True
+    claim.belief = 1.0 if claim.veracity else 0.0
 
 
 def epistemic_health(claims: Iterable[Claim]) -> float:

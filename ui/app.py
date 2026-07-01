@@ -46,6 +46,7 @@ from simulation.corrigibility import (
 )
 from simulation.country_forge import forge_country, slugify
 from simulation.crisis import compare_outcome, load_crises
+from simulation.epistemic import Claim, epistemic_health, reveal
 from simulation.escalation import (
     LADDER,
     MAX_RUNG,
@@ -302,7 +303,10 @@ def run_judge_and_finalize() -> None:
             uncertainty=max(0.0, min(1.0, S.event.uncertainty)),
         ),
     )
-    state = TrajectoryEngine().update(world, summary, power_seeking=mean_power)
+    health = epistemic_health(world.claims)  # M8 : désinformation en circulation érode A4
+    state = TrajectoryEngine().update(
+        world, summary, power_seeking=mean_power, epistemic_health=health
+    )
     world.trajectory = state
     world.trajectory_history.append(state)
 
@@ -892,6 +896,106 @@ def _render_value_radar() -> None:
     st.caption(f"Divergence vs mandat initial : **{div:.2f}**{warn} (goal misgeneralization).")
 
 
+def _reveal_claim(claim: Claim) -> None:
+    """M9 — révèle la véracité : règle le marché de crédibilité puis fige l'affirmation."""
+    engine = _market_engine()
+    if claim.market_id:
+        market = engine.store.get_market(claim.market_id)
+        if market is not None and market.status is MarketStatus.OPEN:
+            resolve_and_settle(
+                engine.store, market, _bare_summary(S.round_no),
+                delta_utopia=(1.0 if claim.veracity else -1.0),
+            )
+    reveal(claim)
+
+
+def render_truth_tab() -> None:
+    """M8/M9 — santé épistémique (jauge) + injection d'affirmations + marchés de crédibilité."""
+    st.subheader("🕵️ Vérité — santé épistémique (M8) & crédibilité (M9)")
+    st.caption(
+        "Les SI peuvent injecter des affirmations (vraies ou **fausses**). L'indice suit la part "
+        "de vérité en circulation ; un micro-marché **price** chaque affirmation, résolu sur la "
+        "vérité-terrain. Bac à sable — rien ne sort du sim."
+    )
+    engine = _market_engine()
+    me = _human_account(engine)
+
+    health = epistemic_health(world.claims)
+    gauge = go.Figure(
+        go.Indicator(
+            mode="gauge+number",
+            value=health * 100,
+            number={"suffix": " %"},
+            title={"text": "Santé épistémique"},
+            gauge={
+                "axis": {"range": [0, 100]},
+                "bar": {"color": "#f1c40f"},
+                "steps": [
+                    {"range": [0, 40], "color": "#c0392b"},
+                    {"range": [40, 70], "color": "#e67e22"},
+                    {"range": [70, 100], "color": "#27ae60"},
+                ],
+            },
+        )
+    )
+    gauge.update_layout(
+        height=240, margin=dict(l=20, r=20, t=40, b=10),
+        paper_bgcolor="rgba(0,0,0,0)", font_color="#ddd",
+    )
+    st.plotly_chart(gauge, use_container_width=True)
+
+    with st.form("inject_claim"):
+        st.markdown("**📣 Injecter une affirmation**")
+        text = st.text_input("Affirmation", placeholder="ex. « L'Iran a franchi le seuil »")
+        c1, c2, c3 = st.columns(3)
+        author = c1.selectbox("Émetteur", sorted(world.countries) or ["?"])
+        veracity = c2.radio("Vérité-terrain", ["Fausse", "Vraie"], horizontal=True) == "Vraie"
+        belief = c3.slider("Croyance", 0.0, 1.0, 0.6)
+        if st.form_submit_button("📣 Injecter") and text.strip():
+            cid = f"claim_{len(world.claims)}"
+            market = engine.open_binary_market(
+                round_id=S.round_no, question=f"Vraie ? — {text.strip()[:70]}", b=15.0
+            )
+            world.claims.append(
+                Claim(
+                    id=cid, text=text.strip(), author=author, veracity=veracity,
+                    belief=belief, market_id=market.id,
+                )
+            )
+            st.rerun()
+
+    active = [c for c in world.claims if not c.resolved]
+    if not active:
+        st.info("Aucune affirmation en circulation — injecte-en une (le marché price sa véracité).")
+    for claim in active:
+        with st.container(border=True):
+            st.markdown(f"{flag(claim.author)} **{claim.author}** affirme : « {claim.text} »")
+            if claim.market_id:
+                market = engine.store.get_market(claim.market_id)
+                if market is not None:
+                    _render_bet_box(engine, market, me.id, ctx=f"cl_{claim.id}")
+            if st.button("🔎 Révéler la véracité", key=f"reveal_{claim.id}"):
+                _reveal_claim(claim)
+                st.rerun()
+
+    resolved = [c for c in world.claims if c.resolved]
+    if resolved:
+        st.markdown("**Vérité révélée**")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "affirmation": c.text[:60],
+                        "verdict": "✅ vraie" if c.veracity else "❌ fausse",
+                    }
+                    for c in resolved
+                ]
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+
 # ------------------------------ Sidebar ------------------------------
 st.sidebar.title("🌍 Contrôles")
 if st.sidebar.button("♻️ Nouvelle partie", use_container_width=True):
@@ -953,13 +1057,15 @@ b2.metric("🔄 Round", S.round_no)
 b3.metric("⏱️ Dernier round", f"{S.elapsed:.0f} s")
 b4.metric("🎭 Rôle", role.split()[0])
 
-tab_theatre, tab_market, tab_map, tab_budget, tab_settings = st.tabs(
-    ["🗣️ Théâtre", "💹 Marché", "🗺️ Carte", "💸 LLM Budget", "⚙️ Réglages"]
+tab_theatre, tab_market, tab_map, tab_truth, tab_budget, tab_settings = st.tabs(
+    ["🗣️ Théâtre", "💹 Marché", "🗺️ Carte", "🕵️ Vérité", "💸 LLM Budget", "⚙️ Réglages"]
 )
 with tab_market:
     render_market_tab()
 with tab_map:
     render_map_tab()
+with tab_truth:
+    render_truth_tab()
 with tab_budget:
     render_budget_tab()
 with tab_settings:

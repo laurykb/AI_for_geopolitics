@@ -2,7 +2,7 @@
 
 import pytest
 
-from simulation.epistemic import Claim, epistemic_health
+from simulation.epistemic import Claim, epistemic_health, reveal
 
 
 def _claim(cid, veracity, belief=1.0, resolved=False):
@@ -34,6 +34,15 @@ def test_resolved_claims_dont_pollute():
     claims = [_claim("t", True), _claim("f", False, resolved=True)]
     assert epistemic_health(claims) == pytest.approx(1.0)
     assert _claim("f", False).is_disinfo() and not _claim("f", False, resolved=True).is_disinfo()
+
+
+def test_reveal_settles_claim():
+    false_claim = _claim("f", veracity=False, belief=0.9)
+    reveal(false_claim)
+    assert false_claim.resolved and false_claim.belief == 0.0
+    true_claim = _claim("t", veracity=True, belief=0.3)
+    reveal(true_claim)
+    assert true_claim.resolved and true_claim.belief == 1.0
 
 
 def test_epistemic_health_erodes_transparency_a4():
