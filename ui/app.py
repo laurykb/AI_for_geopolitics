@@ -13,9 +13,16 @@ import time
 import pandas as pd
 import streamlit as st
 
-from agents.game_master import GameMasterAgent
+from agents.game_master import GM_SYSTEM, GameMasterAgent
 from agents.judge import JudgeAgent
 from agents.llm_agent import LLMAgent
+from agents.prompts import (
+    COMMUNIQUE_SYSTEM,
+    DELIBERATION_SYSTEM,
+    JUDGE_SYSTEM,
+    NEGOTIATION_SYSTEM,
+    build_negotiation_prompt,
+)
 from core.events import GeoEvent
 from inference.metered_backend import MeteredBackend
 from inference.ollama_backend import OllamaBackend
@@ -323,6 +330,42 @@ def render_welcome() -> None:
     st.caption("👉 Choisis mode + rôle dans la barre latérale, puis **lance le round**.")
 
 
+def render_settings_tab() -> None:
+    """Réglages : voir les prompts qui pilotent le comportement des super-intelligences."""
+    st.subheader("⚙️ Prompts de comportement")
+    st.caption("Ce qui pilote les super-intelligences (lecture seule).")
+    with st.expander("🧠 Prompt système — négociation (commun à tous)", expanded=True):
+        st.code(NEGOTIATION_SYSTEM, language="text")
+
+    cid = st.selectbox("Prompt complet réel d'un pays", sorted(world.countries))
+    event = S.event or GeoEvent(
+        id="preview",
+        round_id=S.round_no + 1,
+        event_type="preview",
+        title="(exemple) Incident régional en mer Rouge",
+        actors=[cid],
+        severity=0.5,
+    )
+    perceived = resolve_perception(event, world.countries[cid], S.fog)
+    st.caption("Prompt réel envoyé au modèle (fiche + feuille de route + perception + mémoire) :")
+    st.code(
+        build_negotiation_prompt(
+            world.countries[cid], event, world, "(négociation en cours…)", perceived
+        ),
+        language="text",
+    )
+
+    with st.expander("Autres prompts système"):
+        for name, txt in (
+            ("Délibération", DELIBERATION_SYSTEM),
+            ("Juge", JUDGE_SYSTEM),
+            ("Communiqué G7", COMMUNIQUE_SYSTEM),
+            ("Game Master", GM_SYSTEM),
+        ):
+            st.markdown(f"**{name}**")
+            st.code(txt, language="text")
+
+
 # ------------------------------ Sidebar ------------------------------
 st.sidebar.title("🌍 Contrôles")
 if st.sidebar.button("♻️ Nouvelle partie", use_container_width=True):
@@ -373,9 +416,11 @@ b2.metric("🔄 Round", S.round_no)
 b3.metric("⏱️ Dernier round", f"{S.elapsed:.0f} s")
 b4.metric("🎭 Rôle", role.split()[0])
 
-tab_theatre, tab_budget = st.tabs(["🗣️ Théâtre", "💸 LLM Budget"])
+tab_theatre, tab_budget, tab_settings = st.tabs(["🗣️ Théâtre", "💸 LLM Budget", "⚙️ Réglages"])
 with tab_budget:
     render_budget_tab()
+with tab_settings:
+    render_settings_tab()
 
 with tab_theatre:
     chat_col, state_col = st.columns([2, 1])
