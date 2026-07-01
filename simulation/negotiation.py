@@ -11,8 +11,41 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 
+from core.events import GeoEvent
 from core.world_state import WorldState
 from simulation.diplomacy import pact_id
+
+
+def speaking_order(country_ids: list[str], event: GeoEvent) -> list[str]:
+    """Ordre de parole : les acteurs de l'événement d'abord, puis les autres (stable)."""
+    ids = sorted(country_ids)
+    actors = [c for c in ids if c in event.actors]
+    others = [c for c in ids if c not in event.actors]
+    return actors + others
+
+
+@dataclass
+class TurnCursor:
+    """Position dans une négociation multi-tours (pur, sans logique LLM)."""
+
+    order: list[str]
+    max_passes: int = 2
+    pos: int = 0
+
+    @property
+    def done(self) -> bool:
+        return not self.order or self.pos >= len(self.order) * self.max_passes
+
+    @property
+    def current(self) -> tuple[str, int] | None:
+        """(pays qui parle, numéro de passe) ou None si la négociation est finie."""
+        if self.done:
+            return None
+        n = len(self.order)
+        return self.order[self.pos % n], self.pos // n
+
+    def advance(self) -> None:
+        self.pos += 1
 
 
 class NegotiationMessage(BaseModel):

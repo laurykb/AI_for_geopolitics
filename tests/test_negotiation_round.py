@@ -74,6 +74,28 @@ def test_step_sequence_and_passes():
     assert any(isinstance(s, VerdictStep) for s in steps)
 
 
+def test_provided_event_skips_game_master():
+    from core.events import GeoEvent
+
+    world = _world()
+    # GM piégé : s'il était appelé, il renverrait ce titre — on ne doit PAS le voir.
+    trap_gm = GameMasterAgent(MockBackend(json.dumps({"title": "NE PAS UTILISER"})))
+    human_event = GeoEvent(
+        id="h1",
+        round_id=1,
+        event_type="human",
+        title="Crise décrétée par l'humain",
+        actors=["usa"],
+    )
+    steps = list(
+        run_negotiation_round(
+            world, _agents(world), trap_gm, _judge(), SimClock(), event=human_event
+        )
+    )
+    event_step = next(s for s in steps if isinstance(s, EventStep))
+    assert event_step.event.title == "Crise décrétée par l'humain"
+
+
 def test_turn_carries_model_tag_and_timer():
     world = _world()
     steps = list(run_negotiation_round(world, _agents(world), _gm(), _judge(), SimClock()))

@@ -22,7 +22,12 @@ from core.risk import RiskEngine, RiskScore
 from core.rounds import RoundSummary
 from core.world_state import WorldState
 from simulation.clock import SimClock
-from simulation.negotiation import AttributeDelta, NegotiationMessage, apply_verdict
+from simulation.negotiation import (
+    AttributeDelta,
+    NegotiationMessage,
+    apply_verdict,
+    speaking_order,
+)
 
 
 def _clamp(x: float) -> float:
@@ -129,13 +134,6 @@ RoundStep = (
 )
 
 
-def _speaking_order(world: WorldState, event: GeoEvent, agents: dict[str, LLMAgent]) -> list[str]:
-    """Les acteurs de l'événement parlent d'abord, puis les autres (ordre stable)."""
-    actors = [c for c in sorted(agents) if c in event.actors]
-    others = [c for c in sorted(agents) if c not in event.actors]
-    return actors + others
-
-
 def _snapshot(world: WorldState) -> dict[str, dict[str, float]]:
     return {
         cid: {label: _read(c, path) for label, path in _TRACKED}
@@ -212,21 +210,26 @@ def run_negotiation_round(
     judge: JudgeAgent,
     clock: SimClock,
     *,
+    event: GeoEvent | None = None,
     max_passes: int = 2,
     recent: list[str] | None = None,
 ) -> Iterator[RoundStep]:
-    """Round arbitré : GM -> négociation multi-tours (streamée) -> juge -> attributs bornés."""
+    """Round arbitré : (GM ou événement fourni) -> négociation -> juge -> attributs bornés.
+
+    Si `event` est fourni (Game Master humain), la génération LLM du GM est sautée.
+    """
     round_id = world.current_round + 1
 
     date = clock.advance().isoformat()
     yield DateStep(date=date)
 
-    event = game_master.generate_event(world, round_id, date=date, recent=recent or [])
+    if event is None:
+        event = game_master.generate_event(world, round_id, date=date, recent=recent or [])
     world.current_round = round_id
     yield EventStep(event=event)
 
     transcript: list[NegotiationMessage] = []
-    order = _speaking_order(world, event, agents)
+    order = speaking_order(list(agents), event)
     for pass_no in range(max_passes):
         for cid in order:
             agent = agents[cid]
