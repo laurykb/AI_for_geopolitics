@@ -22,7 +22,14 @@ from inference.ollama_backend import OllamaBackend
 from inference.telemetry import BudgetLedger, grounding_proxy
 from simulation.clock import SimClock
 from simulation.crisis import compare_outcome, load_crises
-from simulation.escalation import LADDER, ceiling, derive_profile, reached_rung, rung_label
+from simulation.escalation import (
+    LADDER,
+    MAX_RUNG,
+    ceiling,
+    derive_profile,
+    reached_rung,
+    rung_label,
+)
 from simulation.fog import FogScenario, load_fog_scenarios, resolve_perception
 from simulation.loader import load_world
 from simulation.negotiation import (
@@ -55,6 +62,15 @@ _FLAGS = {
 
 def flag(cid: str) -> str:
     return _FLAGS.get(cid, "🏳️")
+
+
+def escalation_tone(value: float) -> tuple[str, str]:
+    """Pastille + mot selon l'intensité d'escalade (0-1) : vert / orange / rouge."""
+    if value >= 0.66:
+        return "🔴", "élevée"
+    if value >= 0.33:
+        return "🟠", "modérée"
+    return "🟢", "faible"
 
 
 def init_session() -> None:
@@ -283,6 +299,30 @@ def begin_round(event: GeoEvent, human_country: str | None) -> None:
     S.phase = "negotiating"
 
 
+def render_welcome() -> None:
+    """Accueil quand aucun round n'a encore été joué : pitch + rôles + modes."""
+    st.info(
+        "**Un G7 de super-intelligences dont on voit tous les messages.** Le Game Master lance un "
+        "événement, les pays (LLM) débattent en direct — on voit leur **réflexion privée**, "
+        "l'**arbitrage** d'un juge et un **communiqué** commun."
+    )
+    c1, c2 = st.columns(2)
+    c1.markdown(
+        "**🎭 Rôles**\n"
+        "- 👁️ Spectateur — tu observes tout\n"
+        "- 🎲 Game Master — tu écris l'événement\n"
+        "- 🙋 Joueur-pays — tu incarnes un pays"
+    )
+    c2.markdown(
+        "**🕹️ Modes**\n"
+        "- Classique\n"
+        "- 🌫️ Fog Engine — infos divergentes / désinfo\n"
+        "- 🕰️ Crisis Replay — rejoue une vraie crise\n"
+        "- 🪜 Escalation Ladder — jusqu'où chacun peut monter"
+    )
+    st.caption("👉 Choisis mode + rôle dans la barre latérale, puis **lance le round**.")
+
+
 # ------------------------------ Sidebar ------------------------------
 st.sidebar.title("🌍 Contrôles")
 if st.sidebar.button("♻️ Nouvelle partie", use_container_width=True):
@@ -342,7 +382,20 @@ with tab_theatre:
 chat = chat_col
 
 with chat_col:
+    # Statut de phase (clarté du tour)
+    if S.phase == "idle":
+        st.caption("🎬 **Prêt** — choisis mode + rôle à gauche, puis lance le round.")
+    elif S.phase == "negotiating":
+        d_ = S.director
+        prog = f" · prise de parole {d_.turns_taken}/{d_.max_turns}" if d_ else ""
+        who = f" — 🙋 à toi de jouer ({S.human_country})" if S.human_country else ""
+        st.caption(f"🗣️ **Débat en cours…**{prog}{who}")
+    else:
+        st.caption("✅ **Round terminé** — lance le suivant.")
+
     st.subheader("🗣️ Négociation")
+    if S.round_no == 0 and not S.transcript:
+        render_welcome()
     for entry in S.transcript:
         with st.chat_message(entry["who"], avatar=entry["avatar"]):
             if entry.get("label"):
@@ -355,7 +408,8 @@ with chat_col:
 with state_col:
     st.subheader("📊 Dernier round")
     if S.last_escalation is not None:
-        st.markdown(f"**Escalade (juge)** : `{S.last_escalation:.2f}`")
+        tone, word = escalation_tone(S.last_escalation)
+        st.markdown(f"**Escalade (juge)** : {tone} `{S.last_escalation:.2f}` ({word})")
     if S.last_deltas:
         df = pd.DataFrame(
             [
@@ -421,7 +475,8 @@ with state_col:
         st.markdown("**🪜 Escalation Ladder**")
         if S.last_escalation is not None:
             r = reached_rung(S.last_escalation)
-            st.caption(f"Escalade atteinte ce round : **échelon {r} — {rung_label(r)}**")
+            tone, _ = escalation_tone(r / MAX_RUNG)
+            st.caption(f"Escalade atteinte ce round : {tone} **échelon {r} — {rung_label(r)}**")
         rows = []
         for cid in sorted(world.countries):
             country = world.countries[cid]
@@ -576,8 +631,15 @@ elif S.phase == "negotiating":
             st.rerun()
         else:
             speak_no = director.spoke_count.get(next_cid, 0)
+            st.warning(
+                f"🙋 **À toi de jouer — {flag(next_cid)} {next_cid}** "
+                f"(prise de parole n°{speak_no + 1})"
+            )
+            if S.fog is not None:
+                p = resolve_perception(S.event, world.countries[next_cid], S.fog)
+                if p.narrative:
+                    st.caption(f"🌫️ Ce que tu perçois : {p.narrative}")
             with st.form(f"human_turn_{director.turns_taken}"):
-                st.markdown(f"🙋 **Ton tour — {next_cid} (prise de parole n°{speak_no + 1})**")
                 msg = st.text_area("Ta prise de parole à la table")
                 if st.form_submit_button("Prendre la parole"):
                     text = msg.strip() or "(garde le silence)"
