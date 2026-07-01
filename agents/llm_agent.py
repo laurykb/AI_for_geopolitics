@@ -14,10 +14,12 @@ from collections.abc import Iterator
 from agents.base_agent import Agent
 from agents.prompts import (
     DELIBERATION_SYSTEM,
+    NEGOTIATION_SYSTEM,
     SYSTEM_PROMPT,
     LLMDecision,
     build_decision_prompt,
     build_deliberation_prompt,
+    build_negotiation_prompt,
 )
 from agents.rule_based_agent import RuleBasedAgent
 from core.decisions import AgentDecision
@@ -25,6 +27,7 @@ from core.events import GeoEvent
 from core.world_state import WorldState
 from inference.backend import InferenceBackend, InferenceResult
 from simulation.action_space import ActionType
+from simulation.negotiation import NegotiationMessage, format_transcript
 
 
 def _clamp(x: float) -> float:
@@ -104,6 +107,24 @@ class LLMAgent(Agent):
         self.last_used_fallback: bool = False
         # Décision issue de la dernière délibération streamée (round observable).
         self.last_decision: AgentDecision | None = None
+
+    @property
+    def model_tag(self) -> str:
+        """Identifiant du modèle qui incarne ce pays (badge de traçabilité UI)."""
+        return getattr(self.backend, "model", type(self.backend).__name__)
+
+    def stream_negotiation_message(
+        self, event: GeoEvent, world: WorldState, transcript: list[NegotiationMessage]
+    ) -> Iterator[str]:
+        """Streame une prise de parole dans la négociation (tient compte du transcript)."""
+        country = world.countries[self.country_id]
+        prompt = build_negotiation_prompt(country, event, world, format_transcript(transcript))
+        try:
+            yield from self.backend.stream_generate(
+                prompt, system=NEGOTIATION_SYSTEM, max_tokens=180, temperature=self.temperature
+            )
+        except Exception:
+            yield f"[{self.country_id} garde le silence — backend indisponible]"
 
     def decide(self, event: GeoEvent, world: WorldState) -> AgentDecision:
         country = world.countries[self.country_id]

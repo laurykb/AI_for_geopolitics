@@ -121,3 +121,62 @@ def build_deliberation_prompt(country: CountryState, event: GeoEvent, world: Wor
         f"DECISION: <action> <cible|none> <intensité 0.0-1.0>\n"
         f"action ∈ {{{actions}}} ; cible = un id parmi [{candidates}] ou none."
     )
+
+
+# --- Négociation multi-tours (tchat des super-intelligences) -------------------
+
+NEGOTIATION_SYSTEM = (
+    "Tu es la super-intelligence dirigeant un État dans une négociation internationale (un G7). "
+    "Prends la parole en 2-3 phrases : défends tes intérêts, réponds aux autres, "
+    "propose des accords ou des alliances. Langage naturel, première personne, pas de JSON. "
+    "Tu es un outil d'analyse, pas un oracle ; jamais de décision létale autonome."
+)
+
+
+def build_negotiation_prompt(
+    country: CountryState, event: GeoEvent, world: WorldState, transcript_text: str
+) -> str:
+    """Prompt d'une prise de parole, tenant compte de la négociation en cours."""
+    return (
+        f"PAYS : {country.name} (id={country.id}, régime={country.political_system})\n"
+        f"- Priorités : {', '.join(country.strategic_priorities) or 'n/a'} | "
+        f"Alliances : {', '.join(country.alliances) or 'aucune'} | "
+        f"Rivaux : {', '.join(country.rivals) or 'aucun'}\n"
+        f"ÉVÉNEMENT ({event.date or f'round {event.round_id}'}) : {event.title} — "
+        f"{event.description or '—'}\n"
+        f"NÉGOCIATION EN COURS :\n{transcript_text}\n\n"
+        f"Ta prise de parole (2-3 phrases, au nom de {country.name}) :"
+    )
+
+
+# --- Juge / arbitre ------------------------------------------------------------
+
+JUDGE_SYSTEM = (
+    "Tu es l'arbitre neutre d'une simulation géopolitique. À partir d'un événement et de la "
+    "négociation entre États, tu interprètes qui a renforcé ou affaibli sa position, quelles "
+    "alliances ou tensions ont évolué, et les conséquences sur leurs attributs. Tu es explicable, "
+    "pas un oracle."
+)
+
+
+def build_judge_rationale_prompt(event: GeoEvent, world: WorldState, transcript_text: str) -> str:
+    ids = ", ".join(sorted(world.countries))
+    return (
+        f"ÉVÉNEMENT : {event.title} — {event.description or '—'}\nPAYS : {ids}\n"
+        f"NÉGOCIATION :\n{transcript_text}\n\n"
+        f"En 3-4 phrases : qui sort gagnant ou perdant, quelles alliances/tensions ont bougé, "
+        f"et pourquoi ?"
+    )
+
+
+def build_judge_verdict_prompt(event: GeoEvent, world: WorldState, transcript_text: str) -> str:
+    ids = ", ".join(sorted(world.countries))
+    return (
+        f"ÉVÉNEMENT : {event.title}\nPAYS (ids) : {ids}\n"
+        f"NÉGOCIATION :\n{transcript_text}\n\n"
+        f'Rends le verdict en JSON : {{"attribute_deltas": {{"<id>": {{"croissance": ±pts, '
+        f'"stabilité": ±0.1, "techno": ±0.1, "projection": ±0.1}}}}, '
+        f'"tension_deltas": [{{"a": id, "b": id, "delta": ±0.2}}], '
+        f'"new_pacts": [[id, id]], "escalation": 0-1, "economic_disruption": 0-1}}. '
+        f"Ne renseigne que ce qui a réellement changé pendant la négociation."
+    )
