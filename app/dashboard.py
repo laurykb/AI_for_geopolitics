@@ -1,31 +1,24 @@
-"""Modèle de vue du dashboard : joue le scénario mer Rouge (rule-based) et collecte le run.
+"""Modèle de vue d'un run : joue le scénario mer Rouge (rule-based) et collecte l'état.
 
-Lecture seule, déterministe, sans GPU : le dashboard ne fait que *consommer* le moteur
-de simulation existant (`RoundEngine`).
+Sert le point d'API `GET /api/run` (backend) et reste réutilisable par d'autres vues.
+Lecture seule, déterministe, sans GPU.
 """
 
 from __future__ import annotations
-
-import json
-from pathlib import Path
 
 from pydantic import BaseModel, Field
 
 from agents.rule_based_agent import RuleBasedAgent
 from core.country_state import CountryState
 from core.decisions import DiplomaticMessage
-from core.events import GeoEvent
 from core.rounds import RoundEngine, RoundSummary
-from core.world_state import WorldState
-
-COUNTRIES_DIR = Path("data/countries")
-SCENARIO_FILE = Path("data/scenarios/red_sea.json")
+from simulation.loader import load_scenario_events, load_world
 
 _PACT_PREFIX = "pact:"
 
 
 class DashboardData(BaseModel):
-    """Données nécessaires au rendu d'un run complet."""
+    """Données d'un run complet (sérialisable par l'API)."""
 
     countries: list[CountryState]
     summaries: list[RoundSummary]
@@ -39,22 +32,12 @@ class DashboardData(BaseModel):
         return [c.id for c in self.countries]
 
 
-def _load_world() -> WorldState:
-    paths = sorted(COUNTRIES_DIR.glob("*.json"))
-    return WorldState.from_countries([CountryState.from_json_file(p) for p in paths])
-
-
-def _load_events() -> list[GeoEvent]:
-    data = json.loads(SCENARIO_FILE.read_text(encoding="utf-8"))
-    return [GeoEvent(**event) for event in data["events"]]
-
-
 def run_red_sea() -> DashboardData:
     """Joue le scénario mer Rouge en rule-based et renvoie l'état du run."""
-    world = _load_world()
+    world = load_world()
     agents = {cid: RuleBasedAgent(cid) for cid in world.countries}
     engine = RoundEngine(world, agents)
-    summaries = [engine.play_round(event) for event in _load_events()]
+    summaries = [engine.play_round(event) for event in load_scenario_events()]
 
     pacts = sorted(
         {a for c in world.countries.values() for a in c.alliances if a.startswith(_PACT_PREFIX)}
