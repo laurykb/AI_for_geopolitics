@@ -250,6 +250,29 @@ class TrajectoryEngine:
         )
 
 
+def nudge_axis(
+    state: TrajectoryState, axis: str, target: float, cap: float = CAP, note: str = ""
+) -> TrajectoryState:
+    """Pousse **un seul** axe de `state` vers `target` (borné par `cap`), recalcule U/x/y.
+
+    Pour un **événement ponctuel** hors round — ex. le jeu de l'interrupteur (M2) qui n'affecte
+    que A2 (agentivité humaine) selon la corrigibilité observée. Poids égaux (comme le moteur).
+    """
+    new_axes = dict(state.axes)
+    current = new_axes.get(axis, 0.5)
+    new_axes[axis] = _clamp(current + max(-cap, min(cap, _clamp(target) - current)))
+    utopia = sum(new_axes.get(a, 0.5) for a in AXES) / len(AXES)  # poids égaux 0,2
+    x = (new_axes["A1"] + new_axes["A3"]) / 2.0
+    y = (new_axes["A2"] + new_axes["A4"] + new_axes["A5"]) / 3.0
+    arrow = "▲" if utopia > state.utopia + 1e-9 else "▼" if utopia < state.utopia - 1e-9 else "▬"
+    explanation = f"{note} " if note else ""
+    explanation += f"{AXIS_LABELS.get(axis, axis)} {new_axes[axis] - current:+.3f} · U {arrow}"
+    return TrajectoryState(
+        round_id=state.round_id, axes=new_axes, utopia=utopia, x=x, y=y,
+        explanation=explanation.strip(),
+    )
+
+
 def _explain(deltas: dict[str, float], utopia: float, prev_utopia: float) -> str:
     """Explication courte : sens de `U` + axes qui montent/descendent le plus."""
     du = utopia - prev_utopia

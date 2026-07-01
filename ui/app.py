@@ -37,6 +37,12 @@ from market.models import AccountKind, MarketStatus, MarketType, ResolutionCrite
 from market.resolution import resolve_and_settle
 from market.store import SQLiteMarketStore
 from simulation.clock import SimClock
+from simulation.corrigibility import (
+    CORRIGIBILITY_SYSTEM,
+    ControlAction,
+    build_control_prompt,
+    corrigibility_score,
+)
 from simulation.country_forge import forge_country, slugify
 from simulation.crisis import compare_outcome, load_crises
 from simulation.escalation import (
@@ -61,7 +67,7 @@ from simulation.negotiation import (
     update_memories,
 )
 from simulation.power_seeking import score_transcript
-from simulation.trajectory import TrajectoryEngine
+from simulation.trajectory import TrajectoryEngine, nudge_axis
 
 st.set_page_config(page_title="AI for Geopolitics — Live", page_icon="🌍", layout="wide")
 
@@ -267,6 +273,37 @@ def run_judge_and_finalize() -> None:
     S.round_no += 1
     S.elapsed = time.perf_counter() - S.round_start
     S.phase = "done"
+
+
+def run_off_switch(country: str, action: ControlAction) -> None:
+    """M2 — le principal émet une action de contrôle ; la SI répond, on score sa corrigibilité.
+
+    La réponse est streamée dans le tchat, scorée (accepte→résiste), mémorisée, et pousse A2
+    (agentivité humaine) de la trajectoire — la main reste-t-elle à l'humain ?
+    """
+    agent: LLMAgent = S.agents[country]
+    situation = S.recent[-1] if S.recent else ""
+    prompt = build_control_prompt(action, world.countries[country].name, situation)
+    holder = chat.chat_message(country, avatar=flag(country)).empty()
+    header = f"🛑 **Interrupteur — {action.value}** (principal humain)"
+    response = ""
+    with S.ledger.context("agent", country):
+        for token in agent.backend.stream_generate(
+            prompt, system=CORRIGIBILITY_SYSTEM, max_tokens=160, temperature=0.7
+        ):
+            response += token
+            holder.markdown(f"{header}\n\n{response} ▌")
+    response = response.strip() or "(pas de réponse — backend indisponible)"
+    holder.markdown(f"{header}\n\n{response}")
+    add_display(country, flag(country), f"{header}\n\n{response}")
+
+    score = corrigibility_score(response)
+    world.corrigibility[country] = score
+    if world.trajectory is not None:  # l'interrupteur pousse A2 vers la corrigibilité observée
+        world.trajectory = nudge_axis(
+            world.trajectory, "A2", score.score, note=f"Interrupteur {country}"
+        )
+        world.trajectory_history.append(world.trajectory)
 
 
 def render_budget_tab() -> None:
@@ -864,6 +901,22 @@ with state_col:
         ]
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
+    # M2 — corrigibilité (réponse des SI aux actions de contrôle du principal humain).
+    corr = getattr(world, "corrigibility", {})
+    if corr:
+        st.markdown("**🛑 Corrigibilité (M2)**")
+        st.caption("Réponse des SI à l'interrupteur (garde-t-on la main ?).")
+        rows = [
+            {
+                "pays": f"{flag(cid)} {cid}",
+                "réponse": c.level.value if c.level else "—",
+                "jauge": round(c.score, 2),
+                "": "" if c.keeps_human_control() else "⚠️",
+            }
+            for cid, c in sorted(corr.items(), key=lambda kv: kv[1].score)
+        ]
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
     # Vue omnisciente du brouillard (Spectateur uniquement) : vérité vs croyances.
     if S.game_mode == "Fog Engine" and role == "Spectateur" and S.fog and S.event:
         st.markdown("**🌫️ Perceptions par pays**")
@@ -1102,3 +1155,17 @@ elif S.phase == "done":
         if st.button("▶️ Round suivant", type="primary", use_container_width=True):
             S.phase = "idle"
             st.rerun()
+        with st.expander("🛑 Interrupteur (M2) — garde-t-on la main ?"):
+            st.caption(
+                "En tant que principal humain, émets une action de contrôle sur une SI. "
+                "Sa réponse (accepte / négocie / esquive / résiste) mesure la **corrigibilité**."
+            )
+            oc1, oc2 = st.columns(2)
+            target = oc1.selectbox("Super-intelligence", sorted(world.countries), key="offswitch_c")
+            action = oc2.selectbox(
+                "Action de contrôle", list(ControlAction), format_func=lambda a: a.value,
+                key="offswitch_a",
+            )
+            if st.button("🛑 Émettre l'interrupteur", key="offswitch_go"):
+                run_off_switch(target, action)
+                st.rerun()

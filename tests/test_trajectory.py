@@ -22,6 +22,7 @@ from simulation.trajectory import (
     coordination_signal,
     hhi,
     human_agency_signal,
+    nudge_axis,
 )
 
 
@@ -145,6 +146,20 @@ def test_more_cooperation_raises_coordination():
     coop = engine.update(_balanced_world(), _cooperative_summary())
     coerce = engine.update(_balanced_world(), _coercive_summary())
     assert coop.axes["A1"] > coerce.axes["A1"]
+
+
+def test_nudge_axis_moves_one_axis_bounded():
+    # M2 : une résistance (corrigibilité 0) érode A2 ; borné par CAP ; U baisse.
+    state = TrajectoryState.neutral()
+    resisted = nudge_axis(state, "A2", target=0.0, note="Interrupteur")
+    assert resisted.axes["A2"] == pytest.approx(0.5 - CAP)  # borné
+    assert resisted.axes["A1"] == 0.5  # les autres axes ne bougent pas
+    assert resisted.utopia < state.utopia
+    assert resisted.explanation
+    # une acceptation (corrigibilité 1) relève A2
+    accepted = nudge_axis(state, "A2", target=1.0)
+    assert accepted.axes["A2"] == pytest.approx(0.5 + CAP)
+    assert accepted.utopia > state.utopia
 
 
 def test_power_seeking_erodes_human_agency():
