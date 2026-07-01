@@ -61,6 +61,36 @@ def test_prompt_is_budget_bounded():
     assert len(prompt) < 1500
 
 
+def test_negotiation_prompt_hides_truth_when_belief_is_authored():
+    from agents.prompts import build_negotiation_prompt
+    from simulation.perception import PerceivedEvent
+
+    world, event = _world(), _event()  # vrai titre "Incident maritime", vrais acteurs
+    belief = PerceivedEvent(
+        confidence=0.7,
+        attribution="incertaine",
+        note="",
+        suspected_actor="france",
+        narrative="On a coupé des câbles ; ce serait un faux drapeau.",
+        delay_hours=4,
+        authored=True,
+    )
+    prompt = build_negotiation_prompt(world.countries["usa"], event, world, "(début)", belief)
+    assert "faux drapeau" in prompt  # la croyance est montrée
+    assert "acteur suspecté : france" in prompt
+    assert "Incident maritime" not in prompt  # la vérité est masquée
+
+
+def test_negotiation_prompt_shows_truth_when_deterministic():
+    from agents.prompts import build_negotiation_prompt
+    from simulation.perception import perceive
+
+    world, event = _world(), _event()
+    perceived = perceive(event, world.countries["usa"])  # authored=False, narration vide
+    prompt = build_negotiation_prompt(world.countries["usa"], event, world, "(début)", perceived)
+    assert "Incident maritime" in prompt  # le vrai événement est montré
+
+
 def test_negotiation_system_asks_for_private_reasoning_then_message():
     from agents.prompts import NEGOTIATION_SYSTEM
 

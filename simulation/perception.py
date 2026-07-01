@@ -19,11 +19,20 @@ _CONFIDENCE_SURE = 0.6
 
 
 class PerceivedEvent(BaseModel):
-    """Ce qu'un pays croit savoir de l'événement (pas la vérité omnisciente)."""
+    """Ce qu'un pays croit savoir de l'événement (pas la vérité omnisciente).
+
+    Les champs `suspected_actor`, `narrative`, `delay_hours` et `authored` servent le mode
+    **Fog Engine** : une perception *fournie* (fichier/GM) peut diverger de la vérité, voire
+    mentir (désinformation). Le fog déterministe (`perceive`) laisse ces champs par défaut.
+    """
 
     confidence: float
     attribution: str  # "sûre" | "incertaine"
     note: str
+    suspected_actor: str = ""  # qui le pays croit responsable (peut être faux)
+    narrative: str = ""  # ce que le pays croit s'être passé (Fog Engine)
+    delay_hours: float | None = None  # délai avant que le pays en ait connaissance
+    authored: bool = False  # True si fournie (Fog), False si déterministe
 
 
 def _noise(seed: str) -> float:

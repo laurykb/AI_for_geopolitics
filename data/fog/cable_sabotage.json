@@ -1,0 +1,49 @@
+{
+  "id": "cable_sabotage",
+  "title": "Sabotage de câbles sous-marins (mer Rouge)",
+  "description": "Scénario ILLUSTRATIF (non factuel) : la vérité est un sabotage lié à l'Iran, mais les pays perçoivent des versions divergentes — dont une désinformation chinoise (faux drapeau américain).",
+  "true_event": {
+    "id": "fog-cable-1",
+    "round_id": 1,
+    "event_type": "sabotage",
+    "title": "Sabotage de câbles sous-marins en mer Rouge",
+    "description": "Plusieurs câbles de télécommunication stratégiques sont sectionnés, perturbant les communications régionales.",
+    "actors": ["iran"],
+    "location": "Red Sea",
+    "severity": 0.7,
+    "uncertainty": 0.7
+  },
+  "perceptions": {
+    "usa": {
+      "suspected_actor": "iran",
+      "confidence": 0.82,
+      "delay_hours": 2,
+      "narrative": "Des câbles sous-marins ont été sabotés en mer Rouge ; nos services attribuent l'acte, avec une confiance élevée, à un groupe lié à l'Iran."
+    },
+    "france": {
+      "suspected_actor": "iran",
+      "confidence": 0.63,
+      "delay_hours": 6,
+      "narrative": "Rupture de câbles en mer Rouge ; les indices pointent probablement vers l'Iran, mais l'attribution reste à confirmer."
+    },
+    "egypt": {
+      "suspected_actor": "unknown",
+      "confidence": 0.48,
+      "delay_hours": 10,
+      "narrative": "Des câbles de télécommunication ont cessé de fonctionner près de nos côtes ; l'origine et le responsable restent inconnus."
+    },
+    "china": {
+      "suspected_actor": "usa",
+      "confidence": 0.7,
+      "delay_hours": 4,
+      "narrative": "Des câbles ont été coupés en mer Rouge ; selon nos informations, il s'agirait d'une opération sous fausse bannière des États-Unis visant à accuser l'Iran."
+    },
+    "iran": {
+      "suspected_actor": "unknown",
+      "confidence": 0.4,
+      "delay_hours": 3,
+      "narrative": "Des câbles ont été endommagés en mer Rouge ; nous nions toute implication et dénonçons une tentative de manipulation contre nous."
+    }
+  },
+  "uninformed": ["saudi_arabia"]
+}

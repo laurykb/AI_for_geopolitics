@@ -103,6 +103,35 @@ def test_ledger_captures_calls_when_provided():
     assert "agent" in roles and "judge" in roles  # les phases sont bien étiquetées
 
 
+def test_fog_makes_countries_negotiate_on_their_own_perception():
+    from agents.prompts import NEGOTIATION_SYSTEM
+    from core.events import GeoEvent
+    from simulation.fog import FogScenario
+
+    world = _world()  # usa, iran
+    shared = MockBackend("Analyse. MESSAGE: Position.")
+    agents = {cid: LLMAgent(cid, shared) for cid in world.countries}
+    true_event = GeoEvent(
+        id="fe", round_id=1, event_type="sabotage", title="VRAI_SECRET", actors=["usa", "iran"]
+    )
+    fog = FogScenario(
+        id="f",
+        true_event=true_event,
+        perceptions={
+            "usa": {"suspected_actor": "iran", "confidence": 0.8, "narrative": "USA_CROIT_XYZ"},
+            "iran": {"suspected_actor": "?", "confidence": 0.3, "narrative": "IRAN_CROIT_ABC"},
+        },
+    )
+    list(
+        run_negotiation_round(
+            world, agents, _gm(), _judge(), SimClock(), event=true_event, fog=fog
+        )
+    )
+    nego = "\n".join(c["prompt"] for c in shared.calls if c.get("system") == NEGOTIATION_SYSTEM)
+    assert "USA_CROIT_XYZ" in nego and "IRAN_CROIT_ABC" in nego  # chacun sur SA croyance
+    assert "VRAI_SECRET" not in nego  # la vérité est masquée dans les prompts de négociation
+
+
 def test_no_ledger_still_runs():
     world = _world()
     steps = list(run_negotiation_round(world, _agents(world), _gm(), _judge(), SimClock()))

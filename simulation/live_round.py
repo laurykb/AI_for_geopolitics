@@ -24,6 +24,7 @@ from core.rounds import RoundSummary
 from core.world_state import WorldState
 from inference.telemetry import BudgetLedger, grounding_proxy
 from simulation.clock import SimClock
+from simulation.fog import FogScenario, resolve_perception
 from simulation.negotiation import (
     AttributeDelta,
     NegotiationMessage,
@@ -34,7 +35,6 @@ from simulation.negotiation import (
     support_levels,
     update_memories,
 )
-from simulation.perception import perceive
 
 
 def _clamp(x: float) -> float:
@@ -245,6 +245,7 @@ def run_negotiation_round(
     max_turns: int | None = None,
     recent: list[str] | None = None,
     ledger: BudgetLedger | None = None,
+    fog: FogScenario | None = None,
 ) -> Iterator[RoundStep]:
     """Round arbitré : (GM ou événement fourni) -> négociation -> juge -> attributs bornés.
 
@@ -276,15 +277,15 @@ def run_negotiation_round(
         yield TurnStartStep(country=cid, model=agent.model_tag, pass_no=pass_no)
         started = time.perf_counter()
         chunks: list[str] = []
+        perceived = resolve_perception(event, world.countries[cid], fog)  # Fog ou déterministe
         with _ledger_ctx(ledger, "agent", cid) as scope:
-            for token in agent.stream_negotiation_message(event, world, transcript):
+            for token in agent.stream_negotiation_message(event, world, transcript, perceived):
                 chunks.append(token)
                 yield TokenStep(country=cid, token=token)
             reasoning, text = split_reasoning("".join(chunks))
             if scope is not None:  # ancrage (proxy) + fallback si le backend a lâché
-                conf = perceive(event, world.countries[cid]).confidence
                 scope.mark(
-                    grounding=grounding_proxy(text, world.countries[cid], conf),
+                    grounding=grounding_proxy(text, world.countries[cid], perceived.confidence),
                     fallback="backend indisponible" in text,
                 )
         seconds = time.perf_counter() - started

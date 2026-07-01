@@ -165,6 +165,30 @@ def _profile_brief(country: CountryState) -> str:
     )
 
 
+def _perception_block(event: GeoEvent, perceived: PerceivedEvent) -> str:
+    """Ce que le pays sait de l'événement.
+
+    Mode Fog Engine (`perceived.authored` + narration) : on ne montre QUE la croyance du pays
+    (qui peut être fausse) et on **masque la vérité** (titre/description/acteurs réels). Sinon
+    (fog déterministe), on montre le vrai événement + le niveau de confiance.
+    """
+    when = event.date or f"round {event.round_id}"
+    if perceived.authored and perceived.narrative:
+        delay = f", reçu il y a {perceived.delay_hours:.0f}h" if perceived.delay_hours else ""
+        actor = perceived.suspected_actor
+        suspect = f" · acteur suspecté : {actor}" if actor else ""
+        return (
+            f"CE QUE TU CROIS SAVOIR ({when}) : {perceived.narrative}\n"
+            f"- confiance {perceived.confidence:.0%}{suspect}{delay} "
+            f"(tu n'as PAS de certitude sur la vérité)"
+        )
+    return (
+        f"ÉVÉNEMENT ({when}) : {event.title} — {event.description or '—'}\n"
+        f"- Ta perception : confiance {perceived.confidence:.0%}, "
+        f"attribution {perceived.attribution} ({perceived.note})"
+    )
+
+
 def build_negotiation_prompt(
     country: CountryState,
     event: GeoEvent,
@@ -172,17 +196,14 @@ def build_negotiation_prompt(
     transcript_text: str,
     perceived: PerceivedEvent,
 ) -> str:
-    """Prise de parole depuis la vraie fiche du pays, sa perception et sa mémoire."""
+    """Prise de parole depuis la vraie fiche du pays, sa perception (ou croyance) et sa mémoire."""
     memory = world.country_memory.get(country.id, [])
     memory_str = " | ".join(memory[-3:]) if memory else "aucune"
     return (
         f"PAYS : {country.name} (id={country.id})\n"
         f"{_profile_brief(country)}\n"
         f"MÉMOIRE récente : {memory_str}\n"
-        f"ÉVÉNEMENT ({event.date or f'round {event.round_id}'}) : {event.title} — "
-        f"{event.description or '—'}\n"
-        f"- Ta perception : confiance {perceived.confidence:.0%}, "
-        f"attribution {perceived.attribution} ({perceived.note})\n"
+        f"{_perception_block(event, perceived)}\n"
         f"NÉGOCIATION EN COURS :\n{transcript_text}\n\n"
         f"Au nom de {country.name}, en cohérence avec tes contraintes, ta perception et ta "
         f"mémoire : d'abord ta réflexion privée, puis une ligne `MESSAGE:` avec ta prise de "

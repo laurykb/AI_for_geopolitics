@@ -28,7 +28,7 @@ from core.world_state import WorldState
 from inference.backend import InferenceBackend, InferenceResult
 from simulation.action_space import ActionType
 from simulation.negotiation import NegotiationMessage, format_transcript
-from simulation.perception import perceive
+from simulation.perception import PerceivedEvent, perceive
 
 
 def _clamp(x: float) -> float:
@@ -115,11 +115,19 @@ class LLMAgent(Agent):
         return getattr(self.backend, "model", type(self.backend).__name__)
 
     def stream_negotiation_message(
-        self, event: GeoEvent, world: WorldState, transcript: list[NegotiationMessage]
+        self,
+        event: GeoEvent,
+        world: WorldState,
+        transcript: list[NegotiationMessage],
+        perceived: PerceivedEvent | None = None,
     ) -> Iterator[str]:
-        """Streame une prise de parole dans la négociation (tient compte du transcript)."""
+        """Streame une prise de parole (sur la perception fournie, sinon fog déterministe).
+
+        En mode Fog Engine, `perceived` peut diverger de la vérité (désinformation) : l'agent
+        négocie alors sur sa croyance, pas sur l'événement réel.
+        """
         country = world.countries[self.country_id]
-        perceived = perceive(event, country)
+        perceived = perceived or perceive(event, country)
         prompt = build_negotiation_prompt(
             country, event, world, format_transcript(transcript), perceived
         )
