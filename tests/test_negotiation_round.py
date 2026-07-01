@@ -84,6 +84,31 @@ def test_step_sequence_and_dynamic_turns():
     assert any(isinstance(s, VerdictStep) for s in steps)
 
 
+def test_ledger_captures_calls_when_provided():
+    from inference.metered_backend import MeteredBackend
+    from inference.telemetry import BudgetLedger
+
+    world = _world()
+    ledger = BudgetLedger()
+    backend = MeteredBackend(MockBackend("Analyse. MESSAGE: Position."), ledger)
+    agents = {cid: LLMAgent(cid, backend) for cid in world.countries}
+    gm = GameMasterAgent(backend)
+    judge = JudgeAgent(backend)
+
+    list(run_negotiation_round(world, agents, gm, judge, SimClock(), ledger=ledger))
+
+    budgets = ledger.round_budgets()
+    assert budgets and budgets[0].number_of_llm_calls > 0
+    roles = {r.role for r in ledger.records}
+    assert "agent" in roles and "judge" in roles  # les phases sont bien étiquetées
+
+
+def test_no_ledger_still_runs():
+    world = _world()
+    steps = list(run_negotiation_round(world, _agents(world), _gm(), _judge(), SimClock()))
+    assert any(isinstance(s, SummaryStep) for s in steps)  # rétro-compatible sans ledger
+
+
 def test_max_turns_caps_speaking():
     world = _world()
     world.adjust_tension("usa", "iran", 0.9)  # forte tension -> beaucoup d'envie de parler

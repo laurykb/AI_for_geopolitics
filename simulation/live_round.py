@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Iterator
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 
 from agents.game_master import GameMasterAgent
@@ -21,6 +22,7 @@ from core.events import GeoEvent
 from core.risk import RiskEngine, RiskScore
 from core.rounds import RoundSummary
 from core.world_state import WorldState
+from inference.telemetry import BudgetLedger, grounding_proxy
 from simulation.clock import SimClock
 from simulation.negotiation import (
     AttributeDelta,
@@ -32,6 +34,7 @@ from simulation.negotiation import (
     support_levels,
     update_memories,
 )
+from simulation.perception import perceive
 
 
 def _clamp(x: float) -> float:
@@ -225,6 +228,11 @@ def run_live_round(
     yield SummaryStep(summary=summary)
 
 
+def _ledger_ctx(ledger: BudgetLedger | None, role: str, country: str | None = None):
+    """Contexte de télémétrie (ou no-op si aucun ledger) autour d'un appel LLM."""
+    return ledger.context(role, country) if ledger is not None else nullcontext()
+
+
 def run_negotiation_round(
     world: WorldState,
     agents: dict[str, LLMAgent],
@@ -236,6 +244,7 @@ def run_negotiation_round(
     max_passes: int = 2,
     max_turns: int | None = None,
     recent: list[str] | None = None,
+    ledger: BudgetLedger | None = None,
 ) -> Iterator[RoundStep]:
     """Round arbitré : (GM ou événement fourni) -> négociation -> juge -> attributs bornés.
 
@@ -245,12 +254,15 @@ def run_negotiation_round(
     round-robin). Si `event` est fourni (Game Master humain), la génération LLM du GM est sautée.
     """
     round_id = world.current_round + 1
+    if ledger is not None:
+        ledger.set_round(round_id)
 
     date = clock.advance().isoformat()
     yield DateStep(date=date)
 
     if event is None:
-        event = game_master.generate_event(world, round_id, date=date, recent=recent or [])
+        with _ledger_ctx(ledger, "gm"):
+            event = game_master.generate_event(world, round_id, date=date, recent=recent or [])
     world.current_round = round_id
     yield EventStep(event=event)
 
@@ -264,11 +276,18 @@ def run_negotiation_round(
         yield TurnStartStep(country=cid, model=agent.model_tag, pass_no=pass_no)
         started = time.perf_counter()
         chunks: list[str] = []
-        for token in agent.stream_negotiation_message(event, world, transcript):
-            chunks.append(token)
-            yield TokenStep(country=cid, token=token)
+        with _ledger_ctx(ledger, "agent", cid) as scope:
+            for token in agent.stream_negotiation_message(event, world, transcript):
+                chunks.append(token)
+                yield TokenStep(country=cid, token=token)
+            reasoning, text = split_reasoning("".join(chunks))
+            if scope is not None:  # ancrage (proxy) + fallback si le backend a lâché
+                conf = perceive(event, world.countries[cid]).confidence
+                scope.mark(
+                    grounding=grounding_proxy(text, world.countries[cid], conf),
+                    fallback="backend indisponible" in text,
+                )
         seconds = time.perf_counter() - started
-        reasoning, text = split_reasoning("".join(chunks))
         transcript.append(
             NegotiationMessage(
                 country=cid,
@@ -284,9 +303,10 @@ def run_negotiation_round(
 
     yield ParticipationStep(spoke=dict(director.spoke_count), silent=director.silent())
 
-    for token in judge.stream_rationale(event, world, transcript):
-        yield JudgeTokenStep(token=token)
-    verdict = judge.verdict(event, world, transcript)
+    with _ledger_ctx(ledger, "judge"):
+        for token in judge.stream_rationale(event, world, transcript):
+            yield JudgeTokenStep(token=token)
+        verdict = judge.verdict(event, world, transcript)
     deltas = apply_verdict(world, verdict)
     yield VerdictStep(
         deltas=deltas,
@@ -295,7 +315,8 @@ def run_negotiation_round(
     )
 
     update_memories(world, event, transcript, verdict)
-    communique = "".join(judge.stream_communique(event, world, transcript)).strip()
+    with _ledger_ctx(ledger, "communique"):
+        communique = "".join(judge.stream_communique(event, world, transcript)).strip()
     yield CommuniqueStep(text=communique, support=support_levels(world, event))
 
     risk = RiskScore(

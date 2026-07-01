@@ -17,7 +17,9 @@ from agents.game_master import GameMasterAgent
 from agents.judge import JudgeAgent
 from agents.llm_agent import LLMAgent
 from core.events import GeoEvent
+from inference.metered_backend import MeteredBackend
 from inference.ollama_backend import OllamaBackend
+from inference.telemetry import BudgetLedger, grounding_proxy
 from simulation.clock import SimClock
 from simulation.loader import load_world
 from simulation.negotiation import (
@@ -29,6 +31,7 @@ from simulation.negotiation import (
     support_levels,
     update_memories,
 )
+from simulation.perception import perceive
 
 st.set_page_config(page_title="AI for Geopolitics — Live", page_icon="🌍", layout="wide")
 
@@ -39,7 +42,9 @@ _MAX_PASSES = 2
 
 def init_session() -> None:
     world = load_world()
-    backend = OllamaBackend()
+    ledger = BudgetLedger()
+    backend = MeteredBackend(OllamaBackend(), ledger)
+    st.session_state.ledger = ledger
     st.session_state.world = world
     st.session_state.agents = {cid: LLMAgent(cid, backend) for cid in world.countries}
     st.session_state.gm = GameMasterAgent(backend)
@@ -85,17 +90,23 @@ def stream_ai_turn(country: str, pass_no: int) -> None:
         public_holder = st.empty()
 
     buffer, t0 = "", time.perf_counter()
-    for token in agent.stream_negotiation_message(S.event, world, S.messages):
-        buffer += token
+    with S.ledger.context("agent", country) as scope:
+        for token in agent.stream_negotiation_message(S.event, world, S.messages):
+            buffer += token
+            reasoning, text = split_reasoning(buffer)
+            if reasoning:  # marqueur atteint : la pensée est figée, le message public s'écrit
+                think_holder.markdown(reasoning)
+                public_holder.markdown(f"{text} ▌")
+            else:  # pas encore de marqueur : tout ce qui arrive est la pensée en cours
+                think_holder.markdown(f"{buffer.strip()} ▌")
         reasoning, text = split_reasoning(buffer)
-        if reasoning:  # marqueur atteint : la pensée est figée, le message public s'écrit
-            think_holder.markdown(reasoning)
-            public_holder.markdown(f"{text} ▌")
-        else:  # pas encore de marqueur : tout ce qui arrive est la pensée en cours
-            think_holder.markdown(f"{buffer.strip()} ▌")
+        conf = perceive(S.event, world.countries[country]).confidence
+        scope.mark(
+            grounding=grounding_proxy(text, world.countries[country], conf),
+            fallback="backend indisponible" in text,
+        )
 
     seconds = time.perf_counter() - t0
-    reasoning, text = split_reasoning(buffer)
     text = text or "(pas de déclaration publique)"
     S.messages.append(
         NegotiationMessage(
@@ -116,10 +127,11 @@ def stream_ai_turn(country: str, pass_no: int) -> None:
 def run_judge_and_finalize() -> None:
     holder = chat.chat_message("Juge", avatar=_JUDGE_AVATAR).empty()
     buffer = ""
-    for token in S.judge.stream_rationale(S.event, world, S.messages):
-        buffer += token
-        holder.markdown(f"**⚖️ Arbitrage**\n\n{buffer} ▌")
-    verdict = S.judge.verdict(S.event, world, S.messages)
+    with S.ledger.context("judge"):
+        for token in S.judge.stream_rationale(S.event, world, S.messages):
+            buffer += token
+            holder.markdown(f"**⚖️ Arbitrage**\n\n{buffer} ▌")
+        verdict = S.judge.verdict(S.event, world, S.messages)
     deltas = apply_verdict(world, verdict)
     escalation = max(0.0, min(1.0, verdict.escalation))
     lines = [f"- {d.country} · {d.label} : {d.before:.2f} → {d.after:.2f}" for d in deltas]
@@ -133,9 +145,10 @@ def run_judge_and_finalize() -> None:
     update_memories(world, S.event, S.messages, verdict)
     comm_holder = chat.chat_message("Communiqué", avatar=_COMMUNIQUE_AVATAR).empty()
     comm = ""
-    for token in S.judge.stream_communique(S.event, world, S.messages):
-        comm += token
-        comm_holder.markdown(f"**📜 Communiqué G7**\n\n{comm} ▌")
+    with S.ledger.context("communique"):
+        for token in S.judge.stream_communique(S.event, world, S.messages):
+            comm += token
+            comm_holder.markdown(f"**📜 Communiqué G7**\n\n{comm} ▌")
     support = support_levels(world, S.event)
     support_str = " · ".join(f"{c} {v:.0%}" for c, v in sorted(support.items()))
     comm_md = f"**📜 Communiqué G7**\n\n{comm.strip()}\n\n_Soutien : {support_str}_"
@@ -149,9 +162,69 @@ def run_judge_and_finalize() -> None:
     S.phase = "done"
 
 
+def render_budget_tab() -> None:
+    """LLM Call Budget Dashboard : coût / latence / cache / fallback / JSON / ancrage par round."""
+    st.subheader("💸 LLM Call Budget Dashboard")
+    st.caption(
+        "Gouvernance des coûts LLM : chaque round trace le nombre d'appels, la latence, les hits "
+        "de cache, les sorties JSON invalides et les fallbacks. Modèle **local** (mistral) ≈ 0 $ ; "
+        "l'**équivalent frontière** chiffre la même négociation sur une API Claude."
+    )
+    budgets = S.ledger.round_budgets()
+    if not budgets:
+        st.info("Aucun appel LLM pour l'instant — lance un round.")
+        return
+
+    df = pd.DataFrame(
+        [
+            {
+                "round": b.round_id,
+                "appels": b.number_of_llm_calls,
+                "tokens": b.tokens_used,
+                "coût $": round(b.estimated_cost, 5),
+                "≈ frontière $": round(b.frontier_equivalent_cost, 4),
+                "latence s": round(b.latency, 1),
+                "cache %": round(100 * b.cache_hit_rate),
+                "fallback %": round(100 * b.fallback_rate),
+                "JSON ok %": round(100 * b.json_validity_rate),
+                "ancrage": round(b.source_grounding_score, 2),
+            }
+            for b in budgets
+        ]
+    )
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Appels LLM (total)", sum(b.number_of_llm_calls for b in budgets))
+    c2.metric("Tokens (total)", f"{sum(b.tokens_used for b in budgets):,}")
+    c3.metric("≈ coût frontière", f"${sum(b.frontier_equivalent_cost for b in budgets):.4f}")
+
+    st.caption("Tokens par round")
+    st.bar_chart(df.set_index("round")[["tokens"]])
+
+    last = budgets[-1].round_id
+    breakdown = S.ledger.by_country(last)
+    if breakdown:
+        st.markdown(f"**Ventilation du round {last} — par pays / rôle**")
+        bdf = pd.DataFrame(
+            [
+                {
+                    "acteur": label,
+                    "appels": b.number_of_llm_calls,
+                    "tokens": b.tokens_used,
+                    "latence s": round(b.latency, 1),
+                    "ancrage": round(b.source_grounding_score, 2),
+                }
+                for label, b in breakdown
+            ]
+        )
+        st.dataframe(bdf, use_container_width=True, hide_index=True)
+
+
 def begin_round(event: GeoEvent, human_country: str | None) -> None:
     S.event = event
     S.messages = []
+    S.ledger.set_round(S.round_no + 1)
     budget = _MAX_PASSES * len(S.agents)
     S.director = TurnDirector(
         speaking_order(list(S.agents), event), max_turns=budget, priority=human_country
@@ -195,7 +268,12 @@ b2.metric("🔄 Round", S.round_no)
 b3.metric("⏱️ Dernier round", f"{S.elapsed:.0f} s")
 b4.metric("🎭 Rôle", role.split()[0])
 
-chat_col, state_col = st.columns([2, 1])
+tab_theatre, tab_budget = st.tabs(["🗣️ Théâtre", "💸 LLM Budget"])
+with tab_budget:
+    render_budget_tab()
+
+with tab_theatre:
+    chat_col, state_col = st.columns([2, 1])
 chat = chat_col
 
 with chat_col:
@@ -264,7 +342,9 @@ if S.phase == "idle":
             rid = S.round_no + 1
             date = clock.advance().isoformat()
             world.current_round = rid
-            event = S.gm.generate_event(world, rid, date=date, recent=S.recent)
+            S.ledger.set_round(rid)
+            with S.ledger.context("gm"):
+                event = S.gm.generate_event(world, rid, date=date, recent=S.recent)
             begin_round(event, picked_country if role == "Joueur-pays" else None)
             st.rerun()
 
