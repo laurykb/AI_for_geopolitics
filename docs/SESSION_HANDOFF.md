@@ -14,7 +14,7 @@ attributs → **communiqué G7** + la date avance. Métaphore : *un G7 dont on v
 ## Où on en est
 
 - **Branche courante : `feat/observable-round`** (HEAD, **non poussée**) — théâtre live + Lot A + mode Fog Engine.
-- **163 tests verts** (`pytest -q`, tous offline via MockBackend), `ruff` propre.
+- **172 tests verts** (`pytest -q`, tous offline via MockBackend), `ruff` propre.
 - Contrainte matérielle : **RTX 2060 Super 8 Go** → 1 modèle 7B (mistral) en local, **séquentiel**,
   ~1 min/round. Impossible de faire tourner 6 modèles en parallèle.
 
@@ -59,22 +59,34 @@ Puis **refonte vers le théâtre observable** (branche `feat/observable-round`),
 - **À faire (décidé)** : **Crisis Replay** (rejeu `data/crises/*.json` + `historical_outcome` + comparaison
   historique/simulé — réutilise le seam mode/sélecteur) ; puis **Escalation Ladder** (`simulation/escalation.py`,
   échelle 0-9 + profil 5 params) + **budget modes** Cheap/Balanced/Full (= `TurnDirector.max_turns`).
-- **Raffinement noté** : en Fog, `engagement_score` se base sur les VRAIS acteurs ; à terme, pondérer par la
-  perception (un pays accusé/se croyant visé devrait plus parler).
+- **Raffinement noté** : en Fog, `engagement_score`/urgence du mandat se basent sur les VRAIS acteurs ; à terme,
+  pondérer par la perception (un pays accusé/se croyant visé devrait plus parler).
+
+**Réalisme G7 LIVRÉ** (contexte apporté par l'user sur le fonctionnement d'un vrai G7, 2 commits, 0 appel LLM en plus) :
+- **Fiche de comportement (mandat)** : `simulation/mandate.py` (`CountryMandate`, `derive_mandate` déterministe —
+  ligne rouge, priorités, concessions, contraintes internes, urgence ; dérivée de `CountryState`, **surchargeable**
+  via le champ optionnel `CountryState.mandate`) ; injectée dans `build_negotiation_prompt` (bloc « FEUILLE DE ROUTE »).
+- **Bilatérale informelle** : `NEGOTIATION_SYSTEM` demande d'envisager une entente hors-table avec UN pays précis, qui
+  influence le message **sans être déclarée** — reste dans la pensée privée (box 🧠, invisible des autres agents).
+- **Communiqué G7 réaliste** : `COMMUNIQUE_SYSTEM` = déclaration politique **non contraignante**, position commune +
+  2-3 mesures coordonnées envisagées ; le G7 aligne/coordonne/prépare (n'impose pas).
 
 ## Architecture (modules)
 
-- `core/` : domaine Pydantic (`CountryState`, `WorldState` (+`country_memory`), `GeoEvent` (+`date`),
-  `AgentDecision`, `DiplomaticMessage`, `RoundSummary`) + moteurs `consequences`, `risk`, `rounds`.
+- `core/` : domaine Pydantic (`CountryState` (+`mandate` optionnel), `WorldState` (+`country_memory`),
+  `GeoEvent` (+`date`), `AgentDecision`, `DiplomaticMessage`, `RoundSummary`) + moteurs `consequences`,
+  `risk`, `rounds`.
 - `agents/` : `base_agent`, `rule_based_agent`, `llm_agent` (JSON validé, `stream_deliberation`,
-  `stream_negotiation_message`, `model_tag`), `human_agent`, `game_master` (GM LLM), `judge`
-  (`stream_rationale`/`verdict`/`stream_communique`), `prompts` (tous les prompts + `_profile_brief`).
+  `stream_negotiation_message` (+`perceived`), `model_tag`), `human_agent`, `game_master` (GM LLM), `judge`
+  (`stream_rationale`/`verdict`/`stream_communique`), `prompts` (prompts + `_profile_brief` + FEUILLE DE
+  ROUTE/bilatérale + communiqué G7 réaliste + perception belief-aware).
 - `inference/` : `InferenceBackend` (+`stream_generate`), `OllamaBackend`, `MockBackend`, `bench` ;
   **`telemetry`** (`BudgetLedger`, `CallRecord`, `RoundBudget`, `grounding_proxy`), **`pricing`**
   (barème + équivalent frontière), **`metered_backend`** (`MeteredBackend` = enveloppe mesurée + cache).
 - `simulation/` : `action_space`, `diplomacy` (P2), `clock`, `loader`, `perception` (`PerceivedEvent`
   +suspected_actor/narrative/delay_hours/authored), **`fog`** (`FogScenario`, `resolve_perception`,
-  `load_fog_scenarios` — Fog Engine), **`engagement`** (`engagement_score`, `SPEAK_THRESHOLD`),
+  `load_fog_scenarios` — Fog Engine), **`mandate`** (`CountryMandate`, `derive_mandate` — fiche de
+  comportement), **`engagement`** (`engagement_score`, `SPEAK_THRESHOLD`),
   `negotiation` (NegotiationMessage +`reasoning`, `split_reasoning`, Verdict, `apply_verdict`, `TurnCursor`,
   **`TurnDirector`**, `speaking_order`, `update_memories`, `support_levels`, `AttributeDelta`), `live_round`
   (RoundStep +`ParticipationStep` + `run_live_round` + **`run_negotiation_round`** = orchestrateur
