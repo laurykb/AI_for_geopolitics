@@ -1,9 +1,9 @@
-"""Théâtre live — on regarde les super-intelligences délibérer en temps réel (Phase live).
+"""Théâtre live — négociation arbitrée des super-intelligences (temps réel).
 
-Un G7 dont on voit tous les messages : le Game Master génère un événement, chaque
-super-intelligence **raisonne en direct** (streaming), puis le moteur déterministe applique
-les deltas d'attributs. Lancer : streamlit run ui/app.py  (Ollama + mistral pour le LLM ;
-repli rule-based si Ollama absent).
+Un G7 dont on voit tous les messages : le Game Master pose un événement, les
+super-intelligences **négocient sur plusieurs passes** (chacune son tour, streamé, avec
+badge modèle + chrono), puis un **juge LLM** arbitre les attributs (raisonnement visible).
+Lancer : streamlit run ui/app.py  (Ollama + mistral ; repli si absent).
 """
 
 from __future__ import annotations
@@ -14,24 +14,28 @@ import pandas as pd
 import streamlit as st
 
 from agents.game_master import GameMasterAgent
+from agents.judge import JudgeAgent
 from agents.llm_agent import LLMAgent
 from inference.ollama_backend import OllamaBackend
 from simulation.clock import SimClock
 from simulation.live_round import (
-    AgentDoneStep,
-    DeltasStep,
     EventStep,
-    RiskStep,
+    JudgeTokenStep,
+    MessageDoneStep,
     SummaryStep,
     TokenStep,
-    run_live_round,
+    TurnStartStep,
+    VerdictStep,
+    run_negotiation_round,
 )
 from simulation.loader import load_world
 
 st.set_page_config(page_title="AI for Geopolitics — Live", page_icon="🌍", layout="wide")
 
-_AGENT_AVATAR = "🧠"
 _GM_AVATAR = "🎲"
+_AGENT_AVATAR = "🧠"
+_JUDGE_AVATAR = "⚖️"
+_MAX_PASSES = 2
 
 
 def init_session() -> None:
@@ -40,12 +44,13 @@ def init_session() -> None:
     st.session_state.world = world
     st.session_state.agents = {cid: LLMAgent(cid, backend) for cid in world.countries}
     st.session_state.gm = GameMasterAgent(backend)
+    st.session_state.judge = JudgeAgent(backend)
     st.session_state.clock = SimClock()
-    st.session_state.transcript = []  # entrées {who, avatar, md} persistantes
+    st.session_state.transcript = []  # {who, avatar, md} persistants
     st.session_state.recent = []
     st.session_state.round_no = 0
     st.session_state.last_deltas = []
-    st.session_state.last_risk = None
+    st.session_state.last_escalation = None
     st.session_state.elapsed = 0.0
 
 
@@ -61,8 +66,9 @@ if st.sidebar.button("♻️ Nouvelle partie", use_container_width=True):
     init_session()
     st.rerun()
 st.sidebar.caption(
-    "**Spectateur** — les super-intelligences (mistral 7B local) réfléchissent chacune leur "
-    "tour, en direct. Un round ≈ 1-3 min. Repli rule-based si Ollama est éteint."
+    "**Spectateur** — les super-intelligences négocient chacune leur tour (mistral 7B local), "
+    f"sur **{_MAX_PASSES} passes**, puis un **juge** arbitre les attributs. Un round ≈ 1 min. "
+    "Repli rule-based si Ollama est éteint."
 )
 
 # ------------------------------ Bandeau ------------------------------
@@ -77,22 +83,16 @@ play = st.button("▶️ Jouer le round", type="primary", use_container_width=Tr
 
 chat_col, state_col = st.columns([2, 1])
 
-# Transcript persistant (rounds déjà joués)
 with chat_col:
-    st.subheader("🗣️ Délibérations")
+    st.subheader("🗣️ Négociation")
     for entry in st.session_state.transcript:
         with st.chat_message(entry["who"], avatar=entry["avatar"]):
             st.markdown(entry["md"])
 
-# Panneau d'état (deltas + risque du dernier round)
 with state_col:
     st.subheader("📊 Dernier round")
-    if st.session_state.last_risk is not None:
-        r = st.session_state.last_risk
-        st.markdown(
-            f"**Risque** — escalade `{r.escalation:.2f}` · éco `{r.economic_disruption:.2f}` · "
-            f"fracture `{r.alliance_fracture:.2f}`"
-        )
+    if st.session_state.last_escalation is not None:
+        st.markdown(f"**Escalade (juge)** : `{st.session_state.last_escalation:.2f}`")
     if st.session_state.last_deltas:
         df = pd.DataFrame(
             [
@@ -106,24 +106,26 @@ with state_col:
                 for d in st.session_state.last_deltas
             ]
         )
-        st.caption("Attributs modifiés")
+        st.caption("Attributs arbitrés")
         st.dataframe(df, use_container_width=True, hide_index=True)
     else:
         st.caption("Aucun round joué pour l'instant.")
 
 
 def play_round() -> None:
-    """Itère le round observable et streame chaque étape dans le tchat."""
+    """Streame la négociation arbitrée, étape par étape, dans le tchat."""
     start = time.perf_counter()
-    current: str | None = None
     placeholder = None
     buffer = ""
+    header = ""
 
-    for step in run_live_round(
+    for step in run_negotiation_round(
         world,
         st.session_state.agents,
         st.session_state.gm,
+        st.session_state.judge,
         clock,
+        max_passes=_MAX_PASSES,
         recent=st.session_state.recent,
     ):
         if isinstance(step, EventStep):
@@ -139,29 +141,52 @@ def play_round() -> None:
             )
             st.session_state.recent.append(ev.title)
 
+        elif isinstance(step, TurnStartStep):
+            header = f"**{step.country}** · `{step.model}` · passe {step.pass_no + 1} — réfléchit…"
+            buffer = ""
+            placeholder = chat_col.chat_message(step.country, avatar=_AGENT_AVATAR).empty()
+            placeholder.markdown(header)
+
         elif isinstance(step, TokenStep):
-            if step.country != current:
-                current = step.country
-                buffer = ""
-                placeholder = chat_col.chat_message(step.country, avatar=_AGENT_AVATAR).empty()
             buffer += step.token
-            placeholder.markdown(buffer + " ▌")
-
-        elif isinstance(step, AgentDoneStep):
-            dec = step.decision
-            target = f" → {dec.target}" if dec.target else ""
-            md = f"{step.text}\n\n**➡️ {dec.action.value}{target}** · intensité {dec.intensity:.2f}"
             if placeholder is not None:
-                placeholder.markdown(md)
-            st.session_state.transcript.append(
-                {"who": step.country, "avatar": _AGENT_AVATAR, "md": md}
-            )
-            current, placeholder = None, ""
+                placeholder.markdown(f"{header}\n\n{buffer} ▌")
 
-        elif isinstance(step, DeltasStep):
+        elif isinstance(step, MessageDoneStep):
+            final = f"**{step.country}** · `⏱ {step.seconds:.1f}s`\n\n{buffer.strip()}"
+            if placeholder is not None:
+                placeholder.markdown(final)
+            st.session_state.transcript.append(
+                {"who": step.country, "avatar": _AGENT_AVATAR, "md": final}
+            )
+            placeholder = None
+
+        elif isinstance(step, JudgeTokenStep):
+            if placeholder is None or header != "__judge__":
+                header = "__judge__"
+                buffer = ""
+                placeholder = chat_col.chat_message("Juge", avatar=_JUDGE_AVATAR).empty()
+            buffer += step.token
+            placeholder.markdown(f"**⚖️ Arbitrage**\n\n{buffer} ▌")
+
+        elif isinstance(step, VerdictStep):
             st.session_state.last_deltas = step.deltas
-        elif isinstance(step, RiskStep):
-            st.session_state.last_risk = step.risk
+            st.session_state.last_escalation = step.escalation
+            lines = [
+                f"- {d.country} · {d.label} : {d.before:.2f} → {d.after:.2f}" for d in step.deltas
+            ]
+            verdict_md = (
+                f"**⚖️ Arbitrage**\n\n{buffer.strip()}\n\n"
+                f"**Attributs** (escalade {step.escalation:.2f}) :\n"
+                + ("\n".join(lines) or "aucun changement")
+            )
+            if placeholder is not None:
+                placeholder.markdown(verdict_md)
+            st.session_state.transcript.append(
+                {"who": "Juge", "avatar": _JUDGE_AVATAR, "md": verdict_md}
+            )
+            placeholder = None
+
         elif isinstance(step, SummaryStep):
             st.session_state.round_no = step.summary.round_id
 

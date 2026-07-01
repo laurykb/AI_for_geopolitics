@@ -55,15 +55,19 @@ Le cœur du projet : un **théâtre temps réel** où l'on **rend visibles les b
 multi-agent. En spectateur, un round se déroule sous les yeux :
 
 1. le **Game Master** (LLM) **génère un événement** ;
-2. chaque pays-**super-intelligence** **raisonne en direct** (streaming token par token, `st.chat_message`) ;
-3. la décision est parsée (`DECISION: <action> <cible> <intensité>`, tolérante aux variantes) ;
-4. le **moteur déterministe** applique des **deltas d'attributs** explicables ;
-5. la **date avance** (~6 mois) → timeline réaliste.
+2. les pays-**super-intelligences** **négocient sur plusieurs passes** — chacune parle à son tour, en
+   **streaming**, avec **badge du modèle** (`🧠 usa · mistral:latest`) et **chrono** (traçabilité du séquentiel) ;
+3. un **Juge LLM** lit toute la négociation, **arbitre** qui a gagné / les alliances (raisonnement streamé),
+   et fixe les **deltas d'attributs** — comme un G7, **non déterministe**, mais **borné** par un garde-fou ;
+4. la **date avance** (~6 mois) → timeline réaliste.
 
 Métaphore : un **G7 dont on voit tous les messages**. Sur RTX 2060 Super (8 Go), les agents parlent
-**à tour de rôle** (mistral 7B local) — un round ≈ **20-30 s** ; repli rule-based si Ollama est éteint.
-L'orchestration (`simulation/live_round.py`, `ui/game.py`) est **testée sans Streamlit** ; le back-end
-**FastAPI** reste (`/health` + `/api/run`) pour l'archi services.
+**à tour de rôle** (mistral 7B local) — un round de négociation ≈ **1 min** ; repli si Ollama est éteint.
+L'orchestration (`simulation/live_round.py`, `simulation/negotiation.py`, `agents/judge.py`) est
+**testée sans Streamlit** ; le back-end **FastAPI** reste (`/health` + `/api/run`) pour l'archi services.
+
+> À venir : rôles humains (GM humain, **joueur-pays** qui interjecte dans la négociation), puis substrat
+> distribué **Kubernetes + MCP** (agents-services échangeant en langage naturel).
 
 > Slice 1 (spectateur). À venir : messages **bilatéraux** multi-tours, rôles humains (incarner/GM) en live, attributs animés.
 
