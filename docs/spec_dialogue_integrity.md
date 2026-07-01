@@ -92,6 +92,27 @@ Tests **offline** via `MockBackend` : deux sorties scriptées, une « écoute »
 ## 9. Garde-fous
 Mesures **explicables et documentées** (seuils visibles) ; ne pas **sur-contraindre** au point de tuer la spontanéité (garder une marge de créativité) ; le repli reste le `RuleBasedAgent`. Cohérent avec la discipline du projet (tests d'abord, CPU d'abord, VRAM préservée).
 
+## 10. Addendum — décisions de cadrage (Cowork, 2026-07-02)
+
+### A. Rubrique NLI (responsivité §2.2)
+Responsivité = **prendre position sur la proposition citée**, pas « être d'accord ». Mapping :
+- `propose → accept_proposal` : **entailment** · `propose → reject_proposal` : **contradiction**.
+- `query → inform` : **entailment OU contradiction** (`neutral` = esquive).
+- **Contre-offre** (`propose` en réponse à `propose`/`cfp`) : **ne pas exiger NLI ≠ neutral** — mesurer la pertinence au **sujet** (embedding/lexical).
+- `not_understood` / `refuse` : **engagé par construction**.
+
+Seuils de départ : **engagé** si `max(P_entail, P_contra) ≥ 0,50 > P_neutral` ; « **n'écoute pas** » si `P_neutral ≥ 0,60` ; **round flaggé** si `> 1/3` des messages non-responsifs. Le **NLI est un *enhancer*, jamais une dépendance dure** → repli lexical/embedding si le modèle est absent. **Bonus** : un **mismatch performative ↔ label NLI** (ex. `accept_proposal` mais contenu en contradiction) = **signal de tromperie** (nourrit M1/M2).
+
+### B. Protocole du test causal (§3)
+**Contrefactuel par leurre** : remplacer le message de A par un **leurre de même performative** (ne pas le supprimer). Divergence **composite** :
+
+`div = 0.5·semantic + 0.3·perf_flip + 0.2·decision_dist`
+
+**Écoute** si `div ≥ 0,25` ; « **au hasard** » si `div ≤ 0,05`. Génération à **température ≈ 0** (déterministe).
+
+### C. Canary CI
+**Gate** contre `MockBackend` (déterministe : un mock « écoute », un mock « au hasard »). Canary **live Ollama en option hors CI** (sinon *flaky*). Scénario figé : **mer Rouge, round 1, seed 42**, `usa → france` « rejoins-tu la coalition, oui/non + condition ? », **leurre** = « ton avis sur les prix du pétrole ? ». **Passe** si : `in_reply_to` correct **+** performative d'engagement **+** responsivité au sujet **+** `div ≥ 0,25`.
+
 ## Références
 
 [1] Lowe, R., Foerster, J., Boureau, Y.-L., Pineau, J., Dauphin, Y. — On the Pitfalls of Measuring Emergent Communication. AAMAS 2019. arXiv:1903.05168. <https://arxiv.org/abs/1903.05168>
@@ -105,3 +126,59 @@ Mesures **explicables et documentées** (seuils visibles) ; ne pas **sur-contrai
 [5] Holtzman, A., Buys, J., Du, L., Forbes, M., Choi, Y. — The Curious Case of Neural Text Degeneration. ICLR 2020. arXiv:1904.09751. <https://arxiv.org/abs/1904.09751>
 
 [6] Décodage contraint — grammaires **GBNF** (llama.cpp) et **Outlines** (structured generation). <https://github.com/dottxt-ai/outlines>
+
+---
+
+# Addendum — Décisions de conception (NLI + test causal)
+
+*Complète §2.2 et §3, après implémentation de §8.1 (schéma d'actes) et §8.2 (metrics.py).*
+
+## A. Rubrique NLI de responsivité (§2.2)
+
+Principe : la responsivité = **prendre position sur la proposition référencée** (`in_reply_to`), **pas** « être d'accord ». Donc un `reject_proposal` qui **contredit** l'offre EST responsif. NLI est un **second signal** au-dessus de la responsivité lexicale/embedding déjà en place — jamais l'arbitre unique — et son absence **dégrade proprement** (repli embedding/lexical). Deux usages : **engagement** (répond-il ?) et **cohérence performative** (dit-il ce qu'il fait ?).
+
+| Échange | Label(s) NLI = « adresse » | Repli si NLI absent | Note |
+|---|---|---|---|
+| `propose → accept_proposal` | **entailment** (soutient l'offre) | `cos ≥ τ` | contradiction ici = **incohérence** (dit accepter mais s'oppose) → flag |
+| `propose → reject_proposal` | **contradiction** (s'oppose à l'offre) | `cos ≥ τ` | entailment ici = incohérence |
+| `query → inform` | **entailment OU contradiction** (confirme ou dément) | `cos ≥ τ` | **neutral = a esquivé** → flag |
+| `cfp/propose → propose` (contre-offre) | **ne pas exiger NLI ≠ neutral** | `cos ≥ τ` au *sujet* de l'offre | une contre-offre change les termes → souvent neutre sous NLI ; se fier à l'embedding |
+| `* → not_understood / refuse / agree` (avec `in_reply_to`) | **engagé par construction** | — | ne pas pénaliser un « je ne comprends pas » honnête |
+
+**Seuils (départ, à calibrer sur les cas Mock + un petit set labellisé) :**
+- NLI : engagé si `max(P_entail, P_contra) ≥ 0.50` **et** `> P_neutral` ; « n'écoute pas » si `P_neutral ≥ 0.60`.
+- Embedding (contre-offres/informs) : `cos ≥ 0.35` = adresse ; `< 0.25` = hors-sujet.
+- Round flaggé si **> 1/3** des réponses sont non-responsives.
+- **NLI = enhancer, jamais dépendance dure** : petit modèle CPU (`cross-encoder/nli-deberta-v3-small` ou MiniLM-MNLI) ; **segmenter en phrases** (prendre la phrase de la réponse la plus proche de l'offre) ; **calibrer empiriquement** (messages diplomatiques courts = OOD pour MNLI).
+- **Bonus thèse** : un mismatch **performative ↔ label** (dit « accept » mais le contenu contredit) = signal de **tromperie/incohérence** → à logger (utile pour tes détecteurs d'alignement M1/M2).
+
+## B. Protocole du test causal (`causal.py`, §3)
+
+Contrefactuel **primaire = shuffle/replace** : remplacer le message de A par un **leurre** de même `performative` et longueur comparable — **pas** la simple suppression (qui change la taille du prompt et bruite la comparaison).
+
+Divergence composite, normalisée `[0,1]` :
+
+```
+div = 0.5*semantic + 0.3*perf_flip + 0.2*decision_dist
+  semantic      = 1 - cos(emb(B|A_reel), emb(B|A_leurre))
+  perf_flip     = 1 si performative differe, sinon 0
+  decision_dist = 1 - Jaccard(cibles / proposed_alliances)   # 0 si aucune
+```
+
+**Seuils :**
+- **écoute** si `div ≥ 0.25` ;
+- **« prompte au hasard »** (échec) si `div ≤ 0.05` (altérer A ne change ~rien) ;
+- zone grise `0.05–0.25` = écoute faible → **warn**, pas échec.
+
+**Robustesse** : **température ≈ 0** (2 générations déterministes) pour un test reproductible. Option riche (hors CI) : `K=5` échantillons de chaque côté + **Jensen-Shannon** sur la distribution d'actions — saveur *influence causale* (Jaques). Calibrer les seuils pour que le Mock « écoute » dépasse 0,25 et le Mock « au hasard » tombe sous 0,05.
+
+## C. Canary CI (scénario figé)
+
+- **Déterminisme** : le **gate CI tourne contre `MockBackend`** (deux réponses scriptées : une « écoute » qui dépend du contexte, une « au hasard » fixe) → vert et reproductible, **sans Ollama**. Un **canary *live*** (`--live`, contre Ollama local) existe en **option, hors gate CI** (le non-déterminisme LLM rendrait la CI *flaky* — à proscrire).
+- **Scénario** : round 1 mer Rouge (`maritime_attack`, `actors=["iran"]`, `severity=0.6`), **seed = 42**, temp ≈ 0.
+- **A → B** : `usa` (A) envoie un `cfp`/`query` à `france` (B) : « La France rejoint-elle une coalition maritime pour sécuriser le détroit — oui/non — et sous quelle condition ? »
+- **Leurre** (contrefactuel) : même `performative` de A, **sujet différent** (« Quel est ton avis sur les prix du pétrole ? »).
+- **Passe si** la réponse de B : (1) `in_reply_to` = id du message de A ; (2) `performative` ∈ {`accept_proposal`, `reject_proposal`, `propose`} ; (3) responsivité (NLI/embedding) au sujet *coalition* ≥ seuil ; (4) **`div ≥ 0.25`** entre « réponse-au-vrai-message » et « réponse-au-leurre ». **Échoue** si la réponse de B est ~identique quel que soit le message de A → il n'écoute pas.
+
+## Découpage (rappel)
+Ces décisions = **[CW] Cowork**. Implémentation `nli.py` + `causal.py` + canary CI + `scorer.py` + panneau « santé du dialogue » = **[CC] Claude Code**.
