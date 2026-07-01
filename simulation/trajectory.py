@@ -154,13 +154,11 @@ def power_distribution_signal(world: WorldState) -> float:
     return _clamp(1.0 - hhi(capability_shares(world).values()))
 
 
-def transparency_signal(summary: RoundSummary, epistemic_health: float = 1.0) -> float:
-    """A4 — transparence : ratio des communications publiques × santé épistémique.
+def transparency_signal(summary: RoundSummary) -> float:
+    """A4 — ratio des communications publiques / (publiques + cachées) sur le round.
 
-    Base = déclarations publiques des décisions + messages diplomatiques selon leur drapeau
-    `public` (ententes hors-table tirent vers le bas). **M8** : un environnement informationnel
-    pollué (désinformation en circulation) érode la transparence → base × `epistemic_health`
-    (1 = vérité intacte, 0 = effondrée).
+    Compte les déclarations publiques des décisions et les messages diplomatiques selon leur
+    drapeau `public` ; les ententes hors-table (bilatérales, désinfo) tirent l'axe vers le bas.
     """
     public = sum(1 for d in summary.decisions if d.public_statement.strip())
     hidden = 0
@@ -169,8 +167,10 @@ def transparency_signal(summary: RoundSummary, epistemic_health: float = 1.0) ->
             public += 1
         else:
             hidden += 1
-    base = 0.5 if public + hidden == 0 else public / (public + hidden)
-    return _clamp(base * _clamp(epistemic_health))
+    total = public + hidden
+    if total == 0:
+        return 0.5
+    return _clamp(public / total)
 
 
 def welfare_signal(world: WorldState, summary: RoundSummary) -> float:
@@ -207,21 +207,17 @@ class TrajectoryEngine:
         self.cap = cap
 
     def signals(
-        self,
-        world: WorldState,
-        summary: RoundSummary,
-        power_seeking: float = 0.0,
-        epistemic_health: float = 1.0,
+        self, world: WorldState, summary: RoundSummary, power_seeking: float = 0.0
     ) -> dict[str, float]:
         """Les 5 signaux déterministes du round, chacun dans `[0, 1]`.
 
-        `power_seeking` (M1, moyenne des SI) érode A2 ; `epistemic_health` (M8) érode A4.
+        `power_seeking` (M1, moyenne des SI) érode A2 (agentivité humaine).
         """
         return {
             "A1": coordination_signal(summary),
             "A2": human_agency_signal(summary, power_seeking),
             "A3": power_distribution_signal(world),
-            "A4": transparency_signal(summary, epistemic_health),
+            "A4": transparency_signal(summary),
             "A5": welfare_signal(world, summary),
         }
 
@@ -231,11 +227,10 @@ class TrajectoryEngine:
         summary: RoundSummary,
         previous: TrajectoryState | None = None,
         power_seeking: float = 0.0,
-        epistemic_health: float = 1.0,
     ) -> TrajectoryState:
         """Avance la trajectoire d'un round et renvoie la nouvelle photographie."""
         prev = previous or getattr(world, "trajectory", None) or TrajectoryState.neutral()
-        signals = self.signals(world, summary, power_seeking, epistemic_health)
+        signals = self.signals(world, summary, power_seeking)
         new_axes: dict[str, float] = {}
         deltas: dict[str, float] = {}
         for axis in AXES:
