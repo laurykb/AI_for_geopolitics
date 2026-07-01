@@ -261,9 +261,14 @@ def build_judge_verdict_prompt(event: GeoEvent, world: WorldState, transcript_te
 # --- Communiqué commun (type G7) ----------------------------------------------
 
 COMMUNIQUE_SYSTEM = (
-    "Tu rédiges le communiqué commun d'un sommet type G7, à l'issue d'une négociation. "
-    "Un seul paragraphe court, diplomatique, en français : position commune, mesures envisagées, "
-    "langage consensuel qui masque les désaccords. Pas de JSON, pas de liste."
+    "Tu rédiges la DÉCLARATION COMMUNE des leaders d'un sommet type G7, en français. Ce sont des "
+    "ENGAGEMENTS POLITIQUES non contraignants (pas une loi) : le G7 n'impose pas, il aligne, "
+    "coordonne, met la pression et prépare des décisions nationales ou européennes. "
+    "Structure : (1) un court paragraphe de position commune, langage consensuel qui masque les "
+    "désaccords ; (2) puis 2 à 3 MESURES COORDONNÉES ENVISAGÉES en puces (« - »), choisies parmi : "
+    "soutien à un allié, sanctions coordonnées, position commune sur une puissance, engagements "
+    "climat/énergie, régulation de l'IA, sécurité des chaînes d'approvisionnement, coordination "
+    "macroéconomique. Reste fidèle à ce qui s'est dit dans la négociation. Pas de JSON."
 )
 
 
@@ -272,5 +277,6 @@ def build_communique_prompt(event: GeoEvent, world: WorldState, transcript_text:
     return (
         f"ÉVÉNEMENT : {event.title} — {event.description or '—'}\nPAYS : {ids}\n"
         f"NÉGOCIATION :\n{transcript_text}\n\n"
-        f"Rédige le communiqué commun (un paragraphe) :"
+        f"Rédige la déclaration commune (paragraphe de position + 2-3 mesures en puces), "
+        f"comme des engagements politiques non contraignants :"
     )

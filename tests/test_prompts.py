@@ -109,6 +109,24 @@ def test_negotiation_system_mentions_bilateral():
     assert "bilatéral" in NEGOTIATION_SYSTEM.lower()
 
 
+def test_communique_system_frames_political_declaration():
+    from agents.prompts import COMMUNIQUE_SYSTEM
+
+    low = COMMUNIQUE_SYSTEM.lower()
+    assert "déclaration" in low and "engagement" in low
+    assert "non contraignant" in low  # ce n'est pas une loi
+    assert "sanctions" in low or "chaînes d'approvisionnement" in low  # catégories de mesures
+
+
+def test_communique_prompt_includes_transcript_and_measures():
+    from agents.prompts import build_communique_prompt
+
+    world, event = _world(), _event()
+    prompt = build_communique_prompt(event, world, "usa: on condamne")
+    assert "usa: on condamne" in prompt  # transcript repris
+    assert "mesures" in prompt.lower()
+
+
 def test_negotiation_system_asks_for_private_reasoning_then_message():
     from agents.prompts import NEGOTIATION_SYSTEM
 
