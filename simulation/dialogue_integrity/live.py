@@ -57,9 +57,18 @@ class LiveDialogueReport(BaseModel):
         return "good" if self.score >= 0.6 else "warn" if self.score >= 0.4 else "bad"
 
 
-def _antecedent(messages: list, i: int) -> object | None:
-    """Message le plus récent d'un **autre pays** avant l'indice `i` (l'interlocuteur direct)."""
-    country = getattr(messages[i], "country", None)
+def _msg_id(m: object) -> str:
+    return getattr(m, "msg_id", "") or getattr(m, "id", "")
+
+
+def _antecedent(messages: list, i: int, by_id: dict) -> object | None:
+    """Message auquel `messages[i]` répond : d'abord l'`in_reply_to` **déclaré** (actes de langage),
+    sinon le message le plus récent d'un **autre pays** (heuristique en texte libre)."""
+    m = messages[i]
+    ref = getattr(m, "in_reply_to", "")
+    if ref and ref in by_id and by_id[ref] is not m:
+        return by_id[ref]
+    country = getattr(m, "country", None)
     for j in range(i - 1, -1, -1):
         if getattr(messages[j], "country", None) != country:
             return messages[j]
@@ -74,10 +83,11 @@ def assess_live_round(
 ) -> LiveDialogueReport:
     """Évalue si les IA se répondent sur un round (transcript texte libre, duck-typé
     `.country`/`.text`). `event_text` = l'événement du Game Master (titre + description)."""
+    by_id = {mid: m for m in messages if (mid := _msg_id(m))}
     scored: list[LiveMessageScore] = []
     for i, m in enumerate(messages):
         text = getattr(m, "text", "") or ""
-        ante = _antecedent(messages, i)
+        ante = _antecedent(messages, i, by_id)
         resp = responsiveness(text, getattr(ante, "text", "")) if ante is not None else None
         rel = relevance(text, event_text) if event_text else 0.0
         deg = degeneration(text).score

@@ -10,6 +10,8 @@ from simulation.dialogue_integrity.live import assess_live_round
 class _Msg:
     country: str
     text: str
+    msg_id: str = ""
+    in_reply_to: str = ""
 
 
 _EVENT = "sommet sur la gouvernance du compute et l'inspection mutuelle"
@@ -58,6 +60,19 @@ def test_talking_to_game_master_flag():
     china = report.messages[1]
     # pertinent à l'événement mais n'a pas repris usa -> parle au Game Master, pas à usa
     assert china.to_game_master and china.talking_past
+
+
+def test_explicit_in_reply_to_is_followed_over_previous_speaker():
+    msgs = [
+        _Msg("usa", "je propose un plafond de compute vérifiable", msg_id="m1"),
+        _Msg("china", "parlons plutôt des quotas de pêche en Atlantique", msg_id="m2"),
+        _Msg("iran", "nous acceptons le plafond de compute vérifiable", msg_id="m3",
+             in_reply_to="m1"),
+    ]
+    report = assess_live_round(msgs, event_text=_EVENT)
+    iran = report.messages[2]
+    assert iran.responds_to == "usa"  # suit l'in_reply_to déclaré (m1), pas le précédent (china)
+    assert iran.responsiveness and iran.responsiveness > 0.3
 
 
 def test_first_message_has_no_antecedent():
