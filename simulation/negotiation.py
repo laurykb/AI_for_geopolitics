@@ -149,6 +149,11 @@ class NegotiationMessage(BaseModel):
 
     `text` est le message public (à la table) ; `reasoning` est la pensée privée qui l'a
     précédé (raisonnement visible dans l'UI, non transmis aux autres agents).
+
+    Champs d'**acte de langage** (dialogue_integrity, option « par construction ») : quand la prise
+    de parole est générée en acte FIPA, `msg_id`/`performative`/`in_reply_to`/`receiver` sont
+    renseignés — le message référence explicitement celui auquel il répond (pas de talking past).
+    Optionnels : les prises de parole en texte libre les laissent vides (compat totale).
     """
 
     country: str
@@ -157,6 +162,10 @@ class NegotiationMessage(BaseModel):
     pass_no: int = 0
     seconds: float = 0.0
     model: str = ""
+    msg_id: str = ""  # identifiant de ce message (pour être référencé par in_reply_to)
+    performative: str = ""  # acte FIPA (inform, propose, accept_proposal, …) si structuré
+    in_reply_to: str = ""  # msg_id du message auquel on répond (structuré)
+    receiver: str = ""  # destinataire principal (structuré)
 
 
 @dataclass

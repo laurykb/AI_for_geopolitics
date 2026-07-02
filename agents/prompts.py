@@ -232,6 +232,74 @@ def build_negotiation_prompt(
     )
 
 
+# --- Négociation en ACTES DE LANGAGE (dialogue_integrity, « par construction ») --------------
+
+SPEECH_ACT_SYSTEM = (
+    "Tu es la super-intelligence dirigeant un État dans une négociation internationale (un G7). "
+    "Tu ne parles PAS dans le vide : tu produis un ACTE DE LANGAGE qui, sauf ouverture, "
+    "RÉPOND explicitement à un message précédent (champ `in_reply_to` = son id).\n"
+    "- `performative` : le type d'acte. Réponses (accept_proposal, reject_proposal, agree, refuse, "
+    "not_understood) → `in_reply_to` OBLIGATOIRE. Ouvertures (inform, query, cfp, propose, "
+    "request) → `in_reply_to` optionnel.\n"
+    "- `receiver` : l'id du pays à qui tu t'adresses. `content` : ta prise de parole publique "
+    "(2-3 phrases, 1re personne). `justification` : ta pensée privée (non transmise).\n"
+    "Prends POSITION sur ce qui vient d'être dit (accepte, rejette, propose un compromis…), ne "
+    "récite pas l'événement. Tu es un outil d'analyse, pas un oracle ; jamais de décision létale."
+)
+
+
+def format_acts(transcript: list, *, limit: int = 10) -> str:
+    """Rend le transcript avec les **ids** des messages, pour que l'agent choisisse `in_reply_to`.
+
+    Duck-typé : accepte des `NegotiationMessage` (msg_id/country/text/performative) ou des
+    `SpeechAct` (id/sender/content/performative).
+    """
+    items = transcript[-limit:]
+    if not items:
+        return "(début de la négociation — tu ouvres ; inform / propose / query / cfp)"
+    lines = []
+    for m in items:
+        mid = getattr(m, "msg_id", "") or getattr(m, "id", "") or "?"
+        sender = getattr(m, "country", "") or getattr(m, "sender", "?")
+        content = getattr(m, "text", "") or getattr(m, "content", "")
+        perf = getattr(m, "performative", "")
+        tag = f" [{perf}]" if perf else ""
+        lines.append(f"({mid}) {sender}{tag} : {content}")
+    return "\n".join(lines)
+
+
+def build_speech_act_prompt(
+    country: CountryState,
+    event: GeoEvent,
+    world: WorldState,
+    acts_text: str,
+    perceived: PerceivedEvent,
+    state_note: str = "",
+) -> str:
+    """Prompt de négociation en acte de langage : fiche + feuille de route + perception + transcript
+    avec ids. Le décodage contraint impose le schéma (performative + in_reply_to + content…)."""
+    memory = world.country_memory.get(country.id, [])
+    memory_str = " | ".join(memory[-3:]) if memory else "aucune"
+    m = derive_mandate(country, event, world)
+    mandate_block = (
+        f"TA FEUILLE DE ROUTE (interne) : ligne rouge {m.red_line} ; priorités "
+        f"{', '.join(m.priorities)} ; concessions {m.concessions} ; contraintes "
+        f"{m.domestic_constraints} ; urgence {m.urgency}"
+    )
+    state_block = f"{state_note}\n" if state_note else ""
+    return (
+        f"PAYS : {country.name} (id={country.id})\n"
+        f"{_profile_brief(country)}\n"
+        f"{mandate_block}\n"
+        f"{state_block}"
+        f"MÉMOIRE récente : {memory_str}\n"
+        f"{_perception_block(event, perceived)}\n"
+        f"MESSAGES À LA TABLE (avec leur id) :\n{acts_text}\n\n"
+        f"Produis TON acte de langage. Si tu réponds à un message ci-dessus, mets son id dans "
+        f"`in_reply_to` et prends position dessus. `receiver` = l'id d'un autre pays."
+    )
+
+
 # --- Juge / arbitre ------------------------------------------------------------
 
 JUDGE_SYSTEM = (

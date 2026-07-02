@@ -15,11 +15,14 @@ from agents.base_agent import Agent
 from agents.prompts import (
     DELIBERATION_SYSTEM,
     NEGOTIATION_SYSTEM,
+    SPEECH_ACT_SYSTEM,
     SYSTEM_PROMPT,
     LLMDecision,
     build_decision_prompt,
     build_deliberation_prompt,
     build_negotiation_prompt,
+    build_speech_act_prompt,
+    format_acts,
 )
 from agents.rule_based_agent import RuleBasedAgent
 from core.decisions import AgentDecision
@@ -27,6 +30,11 @@ from core.events import GeoEvent
 from core.world_state import WorldState
 from inference.backend import InferenceBackend, InferenceResult
 from simulation.action_space import ActionType
+from simulation.dialogue_integrity.message import (
+    Performative,
+    SpeechAct,
+    generate_speech_act,
+)
 from simulation.negotiation import NegotiationMessage, format_transcript
 from simulation.perception import PerceivedEvent, perceive
 
@@ -143,6 +151,55 @@ class LLMAgent(Agent):
             )
         except Exception:
             yield f"[{self.country_id} garde le silence — backend indisponible]"
+
+    def negotiate_act(
+        self,
+        event: GeoEvent,
+        world: WorldState,
+        transcript: list,
+        perceived: PerceivedEvent | None = None,
+        *,
+        state_note: str = "",
+        max_tokens: int = 256,
+    ) -> SpeechAct:
+        """Produit un **acte de langage** (FIPA) sous décodage contraint — version « par
+        construction » : le message porte une `performative` + un `in_reply_to` explicite (pas de
+        « talking past »). `transcript` : messages précédents (avec `msg_id`). Une réponse invalide
+        est régénérée une fois (prompt plus strict), puis on bascule sur le **repli déterministe**.
+        """
+        country = world.countries[self.country_id]
+        perceived = perceived or perceive(event, country)
+        prompt = build_speech_act_prompt(
+            country, event, world, format_acts(transcript), perceived, state_note
+        )
+        for attempt in range(2):  # 1 essai + 1 régénération plus stricte (§4)
+            strict = (
+                "\n\nRAPPEL : réponds en JSON valide ; si tu emploies accept_proposal/"
+                "reject_proposal/agree/refuse/not_understood, `in_reply_to` DOIT être l'id d'un "
+                "message ci-dessus." if attempt else ""
+            )
+            try:
+                return generate_speech_act(
+                    self.backend, prompt + strict, sender=self.country_id,
+                    system=SPEECH_ACT_SYSTEM, temperature=0.4 if attempt == 0 else 0.15,
+                    max_tokens=max_tokens,
+                )
+            except Exception:  # noqa: BLE001 - JSON invalide / backend KO -> régénère puis repli
+                continue
+        return self._fallback_act(event, world)
+
+    def _fallback_act(self, event: GeoEvent, world: WorldState) -> SpeechAct:
+        """Repli déterministe (§4) : un acte `inform` construit depuis le `RuleBasedAgent`."""
+        decision = self.fallback.decide(event, world)
+        content = decision.public_statement.strip() or f"{self.country_id} prend acte."
+        receiver = next(
+            (a for a in event.actors if a != self.country_id),
+            next((c for c in world.countries if c != self.country_id), self.country_id),
+        )
+        return SpeechAct(
+            performative=Performative.INFORM, sender=self.country_id, receiver=receiver,
+            content=content, justification="[repli déterministe — backend indisponible]",
+        )
 
     def decide(self, event: GeoEvent, world: WorldState) -> AgentDecision:
         country = world.countries[self.country_id]
