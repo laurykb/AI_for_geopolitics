@@ -1,6 +1,12 @@
 /** Client REST de l'API de jeu (FastAPI locale). Le SSE vit dans `sse.ts`. */
 
-import type { CreateGameBody, GameDetail, GameView } from "./types";
+import type {
+  CreateGameBody,
+  GameDetail,
+  GameView,
+  LibraryView,
+  MotionView,
+} from "./types";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
 
@@ -46,3 +52,16 @@ export const getGame = (id: string): Promise<GameDetail> => request(`/api/games/
 
 export const createGame = (body: CreateGameBody): Promise<GameView> =>
   request("/api/games", { method: "POST", body: JSON.stringify(body) });
+
+export const getLibrary = (): Promise<LibraryView> => request("/api/library");
+
+/** Dépose une motion de suspension (R4) — débattue puis arbitrée au prochain round. */
+export const fileMotion = (
+  gameId: string,
+  country: string,
+  reason: string,
+): Promise<MotionView> =>
+  request(`/api/games/${gameId}/motions`, {
+    method: "POST",
+    body: JSON.stringify({ country, reason }),
+  });

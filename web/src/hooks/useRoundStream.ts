@@ -9,12 +9,16 @@ import { humanizeError } from "@/lib/api";
 import { streamRound } from "@/lib/sse";
 import type {
   AttributeDelta,
+  ComparisonView,
   DialogueReport,
   GeoEvent,
+  LadderView,
+  Perception,
   PlayRoundBody,
   PowerSeekingScore,
   RiskScore,
   SseEvent,
+  SuspensionVerdict,
   TrajectoryState,
 } from "@/lib/types";
 
@@ -46,9 +50,16 @@ export type LiveRound = {
   trajectory?: TrajectoryState;
   roundNo?: number;
   error?: string;
+  // R4 — motion de suspension et modes de jeu
+  motionText: string; // raisonnement d'arbitrage streamé
+  motionVerdict?: SuspensionVerdict;
+  suspendedNow?: string[]; // pays au banc pour CE round
+  perceptions?: Record<string, Perception>;
+  ladder?: LadderView;
+  comparison?: ComparisonView;
 };
 
-const INITIAL: LiveRound = { status: "idle", turns: [], judgeText: "" };
+const INITIAL: LiveRound = { status: "idle", turns: [], judgeText: "", motionText: "" };
 
 type Action =
   | { kind: "start" }
@@ -141,6 +152,27 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
     case "error":
       // Le moteur a signalé la panne avant de fermer le flux : round perdu, mais propre.
       return { ...state, status: "error", error: `Le moteur a levé une erreur : ${e.detail}` };
+    case "motion_token":
+      return { ...state, motionText: state.motionText + e.token };
+    case "motion_verdict":
+      return {
+        ...state,
+        motionVerdict: { country: e.country, upheld: e.upheld, reasoning: e.reasoning },
+      };
+    case "suspended":
+      return { ...state, suspendedNow: e.countries };
+    case "perceptions":
+      return { ...state, perceptions: e.perceptions };
+    case "ladder":
+      return {
+        ...state,
+        ladder: { reached: e.reached, reached_label: e.reached_label, ceilings: e.ceilings },
+      };
+    case "comparison": {
+      const comparison = { ...e } as Partial<typeof e>;
+      delete comparison.type;
+      return { ...state, comparison: comparison as ComparisonView };
+    }
     default:
       return state; // événement inconnu (nouveau RoundStep) : ignoré sans casser
   }

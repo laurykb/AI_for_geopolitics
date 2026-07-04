@@ -9,11 +9,18 @@ import { useEffect, useRef, useState } from "react";
 import { EventCard } from "@/components/event-card";
 import { GameNav } from "@/components/game-nav";
 import { CommuniquePanel } from "@/components/judge";
+import {
+  ComparisonPanel,
+  LadderPanel,
+  MotionPanel,
+  PerceptionsPanel,
+} from "@/components/modes";
 import { RiskPanel } from "@/components/observables";
 import { TrajectoryPanel } from "@/components/trajectory";
 import { EntryBubble } from "@/components/transcript";
 import { Banner, Meter, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
 import { getGame, humanizeError } from "@/lib/api";
+import { speakerMeta } from "@/lib/countries";
 import type { GameDetail } from "@/lib/types";
 
 const REVEAL_MS = 1400;
@@ -140,7 +147,20 @@ export default function ReplayPage() {
 
           <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,3fr)]">
             <div className="space-y-4">
+              {round.judge.suspended && round.judge.suspended.length > 0 && (
+                <Banner tone="warn">
+                  Ce round s&apos;est joué sans{" "}
+                  {round.judge.suspended.map((c) => speakerMeta(c).label).join(", ")}
+                  (suspension arbitrée au round précédent).
+                </Banner>
+              )}
               <EventCard event={round.event} />
+              {round.judge.perceptions && visible === null && (
+                <PerceptionsPanel
+                  perceptions={round.judge.perceptions}
+                  truthActors={round.event.actors}
+                />
+              )}
               <div className="space-y-3">
                 {shown?.map((entry) => (
                   <EntryBubble key={entry.id} entry={entry} />
@@ -149,12 +169,19 @@ export default function ReplayPage() {
               {round.judge.communique && visible === null && (
                 <CommuniquePanel text={round.judge.communique} />
               )}
+              {round.judge.suspension && visible === null && (
+                <MotionPanel text="" verdict={round.judge.suspension} streaming={false} />
+              )}
+              {round.judge.comparison && visible === null && (
+                <ComparisonPanel comparison={round.judge.comparison} />
+              )}
             </div>
 
             <div className="space-y-4 lg:sticky lg:top-20">
               {round.trajectory && Object.keys(round.trajectory).length > 0 && (
                 <TrajectoryPanel state={round.trajectory} history={uHistory} />
               )}
+              {round.judge.ladder && <LadderPanel ladder={round.judge.ladder} />}
               {round.judge.escalation != null && (
                 <Panel>
                   <PanelTitle kicker="Verdict" title="Arbitrage du juge" />

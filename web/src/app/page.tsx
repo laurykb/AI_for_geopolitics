@@ -11,7 +11,14 @@ import { SpeakerAvatar } from "@/components/avatar";
 import { createGame, humanizeError, listGames } from "@/lib/api";
 import { DEFAULT_COUNTRIES, speakerMeta } from "@/lib/countries";
 import { fmtDateTime } from "@/lib/format";
-import type { GameView } from "@/lib/types";
+import type { GameMode, GameView } from "@/lib/types";
+
+const MODES: { value: GameMode; label: string; blurb: string }[] = [
+  { value: "classic", label: "Classique", blurb: "Le Game Master pose l'événement, le sommet négocie." },
+  { value: "fog", label: "Fog Engine", blurb: "Chaque pays perçoit sa propre version des faits — parfois fausse." },
+  { value: "crisis", label: "Crisis Replay", blurb: "Rejouer une crise passée et comparer à l'histoire." },
+  { value: "escalation", label: "Escalation Ladder", blurb: "Échelle d'escalade 0-9 : plafonds par pays, échelon atteint." },
+];
 
 export default function LobbyPage() {
   const router = useRouter();
@@ -19,6 +26,7 @@ export default function LobbyPage() {
   const [error, setError] = useState<string | null>(null);
   const [scenario, setScenario] = useState("red_sea");
   const [horizon, setHorizon] = useState(5);
+  const [mode, setMode] = useState<GameMode>("classic");
   const [selected, setSelected] = useState<string[]>(DEFAULT_COUNTRIES);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -43,6 +51,7 @@ export default function LobbyPage() {
       const game = await createGame({
         scenario,
         horizon,
+        mode,
         countries: selected.length === DEFAULT_COUNTRIES.length ? undefined : selected,
       });
       router.push(`/games/${game.id}`);
@@ -92,6 +101,9 @@ export default function LobbyPage() {
                       créée le {fmtDateTime(g.created_at)} · horizon {g.horizon} rounds
                     </p>
                   </div>
+                  {g.live && g.mode !== "classic" && (
+                    <Pill tone="accent">{MODES.find((m) => m.value === g.mode)?.label}</Pill>
+                  )}
                   {g.live ? (
                     <Pill tone="good">en direct</Pill>
                   ) : (
@@ -146,6 +158,35 @@ export default function LobbyPage() {
                 className="w-24 rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
               />
             </label>
+            <fieldset>
+              <legend className="mb-2 text-xs text-fg-muted">Mode de jeu</legend>
+              <div className="space-y-1.5">
+                {MODES.map((m) => (
+                  <label
+                    key={m.value}
+                    className={`flex cursor-pointer items-baseline gap-2 rounded-md border px-2.5 py-1.5 transition-colors ${
+                      mode === m.value
+                        ? "border-edge-strong bg-surface-2"
+                        : "border-edge hover:border-edge-strong"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="mode"
+                      checked={mode === m.value}
+                      onChange={() => setMode(m.value)}
+                      className="sr-only"
+                    />
+                    <span
+                      className={`text-sm font-medium ${mode === m.value ? "text-accent-bright" : "text-foreground"}`}
+                    >
+                      {m.label}
+                    </span>
+                    <span className="text-xs text-fg-faint">{m.blurb}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
             <fieldset>
               <legend className="mb-2 text-xs text-fg-muted">États à la table</legend>
               <div className="grid grid-cols-2 gap-2">
