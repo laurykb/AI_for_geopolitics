@@ -77,6 +77,23 @@ Tables minimales :
   **Replay** (relecture d'une partie depuis `transcripts` — servira de mode démo public).
 - Utiliser le skill `ui-ux-pro-max` pour la direction artistique.
 
+**Notes d'implémentation (R3 faite — lobby, théâtre, replay)** :
+
+- `web/` : Next.js 16 (App Router, Turbopack) + Tailwind v4, TypeScript. Pas de shadcn/ui à ce
+  stade (kit UI maison plus léger) ; DA « dark OLED, accent or spotlight » générée via
+  ui-ux-pro-max, tokens CSS dans `globals.css`.
+- Trois écrans : **lobby** `/` (créer/lister les parties), **théâtre live** `/games/{id}`
+  (round streamé), **replay** `/games/{id}/replay` (relecture ordonnée des `transcripts`,
+  avec « lecture théâtre » progressive). Les pages Monde et Marché restent à faire (parité).
+- SSE en `fetch` + `ReadableStream` (EventSource ne fait pas de POST) : parseur dans
+  `web/src/lib/sse.ts`, réduction en état affichable dans `web/src/hooks/useRoundStream.ts`.
+  **Le flux peut se couper sans `done`** (exception moteur, restart uvicorn) : le client le
+  détecte, affiche une bannière et resynchronise via `GET /api/games/{id}` — vérifié en tuant
+  uvicorn en plein round. Événement SSE inconnu = ignoré (compatible avec de futurs RoundStep).
+- Seul changement Python : middleware **CORS** dans `app/main.py` (front :3000 → API :8000).
+- Persistance : lancer l'API avec `GAME_DB_PATH=games.db` (cf. `web/README.md`) — après un
+  restart les parties passent en « relecture seule » (bannière dédiée), le replay survit.
+
 ### Phase R4 — Bascule et nettoyage
 
 - Parité validée → `ui/app.py` archivé (`legacy/`), README mis à jour.
