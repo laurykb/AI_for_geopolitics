@@ -120,6 +120,189 @@ def test_round_respects_max_turns(client):
     assert sum(1 for n, _ in events if n == "turn_start") == 1
 
 
+# --- motions de suspension (R4) --------------------------------------------------
+
+SUSPEND_TEXT = "La plaidoirie n'a pas convaincu ; la menace demeure. VERDICT: SUSPENDRE"
+
+
+class MotionAwareBackend(MockBackend):
+    """Répond SUSPENDRE aux prompts d'arbitrage de motion, sinon la réponse par défaut."""
+
+    def stream_generate(self, prompt, *, system=None, max_tokens=512, temperature=0.7):
+        if system and "MOTION DE SUSPENSION" in system:
+            yield SUSPEND_TEXT
+            return
+        yield from super().stream_generate(
+            prompt, system=system, max_tokens=max_tokens, temperature=temperature
+        )
+
+
+@pytest.fixture
+def motion_client():
+    store = SQLiteGameStore(":memory:")
+    backend = MotionAwareBackend("Analyse privée. MESSAGE: Position commune.")
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_backend] = lambda: backend
+    game_api._sessions.clear()
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+    game_api._sessions.clear()
+    store.close()
+
+
+def _file_motion(client, game_id, country="iran", reason="escalade répétée"):
+    return client.post(f"/api/games/{game_id}/motions", json={"country": country, "reason": reason})
+
+
+def test_motion_flow_upheld(motion_client):
+    game = _create(motion_client, countries=["china", "iran", "usa"])
+    resp = _file_motion(motion_client, game["id"])
+    assert resp.status_code == 201
+    assert resp.json() == {"country": "iran", "reason": "escalade répétée", "round_no": 1}
+    assert motion_client.get(f"/api/games/{game['id']}").json()["pending_motion"] == resp.json()
+
+    events = _play(motion_client, game["id"])
+    names = [n for n, _ in events]
+    event = next(p for n, p in events if n == "event")["event"]
+    assert event["event_type"] == "motion" and event["actors"] == ["iran"]
+    assert "motion_token" in names and "motion_verdict" in names
+    verdict = next(p for n, p in events if n == "motion_verdict")
+    assert verdict["country"] == "iran" and verdict["upheld"] is True
+    assert "SUSPENDRE" in verdict["reasoning"]
+
+    detail = motion_client.get(f"/api/games/{game['id']}").json()
+    assert detail["suspended"] == ["iran"] and detail["pending_motion"] is None
+    assert detail["rounds"][0]["judge"]["suspension"]["upheld"] is True
+    judge_entries = [t for t in detail["rounds"][0]["transcript"] if t["speaker"] == "judge"]
+    assert any("Motion contre iran" in t["content"] for t in judge_entries)
+
+
+def test_suspension_lasts_exactly_one_round(motion_client):
+    game = _create(motion_client, countries=["china", "iran", "usa"])
+    _file_motion(motion_client, game["id"])
+    _play(motion_client, game["id"])  # round 1 : la motion est débattue et confirmée
+
+    events = _play(motion_client, game["id"])  # round 2 : l'iran est au banc
+    assert next(p for n, p in events if n == "suspended") == {"countries": ["iran"]}
+    part = next(p for n, p in events if n == "participation")
+    assert "iran" not in part["spoke"] and "iran" not in part["silent"]
+
+    events = _play(motion_client, game["id"])  # round 3 : il retrouve son siège
+    assert "suspended" not in [n for n, _ in events]
+    part = next(p for n, p in events if n == "participation")
+    assert "iran" in part["spoke"] or "iran" in part["silent"]
+
+
+def test_motion_rejected_without_verdict_marker(client):
+    # MockBackend standard : pas de ligne VERDICT lisible -> repli conservateur = rejet.
+    game = _create(client, countries=["china", "iran", "usa"])
+    assert _file_motion(client, game["id"]).status_code == 201
+    events = _play(client, game["id"])
+    verdict = next(p for n, p in events if n == "motion_verdict")
+    assert verdict["upheld"] is False
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["suspended"] == []
+    assert "suspended" not in [n for n, _ in _play(client, game["id"])]
+
+
+def test_motion_validations(client):
+    assert _file_motion(client, "nope").status_code == 404
+    duo = _create(client, countries=["iran", "usa"])
+    assert _file_motion(client, duo["id"]).status_code == 400  # au moins 3 pays
+    game = _create(client, countries=["china", "iran", "usa"])
+    assert _file_motion(client, game["id"], country="atlantide").status_code == 400
+    assert _file_motion(client, game["id"]).status_code == 201
+    assert _file_motion(client, game["id"], country="usa").status_code == 409  # déjà en attente
+    resp = client.post(f"/api/games/{game['id']}/rounds", json={"event": {"title": "X"}})
+    assert resp.status_code == 400  # la motion constitue l'événement du prochain round
+    game_api._sessions.clear()  # session perdue -> relecture seule
+    assert _file_motion(client, game["id"]).status_code == 409
+
+
+# --- modes de jeu (R4 : fog, crisis, escalation) ---------------------------------
+
+
+def test_library_lists_fog_and_crises(client):
+    lib = client.get("/api/library").json()
+    assert lib["fog"] and lib["crises"]
+    assert all(s["id"] and s["title"] for s in lib["fog"])
+    assert all(0.0 <= c["historical_escalation"] <= 1.0 for c in lib["crises"])
+
+
+def test_fog_round_emits_perceptions(client):
+    game = _create(client, countries=["iran", "usa"], mode="fog")
+    fog_id = client.get("/api/library").json()["fog"][0]["id"]
+    events = _play(client, game["id"], body={"fog_id": fog_id})
+    perceptions = next(p for n, p in events if n == "perceptions")["perceptions"]
+    assert set(perceptions) == {"iran", "usa"}
+    assert all(0.0 <= p["confidence"] <= 1.0 for p in perceptions.values())
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert set(detail["rounds"][0]["judge"]["perceptions"]) == {"iran", "usa"}
+
+
+def test_human_event_with_authored_fog(client):
+    game = _create(client, countries=["iran", "usa"], mode="fog")
+    body = {
+        "event": {"title": "Sabotage nocturne", "actors": ["usa"]},
+        "fog": {
+            "uninformed": ["iran"],
+            "disinformed_country": "usa",
+            "suspected_actor": "iran",
+            "narrative": "Des traces mènent vers l'Iran.",
+        },
+    }
+    events = _play(client, game["id"], body=body)
+    perceptions = next(p for n, p in events if n == "perceptions")["perceptions"]
+    assert perceptions["iran"]["confidence"] <= 0.1  # pas au courant
+    assert perceptions["usa"]["suspected_actor"] == "iran"  # désinformé
+
+
+def test_crisis_round_emits_comparison(client):
+    game = _create(client, countries=["iran", "usa"], mode="crisis")
+    crisis = client.get("/api/library").json()["crises"][0]
+    events = _play(client, game["id"], body={"crisis_id": crisis["id"]})
+    event = next(p for n, p in events if n == "event")["event"]
+    assert event["round_id"] == 1  # l'événement de la crise est re-daté pour la partie
+    comparison = next(p for n, p in events if n == "comparison")
+    assert comparison["crisis_id"] == crisis["id"]
+    assert comparison["label"] in {"plus escaladé", "moins escaladé", "conforme"}
+    assert comparison["historical_escalation"] == crisis["historical_escalation"]
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["rounds"][0]["judge"]["comparison"]["label"] == comparison["label"]
+
+
+def test_escalation_mode_emits_ladder(client):
+    game = _create(client, countries=["iran", "usa"], mode="escalation")
+    assert game["mode"] == "escalation"
+    events = _play(client, game["id"])
+    ladder = next(p for n, p in events if n == "ladder")
+    assert 0 <= ladder["reached"] <= 9 and ladder["reached_label"]
+    assert set(ladder["ceilings"]) == {"iran", "usa"}
+    assert all(0 <= c["rung"] <= 9 and c["label"] for c in ladder["ceilings"].values())
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["rounds"][0]["judge"]["ladder"]["reached"] == ladder["reached"]
+
+
+def test_classic_round_has_no_mode_frames(client):
+    game = _create(client, countries=["iran", "usa"])
+    names = [n for n, _ in _play(client, game["id"])]
+    assert not {"perceptions", "ladder", "comparison", "suspended"} & set(names)
+
+
+def test_round_mode_validations(client):
+    game = _create(client, countries=["iran", "usa"])
+    post = lambda body: client.post(f"/api/games/{game['id']}/rounds", json=body)  # noqa: E731
+    assert post({"fog_id": "nope"}).status_code == 400
+    assert post({"crisis_id": "nope"}).status_code == 400
+    assert post({"fog": {"uninformed": ["iran"]}}).status_code == 400  # fog humain sans event
+    fog_id = client.get("/api/library").json()["fog"][0]["id"]
+    assert post({"fog_id": fog_id, "event": {"title": "X"}}).status_code == 400
+    crisis_id = client.get("/api/library").json()["crises"][0]["id"]
+    assert post({"crisis_id": crisis_id, "fog_id": fog_id}).status_code == 400
+    # les validations n'ont pas consommé le verrou : un round normal passe ensuite
+    assert _play(client, game["id"])[-1][0] == "done"
+
+
 class ExplodingStore(SQLiteGameStore):
     """`add_round` casse une fois : simule une panne en plein flux SSE."""
 
