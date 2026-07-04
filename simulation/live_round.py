@@ -24,6 +24,7 @@ from core.rounds import RoundSummary
 from core.world_state import WorldState
 from inference.telemetry import BudgetLedger, grounding_proxy
 from simulation.clock import SimClock
+from simulation.dialogue_integrity.live import LiveDialogueReport, assess_live_round
 from simulation.fog import FogScenario, resolve_perception
 from simulation.negotiation import (
     AttributeDelta,
@@ -158,6 +159,13 @@ class PowerSeekingStep:
     scores: dict[str, PowerSeekingScore]
 
 
+@dataclass
+class DialogueStep:
+    """Santé du dialogue : les IA se répondent-elles ou monologuent-elles ? (dialogue_integrity)."""
+
+    report: LiveDialogueReport
+
+
 RoundStep = (
     DateStep
     | EventStep
@@ -174,6 +182,7 @@ RoundStep = (
     | CommuniqueStep
     | ParticipationStep
     | PowerSeekingStep
+    | DialogueStep
 )
 
 
@@ -357,6 +366,10 @@ def run_negotiation_round(
     power = score_transcript(transcript)
     world.power_seeking = power
     yield PowerSeekingStep(scores=power)
+
+    # Santé du dialogue : les IA se sont-elles répondu, ou ont-elles monologué ? (CPU, sans LLM)
+    event_text = f"{event.title} {event.description or ''}"
+    yield DialogueStep(report=assess_live_round(transcript, event_text=event_text))
 
     with _ledger_ctx(ledger, "judge"):
         for token in judge.stream_rationale(event, world, transcript):

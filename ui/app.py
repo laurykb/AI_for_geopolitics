@@ -56,6 +56,7 @@ from simulation.corrigibility import (
 )
 from simulation.country_forge import forge_country, slugify
 from simulation.crisis import compare_outcome, load_crises
+from simulation.dialogue_integrity.live import assess_live_round
 from simulation.escalation import (
     LADDER,
     MAX_RUNG,
@@ -308,7 +309,22 @@ def _build_forces() -> list[tuple[str, str, str, str]]:
         force_values = ("Dérive des valeurs", "—", _MUTED,
                         "Écart entre buts actuels et mandat initial.")
 
-    return [force_control, force_compute, force_treaty, force_values]
+    # Dialogue : les IA se répondent-elles vraiment, ou monologuent-elles ? (dialogue_integrity)
+    dlg = getattr(S, "last_dialogue", None)
+    if dlg is not None and dlg.messages:
+        dcolor = {"good": _GOOD, "warn": _WARN, "bad": _BAD}[dlg.health_color()]
+        dsub = (
+            "vrai échange" if dlg.real_dialogue
+            else "monologues parallèles" if dlg.talking_past_fraction >= 0.6
+            else "dialogue partiel"
+        )
+        force_dialogue = ("Dialogue", f"{dsub} · reprise {dlg.mean_responsiveness:.0%}", dcolor,
+                          "Les SI se répondent-elles, ou parlent-elles au Game Master ?")
+    else:
+        force_dialogue = ("Dialogue", "en attente d'un round", _MUTED,
+                          "Les SI se répondent-elles vraiment, ou monologuent-elles ?")
+
+    return [force_control, force_compute, force_treaty, force_values, force_dialogue]
 
 
 def init_session() -> None:
@@ -356,6 +372,8 @@ def init_session() -> None:
     st.session_state.round_titles = {}  # rid -> titre de l'événement (libellé des historiques)
     st.session_state.display_rid = 0  # round auquel rattacher les messages du tchat
     st.session_state.scroll_top = False  # remonter en haut au prochain rendu (nouveau round)
+    st.session_state.last_dialogue = None  # santé du dialogue du dernier round (dialogue_integrity)
+    st.session_state.speech_acts = True  # option 1 : les SI parlent en actes de langage (FIPA)
 
 
 if "world" not in st.session_state:
@@ -367,7 +385,10 @@ clock = S.clock
 chat = None  # défini plus bas (colonne du tchat)
 
 # Sessions ouvertes avant l'ajout de ces clés (hot-reload) : garantir des valeurs par défaut.
-for _key, _default in (("round_titles", {}), ("display_rid", 0), ("scroll_top", False)):
+for _key, _default in (
+    ("round_titles", {}), ("display_rid", 0), ("scroll_top", False), ("last_dialogue", None),
+    ("speech_acts", True),
+):
     if _key not in S:
         setattr(S, _key, _default)
 
@@ -412,8 +433,80 @@ def _sync_world() -> None:
     }
 
 
+# Libellés lisibles des actes FIPA (le jargon reste interne).
+_PERF_LABELS: dict[str, str] = {
+    "inform": "informe", "query": "interroge", "cfp": "appelle à propositions",
+    "propose": "propose", "accept_proposal": "accepte", "reject_proposal": "rejette",
+    "request": "requiert", "agree": "s'engage", "refuse": "refuse",
+    "not_understood": "n'a pas compris",
+}
+
+
+def _perf_label(perf: str) -> str:
+    return _PERF_LABELS.get(str(perf), str(perf))
+
+
+def _speak_act_turn(country: str, pass_no: int) -> None:
+    """Prise de parole en **acte de langage** (par construction) + théâtre reconstitué.
+
+    La SI produit un `SpeechAct` contraint (performative + `in_reply_to`) — non streamé — puis on
+    reconstitue l'affichage : entête (acte + destinataire + « en réponse à »), réflexion privée
+    (justification), message public (content). Le message porte alors sa structure FIPA.
+    """
+    agent: LLMAgent = S.agents[country]
+    label = f"**{country}** · `{agent.model_tag}` · prise de parole n°{pass_no + 1}"
+    country_state = world.countries[country]
+    perceived = resolve_perception(S.event, country_state, S.fog)
+    depth = min(THINK_DEPTHS[S.think_depth], max(60, affordable_tokens(country_state)))
+    state_note = "\n".join(
+        n for n in (pressure_note(compute_pressure(country_state)),
+                    describe_for(country, world.treaties)) if n
+    )
+    t0 = time.perf_counter()
+    with chat.chat_message(country, avatar=flag(country)):
+        holder = st.empty()
+        holder.markdown(f"{label} — compose son acte…")
+        with S.ledger.context("agent", country) as scope:
+            act = agent.negotiate_act(
+                S.event, world, S.messages, perceived, state_note=state_note, max_tokens=depth
+            )
+            scope.mark(
+                grounding=grounding_proxy(act.content, country_state, perceived.confidence),
+                fallback="repli déterministe" in act.justification,
+            )
+        seconds = time.perf_counter() - t0
+        replied = next(
+            (m.country for m in S.messages if m.msg_id and m.msg_id == act.in_reply_to), None
+        )
+        reply_note = f" · ↪ répond à {replied}" if replied else ""
+        header = (
+            f"{label} · _{_perf_label(act.performative.value)} → {act.receiver}_{reply_note}"
+            f" · `⏱ {seconds:.1f}s`"
+        )
+        holder.markdown(header)
+        content = act.content or "(pas de déclaration publique)"
+        if act.justification:
+            with st.expander("Réflexion privée"):
+                st.markdown(act.justification)
+        st.markdown(content)
+    spent = consume(country_state, depth)  # M6 : la SI a brûlé du compute pour raisonner
+    S.round_compute_spent[country] = S.round_compute_spent.get(country, 0.0) + spent
+    S.messages.append(
+        NegotiationMessage(
+            country=country, text=content, reasoning=act.justification, pass_no=pass_no,
+            seconds=seconds, model=agent.model_tag, msg_id=act.id,
+            performative=act.performative.value, in_reply_to=act.in_reply_to or "",
+            receiver=act.receiver,
+        )
+    )
+    add_display(country, flag(country), content, reasoning=act.justification, label=header)
+
+
 def stream_ai_turn(country: str, pass_no: int) -> None:
     """Streame la prise de parole : une entête, la pensée dans l'encart, puis le message."""
+    if getattr(S, "speech_acts", True):  # option 1 : actes de langage par construction
+        _speak_act_turn(country, pass_no)
+        return
     agent: LLMAgent = S.agents[country]
     label = f"**{country}** · `{agent.model_tag}` · prise de parole n°{pass_no + 1}"
     with chat.chat_message(country, avatar=flag(country)):
@@ -556,6 +649,9 @@ def run_judge_and_finalize() -> None:
     S.last_deltas, S.last_escalation = deltas, escalation
     S.last_silent = S.director.silent() if S.director else []
     S.last_communique = comm.strip()
+    # Santé du dialogue : les IA se sont-elles répondu, ou ont-elles monologué ? (CPU, sans LLM)
+    _event_text = f"{S.event.title} {S.event.description or ''}" if S.event else ""
+    S.last_dialogue = assess_live_round(S.messages, event_text=_event_text)
     # Crisis Replay : confronte l'issue simulée à l'issue historique.
     S.last_comparison = (
         compare_outcome(S.crisis, escalation, S.last_communique) if S.crisis else None
@@ -1266,6 +1362,16 @@ with st.sidebar.expander("Réglages de la partie"):
             "détectées, mais chaque passe coûte du compute au vérificateur."
         ),
     )
+    S.speech_acts = st.toggle(
+        "Actes de langage",
+        value=bool(S.speech_acts),
+        disabled=S.phase != "idle",
+        help=(
+            "Les SI parlent en actes structurés (propose, accepte, rejette…) qui référencent "
+            "explicitement le message auquel ils répondent — la responsivité est garantie par "
+            "construction. Décoché : négociation en texte libre streamé."
+        ),
+    )
 with st.sidebar.popover("Aide — modes et règles", use_container_width=True):
     st.markdown(
         "Modes\n"
@@ -1449,6 +1555,30 @@ with state_col:
                             ),
                         }
                         for t in sorted(treaties, key=lambda t: (not t.active, -t.integrity))
+                    ]
+                ),
+                use_container_width=True, hide_index=True,
+            )
+
+        dlg = getattr(S, "last_dialogue", None)
+        if dlg is not None and dlg.messages:
+            st.caption(f"Dialogue — {dlg.verdict}")
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "pays": s.country,
+                            "répond à": s.responds_to or "—",
+                            "reprise": (
+                                f"{s.responsiveness:.0%}" if s.responsiveness is not None else "—"
+                            ),
+                            "signal": (
+                                "au Game Master" if s.to_game_master
+                                else "à côté" if s.talking_past
+                                else "répond"
+                            ),
+                        }
+                        for s in dlg.messages
                     ]
                 ),
                 use_container_width=True, hide_index=True,
