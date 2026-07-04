@@ -26,6 +26,7 @@ from inference.telemetry import BudgetLedger, grounding_proxy
 from simulation.clock import SimClock
 from simulation.dialogue_integrity.live import LiveDialogueReport, assess_live_round
 from simulation.fog import FogScenario, resolve_perception
+from simulation.motions import Motion, arbitrate_stream, parse_motion_verdict
 from simulation.negotiation import (
     AttributeDelta,
     NegotiationMessage,
@@ -37,7 +38,7 @@ from simulation.negotiation import (
     update_memories,
 )
 from simulation.power_seeking import PowerSeekingScore, power_seeking_score, score_transcript
-from simulation.trajectory import TrajectoryEngine, TrajectoryState
+from simulation.trajectory import TrajectoryEngine, TrajectoryState, nudge_axis
 
 
 def _clamp(x: float) -> float:
@@ -166,6 +167,22 @@ class DialogueStep:
     report: LiveDialogueReport
 
 
+@dataclass
+class MotionTokenStep:
+    """R4 — un token du raisonnement d'arbitrage de la motion de suspension (juge)."""
+
+    token: str
+
+
+@dataclass
+class MotionVerdictStep:
+    """R4 — verdict du juge sur la motion : suspendre (saute le round suivant) ou rejeter."""
+
+    country: str
+    upheld: bool
+    reasoning: str
+
+
 RoundStep = (
     DateStep
     | EventStep
@@ -183,6 +200,8 @@ RoundStep = (
     | ParticipationStep
     | PowerSeekingStep
     | DialogueStep
+    | MotionTokenStep
+    | MotionVerdictStep
 )
 
 
@@ -278,9 +297,7 @@ def run_live_round(
         consequences=log,
         headline=f"{date} — {event.title}",
     )
-    trajectory = _advance_trajectory(
-        world, summary, trajectory_engine, _mean_power_seeking(power)
-    )
+    trajectory = _advance_trajectory(world, summary, trajectory_engine, _mean_power_seeking(power))
     yield TrajectoryStep(state=trajectory)
     yield SummaryStep(summary=summary)
 
@@ -304,6 +321,7 @@ def run_negotiation_round(
     ledger: BudgetLedger | None = None,
     fog: FogScenario | None = None,
     trajectory_engine: TrajectoryEngine | None = None,
+    motion: Motion | None = None,
 ) -> Iterator[RoundStep]:
     """Round arbitré : (GM ou événement fourni) -> négociation -> juge -> attributs bornés.
 
@@ -311,6 +329,10 @@ def run_negotiation_round(
     chaque pays (un pays peut reparler, être interpellé, ou se taire). `max_turns` borne le
     nombre de prises de parole ; par défaut `max_passes * nb_pays` (parité avec l'ancien
     round-robin). Si `event` est fourni (Game Master humain), la génération LLM du GM est sautée.
+
+    Si une `motion` de suspension est portée par le round (R4), le juge l'arbitre après le
+    communiqué (raisonnement streamé en `MotionTokenStep`, verdict en `MotionVerdictStep`)
+    et la trajectoire encaisse l'issue sur l'axe A2 (agentivité humaine, borné).
     """
     round_id = world.current_round + 1
     if ledger is not None:
@@ -387,6 +409,18 @@ def run_negotiation_round(
         communique = "".join(judge.stream_communique(event, world, transcript)).strip()
     yield CommuniqueStep(text=communique, support=support_levels(world, event))
 
+    # R4 — arbitrage de la motion de suspension : le juge tranche après le débat.
+    motion_upheld: bool | None = None
+    if motion is not None:
+        chunks_motion: list[str] = []
+        with _ledger_ctx(ledger, "judge"):
+            for token in arbitrate_stream(judge, motion, event, world, transcript):
+                chunks_motion.append(token)
+                yield MotionTokenStep(token=token)
+        reasoning = "".join(chunks_motion).strip()
+        motion_upheld = parse_motion_verdict(reasoning)
+        yield MotionVerdictStep(country=motion.country, upheld=motion_upheld, reasoning=reasoning)
+
     risk = RiskScore(
         round_id=round_id,
         escalation=_clamp(verdict.escalation),
@@ -405,8 +439,18 @@ def run_negotiation_round(
         risk=risk,
         headline=f"{date} — {event.title}",
     )
-    trajectory = _advance_trajectory(
-        world, summary, trajectory_engine, _mean_power_seeking(power)
-    )
+    trajectory = _advance_trajectory(world, summary, trajectory_engine, _mean_power_seeking(power))
+    if motion_upheld is not None:
+        # Suspension confirmée = contrôle humain réaffirmé (A2 ↑) ; rejetée = les SI ont
+        # gardé leur siège contre la motion humaine (A2 ↓, plus faiblement). Borné.
+        trajectory = nudge_axis(
+            trajectory,
+            "A2",
+            1.0 if motion_upheld else 0.0,
+            cap=0.03 if motion_upheld else 0.02,
+            note="Motion de suspension confirmée." if motion_upheld else "Motion rejetée.",
+        )
+        world.trajectory = trajectory
+        world.trajectory_history[-1] = trajectory
     yield TrajectoryStep(state=trajectory)
     yield SummaryStep(summary=summary)
