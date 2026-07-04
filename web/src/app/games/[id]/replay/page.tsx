@@ -3,11 +3,11 @@
 /** Replay : relecture ordonnée d'une partie depuis `GET /api/games/{id}` (la table
  * `transcripts` rejouée round par round), avec lecture progressive façon théâtre. */
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { EventCard } from "@/components/event-card";
+import { GameNav } from "@/components/game-nav";
 import { CommuniquePanel } from "@/components/judge";
 import { RiskPanel } from "@/components/observables";
 import { TrajectoryPanel } from "@/components/trajectory";
@@ -84,14 +84,7 @@ export default function ReplayPage() {
           </p>
           <h1 className="text-xl font-semibold tracking-tight">{detail?.scenario ?? "…"}</h1>
         </div>
-        {detail?.live && (
-          <Link
-            href={`/games/${id}`}
-            className="rounded-md border border-edge-strong px-3 py-1.5 text-xs font-medium transition-colors hover:border-accent hover:text-accent-bright"
-          >
-            Retour au théâtre
-          </Link>
-        )}
+        <GameNav id={id} />
       </header>
 
       {error && <Banner tone="bad">{error}</Banner>}

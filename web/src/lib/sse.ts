@@ -56,7 +56,7 @@ export async function streamRound(
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let sawDone = false;
+  let sawTerminal = false; // `done` ou `error` : le back a conclu explicitement
 
   const drain = () => {
     let cut: number;
@@ -64,7 +64,7 @@ export async function streamRound(
       const event = parseFrame(buffer.slice(0, cut));
       buffer = buffer.slice(cut + 2);
       if (event) {
-        if (event.type === "done") sawDone = true;
+        if (event.type === "done" || event.type === "error") sawTerminal = true;
         onEvent(event);
       }
     }
@@ -82,7 +82,7 @@ export async function streamRound(
   } catch {
     // Coupure réseau ou annulation en plein round : pas une erreur de programmation.
     if (signal?.aborted) return "aborted";
-    return sawDone ? "done" : "interrupted";
+    return sawTerminal ? "done" : "interrupted";
   }
-  return sawDone ? "done" : "interrupted";
+  return sawTerminal ? "done" : "interrupted";
 }

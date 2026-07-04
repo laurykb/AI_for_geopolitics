@@ -137,7 +137,60 @@ export type SseEvent =
   | { type: "risk"; risk: RiskScore }
   | { type: "trajectory"; state: TrajectoryState }
   | { type: "summary"; summary: { round_id: number; headline?: string } }
-  | { type: "done"; round_no: number };
+  | { type: "done"; round_no: number }
+  | { type: "error"; detail: string };
+
+// --- marché de prédiction (app/market_api.py) ---------------------------------
+
+export type OutcomeView = {
+  id: string;
+  label: string;
+  q: number;
+  price: number; // probabilité implicite courante (LMSR)
+};
+
+export type MarketView = {
+  id: string;
+  round_id: number;
+  question: string;
+  type: string;
+  status: "open" | "closed" | "resolved";
+  b: number;
+  resolved_outcome: string | null;
+  outcomes: OutcomeView[];
+  volume: number;
+};
+
+export type PositionView = {
+  market_id: string;
+  outcome_id: string;
+  label: string;
+  shares: number;
+};
+
+export type AccountView = {
+  id: string;
+  name: string;
+  kind: string;
+  balance: number;
+  initial_balance: number;
+  pnl: number;
+  positions: PositionView[];
+};
+
+export type LeaderboardEntry = {
+  account_id: string;
+  name: string;
+  kind: string;
+  pnl: number;
+  brier: number | null;
+};
+
+export type TradeView = {
+  id?: string;
+  cost?: number;
+  shares?: number;
+} & Record<string, unknown>;
 
 export const AXIS_LABELS: Record<string, string> = {
   A1: "Coordination",

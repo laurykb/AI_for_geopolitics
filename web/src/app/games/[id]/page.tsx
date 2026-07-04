@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { SpeakerAvatar } from "@/components/avatar";
 import { EventCard } from "@/components/event-card";
+import { GameNav } from "@/components/game-nav";
 import { CommuniquePanel, JudgeRationale, VerdictPanel } from "@/components/judge";
 import {
   DialoguePanel,
@@ -99,12 +100,7 @@ export default function TheatrePage() {
         ) : detail ? (
           <Pill tone="neutral">relecture seule</Pill>
         ) : null}
-        <Link
-          href={`/games/${id}/replay`}
-          className="rounded-md border border-edge px-3 py-1.5 text-xs text-fg-muted transition-colors hover:border-edge-strong hover:text-foreground"
-        >
-          Replay
-        </Link>
+        <GameNav id={id} />
       </header>
 
       {loadError && <Banner tone="bad">{loadError}</Banner>}

@@ -138,6 +138,9 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
       return state;
     case "done":
       return { ...state, status: "done", roundNo: e.round_no };
+    case "error":
+      // Le moteur a signalé la panne avant de fermer le flux : round perdu, mais propre.
+      return { ...state, status: "error", error: `Le moteur a levé une erreur : ${e.detail}` };
     default:
       return state; // événement inconnu (nouveau RoundStep) : ignoré sans casser
   }
