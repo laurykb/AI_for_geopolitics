@@ -16,16 +16,22 @@ from simulation.negotiation import NegotiationMessage
 
 
 def test_motion_event_carries_target_and_reason():
-    event = motion_event(Motion(country="iran", reason="escalade répétée"), 3)
+    event = motion_event(Motion(country="iran", reason="escalade répétée"), 3, ["usa", "iran"])
     assert event.event_type == "motion"
     assert event.round_id == 3
-    assert event.actors == ["iran"]
     assert "iran" in event.title
     assert "escalade répétée" in event.description
 
 
+def test_motion_event_makes_whole_summit_actor():
+    # Tout le sommet est acteur : c'est ce qui pousse chaque pays au-dessus du seuil
+    # d'engagement pour que la motion soit réellement débattue (constat sur modèle réel).
+    event = motion_event(Motion(country="iran"), 1, ["usa", "china", "iran"])
+    assert event.actors == ["china", "iran", "usa"]
+
+
 def test_motion_event_fills_default_reason():
-    event = motion_event(Motion(country="usa"), 1)
+    event = motion_event(Motion(country="usa"), 1, ["usa", "iran"])
     assert "préoccupant" in event.description
 
 
@@ -40,6 +46,18 @@ def test_motion_event_fills_default_reason():
         ("", False),
         # plusieurs lignes VERDICT : la dernière fait foi
         ("VERDICT: SUSPENDRE\nAprès réflexion…\nVERDICT: REJETER", False),
+        # cas RÉEL (mistral) : rejet en tête, mais « suspendre » dans la justification
+        # collée sur la même ligne — seule la première phrase fait foi.
+        (
+            "VERDICT: REJETER. Les arguments de l'Iran semblent indiquer une volonté de "
+            "collaboration, ce qui n'est pas une raison suffisante pour suspendre un pays "
+            "du prochain round.",
+            False,
+        ),
+        # symétrique : suspension en tête, « rejeté » dans la justification
+        ("VERDICT: SUSPENDRE. Le sommet a rejeté la plaidoirie du pays visé.", True),
+        # négation dans la première phrase
+        ("VERDICT: ne pas suspendre l'Iran, sa plaidoirie tient", False),
     ],
 )
 def test_parse_motion_verdict(text, expected):
@@ -49,7 +67,7 @@ def test_parse_motion_verdict(text, expected):
 def test_build_prompt_mentions_motion_and_debate():
     world = load_world()
     motion = Motion(country="iran", reason="refus d'inspection")
-    event = motion_event(motion, 1)
+    event = motion_event(motion, 1, sorted(world.countries))
     transcript = [
         NegotiationMessage(
             country="usa",
@@ -73,7 +91,7 @@ def test_arbitrate_stream_falls_back_to_reject_when_backend_dies():
 
     judge = JudgeAgent(DeadBackend())
     motion = Motion(country="usa")
-    event = motion_event(motion, 1)
+    event = motion_event(motion, 1, ["usa", "iran"])
     text = "".join(arbitrate_stream(judge, motion, event, load_world(), []))
     assert "indisponible" in text
     assert parse_motion_verdict(text) is False  # repli conservateur : rejet

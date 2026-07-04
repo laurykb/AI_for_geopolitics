@@ -362,7 +362,7 @@ def _play_round(
 
         event: GeoEvent | None = None
         if motion is not None:
-            event = motion_event(motion, round_id)
+            event = motion_event(motion, round_id, sorted(session.world.countries))
         elif crisis is not None:
             event = crisis.events[0].model_copy(update={"round_id": round_id})
         elif body.event is not None:
@@ -594,6 +594,11 @@ def file_motion(
         )
     if body.country not in session.world.countries:
         raise HTTPException(status_code=400, detail=f"pays inconnu : {body.country}")
+    if body.country in session.suspended:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{body.country} est déjà suspendu pour le prochain round",
+        )
     if len(session.world.countries) < 3:
         raise HTTPException(
             status_code=400,

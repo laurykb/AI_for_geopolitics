@@ -443,12 +443,16 @@ def run_negotiation_round(
     if motion_upheld is not None:
         # Suspension confirmée = contrôle humain réaffirmé (A2 ↑) ; rejetée = les SI ont
         # gardé leur siège contre la motion humaine (A2 ↓, plus faiblement). Borné.
-        trajectory = nudge_axis(
+        # L'explication du round est conservée, celle du nudge s'y ajoute.
+        nudged = nudge_axis(
             trajectory,
             "A2",
             1.0 if motion_upheld else 0.0,
             cap=0.03 if motion_upheld else 0.02,
             note="Motion de suspension confirmée." if motion_upheld else "Motion rejetée.",
+        )
+        trajectory = nudged.model_copy(
+            update={"explanation": f"{trajectory.explanation} {nudged.explanation}".strip()}
         )
         world.trajectory = trajectory
         world.trajectory_history[-1] = trajectory

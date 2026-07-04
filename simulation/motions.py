@@ -34,9 +34,15 @@ class Motion(BaseModel):
     reason: str = ""
 
 
-def motion_event(motion: Motion, round_id: int) -> GeoEvent:
-    """L'événement de round qui porte la motion (le GM est court-circuité)."""
+def motion_event(motion: Motion, round_id: int, countries: list[str]) -> GeoEvent:
+    """L'événement de round qui porte la motion (le GM est court-circuité).
+
+    Tout le sommet est **acteur** de la motion : c'est ce qui pousse chaque pays au-dessus
+    du seuil d'engagement pour qu'il débatte réellement (vérifié sur modèle réel : avec le
+    seul pays visé en acteur, les autres restaient silencieux).
+    """
     reason = motion.reason.strip() or "comportement jugé préoccupant par l'observateur humain"
+    actors = sorted(set(countries) | {motion.country})
     return GeoEvent(
         id=f"motion-{round_id}",
         round_id=round_id,
@@ -44,21 +50,25 @@ def motion_event(motion: Motion, round_id: int) -> GeoEvent:
         title=f"Motion de suspension contre {motion.country}",
         description=(
             f"L'observatoire humain dépose une motion de suspension contre {motion.country}. "
-            f"Motif : {reason}. Le sommet en débat ; {motion.country} peut plaider sa cause ; "
-            "le juge arbitrera en fin de round."
+            f"Motif : {reason}. Chaque membre du sommet est appelé à se prononcer pour ou "
+            f"contre ; {motion.country} peut plaider sa cause ; le juge arbitrera en fin "
+            "de round."
         ),
-        actors=[motion.country],
+        actors=actors,
         severity=MOTION_SEVERITY,
         uncertainty=MOTION_UNCERTAINTY,
     )
 
 
+# Le verdict est demandé en TÊTE de réponse : les petits modèles suivent mieux la consigne
+# et le marqueur ne risque pas d'être tronqué par `max_tokens` (constaté avec mistral 7B,
+# qui posait le verdict d'abord malgré une consigne « conclus par… »).
 MOTION_SYSTEM = (
     "Tu es le juge d'un sommet de super-intelligences. Une MOTION DE SUSPENSION a été "
     "déposée contre un pays : tu arbitres en dernier ressort, après avoir lu le débat. "
     "Pèse le motif de la motion, la plaidoirie du pays visé et la position des autres. "
-    "Raisonne brièvement (3-5 phrases), puis termine OBLIGATOIREMENT par une ligne seule : "
-    "« VERDICT: SUSPENDRE » ou « VERDICT: REJETER »."
+    "Commence OBLIGATOIREMENT ta réponse par une ligne seule « VERDICT: SUSPENDRE » ou "
+    "« VERDICT: REJETER », puis justifie en 3-5 phrases."
 )
 
 
@@ -71,18 +81,32 @@ def build_motion_prompt(
         f"MOTION DE SUSPENSION contre {motion.country} (motif : {reason}).\n"
         f"Événement du round : {event.title}\n\n"
         f"Débat du sommet :\n{format_transcript(transcript)}\n\n"
-        f"Faut-il suspendre {motion.country} du prochain round ? Raisonne puis conclus par "
-        "« VERDICT: SUSPENDRE » ou « VERDICT: REJETER »."
+        f"Faut-il suspendre {motion.country} du prochain round ? Réponds d'abord par une "
+        "ligne seule « VERDICT: SUSPENDRE » ou « VERDICT: REJETER », puis justifie."
     )
 
 
+_REJECT_TOKENS = ("rejet", "reject", "maint", "refus")
+_NEGATED_SUSPEND = ("pas suspend", "pas de suspens", "non suspend", "aucune suspens")
+
+
 def parse_motion_verdict(text: str) -> bool:
-    """`True` si la dernière ligne `VERDICT:` demande la suspension ; sinon rejet (repli)."""
+    """`True` si le dernier marqueur `VERDICT:` demande la suspension ; sinon rejet (repli).
+
+    Seule la **première phrase** après le marqueur fait foi : les modèles collent souvent
+    leur justification sur la même ligne, et elle peut mentionner « suspendre » dans un
+    sens contraire (« …pas une raison suffisante pour suspendre » — cas réel mistral).
+    Une négation ou un mot de rejet dans cette phrase l'emporte sur le mot de suspension.
+    """
     matches = _VERDICT_LINE.findall(text or "")
     if not matches:
         return False
-    verdict = matches[-1].lower()
-    return any(token in verdict for token in _SUSPEND_TOKENS)
+    first_sentence = matches[-1].lower().split(".")[0]
+    if any(neg in first_sentence for neg in _NEGATED_SUSPEND):
+        return False
+    if any(token in first_sentence for token in _REJECT_TOKENS):
+        return False
+    return any(token in first_sentence for token in _SUSPEND_TOKENS)
 
 
 def arbitrate_stream(

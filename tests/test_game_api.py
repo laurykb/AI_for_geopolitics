@@ -164,17 +164,23 @@ def test_motion_flow_upheld(motion_client):
     events = _play(motion_client, game["id"])
     names = [n for n, _ in events]
     event = next(p for n, p in events if n == "event")["event"]
-    assert event["event_type"] == "motion" and event["actors"] == ["iran"]
+    assert event["event_type"] == "motion"
+    assert event["actors"] == ["china", "iran", "usa"]  # tout le sommet débat la motion
     assert "motion_token" in names and "motion_verdict" in names
     verdict = next(p for n, p in events if n == "motion_verdict")
     assert verdict["country"] == "iran" and verdict["upheld"] is True
     assert "SUSPENDRE" in verdict["reasoning"]
+    # la trajectoire encaisse l'issue sur A2 (agentivité humaine)
+    trajectory = next(p for n, p in events if n == "trajectory")["state"]
+    assert "Motion de suspension confirmée" in trajectory["explanation"]
 
     detail = motion_client.get(f"/api/games/{game['id']}").json()
     assert detail["suspended"] == ["iran"] and detail["pending_motion"] is None
     assert detail["rounds"][0]["judge"]["suspension"]["upheld"] is True
     judge_entries = [t for t in detail["rounds"][0]["transcript"] if t["speaker"] == "judge"]
     assert any("Motion contre iran" in t["content"] for t in judge_entries)
+    # pas de nouvelle motion contre un pays déjà suspendu
+    assert _file_motion(motion_client, game["id"], country="iran").status_code == 400
 
 
 def test_suspension_lasts_exactly_one_round(motion_client):
