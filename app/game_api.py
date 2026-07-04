@@ -5,12 +5,14 @@ streamé en SSE (`POST /api/games/{id}/rounds`) et relire l'état complet (`GET 
 
 Le round réutilise le générateur `run_negotiation_round` (moteur inchangé) : chaque `RoundStep`
 devient un événement SSE nommé d'après sa dataclass (`TurnStartStep` → `turn_start`,
-`TokenStep` → `token`, …), plus un `done` final. La partie vivante (monde, agents, horloge)
-reste en mémoire process ; le durable (partie, rounds, transcript) passe par `GameStore`
-(SQLite en local, Supabase/Postgres plus tard — Phase R2).
+`TokenStep` → `token`, …), plus un `done` final — ou une trame `error` si le moteur casse
+en plein round. La partie vivante (monde, agents, horloge) reste en mémoire process ; le
+durable (partie, rounds, transcript) passe par `GameStore` (SQLite en local, Supabase/Postgres
+plus tard — Phase R2).
 
 Injection : `get_backend` (Ollama par défaut, MockBackend en test) et `get_store`
-(`GAME_DB_PATH` ou `:memory:`), surchargables via `app.dependency_overrides`.
+(fichier `games.db` par défaut, `GAME_DB_PATH` pour changer), surchargables via
+`app.dependency_overrides`.
 """
 
 from __future__ import annotations
@@ -74,10 +76,11 @@ def get_backend() -> InferenceBackend:
 
 
 def get_store() -> GameStore:
-    """Store des parties du process (SQLite `:memory:` par défaut, ou `GAME_DB_PATH`)."""
+    """Store des parties du process (fichier `games.db` par défaut pour que la relecture
+    survive aux redémarrages ; `GAME_DB_PATH` pour changer, `:memory:` pour l'éphémère)."""
     global _store
     if _store is None:
-        _store = SQLiteGameStore(os.getenv("GAME_DB_PATH", ":memory:"))
+        _store = SQLiteGameStore(os.getenv("GAME_DB_PATH", "games.db"))
     return _store
 
 
@@ -206,12 +209,12 @@ def _view(game: GameRecord, session: GameSession | None) -> GameView:
 def _play_round(
     game_id: str, session: GameSession, store: GameStore, body: PlayRoundRequest
 ) -> Iterator[str]:
-    """Joue le round (générateur SSE) puis persiste round + transcript à la fin."""
-    event: GeoEvent | None = None
-    if body.event is not None:
-        round_id = session.world.current_round + 1
-        event = GeoEvent(id=f"human-{round_id}", round_id=round_id, **body.event.model_dump())
+    """Joue le round (générateur SSE) puis persiste round + transcript à la fin.
 
+    Toute exception (moteur, store) devient une trame `error` — le client sait que le
+    round est perdu au lieu de voir le flux se couper sans explication — et le verrou
+    est relâché dans tous les cas.
+    """
     record = RoundRecord(id=uuid4().hex[:12], game_id=game_id, round_no=0)
     entries: list[TranscriptEntry] = []
     models: dict[str, str] = {}  # dernier badge modèle vu par pays (TurnStartStep)
@@ -231,6 +234,10 @@ def _play_round(
         )
 
     try:
+        event: GeoEvent | None = None
+        if body.event is not None:
+            round_id = session.world.current_round + 1
+            event = GeoEvent(id=f"human-{round_id}", round_id=round_id, **body.event.model_dump())
         steps = run_negotiation_round(
             session.world,
             session.agents,
@@ -270,6 +277,8 @@ def _play_round(
         store.add_round(record)
         store.add_transcript(entries)
         yield sse_frame("done", {"round_no": record.round_no})
+    except Exception as exc:  # noqa: BLE001 — la panne est signalée au client avant de fermer
+        yield sse_frame("error", {"detail": str(exc)})
     finally:
         session.lock.release()
 
