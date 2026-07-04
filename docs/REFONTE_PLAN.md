@@ -127,11 +127,16 @@ legacy pour l'instant) : invention de pays (country_forge), radar M3, budget LLM
 
 **Notes d'implémentation (R4 faite — motion + Fog/Crisis/Escalation web)** :
 
-- **Motion** : `simulation/motions.py` (Motion, `motion_event`, prompt d'arbitrage +
-  `parse_motion_verdict` — dernière ligne `VERDICT: SUSPENDRE|REJETER`, repli = rejet) ;
+- **Motion** : `simulation/motions.py` (Motion, `motion_event` — **tout le sommet est
+  acteur** de la motion, sinon l'heuristique d'engagement laisse les non-visés muets,
+  constaté sur mistral réel ; prompt d'arbitrage avec **verdict demandé en tête** de
+  réponse + `parse_motion_verdict` sur la première phrase du dernier marqueur
+  `VERDICT:` — négation/rejet prioritaires sur le mot « suspendre », durci sur une
+  sortie mistral réelle qui inversait l'issue ; repli = rejet) ;
   `run_negotiation_round(motion=…)` streame l'arbitrage (`MotionTokenStep` →
   `MotionVerdictStep`) après le communiqué, puis la trajectoire encaisse l'issue sur
-  **A2** via `nudge_axis` (confirmée : A2 ↑ cap 0,03 ; rejetée : A2 ↓ cap 0,02).
+  **A2** via `nudge_axis` (confirmée : A2 ↑ cap 0,03 ; rejetée : A2 ↓ cap 0,02 ;
+  explication du round conservée).
   Suspension = le pays saute **un** round (retiré des agents du round suivant, trame SSE
   `suspended`) ; il faut ≥ 3 pays pour déposer une motion ; une motion à la fois ;
   la motion en attente **est** l'événement du prochain round (400 si event/fog/crise).
