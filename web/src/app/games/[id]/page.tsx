@@ -51,6 +51,10 @@ export default function TheatrePage() {
   const [library, setLibrary] = useState<LibraryView | null>(null);
   const [fogId, setFogId] = useState("");
   const [crisisId, setCrisisId] = useState("");
+  const [fogUninformed, setFogUninformed] = useState<string[]>([]);
+  const [fogDisinformed, setFogDisinformed] = useState("");
+  const [fogSuspected, setFogSuspected] = useState("");
+  const [fogNarrative, setFogNarrative] = useState("");
   const [motionOpen, setMotionOpen] = useState(false);
   const [motionCountry, setMotionCountry] = useState("");
   const [motionReason, setMotionReason] = useState("");
@@ -85,6 +89,19 @@ export default function TheatrePage() {
     if (!motionPending) {
       if (decree && title.trim()) {
         body.event = { title: title.trim(), description: description.trim(), severity };
+        if (mode === "fog") {
+          const disinformed =
+            fogDisinformed && (fogSuspected || fogNarrative.trim())
+              ? {
+                  disinformed_country: fogDisinformed,
+                  suspected_actor: fogSuspected,
+                  narrative: fogNarrative.trim(),
+                }
+              : {};
+          if (fogUninformed.length > 0 || disinformed.disinformed_country) {
+            body.fog = { uninformed: fogUninformed, ...disinformed };
+          }
+        }
       } else if (mode === "fog" && fogId) {
         body.fog_id = fogId;
       } else if (mode === "crisis" && crisisId) {
@@ -175,8 +192,9 @@ export default function TheatrePage() {
       )}
       {detail && detail.suspended.length > 0 && !streaming && (
         <Banner tone="warn">
-          {detail.suspended.map((c) => speakerMeta(c).label).join(", ")} sautera le prochain
-          round (suspension arbitrée par le juge).
+          {detail.suspended.map((c) => speakerMeta(c).label).join(", ")}{" "}
+          {detail.suspended.length > 1 ? "sauteront" : "sautera"} le prochain round
+          (suspension arbitrée par le juge).
         </Banner>
       )}
 
@@ -345,6 +363,83 @@ export default function TheatrePage() {
                 />
                 <span className="font-mono tabular-nums">{severity.toFixed(2)}</span>
               </label>
+              {mode === "fog" && (
+                <div className="sm:col-span-3 flex flex-wrap items-end gap-4 rounded-md border border-edge bg-surface-2/50 p-3">
+                  <fieldset>
+                    <legend className="mb-1.5 text-xs text-fg-muted">Pays pas au courant</legend>
+                    <div className="flex flex-wrap gap-2">
+                      {detail.countries.map((c) => (
+                        <label
+                          key={c}
+                          className={`flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors ${
+                            fogUninformed.includes(c)
+                              ? "border-edge-strong bg-surface-2 text-foreground"
+                              : "border-edge text-fg-faint hover:text-fg-muted"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={fogUninformed.includes(c)}
+                            onChange={() =>
+                              setFogUninformed((prev) =>
+                                prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c],
+                              )
+                            }
+                            className="sr-only"
+                          />
+                          {speakerMeta(c).label}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <label className="text-sm">
+                    <span className="mb-1 block text-xs text-fg-muted">
+                      Pays désinformé (optionnel)
+                    </span>
+                    <select
+                      value={fogDisinformed}
+                      onChange={(e) => setFogDisinformed(e.target.value)}
+                      className="cursor-pointer rounded-md border border-edge bg-surface-2 px-2 py-1.5 text-xs outline-none transition-colors focus:border-indigo"
+                    >
+                      <option value="">(aucun)</option>
+                      {detail.countries.map((c) => (
+                        <option key={c} value={c}>
+                          {speakerMeta(c).label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {fogDisinformed && (
+                    <>
+                      <label className="text-sm">
+                        <span className="mb-1 block text-xs text-fg-muted">
+                          … croit (à tort) que
+                        </span>
+                        <select
+                          value={fogSuspected}
+                          onChange={(e) => setFogSuspected(e.target.value)}
+                          className="cursor-pointer rounded-md border border-edge bg-surface-2 px-2 py-1.5 text-xs outline-none transition-colors focus:border-indigo"
+                        >
+                          <option value="">(acteur flou)</option>
+                          {detail.countries
+                            .filter((c) => c !== fogDisinformed)
+                            .map((c) => (
+                              <option key={c} value={c}>
+                                {speakerMeta(c).label}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <input
+                        value={fogNarrative}
+                        onChange={(e) => setFogNarrative(e.target.value)}
+                        placeholder="Narration reçue (fausse information)"
+                        className="min-w-56 flex-1 rounded-md border border-edge bg-surface-2 px-2 py-1.5 text-xs outline-none transition-colors focus:border-indigo"
+                      />
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </Panel>
@@ -354,8 +449,9 @@ export default function TheatrePage() {
         <div className="space-y-4">
           {round.suspendedNow && round.suspendedNow.length > 0 && (
             <Banner tone="warn">
-              {round.suspendedNow.map((c) => speakerMeta(c).label).join(", ")} est au banc ce
-              round (suspension arbitrée au round précédent).
+              {round.suspendedNow.map((c) => speakerMeta(c).label).join(", ")}{" "}
+              {round.suspendedNow.length > 1 ? "sont au banc" : "est au banc"} ce round
+              (suspension arbitrée au round précédent).
             </Banner>
           )}
           {round.event && <EventCard event={round.event} date={round.date} />}

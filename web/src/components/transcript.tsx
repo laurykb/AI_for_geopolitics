@@ -9,6 +9,9 @@ import type { TranscriptEntry } from "@/lib/types";
 
 import { SpeakerAvatar } from "./avatar";
 
+/** Les petits modèles laissent parfois du gras markdown en tête (« ** Au nom de… »). */
+const tidy = (text: string) => text.replace(/^[\s*_#>-]+/, "");
+
 function Reasoning({ text, open = false }: { text: string; open?: boolean }) {
   if (!text) return null;
   return (
@@ -83,7 +86,7 @@ export function TurnBubble({ turn }: { turn: LiveTurn }) {
       <p
         className={`whitespace-pre-wrap text-sm leading-relaxed text-foreground ${live ? "stream-caret" : ""}`}
       >
-        {message}
+        {live ? message : tidy(message)}
       </p>
       {!live && <Reasoning text={reasoning} />}
     </Bubble>
@@ -94,7 +97,9 @@ export function TurnBubble({ turn }: { turn: LiveTurn }) {
 export function EntryBubble({ entry }: { entry: TranscriptEntry }) {
   return (
     <Bubble speaker={entry.speaker} model={entry.model || undefined}>
-      <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{entry.content}</p>
+      <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+        {tidy(entry.content)}
+      </p>
       <Reasoning text={entry.reasoning} />
     </Bubble>
   );

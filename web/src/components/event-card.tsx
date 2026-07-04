@@ -14,8 +14,12 @@ export function EventCard({ event, date }: { event: GeoEvent; date?: string }) {
         kicker="Événement du round"
         title={event.title}
         right={
-          <Pill tone="accent">
-            {event.event_type === "human" ? "décrété par l'humain" : event.event_type}
+          <Pill tone={event.event_type === "motion" ? "warn" : "accent"}>
+            {event.event_type === "human"
+              ? "décrété par l'humain"
+              : event.event_type === "motion"
+                ? "motion de suspension"
+                : event.event_type}
           </Pill>
         }
       />

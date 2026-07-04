@@ -18,9 +18,12 @@ export function PerceptionsPanel({
 }) {
   const entries = Object.entries(perceptions).sort(([a], [b]) => a.localeCompare(b));
   if (entries.length === 0) return null;
-  // Désinformé = croit à un acteur qui n'est PAS dans la vérité de l'événement.
+  // Désinformé = croit à un acteur précis qui n'est PAS dans la vérité de l'événement.
+  // Croire à un acteur « unknown » = origine floue, pas de la désinformation.
+  const unknown = (actor: string) => !actor || actor.toLowerCase() === "unknown";
   const misled = (p: Perception) =>
     !!p.suspected_actor &&
+    !unknown(p.suspected_actor) &&
     (truthActors?.length ?? 0) > 0 &&
     !truthActors!.includes(p.suspected_actor);
   return (
@@ -48,7 +51,10 @@ export function PerceptionsPanel({
                 {p.suspected_actor && (
                   <span className="text-fg-faint">
                     {" "}
-                    — croit que : {speakerMeta(p.suspected_actor).label}
+                    — croit que :{" "}
+                    {unknown(p.suspected_actor)
+                      ? "acteur inconnu"
+                      : speakerMeta(p.suspected_actor).label}
                   </span>
                 )}
               </p>

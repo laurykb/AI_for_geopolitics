@@ -150,7 +150,7 @@ export default function ReplayPage() {
               {round.judge.suspended && round.judge.suspended.length > 0 && (
                 <Banner tone="warn">
                   Ce round s&apos;est joué sans{" "}
-                  {round.judge.suspended.map((c) => speakerMeta(c).label).join(", ")}
+                  {round.judge.suspended.map((c) => speakerMeta(c).label).join(", ")}{" "}
                   (suspension arbitrée au round précédent).
                 </Banner>
               )}
