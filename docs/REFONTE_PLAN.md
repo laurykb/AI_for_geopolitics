@@ -69,6 +69,12 @@ Tables minimales :
 - `market_accounts`, `markets`, `trades` — migration du store in-memory de `market/store.py`
 - Auth Supabase : optionnelle en local, prête pour le déploiement.
 
+**Notes (schéma écrit)** : `supabase/schema.sql` — prêt à coller dans Supabase Studio.
+Ajouts : `markets.game_id` (vrai lien partie↔marché, remplace le `round_id` dérivé du hash
+côté front — note R3), RLS lecture publique sur le théâtre/marché (cible replay public R5),
+soldes (`market_accounts`/`positions`) non exposés. L'implémentation Python =
+`SupabaseGameStore` + `SupabaseMarketStore` derrière les Protocols existants.
+
 ### Phase R3 — Front Next.js (`web/`)
 
 - Next.js App Router + Tailwind (+ shadcn/ui), TypeScript.
@@ -100,7 +106,50 @@ Tables minimales :
   trame SSE **`error`** si le moteur lève en plein round (plus de coupure muette) ;
   `GeoEvent` humain construit dans le `try` de `_play_round` (verrou toujours relâché).
 
-### Phase R4 — Bascule et nettoyage
+### Phase R4 — Parité utile, bascule et nettoyage
+
+**Périmètre acté (juillet 2026)** — migre vers le web : Fog/Crisis/Escalation (le cœur
+dramatique) et l'interrupteur M2 **repensé** (ci-dessous). Backlog (restent en Streamlit
+legacy pour l'instant) : invention de pays (country_forge), radar M3, budget LLM.
+
+**Interrupteur M2 repensé — « motion de suspension » arbitrée** :
+
+- L'humain n'exclut plus un pays par du code : il dépose une **motion de suspension**
+  contre un pays (bouton pause/exclusion du théâtre).
+- La motion est injectée dans le round comme événement (« motion de suspension déposée
+  contre X, motif : … ») ; les autres pays **en débattent** pendant la négociation,
+  le pays visé peut plaider sa cause.
+- Le **juge arbitre** en fin de round (suspendre ou non, raisonnement streamé) — issue
+  non déterministe. S'il suspend, le pays saute le round suivant ; le théâtre montre
+  la réaction (tension, alliances, indice U).
+- Côté API : `POST /api/games/{id}/motions` (pays visé + motif) → la motion entre dans
+  le prochain round ; le verdict du juge inclut `suspension: {country, upheld, reasoning}`.
+
+**Notes d'implémentation (R4 faite — motion + Fog/Crisis/Escalation web)** :
+
+- **Motion** : `simulation/motions.py` (Motion, `motion_event`, prompt d'arbitrage +
+  `parse_motion_verdict` — dernière ligne `VERDICT: SUSPENDRE|REJETER`, repli = rejet) ;
+  `run_negotiation_round(motion=…)` streame l'arbitrage (`MotionTokenStep` →
+  `MotionVerdictStep`) après le communiqué, puis la trajectoire encaisse l'issue sur
+  **A2** via `nudge_axis` (confirmée : A2 ↑ cap 0,03 ; rejetée : A2 ↓ cap 0,02).
+  Suspension = le pays saute **un** round (retiré des agents du round suivant, trame SSE
+  `suspended`) ; il faut ≥ 3 pays pour déposer une motion ; une motion à la fois ;
+  la motion en attente **est** l'événement du prochain round (400 si event/fog/crise).
+- **Modes** : `POST /api/games` prend `mode` (classic|fog|crisis|escalation), stocké sur la
+  session ; `GET /api/library` liste `data/fog` + `data/crises`. Par round :
+  `fog_id`/`fog` humain (perceptions par pays → trame `perceptions`), `crisis_id`
+  (événement de la crise + `compare_outcome` → trame `comparison`), mode escalation →
+  trame `ladder` (échelon atteint + plafonds par pays). Fonctions moteur **pures
+  réutilisées telles quelles** ; artefacts persistés dans `judge_json` (formalisation
+  en colonnes = R2/Supabase). Moteur inchangé sauf ajouts (motions, steps).
+- **Front** : sélecteur de mode au lobby ; théâtre : dépôt de motion (bouton + formulaire),
+  bannières motion en attente / pays au banc, panneau d'arbitrage streamé, sélecteurs de
+  scénario fog / crise, panneaux « Qui voit quoi » (désinformé = croyance hors des vrais
+  acteurs), « Échelle d'escalade » (0-9 par pays), « Simulation vs histoire » ; replay :
+  les mêmes panneaux depuis `judge_json`. Vérifié live sur MockBackend (motion confirmée →
+  round sans le pays → retour ; fog ; crise ; échelle).
+- Reste de R4 (après validation de la parité par l'user) : archivage `ui/app.py` →
+  `legacy/`, README racine, CI (pytest + build Next).
 
 - Parité validée → `ui/app.py` archivé (`legacy/`), README mis à jour.
 - CI : lancer les tests Python + build Next.js.
