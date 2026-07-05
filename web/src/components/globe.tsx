@@ -21,10 +21,13 @@ const MARGIN = 56; // la planète « dézoomée » : de l'espace autour du globe
 export function Globe({
   className,
   spinning = false,
+  arriving = false,
 }: {
   className?: string;
   /** Lancement (Play) : la rotation accélère — la Terre se met à tourner sur elle-même. */
   spinning?: boolean;
+  /** Retour au menu : la rotation décélère — on ressort de l'atmosphère. */
+  arriving?: boolean;
 }) {
   const [lambda, setLambda] = useState(-12);
 
@@ -35,13 +38,14 @@ export function Globe({
 
   useEffect(() => {
     if (prefersReducedMotion()) return;
-    let velocity = spinning ? 0.4 : 0.12; // degrés par tique
+    let velocity = spinning ? 0.4 : arriving ? 6 : 0.12; // degrés par tique
     const timer = setInterval(() => {
       if (spinning) velocity = Math.min(velocity * 1.06, 7); // accélération douce
+      else if (arriving) velocity = Math.max(velocity * 0.94, 0.12); // décélération
       setLambda((l) => (l + velocity) % 360);
     }, 40);
     return () => clearInterval(timer);
-  }, [spinning]);
+  }, [spinning, arriving]);
 
   const path = useMemo(() => {
     const projection = geoOrthographic()

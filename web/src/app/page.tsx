@@ -1,9 +1,12 @@
 "use client";
 
 /** Introduction du jeu : la planète vue de loin, un titre, un bouton — Play.
- * Au clic, séquence d'ouverture façon jeu vidéo : la Terre se met à tourner sur
- * elle-même en accélérant pendant que la caméra plonge dessus, un voile couvre la
- * fin de course, puis on entre dans le jeu. `prefers-reduced-motion` : entrée directe. */
+ *
+ * Play → séquence d'ouverture façon jeu vidéo : la Terre tourne sur elle-même en
+ * accélérant pendant que la caméra plonge, un voile couvre la fin de course, puis
+ * on entre dans le jeu. Retour au menu (`/?retour=1`) → séquence inverse : on
+ * ressort de l'atmosphère, la rotation décélère, le titre revient.
+ * `prefers-reduced-motion` : entrées directes, sans séquence. */
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -11,14 +14,26 @@ import { useEffect, useState } from "react";
 import { Globe } from "@/components/globe";
 import { prefersReducedMotion } from "@/lib/stage";
 
-const LAUNCH_MS = 2600; // durée de la plongée (alignée sur les keyframes intro-*)
+const LAUNCH_MS = 2600; // plongée (alignée sur .intro-zoom)
+const ARRIVE_MS = 2200; // dézoom du retour (aligné sur .intro-unzoom)
 
 export default function IntroPage() {
   const router = useRouter();
   const [launching, setLaunching] = useState(false);
+  const [arriving, setArriving] = useState(false);
 
   useEffect(() => {
     router.prefetch("/lobby"); // le jeu est prêt derrière le voile
+    // Retour depuis le jeu : jouer l'animation inverse puis nettoyer l'URL.
+    if (new URLSearchParams(window.location.search).has("retour") && !prefersReducedMotion()) {
+      window.history.replaceState(null, "", "/");
+      const begin = setTimeout(() => setArriving(true), 0);
+      const end = setTimeout(() => setArriving(false), ARRIVE_MS);
+      return () => {
+        clearTimeout(begin);
+        clearTimeout(end);
+      };
+    }
   }, [router]);
 
   const play = () => {
@@ -31,9 +46,11 @@ export default function IntroPage() {
     setTimeout(() => router.push("/lobby"), LAUNCH_MS);
   };
 
+  const chrome = launching ? "intro-fade-out" : arriving ? "intro-fade-in" : undefined;
+
   return (
     <div className="relative flex min-h-[calc(100vh-9rem)] flex-col items-center justify-center gap-2 overflow-hidden text-center">
-      <div className={launching ? "intro-fade-out" : undefined}>
+      <div className={chrome}>
         <p className="text-[11px] font-medium uppercase tracking-[0.3em] text-fg-faint">
           AI for Geopolitics
         </p>
@@ -47,12 +64,16 @@ export default function IntroPage() {
         </p>
       </div>
 
-      {/* La planète : au lancement, elle tourne sur elle-même et la caméra plonge. */}
-      <div className={launching ? "intro-zoom" : undefined}>
-        <Globe spinning={launching} className="my-2 w-full max-w-md sm:max-w-lg" />
+      {/* La planète : plongée au lancement, dézoom au retour. */}
+      <div className={launching ? "intro-zoom" : arriving ? "intro-unzoom" : undefined}>
+        <Globe
+          spinning={launching}
+          arriving={arriving}
+          className="my-2 w-full max-w-md sm:max-w-lg"
+        />
       </div>
 
-      <div className={launching ? "intro-fade-out" : undefined}>
+      <div className={chrome}>
         <button
           onClick={play}
           disabled={launching}
@@ -66,8 +87,9 @@ export default function IntroPage() {
         </p>
       </div>
 
-      {/* Voile de fin de course : l'entrée dans le jeu se fait derrière lui. */}
+      {/* Voiles : couvrent l'entrée dans le jeu, découvrent le retour au menu. */}
       {launching && <div className="intro-veil absolute inset-0 z-10 bg-background" />}
+      {arriving && <div className="intro-veil-out absolute inset-0 z-10 bg-background" />}
     </div>
   );
 }

@@ -18,6 +18,7 @@ export type GameView = {
   created_at: string;
   countries: string[];
   live: boolean;
+  resumable: boolean; // snapshot présent + partie en cours : reconstructible (R2)
   mode: GameMode;
   pending_motion: MotionView | null;
   suspended: string[];

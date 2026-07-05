@@ -3,6 +3,8 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
 
+import { HeaderNav } from "@/components/header-nav";
+
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
@@ -38,14 +40,7 @@ export default function RootLayout({
                 AI for Geopolitics
               </span>
             </Link>
-            <nav className="flex items-center gap-5 text-sm text-fg-muted">
-              <Link href="/lobby" className="transition-colors hover:text-foreground">
-                Parties
-              </Link>
-              <Link href="/informations" className="transition-colors hover:text-foreground">
-                Informations
-              </Link>
-            </nav>
+            <HeaderNav />
           </div>
         </header>
         <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">{children}</main>

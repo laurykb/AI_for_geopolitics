@@ -148,26 +148,37 @@ export function StageMap({
           {features.map((f, i) => {
             const slug = active.get(String(f.id));
             const isSuspended = slug ? suspendedSet.has(slug) : false;
+            const isSpeaking = slug != null && slug === speaking;
             const fill = slug
-              ? isSuspended
-                ? SUSPENDED_FILL
-                : uTint(uByCountry[slug] ?? utopia)
+              ? isSpeaking
+                ? "var(--accent-bright)" // le pays qui parle s'allume en direct
+                : isSuspended
+                  ? SUSPENDED_FILL
+                  : uTint(uByCountry[slug] ?? utopia)
               : "var(--muted)";
             return (
               <path
                 key={`${String(f.id)}-${i}`} // certains territoires n'ont pas d'id ISO unique
                 d={path(f) ?? undefined}
                 fill={fill}
-                stroke="var(--background)"
-                strokeWidth="0.5"
+                stroke={isSpeaking ? "var(--accent-bright)" : "var(--background)"}
+                strokeWidth={isSpeaking ? 1.2 : 0.5}
                 opacity={slug ? (isSuspended ? 0.7 : 0.95) : 0.55}
-                className={slug ? "stage-country" : undefined}
+                className={
+                  slug
+                    ? isSpeaking
+                      ? "stage-country stage-country-speaking"
+                      : "stage-country"
+                    : undefined
+                }
               >
                 <title>
                   {slug
-                    ? isSuspended
-                      ? `${speakerMeta(slug).label} — suspendu ce round (au banc)`
-                      : `${speakerMeta(slug).label} — U locale ${fmt(uByCountry[slug] ?? utopia)}`
+                    ? isSpeaking
+                      ? `${speakerMeta(slug).label} — a la parole`
+                      : isSuspended
+                        ? `${speakerMeta(slug).label} — suspendu ce round (au banc)`
+                        : `${speakerMeta(slug).label} — U locale ${fmt(uByCountry[slug] ?? utopia)}`
                     : ((f.properties as { name?: string })?.name ?? "")}
                 </title>
               </path>

@@ -316,3 +316,64 @@ body {
     animation: none;
   }
 }
+
+/* Le pays qui a la parole s'allume immédiatement (pas la transition lente des teintes). */
+.stage-country-speaking {
+  transition: fill 0.25s ease;
+  animation: stage-speaking 1.3s ease-in-out infinite;
+}
+@keyframes stage-speaking {
+  0%,
+  100% {
+    opacity: 0.95;
+  }
+  50% {
+    opacity: 0.65;
+  }
+}
+
+/* Retour au menu : dézoom depuis la planète (animation inverse du lancement). */
+.intro-unzoom {
+  animation: intro-unzoom 2.2s cubic-bezier(0.15, 0.65, 0.3, 1) both;
+  will-change: transform;
+}
+@keyframes intro-unzoom {
+  from {
+    transform: scale(9);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+.intro-veil-out {
+  animation: intro-veil-out 0.9s ease-out both;
+  pointer-events: none;
+}
+@keyframes intro-veil-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+.intro-fade-in {
+  animation: intro-fade-in 0.8s ease-out 1.2s both;
+}
+@keyframes intro-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-country-speaking,
+  .intro-unzoom,
+  .intro-veil-out,
+  .intro-fade-in {
+    animation: none;
+  }
+}
