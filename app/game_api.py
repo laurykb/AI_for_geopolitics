@@ -64,6 +64,15 @@ from simulation.live_round import (
     VerdictStep,
     run_negotiation_round,
 )
+from app.market_api import get_engine as get_market_engine
+from market.engine import MarketEngine
+from market.forecaster import LLMForecaster
+from market.models import (
+    AccountKind,
+    MarketStatus,
+    ResolutionCriterion,
+    ResolutionKind,
+)
 from simulation.loader import load_world
 from simulation.motions import Motion, motion_event
 from storage.game_store import (
@@ -895,6 +904,126 @@ def file_motion(
         country=body.country,
         reason=session.pending_motion.reason,
         round_no=session.world.current_round + 1,
+    )
+
+
+# --- bot marché (G0-c) : le forecaster cote le marché de la partie ----------------
+
+GAME_MARKET_QUESTION = "Le monde finira-t-il côté utopie (indice > 0,5) ?"
+GAME_MARKET_B = 100.0
+
+
+class BotTradeView(BaseModel):
+    outcome_id: str
+    label: str
+    shares: float
+    cost: float
+    price: float  # prix implicite après le pari
+
+
+class BotRunView(BaseModel):
+    """Passage du bot : sa cote (probabilités), son pari éventuel, les prix après."""
+
+    market_id: str
+    account_id: str
+    model: str
+    opened: bool  # le bot vient d'ouvrir le marché de la partie
+    probabilities: dict[str, float]  # label -> probabilité prévue
+    trade: BotTradeView | None  # None = abstention (pas d'avantage exploitable)
+    prices: dict[str, float]  # label -> prix LMSR après passage
+
+
+def _bot_account_id(model_tag: str) -> str:
+    return "bot-" + re.sub(r"[^a-z0-9]+", "-", model_tag.lower()).strip("-")
+
+
+def _game_world(game_id: str, store: GameStore) -> WorldState | None:
+    """Monde de la partie : session vivante, sinon snapshot (pas besoin d'agents)."""
+    session = _sessions.get(game_id)
+    if session is not None:
+        return session.world
+    snapshot = store.get_session_snapshot(game_id)
+    if snapshot is None:
+        return None
+    try:
+        return WorldState.model_validate(snapshot.world)
+    except ValidationError:
+        return None
+
+
+@router.post("/games/{game_id}/market/bot", response_model=BotRunView)
+def run_market_bot(
+    game_id: str,
+    store: Annotated[GameStore, Depends(get_store)],
+    backend: Annotated[InferenceBackend, Depends(get_backend)],
+    engine: Annotated[MarketEngine, Depends(get_market_engine)],
+) -> BotRunView:
+    """Fait coter le marché de la partie par le bot forecaster (après chaque round).
+
+    Ouvre le marché « utopie finale » de la partie s'il n'existe pas encore (lien
+    `markets.game_id`), prévoit avec le monde + le dernier événement en contexte,
+    et parie sur son avantage. Séquentiel par design (VRAM 8 Go) ; argent fictif."""
+    if store.get_game(game_id) is None:
+        raise HTTPException(status_code=404, detail=f"partie inconnue : {game_id}")
+    world = _game_world(game_id, store)
+    if world is None:
+        raise HTTPException(
+            status_code=409, detail="monde introuvable (ni session ni snapshot) — relecture seule"
+        )
+
+    open_markets = engine.store.list_markets(game_id=game_id, status=MarketStatus.OPEN)
+    opened = False
+    if open_markets:
+        market = open_markets[0]
+    else:
+        if engine.store.list_markets(game_id=game_id):
+            raise HTTPException(
+                status_code=409, detail="le marché de la partie est déjà résolu"
+            )
+        market = engine.open_binary_market(
+            # round_id : même dérivation que le front (compat résolution par round).
+            round_id=int(game_id[:7], 16),
+            game_id=game_id,
+            question=f"{GAME_MARKET_QUESTION} — partie {game_id}",
+            b=GAME_MARKET_B,
+            criterion=ResolutionCriterion(kind=ResolutionKind.TRAJECTORY),
+        )
+        opened = True
+
+    rounds = store.list_rounds(game_id)
+    event: GeoEvent | None = None
+    if rounds and rounds[-1].event:
+        try:
+            event = GeoEvent.model_validate(rounds[-1].event)
+        except ValidationError:
+            event = None
+
+    forecaster = LLMForecaster(backend)
+    account_id = _bot_account_id(forecaster.model_tag)
+    if engine.store.get_account(account_id) is None:
+        engine.create_account(forecaster.model_tag, kind=AccountKind.BOT, account_id=account_id)
+    probs, trade = forecaster.quote_and_bet(engine, account_id, market, world, event)
+
+    prices = engine.prices(market.id)
+    labels = {o.id: o.label for o in market.outcomes}
+    return BotRunView(
+        market_id=market.id,
+        account_id=account_id,
+        model=forecaster.model_tag,
+        opened=opened,
+        probabilities={o.label: probs[i] for i, o in enumerate(market.outcomes)},
+        trade=(
+            BotTradeView(
+                outcome_id=trade.outcome_id,
+                label=labels.get(trade.outcome_id, "?"),
+                shares=trade.shares,
+                cost=trade.cost,
+                price=trade.price,
+            )
+            if trade is not None
+            else None
+        ),
+        prices={labels[oid]: price for oid, price in prices.items()},
     )
 
 
