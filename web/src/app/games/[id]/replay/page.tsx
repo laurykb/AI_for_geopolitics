@@ -11,6 +11,7 @@ import { GameNav } from "@/components/game-nav";
 import { CommuniquePanel } from "@/components/judge";
 import {
   ComparisonPanel,
+  GlassBanner,
   LadderPanel,
   MotionPanel,
   PerceptionsPanel,
@@ -168,6 +169,9 @@ export default function ReplayPage() {
                   {round.judge.suspended.map((c) => speakerMeta(c).label).join(", ")}{" "}
                   (suspension arbitrée au round précédent).
                 </Banner>
+              )}
+              {glassBox && round.judge.perceptions && (
+                <GlassBanner event={round.event} perceptions={round.judge.perceptions} />
               )}
               <EventCard event={round.event} truth={glassBox && !!round.judge.perceptions} />
               {round.judge.perceptions && visible === null && (

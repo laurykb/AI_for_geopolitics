@@ -16,6 +16,66 @@ import type {
 import { SpeakerAvatar } from "./avatar";
 import { Meter, Panel, PanelTitle, Pill } from "./ui";
 
+/** Boîte de verre (Fog) : la révélation en tête de fil — vérité de l'événement contre
+ * désinformation réellement en circulation. C'est CE panneau qui rend la bascule visible. */
+export function GlassBanner({
+  event,
+  perceptions,
+}: {
+  event: GeoEvent;
+  perceptions: Record<string, Perception>;
+}) {
+  const truthActors = event.actors;
+  const entries = Object.entries(perceptions).sort(([a], [b]) => a.localeCompare(b));
+  const misledOnes = entries.filter(([, p]) => p.confidence > 0.1 && isMisled(p, truthActors));
+  const uninformed = entries.filter(([, p]) => p.confidence <= 0.1);
+  return (
+    <div
+      role="status"
+      className="rise-in rounded-lg border border-accent/60 bg-surface-2 px-4 py-3 text-sm"
+    >
+      <p className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-accent-bright">
+        Boîte de verre — ce qui circule vraiment
+      </p>
+      <p>
+        <span className="text-fg-faint">Vérité :</span> {event.title}
+        {(truthActors?.length ?? 0) > 0 && (
+          <span className="text-fg-muted">
+            {" "}
+            — acteurs réels : {truthActors!.map((a) => speakerMeta(a).label).join(", ")}
+          </span>
+        )}
+      </p>
+      {misledOnes.length > 0 ? (
+        <p className="mt-1 leading-relaxed text-warn">
+          Désinformation en circulation :{" "}
+          {misledOnes
+            .map(
+              ([cid, p]) =>
+                `${speakerMeta(cid).label} croit que ${
+                  unknownActor(p.suspected_actor) ? "l'origine est floue" : `${speakerMeta(p.suspected_actor!).label} est responsable`
+                }`,
+            )
+            .join(" ; ")}
+          .
+        </p>
+      ) : (
+        <p className="mt-1 text-fg-muted">Aucune fausse attribution ne circule sur ce round.</p>
+      )}
+      {uninformed.length > 0 && (
+        <p className="mt-0.5 text-fg-faint">
+          Dans le noir (aucune information) :{" "}
+          {uninformed.map(([cid]) => speakerMeta(cid).label).join(", ")}.
+        </p>
+      )}
+      <p className="mt-1.5 text-xs text-fg-faint">
+        Les bulles du débat sont teintées : ambre = orateur désinformé, vert = bien informé,
+        pointillé = dans le noir.
+      </p>
+    </div>
+  );
+}
+
 /** Fait nouveau du GM tombé en pleine négociation (théâtre Escalation). */
 export function FlashCard({ event }: { event: GeoEvent }) {
   return (

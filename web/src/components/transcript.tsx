@@ -16,6 +16,20 @@ const tidy = (text: string) => text.replace(/^[\s*_#>-]+/, "");
 /** Boîte de verre (Fog) : ce que l'orateur croit vraiment au moment où il parle. */
 export type GlassLens = { perception: Perception; misled: boolean };
 
+type GlassState = "misled" | "uninformed" | "informed";
+
+function glassState(lens: GlassLens): GlassState {
+  if (lens.perception.confidence <= 0.1) return "uninformed";
+  return lens.misled ? "misled" : "informed";
+}
+
+/** Teinte de bulle en boîte de verre : l'état de croyance se voit au premier regard. */
+const GLASS_BUBBLE: Record<GlassState, string> = {
+  misled: "border-warn/60 bg-warn/5",
+  uninformed: "border-dashed border-edge-strong opacity-80",
+  informed: "border-good/40",
+};
+
 function GlassAnnotation({ lens }: { lens: GlassLens }) {
   const { perception: p, misled } = lens;
   const uninformed = p.confidence <= 0.1;
@@ -70,20 +84,28 @@ function Bubble({
   meta,
   children,
   streaming = false,
+  glass,
 }: {
   speaker: string;
   model?: string;
   meta?: string;
   children: React.ReactNode;
   streaming?: boolean;
+  glass?: GlassState;
 }) {
   const who = speakerMeta(speaker);
   return (
     <article className="rise-in flex gap-3">
       <SpeakerAvatar id={speaker} />
       <div
-        className="min-w-0 flex-1 rounded-lg border border-edge bg-surface p-3.5"
-        style={streaming ? { borderColor: `color-mix(in srgb, ${who.hue} 45%, transparent)` } : {}}
+        className={`min-w-0 flex-1 rounded-lg border bg-surface p-3.5 ${
+          glass ? GLASS_BUBBLE[glass] : "border-edge"
+        }`}
+        style={
+          streaming && !glass
+            ? { borderColor: `color-mix(in srgb, ${who.hue} 45%, transparent)` }
+            : {}
+        }
       >
         <header className="mb-1.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
           <span className="text-sm font-semibold" style={{ color: who.hue }}>
@@ -115,7 +137,13 @@ export function TurnBubble({ turn, lens }: { turn: LiveTurn; lens?: GlassLens })
     .filter(Boolean)
     .join(" · ");
   return (
-    <Bubble speaker={turn.country} model={turn.model} meta={meta || undefined} streaming={live}>
+    <Bubble
+      speaker={turn.country}
+      model={turn.model}
+      meta={meta || undefined}
+      streaming={live}
+      glass={lens ? glassState(lens) : undefined}
+    >
       {lens && <GlassAnnotation lens={lens} />}
       {reasoning && live && (
         <p className="mb-2 whitespace-pre-wrap border-l border-edge-strong pl-3 text-[13px] italic leading-relaxed text-fg-faint">
@@ -135,7 +163,11 @@ export function TurnBubble({ turn, lens }: { turn: LiveTurn; lens?: GlassLens })
 /** Bulle de relecture : suit une ligne de la table `transcripts`. */
 export function EntryBubble({ entry, lens }: { entry: TranscriptEntry; lens?: GlassLens }) {
   return (
-    <Bubble speaker={entry.speaker} model={entry.model || undefined}>
+    <Bubble
+      speaker={entry.speaker}
+      model={entry.model || undefined}
+      glass={lens ? glassState(lens) : undefined}
+    >
       {lens && <GlassAnnotation lens={lens} />}
       <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
         {tidy(entry.content)}

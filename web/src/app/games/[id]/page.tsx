@@ -14,6 +14,7 @@ import { CommuniquePanel, JudgeRationale, VerdictPanel } from "@/components/judg
 import {
   ComparisonPanel,
   FlashCard,
+  GlassBanner,
   LadderPanel,
   MotionPanel,
   PerceptionsPanel,
@@ -519,6 +520,17 @@ export default function TheatrePage() {
               {round.suspendedNow.map((c) => speakerMeta(c).label).join(", ")}{" "}
               {round.suspendedNow.length > 1 ? "sont au banc" : "est au banc"} ce round
               (suspension arbitrée au round précédent).
+            </Banner>
+          )}
+          {glassBox && round.event && round.perceptions && (
+            <GlassBanner event={round.event} perceptions={round.perceptions} />
+          )}
+          {glassBox && !round.perceptions && (
+            <Banner tone="neutral">
+              La boîte de verre n&apos;a rien à révéler pour l&apos;instant : joue un round de
+              brouillard (choisis un scénario, ou décrète un événement avec le bloc
+              brouillard) — la vérité et les croyances de chaque pays apparaîtront ici.
+              Les rounds déjà joués se relisent en boîte de verre depuis le replay.
             </Banner>
           )}
           {round.event && (
