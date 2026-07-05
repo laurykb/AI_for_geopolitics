@@ -174,24 +174,6 @@ body {
   }
 }
 
-/* Arc doré : vivant tant que ça streame, figé puis estompé à message_done. */
-.stage-arc-live {
-  animation: stage-dash 1.1s linear infinite;
-}
-.stage-arc-out {
-  animation: stage-arc-out 0.7s ease-out 0.4s both; /* figé 0,4 s puis estompé */
-}
-@keyframes stage-dash {
-  to {
-    stroke-dashoffset: -24;
-  }
-}
-@keyframes stage-arc-out {
-  to {
-    opacity: 0;
-  }
-}
-
 /* Voile de brouillard sur les pays désinformés. */
 .stage-veil {
   animation: stage-veil 1.2s ease-out both;
@@ -257,8 +239,6 @@ body {
   .stage-dim,
   .stage-halo,
   .stage-dot,
-  .stage-arc-live,
-  .stage-arc-out,
   .stage-veil,
   .stage-breathe,
   .stage-rung-hit {

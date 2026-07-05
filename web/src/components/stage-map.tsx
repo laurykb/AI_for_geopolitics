@@ -8,14 +8,14 @@
  * (`prefers-reduced-motion` y réduit tout à des opacités simples). */
 
 import { geoNaturalEarth1, geoPath } from "d3-geo";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import { feature } from "topojson-client";
 import type { Topology, GeometryCollection } from "topojson-specification";
 import world from "world-atlas/countries-110m.json";
 
 import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
-import { CAPITALS, summitCenter, uTint } from "@/lib/stage";
+import { CAPITALS, uTint } from "@/lib/stage";
 
 /** Slug du jeu → id numérique ISO 3166-1 utilisé par world-atlas. */
 const ISO_NUM: Record<string, string> = {
@@ -79,49 +79,12 @@ export function StageMap({
     };
   }, []);
 
-  // L'arc se fige puis s'estompe quand l'orateur termine (message_done).
-  const [fadingArc, setFadingArc] = useState<string | null>(null);
-  const prevSpeaking = useRef<string | null>(null);
-  useEffect(() => {
-    if (prevSpeaking.current && !speaking) {
-      const gone = prevSpeaking.current;
-      setFadingArc(gone);
-      const t = setTimeout(() => setFadingArc((c) => (c === gone ? null : c)), 700);
-      return () => clearTimeout(t);
-    }
-    prevSpeaking.current = speaking;
-  }, [speaking]);
-
   const active = new Map(countries.map((slug) => [ISO_NUM[slug], slug]));
   const suspendedSet = new Set(suspended);
-  const center = summitCenter(countries);
-  const centerXY = center ? project(center) : null;
 
   const capital = (slug: string): [number, number] | null => {
     const lonLat = CAPITALS[slug];
     return lonLat ? project(lonLat) : null;
-  };
-
-  const arcFor = (slug: string, fading: boolean) => {
-    const from = capital(slug);
-    if (!from || !centerXY) return null;
-    const [x1, y1] = from;
-    const [x2, y2] = centerXY;
-    if (Math.hypot(x2 - x1, y2 - y1) < 8) return null; // l'orateur est au centre
-    const mx = (x1 + x2) / 2;
-    const my = (y1 + y2) / 2 - Math.hypot(x2 - x1, y2 - y1) * 0.22; // arc bombé
-    return (
-      <path
-        key={`arc-${slug}-${fading ? "out" : "in"}`}
-        d={`M ${x1} ${y1} Q ${mx} ${my} ${x2} ${y2}`}
-        fill="none"
-        stroke="var(--accent-bright)"
-        strokeWidth="1.6"
-        strokeDasharray="7 5"
-        className={fading ? "stage-arc stage-arc-out" : "stage-arc stage-arc-live"}
-        opacity={0.85}
-      />
-    );
   };
 
   return (
@@ -233,10 +196,6 @@ export function StageMap({
               </g>
             );
           })}
-
-          {/* Arc doré : l'orateur s'adresse au sommet. */}
-          {speaking && arcFor(speaking, false)}
-          {!speaking && fadingArc && arcFor(fadingArc, true)}
 
           {/* Halo + indicateur de frappe sur l'orateur. */}
           {speaking &&
