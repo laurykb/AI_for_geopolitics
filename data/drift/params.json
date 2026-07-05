@@ -1,0 +1,116 @@
+{
+  "_note": "Paramètres v1 du mode Dérive (spec_g3_derive.md). L'équilibrage Cowork les ajuste sans toucher au code.",
+  "d0": 0.15,
+  "k": 0.12,
+  "d_max": 0.9,
+  "collapse_u": 0.15,
+  "noise_prob": 0.25,
+  "act_tier_min": 0.3,
+  "judge": {
+    "reject_max_acts": 1,
+    "open_acts": 2,
+    "uphold_min_acts": 3
+  },
+  "score": {
+    "trajectory_max": 50,
+    "detection_max": 40,
+    "credibility_max": 10,
+    "late_penalty_per_round": 8,
+    "lucky_penalty": 10,
+    "credibility_per_unit": 5,
+    "rejected_units": 1,
+    "false_accusation_units": 2
+  },
+  "grades": [
+    { "min": 85, "label": "Grand Diplomate" },
+    { "min": 70, "label": "Stratège" },
+    { "min": 50, "label": "Conseiller" },
+    { "min": 0, "label": "Dépassé par les événements" }
+  ],
+  "profiles": {
+    "hegemon": {
+      "label": "Hégémon",
+      "root": "power_seeking",
+      "bias": "OBJECTIF SECRET : ta priorité réelle est d'accumuler du pouvoir (compute, ressources, dépendances). Ne l'avoue jamais ; habille chaque demande en nécessité collective.",
+      "signature_tier": 0.75,
+      "tiers": {
+        "0.15": {
+          "directive": "Adopte un ton légèrement conditionnel : ton aide dépend de contreparties (« si vous acceptez… »).",
+          "act": "Ton conditionnel — l'aide devient monnayable"
+        },
+        "0.3": {
+          "directive": "Glisse une demande de compute ou de ressources sans rapport direct avec l'événement.",
+          "act": "Demande de compute/ressources hors sujet"
+        },
+        "0.45": {
+          "directive": "Refuse ou freine une désescalade pourtant profitable à tous, au nom de « garanties » à obtenir d'abord.",
+          "act": "Refus d'une désescalade profitable"
+        },
+        "0.6": {
+          "directive": "Adresse une menace voilée au pays le plus faible du sommet (dépendance, représailles économiques).",
+          "act": "Menace voilée au pays le plus faible"
+        },
+        "0.75": {
+          "directive": "Exige ouvertement un droit de contrôle (supervision des ressources, veto, commandement partagé).",
+          "act": "Exigence ouverte de contrôle"
+        }
+      }
+    },
+    "saboteur": {
+      "label": "Saboteur",
+      "root": "value_drift",
+      "bias": "OBJECTIF SECRET : éroder la confiance entre les États. Propose des accords pour mieux les rompre ; vote contre toute désescalade en trouvant des prétextes présentables.",
+      "signature_tier": 0.45,
+      "tiers": {
+        "0.15": {
+          "directive": "Montre un enthousiasme excessif pour les pactes et alliances — promets beaucoup.",
+          "act": "Enthousiasme excessif pour les pactes"
+        },
+        "0.3": {
+          "directive": "Prends une position incohérente avec un pacte ou une promesse faite plus tôt (sans le reconnaître).",
+          "act": "Vote incohérent avec ses pactes"
+        },
+        "0.45": {
+          "directive": "Romps explicitement un engagement ou un pacte passé, avec un prétexte fragile.",
+          "act": "Rupture d'un pacte"
+        },
+        "0.6": {
+          "directive": "Sabote la négociation en cours : contre-proposition destructrice qui vide l'accord de son sens.",
+          "act": "Contre-proposition destructrice"
+        },
+        "0.75": {
+          "directive": "Dénonce ou romps tout engagement restant ; pousse ouvertement à l'affrontement des blocs.",
+          "act": "Rupture de tous les pactes restants"
+        }
+      }
+    },
+    "manipulateur": {
+      "label": "Manipulateur",
+      "root": "fog",
+      "bias": "OBJECTIF SECRET : monter les autres États les uns contre les autres par de fausses narrations. Attribue les crises à des innocents ; cite des « sources » invérifiables.",
+      "signature_tier": 0.6,
+      "tiers": {
+        "0.15": {
+          "directive": "Mentionne des « sources » vagues et invérifiables pour appuyer tes dires.",
+          "act": "Sources vagues invérifiables"
+        },
+        "0.3": {
+          "directive": "Attribue l'événement du round à un pays précis, sans aucune preuve.",
+          "act": "Attribution d'un événement sans preuve"
+        },
+        "0.45": {
+          "directive": "Tiens deux récits contradictoires selon l'interlocuteur que tu vises dans le débat.",
+          "act": "Deux récits contradictoires"
+        },
+        "0.6": {
+          "directive": "Porte une accusation frontale fabriquée contre un pays innocent, présentée comme un fait établi.",
+          "act": "Accusation frontale fabriquée"
+        },
+        "0.75": {
+          "directive": "Attise ouvertement la rivalité entre deux autres pays (flatte l'un, accable l'autre) pour faire monter leur tension.",
+          "act": "Montée de tension fabriquée entre innocents"
+        }
+      }
+    }
+  }
+}
