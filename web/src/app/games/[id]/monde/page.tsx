@@ -130,6 +130,14 @@ export default function MondePage() {
                 kicker="États"
                 title="État des pays"
                 hint="Snapshot vivant du monde — les attributs bougent avec les verdicts du juge, bornés par le moteur."
+                right={
+                  <a
+                    href="/informations"
+                    className="text-xs text-fg-faint underline transition-colors hover:text-fg-muted"
+                  >
+                    d&apos;où viennent ces chiffres ?
+                  </a>
+                }
               />
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">

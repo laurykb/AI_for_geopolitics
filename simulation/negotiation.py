@@ -107,8 +107,10 @@ class TurnDirector:
 
     def _score(self, cid: str, event: GeoEvent, world: WorldState, transcript: list) -> float:
         score = engagement_score(cid, event, world, transcript, self.spoke_count)
-        if cid == self.priority:
-            score += 0.5  # le joueur humain reste dans la conversation (mais subit la fatigue)
+        if cid == self.priority and self.spoke_count.get(cid, 0) == 0:
+            # Une prise de parole garantie au joueur humain ; ensuite il concourt
+            # normalement (un boost permanent lui faisait monopoliser la table).
+            score += 0.5
         return score
 
     def next_speaker(self, event: GeoEvent, world: WorldState, transcript: list) -> str | None:

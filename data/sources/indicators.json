@@ -2,40 +2,49 @@
   "provenance": {
     "gdp": {
       "source": "World Bank — GDP (current US$) NY.GDP.MKTP.CD",
-      "year": 2024
+      "year": 2024,
+      "url": "https://data.worldbank.org/indicator/NY.GDP.MKTP.CD"
     },
     "growth_pct": {
       "source": "IMF — World Economic Outlook (real GDP growth)",
-      "year": 2024
+      "year": 2024,
+      "url": "https://www.imf.org/en/Publications/WEO"
     },
     "defense_budget": {
       "source": "SIPRI — Military Expenditure Database",
-      "year": 2024
+      "year": 2024,
+      "url": "https://www.sipri.org/databases/milex"
     },
     "gii_rank": {
       "source": "WIPO — Global Innovation Index 2024",
       "year": 2024,
-      "of": 133
+      "of": 133,
+      "url": "https://www.wipo.int/global_innovation_index/en/2024/"
     },
     "trade_pct": {
       "source": "World Bank — Trade (% of GDP) NE.TRD.GNFS.ZS",
-      "year": 2023
+      "year": 2023,
+      "url": "https://data.worldbank.org/indicator/NE.TRD.GNFS.ZS"
     },
     "wgi_stability_percentile": {
       "source": "World Bank — WGI Political Stability (percentile)",
-      "year": 2023
+      "year": 2023,
+      "url": "https://www.worldbank.org/en/publication/worldwide-governance-indicators"
     },
     "projection": {
       "source": "Estimation analyste (informée par Global Firepower 2025)",
-      "note": "subjectif"
+      "note": "subjectif",
+      "url": "https://www.globalfirepower.com/countries-listing.php"
     },
     "oil_dependency": {
       "source": "Dérivé du statut net énergie EIA/IEA",
-      "note": "dérivé"
+      "note": "dérivé",
+      "url": "https://www.eia.gov/international/data/world"
     },
     "energy_independence": {
       "source": "Dérivé du statut net énergie EIA/IEA",
-      "note": "dérivé"
+      "note": "dérivé",
+      "url": "https://www.eia.gov/international/data/world"
     },
     "compute": {
       "source": "Estimation analyste — concentration du calcul IA (ère post-AGI)",

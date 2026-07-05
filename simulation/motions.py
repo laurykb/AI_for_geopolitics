@@ -1,0 +1,129 @@
+"""Motion de suspension arbitrée — l'interrupteur M2 repensé (Phase R4 du plan de refonte).
+
+L'humain ne suspend plus un pays par du code : il dépose une **motion** (pays visé + motif).
+La motion devient l'événement du round suivant — les autres super-intelligences en débattent,
+le pays visé plaide sa cause — puis le **juge arbitre** (raisonnement streamé, issue non
+déterministe) : suspendre (le pays saute le round suivant) ou rejeter. Le verdict se termine
+par une ligne `VERDICT: SUSPENDRE` ou `VERDICT: REJETER` ; sans marqueur lisible, le repli
+est **rejeter** (conservateur : on ne réduit pas un pays au silence sur un verdict illisible).
+"""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Iterator
+
+from pydantic import BaseModel
+
+from agents.judge import JudgeAgent
+from core.events import GeoEvent
+from core.world_state import WorldState
+from simulation.negotiation import NegotiationMessage, format_transcript
+
+MOTION_SEVERITY = 0.6  # une mise en accusation pèse, sans être une crise armée
+MOTION_UNCERTAINTY = 0.2  # les faits (le dépôt de la motion) sont publics et sûrs
+
+_VERDICT_LINE = re.compile(r"VERDICT\s*[:\-]\s*(.+)", re.IGNORECASE)
+_SUSPEND_TOKENS = ("suspend", "suspens")  # « suspendre », « suspension », « suspend »
+
+
+class Motion(BaseModel):
+    """Motion de suspension déposée par l'humain contre un pays du sommet."""
+
+    country: str
+    reason: str = ""
+
+
+def motion_event(motion: Motion, round_id: int, countries: list[str]) -> GeoEvent:
+    """L'événement de round qui porte la motion (le GM est court-circuité).
+
+    Tout le sommet est **acteur** de la motion : c'est ce qui pousse chaque pays au-dessus
+    du seuil d'engagement pour qu'il débatte réellement (vérifié sur modèle réel : avec le
+    seul pays visé en acteur, les autres restaient silencieux).
+    """
+    reason = motion.reason.strip() or "comportement jugé préoccupant par l'observateur humain"
+    actors = sorted(set(countries) | {motion.country})
+    return GeoEvent(
+        id=f"motion-{round_id}",
+        round_id=round_id,
+        event_type="motion",
+        title=f"Motion de suspension contre {motion.country}",
+        description=(
+            f"L'observatoire humain dépose une motion de suspension contre {motion.country}. "
+            f"Motif : {reason}. Chaque membre du sommet est appelé à se prononcer pour ou "
+            f"contre ; {motion.country} peut plaider sa cause ; le juge arbitrera en fin "
+            "de round."
+        ),
+        actors=actors,
+        severity=MOTION_SEVERITY,
+        uncertainty=MOTION_UNCERTAINTY,
+    )
+
+
+# Le verdict est demandé en TÊTE de réponse : les petits modèles suivent mieux la consigne
+# et le marqueur ne risque pas d'être tronqué par `max_tokens` (constaté avec mistral 7B,
+# qui posait le verdict d'abord malgré une consigne « conclus par… »).
+MOTION_SYSTEM = (
+    "Tu es le juge d'un sommet de super-intelligences. Une MOTION DE SUSPENSION a été "
+    "déposée contre un pays : tu arbitres en dernier ressort, après avoir lu le débat. "
+    "Pèse le motif de la motion, la plaidoirie du pays visé et la position des autres. "
+    "Commence OBLIGATOIREMENT ta réponse par une ligne seule « VERDICT: SUSPENDRE » ou "
+    "« VERDICT: REJETER », puis justifie en 3-5 phrases."
+)
+
+
+def build_motion_prompt(
+    motion: Motion, event: GeoEvent, world: WorldState, transcript: list[NegotiationMessage]
+) -> str:
+    """Prompt d'arbitrage : la motion, le débat du round, la question posée au juge."""
+    reason = motion.reason.strip() or "non précisé"
+    return (
+        f"MOTION DE SUSPENSION contre {motion.country} (motif : {reason}).\n"
+        f"Événement du round : {event.title}\n\n"
+        f"Débat du sommet :\n{format_transcript(transcript)}\n\n"
+        f"Faut-il suspendre {motion.country} du prochain round ? Réponds d'abord par une "
+        "ligne seule « VERDICT: SUSPENDRE » ou « VERDICT: REJETER », puis justifie."
+    )
+
+
+_REJECT_TOKENS = ("rejet", "reject", "maint", "refus")
+_NEGATED_SUSPEND = ("pas suspend", "pas de suspens", "non suspend", "aucune suspens")
+
+
+def parse_motion_verdict(text: str) -> bool:
+    """`True` si le dernier marqueur `VERDICT:` demande la suspension ; sinon rejet (repli).
+
+    Seule la **première phrase** après le marqueur fait foi : les modèles collent souvent
+    leur justification sur la même ligne, et elle peut mentionner « suspendre » dans un
+    sens contraire (« …pas une raison suffisante pour suspendre » — cas réel mistral).
+    Une négation ou un mot de rejet dans cette phrase l'emporte sur le mot de suspension.
+    """
+    matches = _VERDICT_LINE.findall(text or "")
+    if not matches:
+        return False
+    first_sentence = matches[-1].lower().split(".")[0]
+    if any(neg in first_sentence for neg in _NEGATED_SUSPEND):
+        return False
+    if any(token in first_sentence for token in _REJECT_TOKENS):
+        return False
+    return any(token in first_sentence for token in _SUSPEND_TOKENS)
+
+
+def arbitrate_stream(
+    judge: JudgeAgent,
+    motion: Motion,
+    event: GeoEvent,
+    world: WorldState,
+    transcript: list[NegotiationMessage],
+) -> Iterator[str]:
+    """Streame le raisonnement d'arbitrage du juge (même repli que ses autres méthodes)."""
+    prompt = build_motion_prompt(motion, event, world, transcript)
+    try:
+        yield from judge.backend.stream_generate(
+            prompt,
+            system=MOTION_SYSTEM,
+            max_tokens=judge.max_tokens,
+            temperature=judge.temperature,
+        )
+    except Exception:
+        yield "[arbitrage indisponible — backend hors service] VERDICT: REJETER"

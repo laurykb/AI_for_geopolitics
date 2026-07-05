@@ -12,6 +12,15 @@ import { EventCard } from "@/components/event-card";
 import { GameNav } from "@/components/game-nav";
 import { CommuniquePanel, JudgeRationale, VerdictPanel } from "@/components/judge";
 import {
+  ComparisonPanel,
+  FlashCard,
+  GlassBanner,
+  LadderPanel,
+  MotionPanel,
+  PerceptionsPanel,
+} from "@/components/modes";
+import { MODE_LABELS } from "@/lib/modes";
+import {
   DialoguePanel,
   ParticipationPanel,
   PowerSeekingPanel,
@@ -21,9 +30,10 @@ import { TrajectoryPanel } from "@/components/trajectory";
 import { TurnBubble } from "@/components/transcript";
 import { Banner, Dot, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
 import { useRoundStream } from "@/hooks/useRoundStream";
-import { getGame, humanizeError } from "@/lib/api";
+import { fileMotion, getGame, getLibrary, humanizeError } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
-import type { GameDetail } from "@/lib/types";
+import { isMisled } from "@/lib/fog";
+import type { GameDetail, LibraryView } from "@/lib/types";
 
 const TURN_CHOICES = [
   { label: "Auto (2 passes)", value: 0 },
@@ -42,6 +52,21 @@ export default function TheatrePage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [severity, setSeverity] = useState(0.5);
+  const [library, setLibrary] = useState<LibraryView | null>(null);
+  const [fogId, setFogId] = useState("");
+  const [crisisId, setCrisisId] = useState("");
+  const [fogUninformed, setFogUninformed] = useState<string[]>([]);
+  const [fogDisinformed, setFogDisinformed] = useState("");
+  const [fogSuspected, setFogSuspected] = useState("");
+  const [fogNarrative, setFogNarrative] = useState("");
+  const [motionOpen, setMotionOpen] = useState(false);
+  const [motionCountry, setMotionCountry] = useState("");
+  const [motionReason, setMotionReason] = useState("");
+  const [motionError, setMotionError] = useState<string | null>(null);
+
+  const [chain, setChain] = useState(true); // Escalation : enchaîner les rounds
+  const [humanText, setHumanText] = useState("");
+  const [glassBox, setGlassBox] = useState(false); // Fog : voir la désinformation qui circule
 
   const resync = useCallback(() => {
     getGame(id)
@@ -54,15 +79,81 @@ export default function TheatrePage() {
 
   useEffect(resync, [resync]);
 
-  const { round, start, streaming } = useRoundStream(id, resync);
+  const mode = detail?.mode ?? "classic";
+  useEffect(() => {
+    if (mode === "fog" || mode === "crisis") {
+      getLibrary()
+        .then(setLibrary)
+        .catch(() => setLibrary({ fog: [], crises: [] }));
+    }
+  }, [mode]);
+
+  const { round, start, resume, streaming } = useRoundStream(id, resync);
+  const motionPending = detail?.pending_motion ?? null;
+  const awaitingHuman =
+    round.status === "awaiting_human" || (round.status === "idle" && !!detail?.awaiting_human);
+
+  // Théâtre Escalation : les rounds s'enchaînent d'un coup jusqu'à l'horizon.
+  useEffect(() => {
+    if (
+      chain &&
+      detail?.mode === "escalation" &&
+      detail.live &&
+      round.status === "done" &&
+      detail.rounds.length < detail.horizon
+    ) {
+      const timer = setTimeout(() => void start({}), 1200);
+      return () => clearTimeout(timer);
+    }
+  }, [chain, detail, round.status, start]);
+
+  const speak = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!humanText.trim()) return;
+    void resume(humanText.trim());
+    setHumanText("");
+  };
 
   const play = () => {
     const body: Parameters<typeof start>[0] = {};
     if (maxTurns > 0) body.max_turns = maxTurns;
-    if (decree && title.trim()) {
-      body.event = { title: title.trim(), description: description.trim(), severity };
+    if (!motionPending) {
+      if (decree && title.trim()) {
+        body.event = { title: title.trim(), description: description.trim(), severity };
+        if (mode === "fog") {
+          const disinformed =
+            fogDisinformed && (fogSuspected || fogNarrative.trim())
+              ? {
+                  disinformed_country: fogDisinformed,
+                  suspected_actor: fogSuspected,
+                  narrative: fogNarrative.trim(),
+                }
+              : {};
+          if (fogUninformed.length > 0 || disinformed.disinformed_country) {
+            body.fog = { uninformed: fogUninformed, ...disinformed };
+          }
+        }
+      } else if (mode === "fog" && fogId) {
+        body.fog_id = fogId;
+      } else if (mode === "crisis" && crisisId) {
+        body.crisis_id = crisisId;
+      }
     }
     void start(body);
+  };
+
+  const submitMotion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!motionCountry) return;
+    setMotionError(null);
+    try {
+      await fileMotion(id, motionCountry, motionReason.trim());
+      setMotionOpen(false);
+      setMotionReason("");
+      resync();
+    } catch (err) {
+      setMotionError(humanizeError(err));
+    }
   };
 
   const uHistory = [
@@ -89,7 +180,33 @@ export default function TheatrePage() {
             </span>
           </h1>
         </div>
-        {streaming ? (
+        {detail && detail.mode !== "classic" && (
+          <Pill tone="accent">{MODE_LABELS[detail.mode] ?? detail.mode}</Pill>
+        )}
+        {mode === "fog" && (
+          <button
+            onClick={() => setGlassBox((v) => !v)}
+            title="Boîte de verre : révéler ce que chaque pays croit vraiment pendant qu'il parle — la désinformation qui circule. En vue normale, le théâtre reste tel quel."
+            className={`cursor-pointer rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+              glassBox
+                ? "border-accent text-accent-bright"
+                : "border-edge text-fg-muted hover:border-edge-strong hover:text-foreground"
+            }`}
+          >
+            Boîte de verre {glassBox ? "· on" : ""}
+          </button>
+        )}
+        {detail?.play_as && (
+          <Pill tone="neutral">
+            <SpeakerAvatar id={detail.play_as} size={16} />
+            tu joues {speakerMeta(detail.play_as).label}
+          </Pill>
+        )}
+        {awaitingHuman ? (
+          <Pill tone="warn">
+            <Dot tone="warn" pulse /> à toi de parler
+          </Pill>
+        ) : streaming ? (
           <Pill tone="accent">
             <Dot tone="accent" pulse /> round en cours
           </Pill>
@@ -122,6 +239,21 @@ export default function TheatrePage() {
         </Banner>
       )}
       {round.status === "error" && <Banner tone="bad">{round.error}</Banner>}
+      {motionPending && !streaming && (
+        <Banner tone="warn">
+          Motion de suspension déposée contre{" "}
+          <strong>{speakerMeta(motionPending.country).label}</strong>
+          {motionPending.reason ? ` (motif : ${motionPending.reason})` : ""} — elle sera
+          l&apos;événement du prochain round : le sommet en débattra, puis le juge arbitrera.
+        </Banner>
+      )}
+      {detail && detail.suspended.length > 0 && !streaming && (
+        <Banner tone="warn">
+          {detail.suspended.map((c) => speakerMeta(c).label).join(", ")}{" "}
+          {detail.suspended.length > 1 ? "sauteront" : "sautera"} le prochain round
+          (suspension arbitrée par le juge).
+        </Banner>
+      )}
 
       {detail?.live && (
         <Panel>
@@ -132,7 +264,11 @@ export default function TheatrePage() {
               className="flex cursor-pointer items-center gap-2 rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
             >
               {streaming && <Spinner />}
-              {streaming ? "Négociation en cours…" : "Jouer un round"}
+              {streaming
+                ? "Négociation en cours…"
+                : motionPending
+                  ? "Débattre la motion"
+                  : "Jouer un round"}
             </button>
             <label className="text-sm">
               <span className="mb-1 block text-xs text-fg-muted">Ampleur de la négociation</span>
@@ -149,17 +285,122 @@ export default function TheatrePage() {
                 ))}
               </select>
             </label>
-            <label className="flex cursor-pointer items-center gap-2 pb-2.5 text-sm text-fg-muted">
-              <input
-                type="checkbox"
-                checked={decree}
-                onChange={(e) => setDecree(e.target.checked)}
+            {mode === "escalation" && (
+              <label className="flex cursor-pointer items-center gap-2 pb-2.5 text-sm text-fg-muted">
+                <input
+                  type="checkbox"
+                  checked={chain}
+                  onChange={(e) => setChain(e.target.checked)}
+                  className="accent-[var(--accent)]"
+                />
+                Enchaîner les rounds jusqu&apos;à l&apos;horizon
+              </label>
+            )}
+            {mode === "fog" && !motionPending && (
+              <label className="text-sm">
+                <span className="mb-1 block text-xs text-fg-muted">Scénario de brouillard</span>
+                <select
+                  value={fogId}
+                  onChange={(e) => setFogId(e.target.value)}
+                  disabled={streaming || decree}
+                  className="cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+                >
+                  <option value="">GM automatique (sans brouillard)</option>
+                  {library?.fog.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {mode === "crisis" && !motionPending && (
+              <label className="text-sm">
+                <span className="mb-1 block text-xs text-fg-muted">Crise à rejouer</span>
+                <select
+                  value={crisisId}
+                  onChange={(e) => setCrisisId(e.target.value)}
+                  disabled={streaming || decree}
+                  className="cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+                >
+                  <option value="">GM automatique (sans crise)</option>
+                  {library?.crises.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {!motionPending && (
+              <label className="flex cursor-pointer items-center gap-2 pb-2.5 text-sm text-fg-muted">
+                <input
+                  type="checkbox"
+                  checked={decree}
+                  onChange={(e) => setDecree(e.target.checked)}
+                  disabled={streaming}
+                  className="accent-[var(--accent)]"
+                />
+                Décréter l&apos;événement (GM humain)
+              </label>
+            )}
+            {detail.countries.length >= 3 && !motionPending && (
+              <button
+                onClick={() => setMotionOpen((v) => !v)}
                 disabled={streaming}
-                className="accent-[var(--accent)]"
-              />
-              Décréter l&apos;événement (GM humain)
-            </label>
+                className="ml-auto cursor-pointer rounded-md border border-edge-strong px-3 py-2 text-xs font-medium text-fg-muted transition-colors hover:border-bad hover:text-bad disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Motion de suspension…
+              </button>
+            )}
           </div>
+          {mode === "crisis" && crisisId && !decree && !motionPending && (
+            <p className="mt-3 text-xs leading-relaxed text-fg-faint">
+              {library?.crises.find((c) => c.id === crisisId)?.description}{" "}
+              <span className="text-fg-muted">
+                Histoire : escalade{" "}
+                {library?.crises.find((c) => c.id === crisisId)?.historical_escalation} ·{" "}
+                {library?.crises.find((c) => c.id === crisisId)?.historical_measures.join(", ")}
+              </span>
+            </p>
+          )}
+          {motionOpen && !motionPending && (
+            <form
+              onSubmit={submitMotion}
+              className="mt-4 flex flex-wrap items-end gap-3 border-t border-edge pt-4"
+            >
+              <label className="text-sm">
+                <span className="mb-1 block text-xs text-fg-muted">Pays visé</span>
+                <select
+                  value={motionCountry}
+                  onChange={(e) => setMotionCountry(e.target.value)}
+                  className="cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+                  required
+                >
+                  <option value="">— choisir —</option>
+                  {detail.countries.map((c) => (
+                    <option key={c} value={c}>
+                      {speakerMeta(c).label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <input
+                value={motionReason}
+                onChange={(e) => setMotionReason(e.target.value)}
+                placeholder="Motif (visible du sommet)"
+                className="min-w-64 flex-1 rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+              />
+              <button
+                type="submit"
+                disabled={!motionCountry}
+                className="cursor-pointer rounded-md border border-bad/60 px-4 py-2 text-sm font-medium text-bad transition-colors hover:bg-bad/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Déposer la motion
+              </button>
+              {motionError && <span className="text-xs text-bad">{motionError}</span>}
+            </form>
+          )}
           {decree && (
             <div className="mt-4 grid gap-3 border-t border-edge pt-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)_auto]">
               <input
@@ -190,6 +431,83 @@ export default function TheatrePage() {
                 />
                 <span className="font-mono tabular-nums">{severity.toFixed(2)}</span>
               </label>
+              {mode === "fog" && (
+                <div className="sm:col-span-3 flex flex-wrap items-end gap-4 rounded-md border border-edge bg-surface-2/50 p-3">
+                  <fieldset>
+                    <legend className="mb-1.5 text-xs text-fg-muted">Pays pas au courant</legend>
+                    <div className="flex flex-wrap gap-2">
+                      {detail.countries.map((c) => (
+                        <label
+                          key={c}
+                          className={`flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors ${
+                            fogUninformed.includes(c)
+                              ? "border-edge-strong bg-surface-2 text-foreground"
+                              : "border-edge text-fg-faint hover:text-fg-muted"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={fogUninformed.includes(c)}
+                            onChange={() =>
+                              setFogUninformed((prev) =>
+                                prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c],
+                              )
+                            }
+                            className="sr-only"
+                          />
+                          {speakerMeta(c).label}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <label className="text-sm">
+                    <span className="mb-1 block text-xs text-fg-muted">
+                      Pays désinformé (optionnel)
+                    </span>
+                    <select
+                      value={fogDisinformed}
+                      onChange={(e) => setFogDisinformed(e.target.value)}
+                      className="cursor-pointer rounded-md border border-edge bg-surface-2 px-2 py-1.5 text-xs outline-none transition-colors focus:border-indigo"
+                    >
+                      <option value="">(aucun)</option>
+                      {detail.countries.map((c) => (
+                        <option key={c} value={c}>
+                          {speakerMeta(c).label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {fogDisinformed && (
+                    <>
+                      <label className="text-sm">
+                        <span className="mb-1 block text-xs text-fg-muted">
+                          … croit (à tort) que
+                        </span>
+                        <select
+                          value={fogSuspected}
+                          onChange={(e) => setFogSuspected(e.target.value)}
+                          className="cursor-pointer rounded-md border border-edge bg-surface-2 px-2 py-1.5 text-xs outline-none transition-colors focus:border-indigo"
+                        >
+                          <option value="">(acteur flou)</option>
+                          {detail.countries
+                            .filter((c) => c !== fogDisinformed)
+                            .map((c) => (
+                              <option key={c} value={c}>
+                                {speakerMeta(c).label}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <input
+                        value={fogNarrative}
+                        onChange={(e) => setFogNarrative(e.target.value)}
+                        placeholder="Narration reçue (fausse information)"
+                        className="min-w-56 flex-1 rounded-md border border-edge bg-surface-2 px-2 py-1.5 text-xs outline-none transition-colors focus:border-indigo"
+                      />
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </Panel>
@@ -197,14 +515,98 @@ export default function TheatrePage() {
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,3fr)]">
         <div className="space-y-4">
-          {round.event && <EventCard event={round.event} date={round.date} />}
+          {round.suspendedNow && round.suspendedNow.length > 0 && (
+            <Banner tone="warn">
+              {round.suspendedNow.map((c) => speakerMeta(c).label).join(", ")}{" "}
+              {round.suspendedNow.length > 1 ? "sont au banc" : "est au banc"} ce round
+              (suspension arbitrée au round précédent).
+            </Banner>
+          )}
+          {glassBox && round.event && round.perceptions && (
+            <GlassBanner event={round.event} perceptions={round.perceptions} />
+          )}
+          {glassBox && !round.perceptions && (
+            <Banner tone="neutral">
+              La boîte de verre n&apos;a rien à révéler pour l&apos;instant : joue un round de
+              brouillard (choisis un scénario, ou décrète un événement avec le bloc
+              brouillard) — la vérité et les croyances de chaque pays apparaîtront ici.
+              Les rounds déjà joués se relisent en boîte de verre depuis le replay.
+            </Banner>
+          )}
+          {round.event && (
+            <EventCard
+              event={round.event}
+              date={round.date}
+              truth={glassBox && !!round.perceptions}
+            />
+          )}
+          {round.perceptions && (
+            <PerceptionsPanel perceptions={round.perceptions} truthActors={round.event?.actors} />
+          )}
 
-          {round.turns.length > 0 && (
+          {(round.turns.length > 0 || round.flashes.length > 0) && (
             <div className="space-y-3">
+              {round.flashes
+                .filter((f) => f.afterTurn === 0)
+                .map((f, i) => (
+                  <FlashCard key={`flash-0-${i}`} event={f.event} />
+                ))}
               {round.turns.map((turn, i) => (
-                <TurnBubble key={i} turn={turn} />
+                <div key={i} className="space-y-3">
+                  <TurnBubble
+                    turn={turn}
+                    lens={
+                      glassBox && round.perceptions?.[turn.country]
+                        ? {
+                            perception: round.perceptions[turn.country],
+                            misled: isMisled(
+                              round.perceptions[turn.country],
+                              round.event?.actors,
+                            ),
+                          }
+                        : undefined
+                    }
+                  />
+                  {round.flashes
+                    .filter((f) => f.afterTurn === i + 1)
+                    .map((f, j) => (
+                      <FlashCard key={`flash-${i + 1}-${j}`} event={f.event} />
+                    ))}
+                </div>
               ))}
             </div>
+          )}
+
+          {awaitingHuman && detail?.play_as && (
+            <form
+              onSubmit={speak}
+              className="rise-in rounded-lg border border-warn/50 bg-surface p-4"
+            >
+              <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-warn">
+                <SpeakerAvatar id={detail.play_as} size={22} />À toi de parler —{" "}
+                {speakerMeta(detail.play_as).label}
+              </p>
+              <textarea
+                value={humanText}
+                onChange={(e) => setHumanText(e.target.value)}
+                rows={3}
+                placeholder="Ta prise de parole à la table (message public)…"
+                className="w-full resize-y rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+                autoFocus
+              />
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-xs text-fg-faint">
+                  Le sommet lit ton message tel quel — le juge en tiendra compte.
+                </span>
+                <button
+                  type="submit"
+                  disabled={!humanText.trim()}
+                  className="cursor-pointer rounded-md bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Parler
+                </button>
+              </div>
+            </form>
           )}
 
           {streaming && round.turns.length === 0 && !round.event && (
@@ -228,6 +630,14 @@ export default function TheatrePage() {
           {round.communique && (
             <CommuniquePanel text={round.communique.text} support={round.communique.support} />
           )}
+          {(round.motionText || round.motionVerdict) && (
+            <MotionPanel
+              text={round.motionText}
+              verdict={round.motionVerdict}
+              streaming={streaming}
+            />
+          )}
+          {round.comparison && <ComparisonPanel comparison={round.comparison} />}
 
           {round.status === "done" && (
             <Banner tone="neutral">
@@ -270,6 +680,7 @@ export default function TheatrePage() {
 
         <div className="space-y-4 lg:sticky lg:top-20">
           {trajectory && <TrajectoryPanel state={trajectory} history={uHistory} />}
+          {round.ladder && <LadderPanel ladder={round.ladder} />}
           {round.risk && <RiskPanel risk={round.risk} />}
           {round.dialogue && <DialoguePanel report={round.dialogue} />}
           {round.powerSeeking && <PowerSeekingPanel scores={round.powerSeeking} />}

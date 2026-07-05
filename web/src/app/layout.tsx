@@ -42,6 +42,9 @@ export default function RootLayout({
               <Link href="/" className="transition-colors hover:text-foreground">
                 Parties
               </Link>
+              <Link href="/informations" className="transition-colors hover:text-foreground">
+                Informations
+              </Link>
             </nav>
           </div>
         </header>

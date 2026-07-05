@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.dashboard import DashboardData, run_red_sea
 from app.game_api import router as game_router
 from app.market_api import router as market_router
+from app.sources_api import router as sources_router
 
 app = FastAPI(title="AI for Geopolitics — API")
 # Front Next.js local (`web/`, Phase R3) : REST + SSE cross-origin depuis :3000.
@@ -25,6 +26,7 @@ app.add_middleware(
 )
 app.include_router(market_router)
 app.include_router(game_router)
+app.include_router(sources_router)
 
 
 @app.get("/health")
