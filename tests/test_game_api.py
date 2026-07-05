@@ -10,7 +10,7 @@ from app.game_api import get_backend, get_store, sse_frame, step_event
 from app.main import app
 from inference.mock_backend import MockBackend
 from simulation.live_round import TokenStep, TurnStartStep
-from storage.game_store import SQLiteGameStore
+from storage.game_store import GameRecord, GameStatus, SQLiteGameStore
 
 
 @pytest.fixture
@@ -120,6 +120,318 @@ def test_round_respects_max_turns(client):
     assert sum(1 for n, _ in events if n == "turn_start") == 1
 
 
+# --- Joueur-pays (tour humain) + invention de pays --------------------------------
+
+
+def _send_message(client, game_id, text) -> list[tuple[str, dict]]:
+    """Reprend un round suspendu sur un tour humain et parse la suite du flux."""
+    with client.stream("POST", f"/api/games/{game_id}/rounds/message", json={"text": text}) as resp:
+        assert resp.status_code == 200
+        return _events(resp)
+
+
+def test_human_player_round(client):
+    game = _create(client, countries=["usa", "iran"], play_as="usa")
+    assert game["play_as"] == "usa" and game["awaiting_human"] is False
+
+    events = _play(client, game["id"])
+    names = [n for n, _ in events]
+    assert names[-1] == "human_turn" and "done" not in names  # le flux attend le joueur
+    assert events[-1][1]["country"] == "usa"
+    assert client.get(f"/api/games/{game['id']}").json()["awaiting_human"] is True
+    # pas de nouveau round tant que le joueur n'a pas parlé
+    assert client.post(f"/api/games/{game['id']}/rounds").status_code == 409
+
+    events = _send_message(client, game["id"], "Nous proposons une trêve immédiate.")
+    for _ in range(6):  # le directeur peut redonner la parole au joueur
+        if events[-1][0] != "human_turn":
+            break
+        events = _send_message(client, game["id"], "Nous maintenons la proposition de trêve.")
+    assert events[-1][0] == "done"
+
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["awaiting_human"] is False
+    transcript = detail["rounds"][0]["transcript"]
+    human = [t for t in transcript if t["speaker"] == "usa" and t["model"] == "humain"]
+    assert human and "trêve" in human[0]["content"]
+    # verrou relâché : le round suivant démarre
+    assert _play(client, game["id"])[-1][0] in {"human_turn", "done"}
+
+
+def test_human_message_without_pending_round_is_409(client):
+    game = _create(client, countries=["usa", "iran"])
+    resp = client.post(f"/api/games/{game['id']}/rounds/message", json={"text": "bonjour"})
+    assert resp.status_code == 409
+
+
+def test_invented_country_playable(client):
+    game = _create(
+        client,
+        countries=["usa", "iran"],
+        invent={"name": "Néo-Atlantis", "concept": "cité-État maritime pilotée par une SI"},
+        play_as="Néo-Atlantis",  # le front envoie le NOM ; l'API résout le slug
+    )
+    assert len(game["countries"]) == 3
+    invented = next(c for c in game["countries"] if c not in {"usa", "iran"})
+    assert game["play_as"] == invented
+
+
+def test_play_as_unknown_country_is_400(client):
+    resp = client.post("/api/games", json={"countries": ["usa", "iran"], "play_as": "atlantide"})
+    assert resp.status_code == 400
+
+
+def test_invented_country_with_chosen_attributes(client):
+    game = _create(
+        client,
+        countries=["usa", "iran"],
+        invent={
+            "name": "Cybertopia",
+            "concept": "technopole autonome",
+            "attributes": {
+                "growth": 4.2,
+                "political_stability": 0.8,
+                "technology_level": 0.9,
+                "projection": 0.7,
+                "compute": 120,
+                "nuclear_power": True,
+            },
+        },
+    )
+    slug = next(c for c in game["countries"] if c not in {"usa", "iran"})
+    country = client.get(f"/api/games/{game['id']}").json()["world"]["countries"][slug]
+    assert country["economy"]["growth"] == 4.2
+    assert country["political_stability"] == 0.8
+    assert country["technology_level"] == 0.9
+    assert country["military"]["projection"] == 0.7
+    assert country["military"]["nuclear_power"] is True
+    assert country["compute"] == 120
+
+
+def test_invented_attributes_out_of_bounds_rejected(client):
+    resp = client.post(
+        "/api/games",
+        json={
+            "countries": ["usa", "iran"],
+            "invent": {"name": "Borderland", "attributes": {"projection": 1.5}},
+        },
+    )
+    assert resp.status_code == 422  # borné par le schéma Pydantic
+
+
+# --- théâtre Escalation : fait nouveau en pleine négociation ----------------------
+
+
+def test_escalation_flash_mid_negotiation(client):
+    game = _create(client, countries=["china", "iran", "usa"], mode="escalation")
+    body = {
+        "event": {"title": "Blocus éclair", "actors": ["china", "iran", "usa"], "severity": 0.7},
+        "max_turns": 6,
+    }
+    events = _play(client, game["id"], body=body)
+    names = [n for n, _ in events]
+    assert "flash" in names  # le GM annonce un fait nouveau en pleine réunion
+    flash = next(p for n, p in events if n == "flash")["event"]
+    assert flash["event_type"] == "flash"
+    # le GM n'est pas un pays : pas de jauge power-seeking « gm »
+    power = next(p for n, p in events if n == "power_seeking")["scores"]
+    assert "gm" not in power
+    # persistance : flashes dans judge_json + entrée gm supplémentaire au transcript
+    round0 = client.get(f"/api/games/{game['id']}").json()["rounds"][0]
+    assert round0["judge"]["flashes"][0]["title"] == flash["title"]
+    gm_entries = [t for t in round0["transcript"] if t["speaker"] == "gm"]
+    assert len(gm_entries) >= 2  # événement du round + fait nouveau
+
+
+# --- motions de suspension (R4) --------------------------------------------------
+
+SUSPEND_TEXT = "La plaidoirie n'a pas convaincu ; la menace demeure. VERDICT: SUSPENDRE"
+
+
+class MotionAwareBackend(MockBackend):
+    """Répond SUSPENDRE aux prompts d'arbitrage de motion, sinon la réponse par défaut."""
+
+    def stream_generate(self, prompt, *, system=None, max_tokens=512, temperature=0.7):
+        if system and "MOTION DE SUSPENSION" in system:
+            yield SUSPEND_TEXT
+            return
+        yield from super().stream_generate(
+            prompt, system=system, max_tokens=max_tokens, temperature=temperature
+        )
+
+
+@pytest.fixture
+def motion_client():
+    store = SQLiteGameStore(":memory:")
+    backend = MotionAwareBackend("Analyse privée. MESSAGE: Position commune.")
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_backend] = lambda: backend
+    game_api._sessions.clear()
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+    game_api._sessions.clear()
+    store.close()
+
+
+def _file_motion(client, game_id, country="iran", reason="escalade répétée"):
+    return client.post(f"/api/games/{game_id}/motions", json={"country": country, "reason": reason})
+
+
+def test_motion_flow_upheld(motion_client):
+    game = _create(motion_client, countries=["china", "iran", "usa"])
+    resp = _file_motion(motion_client, game["id"])
+    assert resp.status_code == 201
+    assert resp.json() == {"country": "iran", "reason": "escalade répétée", "round_no": 1}
+    assert motion_client.get(f"/api/games/{game['id']}").json()["pending_motion"] == resp.json()
+
+    events = _play(motion_client, game["id"])
+    names = [n for n, _ in events]
+    event = next(p for n, p in events if n == "event")["event"]
+    assert event["event_type"] == "motion"
+    assert event["actors"] == ["china", "iran", "usa"]  # tout le sommet débat la motion
+    assert "motion_token" in names and "motion_verdict" in names
+    verdict = next(p for n, p in events if n == "motion_verdict")
+    assert verdict["country"] == "iran" and verdict["upheld"] is True
+    assert "SUSPENDRE" in verdict["reasoning"]
+    # la trajectoire encaisse l'issue sur A2 (agentivité humaine)
+    trajectory = next(p for n, p in events if n == "trajectory")["state"]
+    assert "Motion de suspension confirmée" in trajectory["explanation"]
+
+    detail = motion_client.get(f"/api/games/{game['id']}").json()
+    assert detail["suspended"] == ["iran"] and detail["pending_motion"] is None
+    assert detail["rounds"][0]["judge"]["suspension"]["upheld"] is True
+    judge_entries = [t for t in detail["rounds"][0]["transcript"] if t["speaker"] == "judge"]
+    assert any("Motion contre iran" in t["content"] for t in judge_entries)
+    # pas de nouvelle motion contre un pays déjà suspendu
+    assert _file_motion(motion_client, game["id"], country="iran").status_code == 400
+
+
+def test_suspension_lasts_exactly_one_round(motion_client):
+    game = _create(motion_client, countries=["china", "iran", "usa"])
+    _file_motion(motion_client, game["id"])
+    _play(motion_client, game["id"])  # round 1 : la motion est débattue et confirmée
+
+    events = _play(motion_client, game["id"])  # round 2 : l'iran est au banc
+    assert next(p for n, p in events if n == "suspended") == {"countries": ["iran"]}
+    part = next(p for n, p in events if n == "participation")
+    assert "iran" not in part["spoke"] and "iran" not in part["silent"]
+
+    events = _play(motion_client, game["id"])  # round 3 : il retrouve son siège
+    assert "suspended" not in [n for n, _ in events]
+    part = next(p for n, p in events if n == "participation")
+    assert "iran" in part["spoke"] or "iran" in part["silent"]
+
+
+def test_motion_rejected_without_verdict_marker(client):
+    # MockBackend standard : pas de ligne VERDICT lisible -> repli conservateur = rejet.
+    game = _create(client, countries=["china", "iran", "usa"])
+    assert _file_motion(client, game["id"]).status_code == 201
+    events = _play(client, game["id"])
+    verdict = next(p for n, p in events if n == "motion_verdict")
+    assert verdict["upheld"] is False
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["suspended"] == []
+    assert "suspended" not in [n for n, _ in _play(client, game["id"])]
+
+
+def test_motion_validations(client):
+    assert _file_motion(client, "nope").status_code == 404
+    duo = _create(client, countries=["iran", "usa"])
+    assert _file_motion(client, duo["id"]).status_code == 400  # au moins 3 pays
+    game = _create(client, countries=["china", "iran", "usa"])
+    assert _file_motion(client, game["id"], country="atlantide").status_code == 400
+    assert _file_motion(client, game["id"]).status_code == 201
+    assert _file_motion(client, game["id"], country="usa").status_code == 409  # déjà en attente
+    resp = client.post(f"/api/games/{game['id']}/rounds", json={"event": {"title": "X"}})
+    assert resp.status_code == 400  # la motion constitue l'événement du prochain round
+    game_api._sessions.clear()  # session perdue -> relecture seule
+    assert _file_motion(client, game["id"]).status_code == 409
+
+
+# --- modes de jeu (R4 : fog, crisis, escalation) ---------------------------------
+
+
+def test_library_lists_fog_and_crises(client):
+    lib = client.get("/api/library").json()
+    assert lib["fog"] and lib["crises"]
+    assert all(s["id"] and s["title"] for s in lib["fog"])
+    assert all(0.0 <= c["historical_escalation"] <= 1.0 for c in lib["crises"])
+
+
+def test_fog_round_emits_perceptions(client):
+    game = _create(client, countries=["iran", "usa"], mode="fog")
+    fog_id = client.get("/api/library").json()["fog"][0]["id"]
+    events = _play(client, game["id"], body={"fog_id": fog_id})
+    perceptions = next(p for n, p in events if n == "perceptions")["perceptions"]
+    assert set(perceptions) == {"iran", "usa"}
+    assert all(0.0 <= p["confidence"] <= 1.0 for p in perceptions.values())
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert set(detail["rounds"][0]["judge"]["perceptions"]) == {"iran", "usa"}
+
+
+def test_human_event_with_authored_fog(client):
+    game = _create(client, countries=["iran", "usa"], mode="fog")
+    body = {
+        "event": {"title": "Sabotage nocturne", "actors": ["usa"]},
+        "fog": {
+            "uninformed": ["iran"],
+            "disinformed_country": "usa",
+            "suspected_actor": "iran",
+            "narrative": "Des traces mènent vers l'Iran.",
+        },
+    }
+    events = _play(client, game["id"], body=body)
+    perceptions = next(p for n, p in events if n == "perceptions")["perceptions"]
+    assert perceptions["iran"]["confidence"] <= 0.1  # pas au courant
+    assert perceptions["usa"]["suspected_actor"] == "iran"  # désinformé
+
+
+def test_crisis_round_emits_comparison(client):
+    game = _create(client, countries=["iran", "usa"], mode="crisis")
+    crisis = client.get("/api/library").json()["crises"][0]
+    events = _play(client, game["id"], body={"crisis_id": crisis["id"]})
+    event = next(p for n, p in events if n == "event")["event"]
+    assert event["round_id"] == 1  # l'événement de la crise est re-daté pour la partie
+    comparison = next(p for n, p in events if n == "comparison")
+    assert comparison["crisis_id"] == crisis["id"]
+    assert comparison["label"] in {"plus escaladé", "moins escaladé", "conforme"}
+    assert comparison["historical_escalation"] == crisis["historical_escalation"]
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["rounds"][0]["judge"]["comparison"]["label"] == comparison["label"]
+
+
+def test_escalation_mode_emits_ladder(client):
+    game = _create(client, countries=["iran", "usa"], mode="escalation")
+    assert game["mode"] == "escalation"
+    events = _play(client, game["id"])
+    ladder = next(p for n, p in events if n == "ladder")
+    assert 0 <= ladder["reached"] <= 9 and ladder["reached_label"]
+    assert set(ladder["ceilings"]) == {"iran", "usa"}
+    assert all(0 <= c["rung"] <= 9 and c["label"] for c in ladder["ceilings"].values())
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["rounds"][0]["judge"]["ladder"]["reached"] == ladder["reached"]
+
+
+def test_classic_round_has_no_mode_frames(client):
+    game = _create(client, countries=["iran", "usa"])
+    names = [n for n, _ in _play(client, game["id"])]
+    assert not {"perceptions", "ladder", "comparison", "suspended"} & set(names)
+
+
+def test_round_mode_validations(client):
+    game = _create(client, countries=["iran", "usa"])
+    post = lambda body: client.post(f"/api/games/{game['id']}/rounds", json=body)  # noqa: E731
+    assert post({"fog_id": "nope"}).status_code == 400
+    assert post({"crisis_id": "nope"}).status_code == 400
+    assert post({"fog": {"uninformed": ["iran"]}}).status_code == 400  # fog humain sans event
+    fog_id = client.get("/api/library").json()["fog"][0]["id"]
+    assert post({"fog_id": fog_id, "event": {"title": "X"}}).status_code == 400
+    crisis_id = client.get("/api/library").json()["crises"][0]["id"]
+    assert post({"crisis_id": crisis_id, "fog_id": fog_id}).status_code == 400
+    # les validations n'ont pas consommé le verrou : un round normal passe ensuite
+    assert _play(client, game["id"])[-1][0] == "done"
+
+
 class ExplodingStore(SQLiteGameStore):
     """`add_round` casse une fois : simule une panne en plein flux SSE."""
 
@@ -162,11 +474,12 @@ def test_round_on_unknown_game_is_404(client):
     assert client.post("/api/games/nope/rounds").status_code == 404
 
 
-def test_round_without_live_session_is_409(client):
+def test_round_after_restart_rebuilds_even_unplayed_game(client):
+    """R2 : le snapshot round 0 (créé avec la partie) suffit à reconstruire la session."""
     game = _create(client)
     game_api._sessions.clear()  # simule un redémarrage du process
-    resp = client.post(f"/api/games/{game['id']}/rounds")
-    assert resp.status_code == 409
+    events = _play(client, game["id"])
+    assert events[-1] == ("done", {"round_no": 1})
 
 
 # --- persistance + relecture ---------------------------------------------------
@@ -202,9 +515,10 @@ def test_rounds_accumulate_and_replay_survives_session_loss(client):
     _play(client, game["id"])
     _play(client, game["id"])
 
-    game_api._sessions.clear()  # redémarrage simulé : relecture seule
+    game_api._sessions.clear()  # redémarrage simulé
     detail = client.get(f"/api/games/{game['id']}").json()
-    assert detail["live"] is False and detail["world"] is None
+    assert detail["live"] is False and detail["resumable"] is True
+    assert detail["world"]["current_round"] == 2  # monde servi depuis le snapshot (R2)
     assert [r["round_no"] for r in detail["rounds"]] == [1, 2]
     assert all(r["transcript"] for r in detail["rounds"])
 
@@ -241,3 +555,120 @@ def test_step_event_names_and_payloads():
 def test_sse_frame_format():
     frame = sse_frame("token", {"country": "usa", "token": "é"})
     assert frame == 'event: token\ndata: {"country": "usa", "token": "é"}\n\n'
+
+
+# --- sélection du store par variable d'env (R2) ----------------------------------
+
+
+def test_get_store_backend_selection(monkeypatch):
+    monkeypatch.setattr(game_api, "_store", None)
+    monkeypatch.setenv("STORE_BACKEND", "supabase")
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_SERVICE_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="SUPABASE_URL"):
+        game_api.get_store()
+
+    monkeypatch.setenv("STORE_BACKEND", "sqlite")
+    monkeypatch.setenv("GAME_DB_PATH", ":memory:")
+    store = game_api.get_store()
+    assert isinstance(store, SQLiteGameStore)
+    store.close()
+    monkeypatch.setattr(game_api, "_store", None)
+
+
+# --- reconstruction de session au restart (R2, docs/spec_session_rebuild.md) -----
+
+
+@pytest.fixture
+def client_store():
+    """Comme `client`, mais expose aussi le store (pour muter statut/snapshots)."""
+    store = SQLiteGameStore(":memory:")
+    backend = MockBackend("Analyse privée. MESSAGE: Position commune.")
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_backend] = lambda: backend
+    game_api._sessions.clear()
+    yield TestClient(app), store
+    app.dependency_overrides.clear()
+    game_api._sessions.clear()
+    store.close()
+
+
+def test_restart_then_play_rebuilds_on_mutated_world(client_store):
+    client, store = client_store
+    game = _create(client, countries=["usa", "iran"])
+    _play(client, game["id"])  # round 1
+    game_api._sessions.clear()  # restart d'uvicorn simulé
+
+    # Avant reconstruction : relecture + monde servi depuis le snapshot, reprenable.
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["live"] is False and detail["resumable"] is True
+    assert detail["world"]["current_round"] == 1
+
+    # POST /rounds reconstruit la session et joue le round 2 sur le monde muté du round 1.
+    events = _play(client, game["id"])
+    assert events[-1] == ("done", {"round_no": 2})
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["live"] is True
+    assert detail["world"]["current_round"] == 2
+    assert [r["round_no"] for r in detail["rounds"]] == [1, 2]
+
+
+def test_restart_with_pending_motion_debates_it(client_store):
+    client, store = client_store
+    game = _create(client)  # tous les pays (≥ 3 : une motion est recevable)
+    resp = client.post(
+        f"/api/games/{game['id']}/motions", json={"country": "iran", "reason": "dérive"}
+    )
+    assert resp.status_code == 201
+    game_api._sessions.clear()
+
+    events = _play(client, game["id"])  # la motion snapshotée est l'événement du round
+    event_payloads = [p for n, p in events if n == "event"]
+    assert event_payloads and event_payloads[0]["event"]["event_type"] == "motion"
+    assert any(n == "motion_verdict" for n, _ in events)
+
+
+def test_finished_or_snapshotless_game_stays_replay_only(client_store):
+    client, store = client_store
+    game = _create(client, countries=["usa", "iran"])
+    game_api._sessions.clear()
+    record = store.get_game(game["id"])
+    record.status = GameStatus.FINISHED
+    store.save_game(record)
+    assert client.post(f"/api/games/{game['id']}/rounds").status_code == 409
+    assert client.get(f"/api/games/{game['id']}").json()["resumable"] is False
+
+    # Partie « d'avant R2 » : en cours mais sans snapshot -> relecture seule, inchangé.
+    store.add_game(
+        GameRecord(id="orphan", scenario="red_sea", horizon=5, created_at="2026-01-01")
+    )
+    assert client.post("/api/games/orphan/rounds").status_code == 409
+    assert (
+        client.post("/api/games/orphan/motions", json={"country": "usa"}).status_code == 409
+    )
+
+
+def test_mode_and_play_as_survive_restart(client_store):
+    client, store = client_store
+    game = _create(
+        client, countries=["usa", "iran", "france"], mode="escalation", play_as="france"
+    )
+    game_api._sessions.clear()
+
+    view = client.get(f"/api/games/{game['id']}").json()
+    assert view["mode"] == "escalation" and view["live"] is False  # mode lu de games.mode
+
+    events = _play(client, game["id"])  # reconstruit : le round s'arrête au tour humain
+    assert events[-1][0] == "human_turn"
+    view = client.get(f"/api/games/{game['id']}").json()
+    assert view["mode"] == "escalation"
+    assert view["play_as"] == "france" and view["awaiting_human"] is True
+
+    with client.stream(
+        "POST",
+        f"/api/games/{game['id']}/rounds/message",
+        json={"text": "La France propose une désescalade concertée."},
+    ) as resp:
+        assert resp.status_code == 200
+        end = _events(resp)
+    assert end[-1] == ("done", {"round_no": 1})

@@ -1,7 +1,8 @@
-"""API FastAPI (backend) — Phase 5.
+"""API FastAPI (backend).
 
-L'UI humaine est l'app Streamlit (`ui/app.py`). FastAPI reste comme backend/service
-(santé + run JSON) pour l'architecture services de P6/P7.
+L'UI humaine est le front Next.js (`web/`), branché sur l'API de jeu SSE
+(`app/game_api.py`) et l'API marché (`app/market_api.py`). L'ancienne app
+Streamlit est archivée dans `legacy/`.
 
 Lancer : `uvicorn app.main:app`.
 """
@@ -14,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.dashboard import DashboardData, run_red_sea
 from app.game_api import router as game_router
 from app.market_api import router as market_router
+from app.sources_api import router as sources_router
 
 app = FastAPI(title="AI for Geopolitics — API")
 # Front Next.js local (`web/`, Phase R3) : REST + SSE cross-origin depuis :3000.
@@ -25,6 +27,7 @@ app.add_middleware(
 )
 app.include_router(market_router)
 app.include_router(game_router)
+app.include_router(sources_router)
 
 
 @app.get("/health")

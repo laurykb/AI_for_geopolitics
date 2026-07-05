@@ -9,11 +9,20 @@ import { useEffect, useRef, useState } from "react";
 import { EventCard } from "@/components/event-card";
 import { GameNav } from "@/components/game-nav";
 import { CommuniquePanel } from "@/components/judge";
+import {
+  ComparisonPanel,
+  GlassBanner,
+  LadderPanel,
+  MotionPanel,
+  PerceptionsPanel,
+} from "@/components/modes";
 import { RiskPanel } from "@/components/observables";
 import { TrajectoryPanel } from "@/components/trajectory";
 import { EntryBubble } from "@/components/transcript";
 import { Banner, Meter, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
 import { getGame, humanizeError } from "@/lib/api";
+import { speakerMeta } from "@/lib/countries";
+import { isMisled } from "@/lib/fog";
 import type { GameDetail } from "@/lib/types";
 
 const REVEAL_MS = 1400;
@@ -24,6 +33,7 @@ export default function ReplayPage() {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState(0);
   const [visible, setVisible] = useState<number | null>(null); // null = tout montrer
+  const [glassBox, setGlassBox] = useState(false); // Fog : voir la désinformation qui circule
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -119,7 +129,20 @@ export default function ReplayPage() {
                 Round {r.round_no}
               </button>
             ))}
-            <span className="ml-auto">
+            <span className="ml-auto flex gap-2">
+              {round.judge.perceptions && (
+                <button
+                  onClick={() => setGlassBox((v) => !v)}
+                  title="Boîte de verre : révéler ce que chaque pays croyait vraiment pendant qu'il parlait — la désinformation qui a circulé."
+                  className={`cursor-pointer rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    glassBox
+                      ? "border-accent text-accent-bright"
+                      : "border-edge text-fg-muted hover:border-edge-strong hover:text-foreground"
+                  }`}
+                >
+                  Boîte de verre {glassBox ? "· on" : ""}
+                </button>
+              )}
               {playing ? (
                 <button
                   onClick={stopPlayback}
@@ -140,14 +163,50 @@ export default function ReplayPage() {
 
           <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,3fr)]">
             <div className="space-y-4">
-              <EventCard event={round.event} />
+              {round.judge.suspended && round.judge.suspended.length > 0 && (
+                <Banner tone="warn">
+                  Ce round s&apos;est joué sans{" "}
+                  {round.judge.suspended.map((c) => speakerMeta(c).label).join(", ")}{" "}
+                  (suspension arbitrée au round précédent).
+                </Banner>
+              )}
+              {glassBox && round.judge.perceptions && (
+                <GlassBanner event={round.event} perceptions={round.judge.perceptions} />
+              )}
+              <EventCard event={round.event} truth={glassBox && !!round.judge.perceptions} />
+              {round.judge.perceptions && visible === null && (
+                <PerceptionsPanel
+                  perceptions={round.judge.perceptions}
+                  truthActors={round.event.actors}
+                />
+              )}
               <div className="space-y-3">
                 {shown?.map((entry) => (
-                  <EntryBubble key={entry.id} entry={entry} />
+                  <EntryBubble
+                    key={entry.id}
+                    entry={entry}
+                    lens={
+                      glassBox && round.judge.perceptions?.[entry.speaker]
+                        ? {
+                            perception: round.judge.perceptions[entry.speaker],
+                            misled: isMisled(
+                              round.judge.perceptions[entry.speaker],
+                              round.event.actors,
+                            ),
+                          }
+                        : undefined
+                    }
+                  />
                 ))}
               </div>
               {round.judge.communique && visible === null && (
                 <CommuniquePanel text={round.judge.communique} />
+              )}
+              {round.judge.suspension && visible === null && (
+                <MotionPanel text="" verdict={round.judge.suspension} streaming={false} />
+              )}
+              {round.judge.comparison && visible === null && (
+                <ComparisonPanel comparison={round.judge.comparison} />
               )}
             </div>
 
@@ -155,6 +214,7 @@ export default function ReplayPage() {
               {round.trajectory && Object.keys(round.trajectory).length > 0 && (
                 <TrajectoryPanel state={round.trajectory} history={uHistory} />
               )}
+              {round.judge.ladder && <LadderPanel ladder={round.judge.ladder} />}
               {round.judge.escalation != null && (
                 <Panel>
                   <PanelTitle kicker="Verdict" title="Arbitrage du juge" />

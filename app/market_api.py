@@ -42,15 +42,21 @@ from market.models import (
 )
 from market.resolution import ResolutionError, SettlementResult, resolve_and_settle
 from market.store import SQLiteMarketStore
+from market.supabase_store import SupabaseMarketStore
 
 _engine: MarketEngine | None = None
 
 
 def get_engine() -> MarketEngine:
-    """Moteur de marché du process (SQLite `:memory:` par défaut, ou `MARKET_DB_PATH`)."""
+    """Moteur de marché du process, sur le store choisi par `STORE_BACKEND` (R2) :
+    `sqlite` (défaut — `:memory:`, ou `MARKET_DB_PATH`) ou `supabase` (PostgREST ;
+    exige `SUPABASE_URL` + `SUPABASE_SERVICE_KEY`)."""
     global _engine
     if _engine is None:
-        _engine = MarketEngine(SQLiteMarketStore(os.getenv("MARKET_DB_PATH", ":memory:")))
+        if os.getenv("STORE_BACKEND", "sqlite") == "supabase":
+            _engine = MarketEngine(SupabaseMarketStore.from_env())
+        else:
+            _engine = MarketEngine(SQLiteMarketStore(os.getenv("MARKET_DB_PATH", ":memory:")))
     return _engine
 
 

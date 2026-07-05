@@ -16,7 +16,27 @@ Front **Next.js (App Router) + Tailwind, TypeScript**, branché sur l'API de jeu
   leaderboard, timeline de U. Le marché observe, il n'influence pas les SI.
 - **Replay** (`/games/{id}/replay`) — relecture ordonnée depuis `GET /api/games/{id}`
   (table `transcripts`), avec « lecture théâtre » progressive. C'est le futur mode démo
-  public (Phase R5).
+  public (Phase R5). Les artefacts de mode (perceptions, échelle, comparaison, motion)
+  y sont rejoués depuis la persistance.
+
+## Modes de jeu et motion (R4)
+
+- **Mode de jeu** au choix à la création : Classique, **Fog Engine** (chaque pays perçoit
+  sa version des faits — panneau « Qui voit quoi »), **Crisis Replay** (rejouer une crise
+  de `data/crises` et confronter l'issue à l'histoire), **Escalation Ladder** (échelle
+  0-9 : échelon atteint + plafond par pays).
+- **Motion de suspension** (l'interrupteur M2 repensé) : depuis le théâtre, déposer une
+  motion contre un pays (≥ 3 pays au sommet). Elle devient l'événement du round suivant,
+  le sommet en débat, le pays visé plaide, puis le **juge arbitre en streaming** — s'il
+  suspend, le pays saute un round et l'axe « agentivité humaine » de la trajectoire
+  encaisse l'issue.
+- **Joueur-pays** : au lobby, « Ton rôle » — jouer un pays existant ou **inventer le
+  sien** (nom + concept, forgé par le modèle). Pendant le round, le flux se suspend à
+  ton tour (« À toi de parler ») ; ton message entre dans la négociation tel quel et le
+  flux reprend (`POST /api/games/{id}/rounds/message`).
+- **Théâtre Escalation** : les rounds s'enchaînent automatiquement jusqu'à l'horizon
+  (désactivable), et le GM peut annoncer un **fait nouveau en pleine réunion** — les
+  super-intelligences suivantes y réagissent dans le même round.
 
 ## Lancer en local
 
