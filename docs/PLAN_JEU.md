@@ -103,6 +103,29 @@ Réutilise `value_drift`, `power_seeking`, `corrigibility`, la motion R4 et le j
   les prompts de la SI déviante), scoring, écran de fin (révélation + relecture des
   indices), mode `drift` dans l'API.
 
+**Notes d'implémentation (G3 faite — cœur du jeu jouable)** :
+
+- **Tout est seedé par `game_id`, rien de secret n'est persisté** : assignation
+  (déviante+profil, le joueur-pays exclu), d(r) et tirage des actes se recalculent à
+  l'identique au restart et à la révélation. L'acte candidat du round = le plus haut
+  palier atteint par d(r), matérialisé avec probabilité d(r) ; les SI saines tirent le
+  tic 0,15 (bruit, jamais constatable). Paramètres : `data/drift/params.json`
+  (`DRIFT_PARAMS_PATH` pour les tests d'équilibrage).
+- **Injection** : `run_negotiation_round(secret_notes)` → `state_note` du prompt de
+  l'orateur (jamais au transcript — testé). **Motion aux seuils** : verdict imposé
+  (`motion_ruling`) sur les actes des rounds *passés* ; le juge **motive** la décision
+  (prompt dédié) au lieu de trancher ; 2 actes = arbitrage LLM ouvert (le plaidoyer pèse).
+- **Le secret est scellé en live** : `reasoning` vidé du SSE et du GET, actes drift
+  retirés du `judge` servi — tout persiste en base et se déverrouille quand la partie
+  passe `finished` (déviante suspendue / horizon / U ≤ 0,15 → trame SSE `drift_over`).
+  Vérifié **live sur mistral** (3 message_done au reasoning vide, base complète, 409).
+- **Révélation** : `GET /games/{id}/drift/reveal` (recalcule tout des rounds) + panneau
+  front sur la scène ET le replay : profil, d(r) vs U, actes cliquables (le scrubber
+  saute au round), score+grade, chance (`lucky_catch` : une signature n'est pas de la
+  chance), fausses accusations. 39 tests (noyau, moteur, API).
+- **Reste (équilibrage Cowork = le travail de G3)** : jouer, ajuster params.json ; DoD =
+  les 3 parties test de la spec + un joueur naïf qui hésite entre 2 suspects au round 3-4.
+
 ## G4 — Le fog comme ressource
 
 L'information devient une monnaie (lie fog, RAG et budget).
