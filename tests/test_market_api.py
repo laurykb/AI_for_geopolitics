@@ -165,3 +165,22 @@ def test_resolve_action_market_with_posted_decisions(client):
     ).json()
     assert resolved[0]["winning_outcome"] == yes
     assert client.get(f"/api/accounts/{bot['id']}").json()["pnl"] > 0  # a parié juste
+
+
+# --- sélection du store par variable d'env (R2) ----------------------------------
+
+
+def test_get_engine_backend_selection(monkeypatch):
+    from app import market_api
+
+    monkeypatch.setattr(market_api, "_engine", None)
+    monkeypatch.setenv("STORE_BACKEND", "supabase")
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_SERVICE_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="SUPABASE_URL"):
+        market_api.get_engine()
+
+    monkeypatch.setenv("STORE_BACKEND", "sqlite")
+    engine = market_api.get_engine()
+    assert isinstance(engine.store, SQLiteMarketStore)
+    monkeypatch.setattr(market_api, "_engine", None)

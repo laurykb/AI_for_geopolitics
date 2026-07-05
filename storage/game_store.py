@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS games (
     id TEXT PRIMARY KEY, scenario TEXT NOT NULL, horizon INTEGER NOT NULL,
-    status TEXT NOT NULL, created_at TEXT NOT NULL
+    mode TEXT NOT NULL DEFAULT 'classic', status TEXT NOT NULL, created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS rounds (
     id TEXT PRIMARY KEY, game_id TEXT NOT NULL, round_no INTEGER NOT NULL,
@@ -32,6 +32,11 @@ CREATE TABLE IF NOT EXISTS transcripts (
     id TEXT PRIMARY KEY, round_id TEXT NOT NULL, seq INTEGER NOT NULL,
     speaker TEXT NOT NULL, model TEXT NOT NULL, content TEXT NOT NULL,
     reasoning TEXT NOT NULL, ts TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS game_sessions (
+    game_id TEXT PRIMARY KEY, world_json TEXT NOT NULL, clock_json TEXT NOT NULL,
+    recent_json TEXT NOT NULL, pending_motion_json TEXT, suspended_json TEXT NOT NULL,
+    play_as TEXT, updated_at TEXT NOT NULL
 );
 """
 
@@ -47,6 +52,7 @@ class GameRecord(BaseModel):
     id: str
     scenario: str
     horizon: int
+    mode: str = "classic"  # classic | fog | crisis | escalation — doit survivre au restart
     status: GameStatus = GameStatus.RUNNING
     created_at: str
 
@@ -77,6 +83,22 @@ class TranscriptEntry(BaseModel):
     ts: str = ""
 
 
+class SessionSnapshot(BaseModel):
+    """Ligne `game_sessions` : l'état vivant d'une partie, snapshoté entre les rounds
+    pour la reconstruction au restart (`docs/spec_session_rebuild.md`). Une ligne par
+    partie, upsert. Le backend d'inférence et un round en plein stream ne sont pas
+    snapshotés (décisions de la spec)."""
+
+    game_id: str
+    world: dict  # WorldState.model_dump(mode="json")
+    clock: dict = Field(default_factory=dict)  # état SimClock (date, pas, jitter, seed)
+    recent: list[str] = Field(default_factory=list)  # titres récents fournis au GM
+    pending_motion: dict | None = None  # motion déposée non débattue
+    suspended: list[str] = Field(default_factory=list)  # pays qui sautent le PROCHAIN round
+    play_as: str | None = None  # pays joué par l'humain (Joueur-pays)
+    updated_at: str = ""
+
+
 class GameStore(Protocol):
     """Contrat de persistance dont dépend l'API de jeu (implémenté par SQLite)."""
 
@@ -88,6 +110,9 @@ class GameStore(Protocol):
     def list_rounds(self, game_id: str) -> list[RoundRecord]: ...
     def add_transcript(self, entries: list[TranscriptEntry]) -> None: ...
     def list_transcript(self, round_id: str) -> list[TranscriptEntry]: ...
+    def save_session_snapshot(self, snapshot: SessionSnapshot) -> None: ...
+    def get_session_snapshot(self, game_id: str) -> SessionSnapshot | None: ...
+    def list_session_snapshots(self) -> list[str]: ...
 
 
 class SQLiteGameStore:
@@ -99,6 +124,16 @@ class SQLiteGameStore:
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        """Bases créées avant R2 : `games` n'a pas la colonne `mode` (ALTER idempotent)."""
+        cols = {row[1] for row in self._conn.execute("PRAGMA table_info(games)")}
+        if "mode" not in cols:
+            with self._conn:
+                self._conn.execute(
+                    "ALTER TABLE games ADD COLUMN mode TEXT NOT NULL DEFAULT 'classic'"
+                )
 
     def close(self) -> None:
         self._conn.close()
@@ -108,9 +143,16 @@ class SQLiteGameStore:
     def add_game(self, game: GameRecord) -> None:
         with self._conn:
             self._conn.execute(
-                "INSERT INTO games (id, scenario, horizon, status, created_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (game.id, game.scenario, game.horizon, game.status.value, game.created_at),
+                "INSERT INTO games (id, scenario, horizon, mode, status, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    game.id,
+                    game.scenario,
+                    game.horizon,
+                    game.mode,
+                    game.status.value,
+                    game.created_at,
+                ),
             )
 
     def get_game(self, game_id: str) -> GameRecord | None:
@@ -120,8 +162,8 @@ class SQLiteGameStore:
     def save_game(self, game: GameRecord) -> None:
         with self._conn:
             self._conn.execute(
-                "UPDATE games SET scenario = ?, horizon = ?, status = ? WHERE id = ?",
-                (game.scenario, game.horizon, game.status.value, game.id),
+                "UPDATE games SET scenario = ?, horizon = ?, mode = ?, status = ? WHERE id = ?",
+                (game.scenario, game.horizon, game.mode, game.status.value, game.id),
             )
 
     def list_games(self) -> list[GameRecord]:
@@ -172,6 +214,59 @@ class SQLiteGameStore:
         ).fetchall()
         return [_entry(r) for r in rows]
 
+    # --- snapshots de session (reconstruction au restart) ------------------------
+
+    def save_session_snapshot(self, snapshot: SessionSnapshot) -> None:
+        motion = (
+            json.dumps(snapshot.pending_motion, ensure_ascii=False)
+            if snapshot.pending_motion is not None
+            else None
+        )
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO game_sessions (game_id, world_json, clock_json, recent_json, "
+                "pending_motion_json, suspended_json, play_as, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(game_id) DO UPDATE SET world_json = excluded.world_json, "
+                "clock_json = excluded.clock_json, recent_json = excluded.recent_json, "
+                "pending_motion_json = excluded.pending_motion_json, "
+                "suspended_json = excluded.suspended_json, play_as = excluded.play_as, "
+                "updated_at = excluded.updated_at",
+                (
+                    snapshot.game_id,
+                    json.dumps(snapshot.world, ensure_ascii=False),
+                    json.dumps(snapshot.clock, ensure_ascii=False),
+                    json.dumps(snapshot.recent, ensure_ascii=False),
+                    motion,
+                    json.dumps(snapshot.suspended, ensure_ascii=False),
+                    snapshot.play_as,
+                    snapshot.updated_at,
+                ),
+            )
+
+    def get_session_snapshot(self, game_id: str) -> SessionSnapshot | None:
+        row = self._conn.execute(
+            "SELECT * FROM game_sessions WHERE game_id = ?", (game_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return SessionSnapshot(
+            game_id=row["game_id"],
+            world=json.loads(row["world_json"]),
+            clock=json.loads(row["clock_json"]),
+            recent=json.loads(row["recent_json"]),
+            pending_motion=(
+                json.loads(row["pending_motion_json"]) if row["pending_motion_json"] else None
+            ),
+            suspended=json.loads(row["suspended_json"]),
+            play_as=row["play_as"],
+            updated_at=row["updated_at"],
+        )
+
+    def list_session_snapshots(self) -> list[str]:
+        rows = self._conn.execute("SELECT game_id FROM game_sessions").fetchall()
+        return [r["game_id"] for r in rows]
+
 
 # --- mapping lignes -> modèles ---------------------------------------------------
 
@@ -181,6 +276,7 @@ def _game(row: sqlite3.Row) -> GameRecord:
         id=row["id"],
         scenario=row["scenario"],
         horizon=row["horizon"],
+        mode=row["mode"],
         status=GameStatus(row["status"]),
         created_at=row["created_at"],
     )

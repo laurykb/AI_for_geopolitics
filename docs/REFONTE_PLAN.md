@@ -78,6 +78,33 @@ côté front — note R3), RLS lecture publique sur le théâtre/marché (cible 
 soldes (`market_accounts`/`positions`) non exposés. L'implémentation Python =
 `SupabaseGameStore` + `SupabaseMarketStore` derrière les Protocols existants.
 
+**Notes d'implémentation (R2 faite — stores Supabase + reconstruction de session)** :
+
+- **Stores Supabase sans dépendance nouvelle** : PostgREST parlé en `httpx` (déjà dans la
+  stack) via `storage/postgrest.py` (insert / upsert merge-duplicates / update / select eq,
+  clé **service_role** — la RLS est contournée par design, cf. schéma). `storage/
+  supabase_store.py` (jeu) et `market/supabase_store.py` (marché) implémentent les Protocols
+  existants ; testés **offline** par un mini-PostgREST en mémoire (`tests/conftest.py`,
+  `httpx.MockTransport`) — preuve marché : le vrai `MarketEngine` parie dessus. Sélection par
+  env : `STORE_BACKEND=supabase` (+ `SUPABASE_URL`/`SUPABASE_SERVICE_KEY`), défaut `sqlite`
+  inchangé. Écarts assumés : `markets.game_id` reste NULL (le modèle `Market` ne le porte pas
+  — câblage avec le bot marché) ; jointure positions↔marché côté client (2 selects) ;
+  outcomes relus par id `{mkt}:{i}` = ordre d'ouverture.
+- **Reconstruction de session (spec appliquée)** : `SessionSnapshot` dans le `GameStore`
+  (SQLite : table `game_sessions` + colonne `games.mode` avec **migration ALTER idempotente**
+  pour les bases d'avant R2 ; `play_as` ajouté au schéma — sans lui une partie Joueur-pays ne
+  se reconstruit pas). Snapshot **à la création (round 0), après chaque round, à chaque
+  motion** ; reconstruction **paresseuse** dans `POST /rounds` et `POST /motions` (agents
+  recréés à froid, GM/juge stateless, horloge restaurée, mode depuis `games.mode`, verrou
+  neuf) ; snapshot absent/invalide ou partie finie → 409 relecture seule (inchangé).
+  `GameView.resumable` (le front peut afficher « Reprendre ») ; `GET /games/{id}` sert le
+  monde **depuis le snapshot** quand la session process est absente. Non repris, par
+  décision de spec : un round interrompu en plein stream (y compris suspendu sur un tour
+  humain) et l'état RNG du jitter d'horloge.
+- **Reste de R2** : promotion des artefacts R4 hors de `judge_json` (colonnes dédiées +
+  `RoundRecord`/`RoundView`/front) et vrai lien `markets.game_id` — prévus avec le bot
+  marché (session suivante).
+
 ### Phase R3 — Front Next.js (`web/`)
 
 - Next.js App Router + Tailwind (+ shadcn/ui), TypeScript.
