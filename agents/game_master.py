@@ -18,7 +18,8 @@ from inference.backend import InferenceBackend
 GM_SYSTEM = (
     "Tu es le Game Master d'une simulation géopolitique. À partir de l'état du monde et de la "
     "date, invente UN événement plausible et concret (crise, incident, initiative diplomatique). "
-    "Réponds UNIQUEMENT par un objet JSON, sans texte autour."
+    "Réponds UNIQUEMENT par un objet JSON, sans texte autour. "
+    "IMPORTANT : `title` et `description` doivent être rédigés EN FRANÇAIS."
 )
 
 
@@ -73,7 +74,8 @@ class GameMasterAgent:
             f"PAYS (ids) : {ids}\n"
             f"Événements récents : {history}\n\n"
             f"Invente le prochain événement. JSON : {{event_type, title, description, "
-            f"actors (ids existants), severity (0-1), uncertainty (0-1)}}."
+            f"actors (ids existants), severity (0-1), uncertainty (0-1)}}. "
+            f"`title` et `description` en français."
         )
 
     def _coerce(

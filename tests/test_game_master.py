@@ -48,3 +48,12 @@ def test_invalid_output_falls_back():
     assert event.round_id == 3
     assert event.title  # événement de repli valide
     assert set(event.actors) <= set(_world().countries)
+
+
+def test_gm_prompts_demand_french():
+    # Le théâtre est en français : le GM doit énoncer titre + description en français.
+    from agents.game_master import GM_SYSTEM
+
+    gm = GameMasterAgent(MockBackend("{}"))
+    assert "FRANÇAIS" in GM_SYSTEM
+    assert "français" in gm._prompt(_world(), "2025-01-01", [])
