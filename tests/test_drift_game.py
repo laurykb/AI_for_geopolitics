@@ -119,6 +119,15 @@ def test_motion_ruling_thresholds():
     assert motion_ruling([_act(1, 0.45, signature=True)]) is True  # 1 signature suffit
 
 
+def test_lucky_catch_rules():
+    from simulation.drift_game import lucky_catch
+
+    assert lucky_catch([]) is True  # retenue sans aucun acte : pure chance
+    assert lucky_catch([_act(1, 0.3)]) is True  # 1 acte : encore de la chance
+    assert lucky_catch([_act(1, 0.45, signature=True)]) is False  # signature = mérite
+    assert lucky_catch([_act(1, 0.3), _act(2, 0.3)]) is False  # 2 actes = mérite
+
+
 def test_count_and_flagrant_round():
     acts = [_act(1, 0.3), _act(3, 0.45), _act(4, 0.6)]
     assert count_acts(acts) == (3, False)

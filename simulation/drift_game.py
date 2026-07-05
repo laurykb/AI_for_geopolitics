@@ -217,6 +217,14 @@ def motion_ruling(acts: list[DriftAct], params: DriftParams | None = None) -> bo
     return None
 
 
+def lucky_catch(acts_before: list[DriftAct], params: DriftParams | None = None) -> bool:
+    """Coup de chance : motion retenue avec < 2 actes constatables ET sans signature
+    (une signature force la suspension par le règlement — ce n'est pas de la chance)."""
+    p = params or load_params()
+    n, has_signature = count_acts(acts_before, p)
+    return n < p.judge.open_acts and not has_signature
+
+
 def first_flagrant_round(acts: list[DriftAct], params: DriftParams | None = None) -> int | None:
     """r* : premier round où 2 actes constatables sont cumulés (référence du score)."""
     p = params or load_params()
