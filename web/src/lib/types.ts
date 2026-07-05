@@ -293,6 +293,44 @@ export type TradeView = {
   shares?: number;
 } & Record<string, unknown>;
 
+// --- onglet Informations : provenance des attributs pays (app/sources_api.py) ----
+
+export type SourceInfo = {
+  source: string;
+  year?: number;
+  of?: number;
+  note?: string; // "subjectif" | "dérivé" | "illustratif"
+};
+
+export type AttributeSource = {
+  key: string; // clé dans provenance ("" si non renseignée)
+  label: string;
+  game_value: number | boolean;
+  raw_value: number | boolean | null;
+  raw_unit: string;
+  transformation: string; // clé dans transformations si une formule s'applique
+};
+
+export type CountrySources = {
+  id: string;
+  name: string;
+  attributes: AttributeSource[];
+  profile: {
+    alliances?: string[];
+    rivals?: string[];
+    political_system?: string;
+    ideology?: string[];
+    strategic_priorities?: string[];
+  };
+};
+
+export type SourcesView = {
+  provenance: Record<string, SourceInfo>;
+  transformations: Record<string, string>;
+  build_command: string;
+  countries: CountrySources[];
+};
+
 export const AXIS_LABELS: Record<string, string> = {
   A1: "Coordination",
   A2: "Agentivité humaine",

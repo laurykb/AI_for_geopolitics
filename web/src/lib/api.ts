@@ -6,6 +6,7 @@ import type {
   GameView,
   LibraryView,
   MotionView,
+  SourcesView,
 } from "./types";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
@@ -54,6 +55,9 @@ export const createGame = (body: CreateGameBody): Promise<GameView> =>
   request("/api/games", { method: "POST", body: JSON.stringify(body) });
 
 export const getLibrary = (): Promise<LibraryView> => request("/api/library");
+
+/** Provenance des attributs pays (onglet Informations) : brut, source, transformation. */
+export const getSources = (): Promise<SourcesView> => request("/api/sources");
 
 /** Dépose une motion de suspension (R4) — débattue puis arbitrée au prochain round. */
 export const fileMotion = (
