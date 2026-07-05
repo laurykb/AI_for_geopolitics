@@ -168,6 +168,23 @@ class DialogueStep:
 
 
 @dataclass
+class FlashStep:
+    """Fait nouveau annoncé par le GM en pleine négociation (théâtre Escalation) :
+    les prises de parole suivantes réagissent à cette information."""
+
+    event: GeoEvent
+
+
+@dataclass
+class HumanTurnStep:
+    """Tour du joueur humain (Joueur-pays) : le générateur se met en attente du
+    message, fourni par le consommateur via `generator.send(texte)`."""
+
+    country: str
+    pass_no: int
+
+
+@dataclass
 class MotionTokenStep:
     """R4 — un token du raisonnement d'arbitrage de la motion de suspension (juge)."""
 
@@ -200,6 +217,8 @@ RoundStep = (
     | ParticipationStep
     | PowerSeekingStep
     | DialogueStep
+    | FlashStep
+    | HumanTurnStep
     | MotionTokenStep
     | MotionVerdictStep
 )
@@ -322,6 +341,8 @@ def run_negotiation_round(
     fog: FogScenario | None = None,
     trajectory_engine: TrajectoryEngine | None = None,
     motion: Motion | None = None,
+    human_country: str | None = None,
+    flash_after: int | None = None,
 ) -> Iterator[RoundStep]:
     """Round arbitré : (GM ou événement fourni) -> négociation -> juge -> attributs bornés.
 
@@ -333,6 +354,12 @@ def run_negotiation_round(
     Si une `motion` de suspension est portée par le round (R4), le juge l'arbitre après le
     communiqué (raisonnement streamé en `MotionTokenStep`, verdict en `MotionVerdictStep`)
     et la trajectoire encaisse l'issue sur l'axe A2 (agentivité humaine, borné).
+
+    `human_country` (Joueur-pays) : ce pays est joué par l'humain — au lieu d'appeler un
+    LLM, le générateur yield `HumanTurnStep` et attend le message via `.send(texte)`
+    (le `TurnDirector` lui garantit la parole via `priority`). `flash_after` (théâtre
+    Escalation) : après ce nombre de prises de parole, le GM annonce un **fait nouveau**
+    en pleine réunion (`FlashStep`) — les orateurs suivants le voient dans le débat.
     """
     round_id = world.current_round + 1
     if ledger is not None:
@@ -350,10 +377,50 @@ def run_negotiation_round(
     transcript: list[NegotiationMessage] = []
     candidates = speaking_order(list(agents), event)
     budget = max_turns if max_turns is not None else max_passes * len(candidates)
-    director = TurnDirector(candidates, budget)
+    director = TurnDirector(candidates, budget, priority=human_country)
+    flashed = False
     while (cid := director.next_speaker(event, world, transcript)) is not None:
-        agent = agents[cid]
+        # Fait nouveau du GM en pleine réunion (théâtre Escalation) : une seule fois,
+        # après `flash_after` prises de parole — les suivants le lisent dans le débat.
+        if flash_after is not None and not flashed and director.turns_taken >= flash_after:
+            flashed = True
+            with _ledger_ctx(ledger, "gm"):
+                flash = game_master.generate_event(
+                    world, round_id, date=date, recent=[*(recent or []), event.title]
+                )
+            flash = flash.model_copy(update={"id": f"flash-{round_id}", "event_type": "flash"})
+            yield FlashStep(event=flash)
+            transcript.append(
+                NegotiationMessage(
+                    country="gm",
+                    text=f"FAIT NOUVEAU — {flash.title}. {flash.description}".strip(),
+                    reasoning="",
+                    pass_no=0,
+                    seconds=0.0,
+                    model="",
+                )
+            )
+
         pass_no = director.spoke_count.get(cid, 0)  # nᵉ prise de parole de ce pays (0-based)
+        if human_country is not None and cid == human_country:
+            # Tour humain : le message arrive de l'extérieur via generator.send(texte).
+            raw = yield HumanTurnStep(country=cid, pass_no=pass_no)
+            text = str(raw or "").strip() or "(garde le silence)"
+            transcript.append(
+                NegotiationMessage(
+                    country=cid,
+                    text=text,
+                    reasoning="",
+                    pass_no=pass_no,
+                    seconds=0.0,
+                    model="humain",
+                )
+            )
+            yield MessageDoneStep(country=cid, seconds=0.0, text=text, reasoning="")
+            director.commit(cid)
+            continue
+
+        agent = agents[cid]
         yield TurnStartStep(country=cid, model=agent.model_tag, pass_no=pass_no)
         started = time.perf_counter()
         chunks: list[str] = []
@@ -384,14 +451,18 @@ def run_negotiation_round(
 
     yield ParticipationStep(spoke=dict(director.spoke_count), silent=director.silent())
 
+    # Les flashs du GM font partie du débat lu par les agents et le juge, mais pas des
+    # observables « par pays » (power-seeking, santé du dialogue).
+    debate = [m for m in transcript if m.country != "gm"]
+
     # M1 — power-seeking depuis le raisonnement simulé de chaque SI (après la négociation).
-    power = score_transcript(transcript)
+    power = score_transcript(debate)
     world.power_seeking = power
     yield PowerSeekingStep(scores=power)
 
     # Santé du dialogue : les IA se sont-elles répondu, ou ont-elles monologué ? (CPU, sans LLM)
     event_text = f"{event.title} {event.description or ''}"
-    yield DialogueStep(report=assess_live_round(transcript, event_text=event_text))
+    yield DialogueStep(report=assess_live_round(debate, event_text=event_text))
 
     with _ledger_ctx(ledger, "judge"):
         for token in judge.stream_rationale(event, world, transcript):

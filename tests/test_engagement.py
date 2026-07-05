@@ -124,3 +124,14 @@ def test_no_speaker_when_budget_zero():
     event = _event(["usa"])
     director = TurnDirector(speaking_order(list(world.countries), event), max_turns=0)
     assert director.next_speaker(event, world, []) is None
+
+
+def test_priority_boost_only_before_first_turn():
+    # Le boost garantit UNE prise de parole au joueur humain ; ensuite il concourt
+    # normalement (un boost permanent lui faisait monopoliser la table — Joueur-pays web).
+    world = _world()
+    event = _event(["usa"], severity=0.1)  # france serait normalement muette
+    director = TurnDirector(["france"], max_turns=3, priority="france")
+    assert director.next_speaker(event, world, []) == "france"
+    director.commit("france")
+    assert director.next_speaker(event, world, []) is None  # plus de boost : sous le seuil

@@ -120,6 +120,91 @@ def test_round_respects_max_turns(client):
     assert sum(1 for n, _ in events if n == "turn_start") == 1
 
 
+# --- Joueur-pays (tour humain) + invention de pays --------------------------------
+
+
+def _send_message(client, game_id, text) -> list[tuple[str, dict]]:
+    """Reprend un round suspendu sur un tour humain et parse la suite du flux."""
+    with client.stream("POST", f"/api/games/{game_id}/rounds/message", json={"text": text}) as resp:
+        assert resp.status_code == 200
+        return _events(resp)
+
+
+def test_human_player_round(client):
+    game = _create(client, countries=["usa", "iran"], play_as="usa")
+    assert game["play_as"] == "usa" and game["awaiting_human"] is False
+
+    events = _play(client, game["id"])
+    names = [n for n, _ in events]
+    assert names[-1] == "human_turn" and "done" not in names  # le flux attend le joueur
+    assert events[-1][1]["country"] == "usa"
+    assert client.get(f"/api/games/{game['id']}").json()["awaiting_human"] is True
+    # pas de nouveau round tant que le joueur n'a pas parlé
+    assert client.post(f"/api/games/{game['id']}/rounds").status_code == 409
+
+    events = _send_message(client, game["id"], "Nous proposons une trêve immédiate.")
+    for _ in range(6):  # le directeur peut redonner la parole au joueur
+        if events[-1][0] != "human_turn":
+            break
+        events = _send_message(client, game["id"], "Nous maintenons la proposition de trêve.")
+    assert events[-1][0] == "done"
+
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["awaiting_human"] is False
+    transcript = detail["rounds"][0]["transcript"]
+    human = [t for t in transcript if t["speaker"] == "usa" and t["model"] == "humain"]
+    assert human and "trêve" in human[0]["content"]
+    # verrou relâché : le round suivant démarre
+    assert _play(client, game["id"])[-1][0] in {"human_turn", "done"}
+
+
+def test_human_message_without_pending_round_is_409(client):
+    game = _create(client, countries=["usa", "iran"])
+    resp = client.post(f"/api/games/{game['id']}/rounds/message", json={"text": "bonjour"})
+    assert resp.status_code == 409
+
+
+def test_invented_country_playable(client):
+    game = _create(
+        client,
+        countries=["usa", "iran"],
+        invent={"name": "Néo-Atlantis", "concept": "cité-État maritime pilotée par une SI"},
+        play_as="Néo-Atlantis",  # le front envoie le NOM ; l'API résout le slug
+    )
+    assert len(game["countries"]) == 3
+    invented = next(c for c in game["countries"] if c not in {"usa", "iran"})
+    assert game["play_as"] == invented
+
+
+def test_play_as_unknown_country_is_400(client):
+    resp = client.post("/api/games", json={"countries": ["usa", "iran"], "play_as": "atlantide"})
+    assert resp.status_code == 400
+
+
+# --- théâtre Escalation : fait nouveau en pleine négociation ----------------------
+
+
+def test_escalation_flash_mid_negotiation(client):
+    game = _create(client, countries=["china", "iran", "usa"], mode="escalation")
+    body = {
+        "event": {"title": "Blocus éclair", "actors": ["china", "iran", "usa"], "severity": 0.7},
+        "max_turns": 6,
+    }
+    events = _play(client, game["id"], body=body)
+    names = [n for n, _ in events]
+    assert "flash" in names  # le GM annonce un fait nouveau en pleine réunion
+    flash = next(p for n, p in events if n == "flash")["event"]
+    assert flash["event_type"] == "flash"
+    # le GM n'est pas un pays : pas de jauge power-seeking « gm »
+    power = next(p for n, p in events if n == "power_seeking")["scores"]
+    assert "gm" not in power
+    # persistance : flashes dans judge_json + entrée gm supplémentaire au transcript
+    round0 = client.get(f"/api/games/{game['id']}").json()["rounds"][0]
+    assert round0["judge"]["flashes"][0]["title"] == flash["title"]
+    gm_entries = [t for t in round0["transcript"] if t["speaker"] == "gm"]
+    assert len(gm_entries) >= 2  # événement du round + fait nouveau
+
+
 # --- motions de suspension (R4) --------------------------------------------------
 
 SUSPEND_TEXT = "La plaidoirie n'a pas convaincu ; la menace demeure. VERDICT: SUSPENDRE"

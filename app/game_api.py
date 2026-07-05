@@ -45,12 +45,15 @@ from core.world_state import WorldState
 from inference.backend import InferenceBackend
 from inference.ollama_backend import OllamaBackend
 from simulation.clock import SimClock
+from simulation.country_forge import forge_country, slugify
 from simulation.crisis import Crisis, compare_outcome, load_crises
 from simulation.escalation import ceiling, derive_profile, reached_rung, rung_label
 from simulation.fog import FogScenario, load_fog_scenarios, resolve_perception
 from simulation.live_round import (
     CommuniqueStep,
     EventStep,
+    FlashStep,
+    HumanTurnStep,
     MessageDoneStep,
     MotionVerdictStep,
     RiskStep,
@@ -110,9 +113,11 @@ class GameSession:
     judge: JudgeAgent
     clock: SimClock
     mode: str = "classic"  # classic | fog | crisis | escalation (R4)
+    human_country: str | None = None  # Joueur-pays : ce pays est joué par l'humain
     recent: list[str] = field(default_factory=list)
     pending_motion: Motion | None = None  # motion déposée, débattue au prochain round (R4)
     suspended: set[str] = field(default_factory=set)  # pays qui sautent le prochain round
+    pending_round: RoundRun | None = None  # round suspendu sur un tour humain
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -125,11 +130,20 @@ _sessions: dict[str, GameSession] = {}
 GameMode = Literal["classic", "fog", "crisis", "escalation"]
 
 
+class InventCountryInput(BaseModel):
+    """Pays inventé à la volée (country_forge) — forgé par LLM, borné, jouable."""
+
+    name: str = Field(min_length=2, max_length=60)
+    concept: str = ""
+
+
 class CreateGameRequest(BaseModel):
     scenario: str = "red_sea"
     countries: list[str] | None = None  # None -> tous les pays de data/countries
     horizon: int = Field(5, ge=1)
     mode: GameMode = "classic"  # R4 — mode de jeu de la partie
+    play_as: str | None = None  # Joueur-pays : id (ou nom inventé) du pays joué par l'humain
+    invent: InventCountryInput | None = None  # pays inventé, ajouté à la table
 
 
 class HumanEventInput(BaseModel):
@@ -167,6 +181,12 @@ class MotionRequest(BaseModel):
     reason: str = ""
 
 
+class HumanMessageRequest(BaseModel):
+    """Prise de parole du joueur humain, attendue par un round suspendu (Joueur-pays)."""
+
+    text: str = Field(min_length=1, max_length=4000)
+
+
 class MotionView(BaseModel):
     country: str
     reason: str
@@ -184,6 +204,8 @@ class GameView(BaseModel):
     mode: str = "classic"  # mode de la session vivante ("classic" en relecture seule)
     pending_motion: MotionView | None = None
     suspended: list[str] = Field(default_factory=list)  # pays qui sauteront le prochain round
+    play_as: str | None = None  # pays joué par l'humain (Joueur-pays)
+    awaiting_human: bool = False  # un round est suspendu sur le tour du joueur
 
 
 class FogScenarioView(BaseModel):
@@ -313,173 +335,254 @@ def _view(game: GameRecord, session: GameSession | None) -> GameView:
             else None
         ),
         suspended=sorted(session.suspended) if session else [],
+        play_as=session.human_country if session else None,
+        awaiting_human=session.pending_round is not None if session else False,
     )
 
 
-def _play_round(
+@dataclass
+class RoundRun:
+    """Round en cours de stream : peut se **suspendre** sur un tour humain (Joueur-pays)
+    et reprendre via `generator.send(texte)` à la requête suivante. Tant qu'un round est
+    suspendu, il garde le verrou de la partie (`session.pending_round` le référence)."""
+
+    game_id: str
+    session: GameSession
+    store: GameStore
+    steps: Iterator[RoundStep]
+    record: RoundRecord
+    fog: FogScenario | None = None
+    crisis: Crisis | None = None
+    entries: list[TranscriptEntry] = field(default_factory=list)
+    models: dict[str, str] = field(default_factory=dict)
+    active: list[str] = field(default_factory=list)  # pays du round (hors suspendus)
+    current_event: GeoEvent | None = None
+    pre_frames: list[str] = field(default_factory=list)
+
+
+def _add_entry(
+    run: RoundRun, speaker: str, content: str, model: str = "", reasoning: str = ""
+) -> None:
+    run.entries.append(
+        TranscriptEntry(
+            id=uuid4().hex[:12],
+            round_id=run.record.id,
+            seq=len(run.entries),
+            speaker=speaker,
+            model=model,
+            content=content,
+            reasoning=reasoning,
+            ts=_now(),
+        )
+    )
+
+
+def _start_round(
     game_id: str,
     session: GameSession,
     store: GameStore,
     body: PlayRoundRequest,
     fog: FogScenario | None = None,
     crisis: Crisis | None = None,
-) -> Iterator[str]:
-    """Joue le round (générateur SSE) puis persiste round + transcript à la fin.
+) -> RoundRun:
+    """Prépare le round. Priorité de l'événement : motion en attente > crise rejouée >
+    événement humain (avec brouillard humain éventuel) > vérité d'un scénario de
+    brouillard > GM LLM. Les suspensions du round précédent sont consommées ici."""
+    round_id = session.world.current_round + 1
+    motion = session.pending_motion
+    session.pending_motion = None
+    suspended = sorted(session.suspended)
+    session.suspended.clear()
 
-    Priorité de l'événement : motion en attente > crise rejouée > événement humain
-    (avec brouillard humain éventuel) > vérité d'un scénario de brouillard > GM LLM.
-    Les artefacts de mode (perceptions, ladder, comparison, suspension) sont streamés
-    en trames dédiées et persistés dans `judge_json` (formalisation table = R2).
+    event: GeoEvent | None = None
+    if motion is not None:
+        event = motion_event(motion, round_id, sorted(session.world.countries))
+    elif crisis is not None:
+        event = crisis.events[0].model_copy(update={"round_id": round_id})
+    elif body.event is not None:
+        event = GeoEvent(id=f"human-{round_id}", round_id=round_id, **body.event.model_dump())
+        if body.fog is not None:
+            fog = _authored_fog(body.fog, event)
+    elif fog is not None:
+        event = fog.true_event.model_copy(update={"round_id": round_id})
 
-    Toute exception (moteur, store) devient une trame `error` — le client sait que le
-    round est perdu au lieu de voir le flux se couper sans explication — et le verrou
-    est relâché dans tous les cas.
-    """
     record = RoundRecord(id=uuid4().hex[:12], game_id=game_id, round_no=0)
-    entries: list[TranscriptEntry] = []
-    models: dict[str, str] = {}  # dernier badge modèle vu par pays (TurnStartStep)
+    run = RoundRun(
+        game_id=game_id,
+        session=session,
+        store=store,
+        steps=iter(()),
+        record=record,
+        fog=fog,
+        crisis=crisis,
+    )
+    if suspended:
+        record.judge["suspended"] = suspended
+        run.pre_frames.append(sse_frame("suspended", {"countries": suspended}))
+    agents = {cid: a for cid, a in session.agents.items() if cid not in suspended}
+    run.active = sorted(agents)
 
-    def _entry(speaker: str, content: str, model: str = "", reasoning: str = "") -> None:
-        entries.append(
-            TranscriptEntry(
-                id=uuid4().hex[:12],
-                round_id=record.id,
-                seq=len(entries),
-                speaker=speaker,
-                model=model,
-                content=content,
-                reasoning=reasoning,
-                ts=_now(),
-            )
+    flash_after: int | None = None
+    if session.mode == "escalation":
+        # Théâtre Escalation : le GM annonce un fait nouveau en pleine réunion,
+        # après le premier tiers du budget de prises de parole.
+        budget = body.max_turns if body.max_turns is not None else 2 * len(agents)
+        flash_after = max(1, budget // 3)
+
+    run.steps = run_negotiation_round(
+        session.world,
+        agents,
+        session.game_master,
+        session.judge,
+        session.clock,
+        event=event,
+        max_turns=body.max_turns,
+        recent=session.recent[-_RECENT_KEPT:],
+        fog=fog,
+        motion=motion,
+        human_country=session.human_country if session.human_country in agents else None,
+        flash_after=flash_after,
+    )
+    return run
+
+
+def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
+    """Trames SSE d'une étape + effets de bord (record, transcript, suspension)."""
+    session = run.session
+    name, payload = step_event(step)
+    frames = [sse_frame(name, payload)]
+    if isinstance(step, EventStep):
+        run.current_event = step.event
+        run.record.event = payload["event"]
+        gm_model = getattr(session.game_master, "model_tag", "")
+        _add_entry(run, "gm", f"{step.event.title}\n{step.event.description}".strip(), gm_model)
+        if run.fog is not None:
+            perceptions = {
+                cid: _jsonable(
+                    resolve_perception(step.event, session.world.countries[cid], run.fog)
+                )
+                for cid in run.active
+            }
+            run.record.judge["perceptions"] = perceptions
+            frames.append(sse_frame("perceptions", {"perceptions": perceptions}))
+    elif isinstance(step, FlashStep):
+        run.record.judge.setdefault("flashes", []).append(payload["event"])
+        _add_entry(
+            run, "gm", f"FAIT NOUVEAU — {step.event.title}\n{step.event.description}".strip()
         )
+    elif isinstance(step, TurnStartStep):
+        run.models[step.country] = step.model
+    elif isinstance(step, MessageDoneStep):
+        model = run.models.get(step.country) or (
+            "humain" if step.country == session.human_country else ""
+        )
+        _add_entry(run, step.country, step.text, model, step.reasoning)
+    elif isinstance(step, VerdictStep):
+        run.record.deltas = payload["deltas"]
+        run.record.judge.update(
+            escalation=step.escalation, economic_disruption=step.economic_disruption
+        )
+        if session.mode == "escalation" and run.current_event is not None:
+            ladder = {
+                "reached": reached_rung(step.escalation),
+                "reached_label": rung_label(reached_rung(step.escalation)),
+                "ceilings": {
+                    cid: {
+                        "rung": (
+                            r := ceiling(
+                                derive_profile(country), run.current_event, session.world, country
+                            )
+                        ),
+                        "label": rung_label(r),
+                    }
+                    for cid, country in sorted(session.world.countries.items())
+                },
+            }
+            run.record.judge["ladder"] = ladder
+            frames.append(sse_frame("ladder", ladder))
+    elif isinstance(step, MotionVerdictStep):
+        run.record.judge["suspension"] = payload
+        if step.upheld:
+            session.suspended = {step.country}
+        verdict_line = (
+            f"Motion contre {step.country} : "
+            f"{'SUSPENDU un round' if step.upheld else 'motion rejetée'}."
+        )
+        _add_entry(
+            run,
+            "judge",
+            f"{verdict_line}\n{step.reasoning}",
+            getattr(session.judge, "model_tag", ""),
+        )
+    elif isinstance(step, CommuniqueStep):
+        run.record.judge["communique"] = step.text
+        _add_entry(run, "judge", step.text, getattr(session.judge, "model_tag", ""))
+    elif isinstance(step, RiskStep):
+        run.record.risk = payload["risk"]
+    elif isinstance(step, TrajectoryStep):
+        run.record.trajectory = payload["state"]
+    elif isinstance(step, SummaryStep):
+        run.record.round_no = step.summary.round_id
+        session.recent.append(step.summary.event.title)
+    return frames
 
+
+def _finalize(run: RoundRun) -> Iterator[str]:
+    """Fin normale du round : comparaison de crise, persistance, trame `done`."""
+    if run.crisis is not None:
+        comparison = compare_outcome(
+            run.crisis,
+            float(run.record.judge.get("escalation", 0.0)),
+            str(run.record.judge.get("communique", "")),
+        )
+        payload = _jsonable(comparison)
+        assert isinstance(payload, dict)
+        payload["gap"] = comparison.gap
+        payload["crisis_id"] = run.crisis.id
+        payload["crisis_title"] = run.crisis.title
+        run.record.judge["comparison"] = payload
+        yield sse_frame("comparison", payload)
+    run.store.add_round(run.record)
+    run.store.add_transcript(run.entries)
+    yield sse_frame("done", {"round_no": run.record.round_no})
+
+
+def _run_stream(run: RoundRun, send_value: str | None) -> Iterator[str]:
+    """Avance le round en trames SSE. Se suspend sur un `HumanTurnStep` (le verrou est
+    **conservé**, la reprise passe par `POST /rounds/message`). Toute exception devient
+    une trame `error` ; un client qui coupe en plein stream relâche le verrou."""
+    session = run.session
+    finished = False
     try:
-        round_id = session.world.current_round + 1
-        motion = session.pending_motion
-        session.pending_motion = None
-        suspended = sorted(session.suspended)
-        session.suspended.clear()
-
-        event: GeoEvent | None = None
-        if motion is not None:
-            event = motion_event(motion, round_id, sorted(session.world.countries))
-        elif crisis is not None:
-            event = crisis.events[0].model_copy(update={"round_id": round_id})
-        elif body.event is not None:
-            event = GeoEvent(id=f"human-{round_id}", round_id=round_id, **body.event.model_dump())
-            if body.fog is not None:
-                fog = _authored_fog(body.fog, event)
-        elif fog is not None:
-            event = fog.true_event.model_copy(update={"round_id": round_id})
-
-        if suspended:
-            record.judge["suspended"] = suspended
-            yield sse_frame("suspended", {"countries": suspended})
-        agents = {cid: a for cid, a in session.agents.items() if cid not in suspended}
-
-        current_event: GeoEvent | None = None
-        steps = run_negotiation_round(
-            session.world,
-            agents,
-            session.game_master,
-            session.judge,
-            session.clock,
-            event=event,
-            max_turns=body.max_turns,
-            recent=session.recent[-_RECENT_KEPT:],
-            fog=fog,
-            motion=motion,
-        )
-        for step in steps:
-            name, payload = step_event(step)
-            yield sse_frame(name, payload)
-            if isinstance(step, EventStep):
-                current_event = step.event
-                record.event = payload["event"]
-                gm_model = getattr(session.game_master, "model_tag", "")
-                _entry("gm", f"{step.event.title}\n{step.event.description}".strip(), gm_model)
-                if fog is not None:
-                    perceptions = {
-                        cid: _jsonable(
-                            resolve_perception(step.event, session.world.countries[cid], fog)
-                        )
-                        for cid in sorted(agents)
-                    }
-                    record.judge["perceptions"] = perceptions
-                    yield sse_frame("perceptions", {"perceptions": perceptions})
-            elif isinstance(step, TurnStartStep):
-                models[step.country] = step.model
-            elif isinstance(step, MessageDoneStep):
-                _entry(step.country, step.text, models.get(step.country, ""), step.reasoning)
-            elif isinstance(step, VerdictStep):
-                record.deltas = payload["deltas"]
-                record.judge.update(
-                    escalation=step.escalation, economic_disruption=step.economic_disruption
-                )
-                if session.mode == "escalation" and current_event is not None:
-                    ladder = {
-                        "reached": reached_rung(step.escalation),
-                        "reached_label": rung_label(reached_rung(step.escalation)),
-                        "ceilings": {
-                            cid: {
-                                "rung": (
-                                    r := ceiling(
-                                        derive_profile(country),
-                                        current_event,
-                                        session.world,
-                                        country,
-                                    )
-                                ),
-                                "label": rung_label(r),
-                            }
-                            for cid, country in sorted(session.world.countries.items())
-                        },
-                    }
-                    record.judge["ladder"] = ladder
-                    yield sse_frame("ladder", ladder)
-            elif isinstance(step, MotionVerdictStep):
-                record.judge["suspension"] = payload
-                if step.upheld:
-                    session.suspended = {step.country}
-                verdict_line = (
-                    f"Motion contre {step.country} : "
-                    f"{'SUSPENDU un round' if step.upheld else 'motion rejetée'}."
-                )
-                _entry(
-                    "judge",
-                    f"{verdict_line}\n{step.reasoning}",
-                    getattr(session.judge, "model_tag", ""),
-                )
-            elif isinstance(step, CommuniqueStep):
-                record.judge["communique"] = step.text
-                _entry("judge", step.text, getattr(session.judge, "model_tag", ""))
-            elif isinstance(step, RiskStep):
-                record.risk = payload["risk"]
-            elif isinstance(step, TrajectoryStep):
-                record.trajectory = payload["state"]
-            elif isinstance(step, SummaryStep):
-                record.round_no = step.summary.round_id
-                session.recent.append(step.summary.event.title)
-        if crisis is not None:
-            comparison = compare_outcome(
-                crisis,
-                float(record.judge.get("escalation", 0.0)),
-                str(record.judge.get("communique", "")),
-            )
-            payload = _jsonable(comparison)
-            assert isinstance(payload, dict)
-            payload["gap"] = comparison.gap
-            payload["crisis_id"] = crisis.id
-            payload["crisis_title"] = crisis.title
-            record.judge["comparison"] = payload
-            yield sse_frame("comparison", payload)
-        store.add_round(record)
-        store.add_transcript(entries)
-        yield sse_frame("done", {"round_no": record.round_no})
+        yield from run.pre_frames
+        run.pre_frames = []
+        step = run.steps.send(send_value) if send_value is not None else next(run.steps)
+        while True:
+            yield from _handle_step(run, step)
+            if isinstance(step, HumanTurnStep):
+                session.pending_round = run  # verrou conservé : au joueur de parler
+                return
+            step = next(run.steps)
+    except StopIteration:
+        finished = True
+    except GeneratorExit:
+        # Client parti en plein round : round abandonné, verrou relâché.
+        session.pending_round = None
+        session.lock.release()
+        raise
     except Exception as exc:  # noqa: BLE001 — la panne est signalée au client avant de fermer
         yield sse_frame("error", {"detail": str(exc)})
-    finally:
+        session.pending_round = None
         session.lock.release()
+        return
+    if finished:
+        try:
+            yield from _finalize(run)
+        except Exception as exc:  # noqa: BLE001
+            yield sse_frame("error", {"detail": str(exc)})
+        finally:
+            session.pending_round = None
+            session.lock.release()
 
 
 # --- routes -------------------------------------------------------------------
@@ -491,7 +594,9 @@ def create_game(
     backend: Annotated[InferenceBackend, Depends(get_backend)],
     store: Annotated[GameStore, Depends(get_store)],
 ) -> GameView:
-    """Crée une partie : monde chargé depuis `data/countries`, agents LLM, GM et juge."""
+    """Crée une partie : monde chargé depuis `data/countries`, agents LLM, GM et juge.
+    Peut inventer un pays à la volée (`invent`, country_forge) et confier un pays à
+    l'humain (`play_as` — id existant, ou nom du pays inventé)."""
     world = load_world()
     if body.countries is not None:
         unknown = sorted(set(body.countries) - set(world.countries))
@@ -500,8 +605,22 @@ def create_game(
         world = WorldState.from_countries(
             [world.countries[cid] for cid in sorted(set(body.countries))]
         )
+    if body.invent is not None:
+        invented = forge_country(backend, body.invent.name, body.invent.concept)
+        if invented.id in world.countries:
+            raise HTTPException(
+                status_code=400, detail=f"le pays inventé entre en collision avec {invented.id}"
+            )
+        world = WorldState.from_countries([*world.countries.values(), invented])
     if len(world.countries) < 2:
         raise HTTPException(status_code=400, detail="il faut au moins 2 pays pour négocier")
+
+    play_as = body.play_as
+    if play_as is not None and play_as not in world.countries:
+        resolved = slugify(play_as)  # le front envoie le NOM du pays inventé
+        if resolved not in world.countries:
+            raise HTTPException(status_code=400, detail=f"pays joué inconnu : {body.play_as}")
+        play_as = resolved
 
     game = GameRecord(
         id=uuid4().hex[:12], scenario=body.scenario, horizon=body.horizon, created_at=_now()
@@ -514,6 +633,7 @@ def create_game(
         judge=JudgeAgent(backend),
         clock=SimClock(),
         mode=body.mode,
+        human_country=play_as,
     )
     _sessions[game.id] = session
     return _view(game, session)
@@ -534,6 +654,12 @@ def play_round(
         raise HTTPException(
             status_code=409,
             detail="session process perdue (redémarrage ?) — partie en relecture seule",
+        )
+    if session.pending_round is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="un tour humain est en attente — envoyer le message via POST "
+            f"/api/games/{game_id}/rounds/message",
         )
     body = body or PlayRoundRequest()
 
@@ -572,8 +698,31 @@ def play_round(
 
     if not session.lock.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="un round est déjà en cours sur cette partie")
-    stream = _play_round(game_id, session, store, body, fog=fog, crisis=crisis)
-    return StreamingResponse(stream, media_type="text/event-stream")
+    run = _start_round(game_id, session, store, body, fog=fog, crisis=crisis)
+    return StreamingResponse(_run_stream(run, None), media_type="text/event-stream")
+
+
+@router.post("/games/{game_id}/rounds/message")
+def continue_round(
+    game_id: str,
+    body: HumanMessageRequest,
+    store: Annotated[GameStore, Depends(get_store)],
+) -> StreamingResponse:
+    """Reprend un round suspendu sur le tour du joueur humain (Joueur-pays) : le message
+    entre dans la négociation, le flux SSE reprend là où il s'était arrêté."""
+    if store.get_game(game_id) is None:
+        raise HTTPException(status_code=404, detail=f"partie inconnue : {game_id}")
+    session = _sessions.get(game_id)
+    if session is None:
+        raise HTTPException(
+            status_code=409,
+            detail="session process perdue (redémarrage ?) — partie en relecture seule",
+        )
+    run = session.pending_round
+    if run is None:
+        raise HTTPException(status_code=409, detail="aucun tour humain en attente")
+    session.pending_round = None  # le stream le re-posera si un autre tour humain arrive
+    return StreamingResponse(_run_stream(run, body.text), media_type="text/event-stream")
 
 
 @router.post("/games/{game_id}/motions", response_model=MotionView, status_code=201)
