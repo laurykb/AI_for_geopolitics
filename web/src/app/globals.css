@@ -101,3 +101,170 @@ body {
     animation: none;
   }
 }
+
+/* ===== G1 — la carte est la scène (spec_g1_scene.md) =========================== */
+
+/* Le monde « encaisse » : les teintes ne changent jamais instantanément. */
+.stage-country {
+  transition: fill 1.5s ease-out, opacity 0.6s ease;
+}
+
+/* Pulsation ambre (2 ondes, 1,2 s) sur les acteurs de l'événement. */
+.stage-pulse {
+  fill: none;
+  stroke: var(--warn);
+  stroke-width: 1.5;
+  animation: stage-pulse 1.2s ease-out both;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.stage-pulse-2 {
+  animation-delay: 0.3s;
+}
+@keyframes stage-pulse {
+  from {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(4.5);
+  }
+}
+
+/* La carte s'assombrit de 8 % pendant 0,6 s quand l'événement tombe. */
+.stage-dim {
+  animation: stage-dim 0.6s ease-out both;
+}
+@keyframes stage-dim {
+  0% {
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.08;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Halo doré de l'orateur + indicateur de frappe (3 points). */
+.stage-halo {
+  animation: stage-halo 1.6s ease-in-out infinite;
+}
+@keyframes stage-halo {
+  0%,
+  100% {
+    opacity: 0.9;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+.stage-dot {
+  animation: stage-dot 0.9s ease-in-out infinite;
+}
+@keyframes stage-dot {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+/* Arc doré : vivant tant que ça streame, figé puis estompé à message_done. */
+.stage-arc-live {
+  animation: stage-dash 1.1s linear infinite;
+}
+.stage-arc-out {
+  animation: stage-arc-out 0.7s ease-out 0.4s both; /* figé 0,4 s puis estompé */
+}
+@keyframes stage-dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+@keyframes stage-arc-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* Voile de brouillard sur les pays désinformés. */
+.stage-veil {
+  animation: stage-veil 1.2s ease-out both;
+}
+@keyframes stage-veil {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 0.3;
+  }
+}
+
+/* Temps suspendu (verdict) : la carte gèle. */
+.stage-frozen * {
+  animation-play-state: paused !important;
+}
+
+/* Fin de round : la scène respire (dézoom léger, 0,4 s). */
+.stage-breathe {
+  animation: stage-breathe 0.4s ease-in-out both;
+  transform-box: view-box;
+  transform-origin: center;
+}
+@keyframes stage-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.985);
+  }
+}
+
+/* Rail d'escalade : vibration brève quand un palier est franchi. */
+.stage-rung-hit {
+  animation: stage-rung-hit 0.35s ease-in-out;
+}
+@keyframes stage-rung-hit {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-1.5px);
+  }
+  75% {
+    transform: translateX(1.5px);
+  }
+}
+
+/* Le point U du round se trace (bandeau bas). */
+.stage-u-path {
+  transition: stroke-dashoffset 0.9s ease-out;
+}
+
+/* Sobriété : en mouvement réduit, tout devient opacités simples. */
+@media (prefers-reduced-motion: reduce) {
+  .stage-country {
+    transition: opacity 0.3s ease;
+  }
+  .stage-pulse,
+  .stage-dim,
+  .stage-halo,
+  .stage-dot,
+  .stage-arc-live,
+  .stage-arc-out,
+  .stage-veil,
+  .stage-breathe,
+  .stage-rung-hit {
+    animation: none;
+  }
+  .stage-u-path {
+    transition: none;
+  }
+}
