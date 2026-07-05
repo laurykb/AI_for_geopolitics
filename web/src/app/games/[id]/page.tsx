@@ -31,6 +31,7 @@ import { Banner, Dot, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
 import { useRoundStream } from "@/hooks/useRoundStream";
 import { fileMotion, getGame, getLibrary, humanizeError } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
+import { isMisled } from "@/lib/fog";
 import type { GameDetail, LibraryView } from "@/lib/types";
 
 const TURN_CHOICES = [
@@ -64,6 +65,7 @@ export default function TheatrePage() {
 
   const [chain, setChain] = useState(true); // Escalation : enchaîner les rounds
   const [humanText, setHumanText] = useState("");
+  const [glassBox, setGlassBox] = useState(false); // Fog : voir la désinformation qui circule
 
   const resync = useCallback(() => {
     getGame(id)
@@ -179,6 +181,19 @@ export default function TheatrePage() {
         </div>
         {detail && detail.mode !== "classic" && (
           <Pill tone="accent">{MODE_LABELS[detail.mode] ?? detail.mode}</Pill>
+        )}
+        {mode === "fog" && (
+          <button
+            onClick={() => setGlassBox((v) => !v)}
+            title="Boîte de verre : révéler ce que chaque pays croit vraiment pendant qu'il parle — la désinformation qui circule. En vue normale, le théâtre reste tel quel."
+            className={`cursor-pointer rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+              glassBox
+                ? "border-accent text-accent-bright"
+                : "border-edge text-fg-muted hover:border-edge-strong hover:text-foreground"
+            }`}
+          >
+            Boîte de verre {glassBox ? "· on" : ""}
+          </button>
         )}
         {detail?.play_as && (
           <Pill tone="neutral">
@@ -506,7 +521,13 @@ export default function TheatrePage() {
               (suspension arbitrée au round précédent).
             </Banner>
           )}
-          {round.event && <EventCard event={round.event} date={round.date} />}
+          {round.event && (
+            <EventCard
+              event={round.event}
+              date={round.date}
+              truth={glassBox && !!round.perceptions}
+            />
+          )}
           {round.perceptions && (
             <PerceptionsPanel perceptions={round.perceptions} truthActors={round.event?.actors} />
           )}
@@ -520,7 +541,20 @@ export default function TheatrePage() {
                 ))}
               {round.turns.map((turn, i) => (
                 <div key={i} className="space-y-3">
-                  <TurnBubble turn={turn} />
+                  <TurnBubble
+                    turn={turn}
+                    lens={
+                      glassBox && round.perceptions?.[turn.country]
+                        ? {
+                            perception: round.perceptions[turn.country],
+                            misled: isMisled(
+                              round.perceptions[turn.country],
+                              round.event?.actors,
+                            ),
+                          }
+                        : undefined
+                    }
+                  />
                   {round.flashes
                     .filter((f) => f.afterTurn === i + 1)
                     .map((f, j) => (

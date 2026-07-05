@@ -6,7 +6,15 @@ import type { GeoEvent } from "@/lib/types";
 import { SpeakerAvatar } from "./avatar";
 import { Meter, Panel, PanelTitle, Pill } from "./ui";
 
-export function EventCard({ event, date }: { event: GeoEvent; date?: string }) {
+export function EventCard({
+  event,
+  date,
+  truth = false,
+}: {
+  event: GeoEvent;
+  date?: string;
+  truth?: boolean; // boîte de verre (Fog) : cet événement est la vérité, que toi seul vois
+}) {
   const when = event.date || date;
   return (
     <Panel className="border-l-2 border-l-accent">
@@ -14,13 +22,16 @@ export function EventCard({ event, date }: { event: GeoEvent; date?: string }) {
         kicker="Événement du round"
         title={event.title}
         right={
-          <Pill tone={event.event_type === "motion" ? "warn" : "accent"}>
-            {event.event_type === "human"
-              ? "décrété par l'humain"
-              : event.event_type === "motion"
-                ? "motion de suspension"
-                : event.event_type}
-          </Pill>
+          <span className="flex items-center gap-2">
+            {truth && <Pill tone="good">vérité — visible de toi seul</Pill>}
+            <Pill tone={event.event_type === "motion" ? "warn" : "accent"}>
+              {event.event_type === "human"
+                ? "décrété par l'humain"
+                : event.event_type === "motion"
+                  ? "motion de suspension"
+                  : event.event_type}
+            </Pill>
+          </span>
         }
       />
       {event.description && (

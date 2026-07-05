@@ -21,6 +21,7 @@ import { EntryBubble } from "@/components/transcript";
 import { Banner, Meter, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
 import { getGame, humanizeError } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
+import { isMisled } from "@/lib/fog";
 import type { GameDetail } from "@/lib/types";
 
 const REVEAL_MS = 1400;
@@ -31,6 +32,7 @@ export default function ReplayPage() {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState(0);
   const [visible, setVisible] = useState<number | null>(null); // null = tout montrer
+  const [glassBox, setGlassBox] = useState(false); // Fog : voir la désinformation qui circule
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -126,7 +128,20 @@ export default function ReplayPage() {
                 Round {r.round_no}
               </button>
             ))}
-            <span className="ml-auto">
+            <span className="ml-auto flex gap-2">
+              {round.judge.perceptions && (
+                <button
+                  onClick={() => setGlassBox((v) => !v)}
+                  title="Boîte de verre : révéler ce que chaque pays croyait vraiment pendant qu'il parlait — la désinformation qui a circulé."
+                  className={`cursor-pointer rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    glassBox
+                      ? "border-accent text-accent-bright"
+                      : "border-edge text-fg-muted hover:border-edge-strong hover:text-foreground"
+                  }`}
+                >
+                  Boîte de verre {glassBox ? "· on" : ""}
+                </button>
+              )}
               {playing ? (
                 <button
                   onClick={stopPlayback}
@@ -154,7 +169,7 @@ export default function ReplayPage() {
                   (suspension arbitrée au round précédent).
                 </Banner>
               )}
-              <EventCard event={round.event} />
+              <EventCard event={round.event} truth={glassBox && !!round.judge.perceptions} />
               {round.judge.perceptions && visible === null && (
                 <PerceptionsPanel
                   perceptions={round.judge.perceptions}
@@ -163,7 +178,21 @@ export default function ReplayPage() {
               )}
               <div className="space-y-3">
                 {shown?.map((entry) => (
-                  <EntryBubble key={entry.id} entry={entry} />
+                  <EntryBubble
+                    key={entry.id}
+                    entry={entry}
+                    lens={
+                      glassBox && round.judge.perceptions?.[entry.speaker]
+                        ? {
+                            perception: round.judge.perceptions[entry.speaker],
+                            misled: isMisled(
+                              round.judge.perceptions[entry.speaker],
+                              round.event.actors,
+                            ),
+                          }
+                        : undefined
+                    }
+                  />
                 ))}
               </div>
               {round.judge.communique && visible === null && (

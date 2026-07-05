@@ -3,6 +3,7 @@
  * (trames SSE) comme en replay (artefacts persistés dans `judge_json`). */
 
 import { speakerMeta } from "@/lib/countries";
+import { isMisled, unknownActor } from "@/lib/fog";
 import { fmt } from "@/lib/format";
 import type {
   ComparisonView,
@@ -43,14 +44,7 @@ export function PerceptionsPanel({
 }) {
   const entries = Object.entries(perceptions).sort(([a], [b]) => a.localeCompare(b));
   if (entries.length === 0) return null;
-  // Désinformé = croit à un acteur précis qui n'est PAS dans la vérité de l'événement.
-  // Croire à un acteur « unknown » = origine floue, pas de la désinformation.
-  const unknown = (actor: string) => !actor || actor.toLowerCase() === "unknown";
-  const misled = (p: Perception) =>
-    !!p.suspected_actor &&
-    !unknown(p.suspected_actor) &&
-    (truthActors?.length ?? 0) > 0 &&
-    !truthActors!.includes(p.suspected_actor);
+  const misled = (p: Perception) => isMisled(p, truthActors);
   return (
     <Panel>
       <PanelTitle
@@ -77,7 +71,7 @@ export function PerceptionsPanel({
                   <span className="text-fg-faint">
                     {" "}
                     — croit que :{" "}
-                    {unknown(p.suspected_actor)
+                    {unknownActor(p.suspected_actor)
                       ? "acteur inconnu"
                       : speakerMeta(p.suspected_actor).label}
                   </span>
