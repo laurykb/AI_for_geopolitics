@@ -40,10 +40,19 @@ from pydantic import BaseModel, Field, ValidationError
 from agents.game_master import GameMasterAgent
 from agents.judge import JudgeAgent
 from agents.llm_agent import LLMAgent
+from app.market_api import get_engine as get_market_engine
 from core.events import GeoEvent
 from core.world_state import WorldState
 from inference.backend import InferenceBackend
 from inference.ollama_backend import OllamaBackend
+from market.engine import MarketEngine
+from market.forecaster import LLMForecaster
+from market.models import (
+    AccountKind,
+    MarketStatus,
+    ResolutionCriterion,
+    ResolutionKind,
+)
 from simulation.clock import SimClock
 from simulation.country_forge import forge_country, slugify
 from simulation.crisis import Crisis, compare_outcome, load_crises
@@ -63,15 +72,6 @@ from simulation.live_round import (
     TurnStartStep,
     VerdictStep,
     run_negotiation_round,
-)
-from app.market_api import get_engine as get_market_engine
-from market.engine import MarketEngine
-from market.forecaster import LLMForecaster
-from market.models import (
-    AccountKind,
-    MarketStatus,
-    ResolutionCriterion,
-    ResolutionKind,
 )
 from simulation.loader import load_world
 from simulation.motions import Motion, motion_event
