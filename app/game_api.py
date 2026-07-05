@@ -28,14 +28,14 @@ import re
 import threading
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from functools import lru_cache
 from typing import Annotated, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from agents.game_master import GameMasterAgent
 from agents.judge import JudgeAgent
@@ -68,6 +68,7 @@ from simulation.loader import load_world
 from simulation.motions import Motion, motion_event
 from storage.game_store import (
     GameRecord,
+    GameStatus,
     GameStore,
     RoundRecord,
     SessionSnapshot,
@@ -220,7 +221,8 @@ class GameView(BaseModel):
     created_at: str
     countries: list[str]
     live: bool  # session encore en mémoire (rounds jouables) ou relecture seule
-    mode: str = "classic"  # mode de la session vivante ("classic" en relecture seule)
+    resumable: bool = False  # snapshot présent + partie en cours : reconstructible (R2)
+    mode: str = "classic"  # mode de la partie (persisté sur `games.mode` — R2)
     pending_motion: MotionView | None = None
     suspended: list[str] = Field(default_factory=list)  # pays qui sauteront le prochain round
     play_as: str | None = None  # pays joué par l'humain (Joueur-pays)
@@ -303,6 +305,84 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+# --- reconstruction de session (docs/spec_session_rebuild.md) ---------------------
+
+
+def _clock_state(clock: SimClock) -> dict:
+    return {
+        "current_date": clock.current_date.isoformat(),
+        "base_months": clock.base_months,
+        "jitter_months": clock.jitter_months,
+        "seed": clock.seed,
+    }
+
+
+def _restore_clock(state: dict) -> SimClock:
+    if not state:
+        return SimClock()
+    return SimClock(
+        current_date=date.fromisoformat(state["current_date"]),
+        base_months=state.get("base_months", 6),
+        jitter_months=state.get("jitter_months", 0),
+        seed=state.get("seed"),
+    )
+
+
+def _snapshot_session(game_id: str, session: GameSession, store: GameStore) -> None:
+    """Upsert du snapshot de l'état vivant — à la création (round 0), après chaque round
+    et à chaque dépôt de motion (la motion mute la session entre deux rounds)."""
+    store.save_session_snapshot(
+        SessionSnapshot(
+            game_id=game_id,
+            world=session.world.model_dump(mode="json"),
+            clock=_clock_state(session.clock),
+            recent=session.recent[-_RECENT_KEPT:],
+            pending_motion=(
+                session.pending_motion.model_dump() if session.pending_motion else None
+            ),
+            suspended=sorted(session.suspended),
+            play_as=session.human_country,
+            updated_at=_now(),
+        )
+    )
+
+
+def _rebuild_session(
+    game: GameRecord, store: GameStore, backend: InferenceBackend
+) -> GameSession | None:
+    """Reconstruction paresseuse au premier besoin : agents **recréés à froid** (leur
+    contexte vient du monde + `recent` ; la mémoire conversationnelle interne éventuelle
+    est perdue — accepté par la spec). Un round interrompu en plein stream n'est pas
+    repris. Snapshot absent/invalide ou partie finie → None (relecture seule)."""
+    if game.status is not GameStatus.RUNNING:
+        return None
+    snapshot = store.get_session_snapshot(game.id)
+    if snapshot is None:
+        return None
+    try:
+        world = WorldState.model_validate(snapshot.world)
+        motion = (
+            Motion.model_validate(snapshot.pending_motion) if snapshot.pending_motion else None
+        )
+        clock = _restore_clock(snapshot.clock)
+    except (ValidationError, KeyError, ValueError):
+        return None
+    session = GameSession(
+        world=world,
+        agents={cid: LLMAgent(cid, backend) for cid in world.countries},
+        game_master=GameMasterAgent(backend),  # GM et juge : stateless entre rounds
+        judge=JudgeAgent(backend),
+        clock=clock,
+        mode=game.mode,
+        human_country=snapshot.play_as,
+        recent=list(snapshot.recent),
+        pending_motion=motion,
+        suspended=set(snapshot.suspended),
+    )
+    _sessions[game.id] = session  # verrou neuf (champ par défaut du dataclass)
+    return session
+
+
 @lru_cache(maxsize=1)
 def _fog_library() -> dict[str, FogScenario]:
     """Scénarios de brouillard embarqués (`data/fog/*.json`), chargés une fois."""
@@ -333,7 +413,9 @@ def _authored_fog(spec: HumanFogInput, event: GeoEvent) -> FogScenario:
     )
 
 
-def _view(game: GameRecord, session: GameSession | None) -> GameView:
+def _view(
+    game: GameRecord, session: GameSession | None, *, resumable: bool = False
+) -> GameView:
     pending = session.pending_motion if session else None
     return GameView(
         id=game.id,
@@ -343,7 +425,8 @@ def _view(game: GameRecord, session: GameSession | None) -> GameView:
         created_at=game.created_at,
         countries=sorted(session.world.countries) if session else [],
         live=session is not None,
-        mode=session.mode if session else "classic",
+        resumable=game.status is GameStatus.RUNNING and (session is not None or resumable),
+        mode=session.mode if session else game.mode,
         pending_motion=(
             MotionView(
                 country=pending.country,
@@ -563,6 +646,7 @@ def _finalize(run: RoundRun) -> Iterator[str]:
         yield sse_frame("comparison", payload)
     run.store.add_round(run.record)
     run.store.add_transcript(run.entries)
+    _snapshot_session(run.game_id, run.session, run.store)  # reconstruction au restart (R2)
     yield sse_frame("done", {"round_no": run.record.round_no})
 
 
@@ -658,7 +742,11 @@ def create_game(
         play_as = resolved
 
     game = GameRecord(
-        id=uuid4().hex[:12], scenario=body.scenario, horizon=body.horizon, created_at=_now()
+        id=uuid4().hex[:12],
+        scenario=body.scenario,
+        horizon=body.horizon,
+        mode=body.mode,
+        created_at=_now(),
     )
     store.add_game(game)
     session = GameSession(
@@ -671,6 +759,8 @@ def create_game(
         human_country=play_as,
     )
     _sessions[game.id] = session
+    # Snapshot round 0 : sans lui, une partie jamais jouée n'est pas reconstructible.
+    _snapshot_session(game.id, session, store)
     return _view(game, session)
 
 
@@ -678,17 +768,19 @@ def create_game(
 def play_round(
     game_id: str,
     store: Annotated[GameStore, Depends(get_store)],
+    backend: Annotated[InferenceBackend, Depends(get_backend)],
     body: PlayRoundRequest | None = None,
 ) -> StreamingResponse:
-    """Joue un round complet, streamé en SSE (événement GM → tours → juge → trajectoire)."""
+    """Joue un round complet, streamé en SSE (événement GM → tours → juge → trajectoire).
+    Session process absente (restart) → reconstruction paresseuse depuis le snapshot."""
     game = store.get_game(game_id)
     if game is None:
         raise HTTPException(status_code=404, detail=f"partie inconnue : {game_id}")
-    session = _sessions.get(game_id)
+    session = _sessions.get(game_id) or _rebuild_session(game, store, backend)
     if session is None:
         raise HTTPException(
             status_code=409,
-            detail="session process perdue (redémarrage ?) — partie en relecture seule",
+            detail="session irrécupérable (partie finie ou sans snapshot) — relecture seule",
         )
     if session.pending_round is not None:
         raise HTTPException(
@@ -765,16 +857,18 @@ def file_motion(
     game_id: str,
     body: MotionRequest,
     store: Annotated[GameStore, Depends(get_store)],
+    backend: Annotated[InferenceBackend, Depends(get_backend)],
 ) -> MotionView:
-    """Dépose une motion de suspension (R4) : débattue puis arbitrée au prochain round."""
+    """Dépose une motion de suspension (R4) : débattue puis arbitrée au prochain round.
+    Session process absente (restart) → reconstruction paresseuse depuis le snapshot."""
     game = store.get_game(game_id)
     if game is None:
         raise HTTPException(status_code=404, detail=f"partie inconnue : {game_id}")
-    session = _sessions.get(game_id)
+    session = _sessions.get(game_id) or _rebuild_session(game, store, backend)
     if session is None:
         raise HTTPException(
             status_code=409,
-            detail="session process perdue (redémarrage ?) — partie en relecture seule",
+            detail="session irrécupérable (partie finie ou sans snapshot) — relecture seule",
         )
     if body.country not in session.world.countries:
         raise HTTPException(status_code=400, detail=f"pays inconnu : {body.country}")
@@ -794,6 +888,9 @@ def file_motion(
             detail=f"une motion est déjà en attente (contre {session.pending_motion.country})",
         )
     session.pending_motion = Motion(country=body.country, reason=body.reason.strip())
+    # La motion mute la session entre deux rounds : snapshot immédiat, sinon elle
+    # ne survivrait pas à un restart avant le round qui la débat.
+    _snapshot_session(game_id, session, store)
     return MotionView(
         country=body.country,
         reason=session.pending_motion.reason,
@@ -843,11 +940,21 @@ def get_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> G
         )
         for r in store.list_rounds(game_id)
     ]
-    world = session.world.model_dump(mode="json") if session else None
-    return GameDetail(**_view(game, session).model_dump(), world=world, rounds=rounds)
+    # Session absente : le monde est servi depuis le snapshot (la page Monde retrouve
+    # l'état des pays après restart, sans reconstruire d'agents — spec, coût nul).
+    snapshot = None if session else store.get_session_snapshot(game_id)
+    world = session.world.model_dump(mode="json") if session else (
+        snapshot.world if snapshot else None
+    )
+    view = _view(game, session, resumable=snapshot is not None)
+    return GameDetail(**view.model_dump(), world=world, rounds=rounds)
 
 
 @router.get("/games", response_model=list[GameView])
 def list_games(store: Annotated[GameStore, Depends(get_store)]) -> list[GameView]:
-    """Parties connues (vivantes ou en relecture seule)."""
-    return [_view(g, _sessions.get(g.id)) for g in store.list_games()]
+    """Parties connues (vivantes, reconstructibles ou en relecture seule)."""
+    snapshot_ids = set(store.list_session_snapshots())
+    return [
+        _view(g, _sessions.get(g.id), resumable=g.id in snapshot_ids)
+        for g in store.list_games()
+    ]

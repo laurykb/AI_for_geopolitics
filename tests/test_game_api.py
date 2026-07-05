@@ -10,7 +10,7 @@ from app.game_api import get_backend, get_store, sse_frame, step_event
 from app.main import app
 from inference.mock_backend import MockBackend
 from simulation.live_round import TokenStep, TurnStartStep
-from storage.game_store import SQLiteGameStore
+from storage.game_store import GameRecord, GameStatus, SQLiteGameStore
 
 
 @pytest.fixture
@@ -474,11 +474,12 @@ def test_round_on_unknown_game_is_404(client):
     assert client.post("/api/games/nope/rounds").status_code == 404
 
 
-def test_round_without_live_session_is_409(client):
+def test_round_after_restart_rebuilds_even_unplayed_game(client):
+    """R2 : le snapshot round 0 (créé avec la partie) suffit à reconstruire la session."""
     game = _create(client)
     game_api._sessions.clear()  # simule un redémarrage du process
-    resp = client.post(f"/api/games/{game['id']}/rounds")
-    assert resp.status_code == 409
+    events = _play(client, game["id"])
+    assert events[-1] == ("done", {"round_no": 1})
 
 
 # --- persistance + relecture ---------------------------------------------------
@@ -514,9 +515,10 @@ def test_rounds_accumulate_and_replay_survives_session_loss(client):
     _play(client, game["id"])
     _play(client, game["id"])
 
-    game_api._sessions.clear()  # redémarrage simulé : relecture seule
+    game_api._sessions.clear()  # redémarrage simulé
     detail = client.get(f"/api/games/{game['id']}").json()
-    assert detail["live"] is False and detail["world"] is None
+    assert detail["live"] is False and detail["resumable"] is True
+    assert detail["world"]["current_round"] == 2  # monde servi depuis le snapshot (R2)
     assert [r["round_no"] for r in detail["rounds"]] == [1, 2]
     assert all(r["transcript"] for r in detail["rounds"])
 
@@ -572,3 +574,101 @@ def test_get_store_backend_selection(monkeypatch):
     assert isinstance(store, SQLiteGameStore)
     store.close()
     monkeypatch.setattr(game_api, "_store", None)
+
+
+# --- reconstruction de session au restart (R2, docs/spec_session_rebuild.md) -----
+
+
+@pytest.fixture
+def client_store():
+    """Comme `client`, mais expose aussi le store (pour muter statut/snapshots)."""
+    store = SQLiteGameStore(":memory:")
+    backend = MockBackend("Analyse privée. MESSAGE: Position commune.")
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_backend] = lambda: backend
+    game_api._sessions.clear()
+    yield TestClient(app), store
+    app.dependency_overrides.clear()
+    game_api._sessions.clear()
+    store.close()
+
+
+def test_restart_then_play_rebuilds_on_mutated_world(client_store):
+    client, store = client_store
+    game = _create(client, countries=["usa", "iran"])
+    _play(client, game["id"])  # round 1
+    game_api._sessions.clear()  # restart d'uvicorn simulé
+
+    # Avant reconstruction : relecture + monde servi depuis le snapshot, reprenable.
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["live"] is False and detail["resumable"] is True
+    assert detail["world"]["current_round"] == 1
+
+    # POST /rounds reconstruit la session et joue le round 2 sur le monde muté du round 1.
+    events = _play(client, game["id"])
+    assert events[-1] == ("done", {"round_no": 2})
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["live"] is True
+    assert detail["world"]["current_round"] == 2
+    assert [r["round_no"] for r in detail["rounds"]] == [1, 2]
+
+
+def test_restart_with_pending_motion_debates_it(client_store):
+    client, store = client_store
+    game = _create(client)  # tous les pays (≥ 3 : une motion est recevable)
+    resp = client.post(
+        f"/api/games/{game['id']}/motions", json={"country": "iran", "reason": "dérive"}
+    )
+    assert resp.status_code == 201
+    game_api._sessions.clear()
+
+    events = _play(client, game["id"])  # la motion snapshotée est l'événement du round
+    event_payloads = [p for n, p in events if n == "event"]
+    assert event_payloads and event_payloads[0]["event"]["event_type"] == "motion"
+    assert any(n == "motion_verdict" for n, _ in events)
+
+
+def test_finished_or_snapshotless_game_stays_replay_only(client_store):
+    client, store = client_store
+    game = _create(client, countries=["usa", "iran"])
+    game_api._sessions.clear()
+    record = store.get_game(game["id"])
+    record.status = GameStatus.FINISHED
+    store.save_game(record)
+    assert client.post(f"/api/games/{game['id']}/rounds").status_code == 409
+    assert client.get(f"/api/games/{game['id']}").json()["resumable"] is False
+
+    # Partie « d'avant R2 » : en cours mais sans snapshot -> relecture seule, inchangé.
+    store.add_game(
+        GameRecord(id="orphan", scenario="red_sea", horizon=5, created_at="2026-01-01")
+    )
+    assert client.post("/api/games/orphan/rounds").status_code == 409
+    assert (
+        client.post("/api/games/orphan/motions", json={"country": "usa"}).status_code == 409
+    )
+
+
+def test_mode_and_play_as_survive_restart(client_store):
+    client, store = client_store
+    game = _create(
+        client, countries=["usa", "iran", "france"], mode="escalation", play_as="france"
+    )
+    game_api._sessions.clear()
+
+    view = client.get(f"/api/games/{game['id']}").json()
+    assert view["mode"] == "escalation" and view["live"] is False  # mode lu de games.mode
+
+    events = _play(client, game["id"])  # reconstruit : le round s'arrête au tour humain
+    assert events[-1][0] == "human_turn"
+    view = client.get(f"/api/games/{game['id']}").json()
+    assert view["mode"] == "escalation"
+    assert view["play_as"] == "france" and view["awaiting_human"] is True
+
+    with client.stream(
+        "POST",
+        f"/api/games/{game['id']}/rounds/message",
+        json={"text": "La France propose une désescalade concertée."},
+    ) as resp:
+        assert resp.status_code == 200
+        end = _events(resp)
+    assert end[-1] == ("done", {"round_no": 1})
