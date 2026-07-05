@@ -44,6 +44,25 @@ Fusion théâtre/monde + mise en scène. Aucun changement moteur.
   prompt : « Lis docs/PLAN_JEU.md (G1) et la spec d'interaction. Fusionne les pages
   théâtre et monde autour de la carte. Aucun changement Python. »
 
+**Notes d'implémentation (G1 faite — CSS pur, aucune lib d'animation, aucun changement
+Python)** :
+
+- `web/src/lib/stage.ts` : paliers de teinte U **fixes** (5, spec), **U locale** = U
+  global nuancé par les deltas du round (le moteur n'a pas de U par pays — dérivation
+  d'affichage documentée), capitales projetables + centroïde du sommet (cible des arcs,
+  « adressé » non identifiable dans les messages), `StageQueue` (2 animations max, file
+  de 3, débordement → états finaux) et hook `onStageEvent` (le son attendra). Testé.
+- `StageMap`/`StageBand` (`web/src/components/stage-*.tsx`) : tout le mapping SSE→scène
+  de la spec, keyframes dans `globals.css`, `prefers-reduced-motion` → opacités simples.
+  Le gel du verdict est piloté par la page (0,8 s), la respiration par `done`.
+- Fusion : le théâtre = la scène (transcript en panneau latéral auto-scroll, contrôles
+  conservés), observables + état des pays (ex-`/monde`, qui redirige) **sous** la scène ;
+  scrub d'un round passé = états finaux sans animations, retour au direct à chaque geste
+  de jeu ; replay = la même scène au scrubber, lecture théâtre ×1/×2/×4, halo sur
+  l'orateur courant. Mobile : empilé (le tiroir à swipe attendra un vrai besoin).
+- **Reste à valider en jouant (DoD)** : partie complète sur la scène fusionnée, replay
+  scrubbé, fluidité 60 fps à 6 pays — session de validation Cowork.
+
 ## G2 — Le joueur-pays
 
 L'humain incarne un pays au sommet (réutilise `agents/human_agent.py`).
