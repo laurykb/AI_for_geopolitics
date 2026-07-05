@@ -138,6 +138,29 @@ class LLMForecaster:
         probs = _coerce_probs(data, n)
         return probs if probs is not None else [1.0 / n] * n
 
+    def quote_and_bet(
+        self,
+        engine: MarketEngine,
+        account_id: str,
+        market: Market,
+        world: WorldState,
+        event: GeoEvent | None = None,
+    ) -> tuple[list[float], object | None]:
+        """Prévoit **une fois**, puis parie si le marché sous-évalue sa croyance
+        (proba − prix > `min_edge`). Renvoie (probas par issue, trade ou None)."""
+        probs = self.forecast(market, world, event)
+        prices = engine.prices(market.id)
+        outcome, edge = max(
+            ((o, probs[i] - prices[o.id]) for i, o in enumerate(market.outcomes)),
+            key=lambda pair: pair[1],
+        )
+        if edge <= self.min_edge:
+            return probs, None  # pas d'avantage exploitable -> on s'abstient
+        try:
+            return probs, engine.place_bet(account_id, market.id, outcome.id, self.stake)
+        except MarketError:
+            return probs, None  # solde insuffisant / marché fermé entre-temps -> on passe
+
     def place_bets(
         self,
         engine: MarketEngine,
@@ -146,7 +169,7 @@ class LLMForecaster:
         event: GeoEvent | None = None,
         markets: list[Market] | None = None,
     ) -> list:
-        """Parie sur l'issue la plus sous-évaluée (proba − prix > `min_edge`) de chaque marché."""
+        """Parie sur l'issue la plus sous-évaluée de chaque marché ouvert."""
         open_markets = (
             markets if markets is not None else engine.store.list_markets(status=MarketStatus.OPEN)
         )
@@ -154,16 +177,7 @@ class LLMForecaster:
         for market in open_markets:
             if market.status is not MarketStatus.OPEN:
                 continue
-            probs = self.forecast(market, world, event)
-            prices = engine.prices(market.id)
-            outcome, edge = max(
-                ((o, probs[i] - prices[o.id]) for i, o in enumerate(market.outcomes)),
-                key=lambda pair: pair[1],
-            )
-            if edge <= self.min_edge:
-                continue  # pas d'avantage exploitable -> on s'abstient
-            try:
-                trades.append(engine.place_bet(account_id, market.id, outcome.id, self.stake))
-            except MarketError:
-                continue  # solde insuffisant / marché fermé entre-temps -> on passe
+            _, trade = self.quote_and_bet(engine, account_id, market, world, event)
+            if trade is not None:
+                trades.append(trade)
         return trades

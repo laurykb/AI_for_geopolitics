@@ -1,12 +1,9 @@
 """`SupabaseMarketStore` — l'implémentation Supabase du Protocol `MarketStore` (Phase R2).
 
 Tables `market_*` de `supabase/schema.sql`, parlées via PostgREST
-(`storage/postgrest.py`). Deux écarts assumés avec SQLite :
-
-- `markets.game_id` (vrai lien partie↔marché, note R3) reste NULL tant que le modèle
-  `Market` ne le porte pas — le câblage viendra avec le bot marché web ;
-- `list_positions(market_id=…)` fait la jointure côté client (deux selects) plutôt
-  qu'un embed PostgREST — volumes minuscules, lisibilité d'abord.
+(`storage/postgrest.py`). Écart assumé avec SQLite : `list_positions(market_id=…)`
+fait la jointure côté client (deux selects) plutôt qu'un embed PostgREST — volumes
+minuscules, lisibilité d'abord.
 """
 
 from __future__ import annotations
@@ -88,11 +85,17 @@ class SupabaseMarketStore:
             self._db.update("market_outcomes", {"id": outcome.id}, {"q": outcome.q})
 
     def list_markets(
-        self, *, round_id: int | None = None, status: MarketStatus | None = None
+        self,
+        *,
+        round_id: int | None = None,
+        game_id: str | None = None,
+        status: MarketStatus | None = None,
     ) -> list[Market]:
         match: dict[str, object] = {}
         if round_id is not None:
             match["round_id"] = round_id
+        if game_id is not None:
+            match["game_id"] = game_id
         if status is not None:
             match["status"] = status.value
         rows = self._db.select("markets", match, order="created_at.asc")
@@ -113,6 +116,7 @@ class SupabaseMarketStore:
         return Market(
             id=row["id"],
             round_id=row["round_id"],
+            game_id=row["game_id"],
             question=row["question"],
             type=MarketType(row["type"]),
             status=MarketStatus(row["status"]),
@@ -197,6 +201,7 @@ def _market_row(market: Market) -> dict:
     return {
         "id": market.id,
         "round_id": market.round_id,
+        "game_id": market.game_id,
         "type": market.type.value,
         "question": market.question,
         "status": market.status.value,

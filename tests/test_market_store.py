@@ -112,3 +112,40 @@ def test_trades_round_trip_and_filters(store):
     assert [t.id for t in store.list_trades(account_id="a1")] == ["t1", "t2"]
     assert [t.id for t in store.list_trades(market_id="m2")] == ["t2"]
     assert store.list_trades(market_id="m1")[0].cost == 2.6
+
+
+# --- lien partie <-> marché (R2 : markets.game_id) --------------------------------
+
+
+def test_game_id_roundtrip_and_filter(store):
+    store.add_market(_market("m1", round_id=1).model_copy(update={"game_id": "gameA"}))
+    store.add_market(_market("m2", round_id=2))  # sans partie (marché de round legacy)
+
+    assert store.get_market("m1").game_id == "gameA"
+    assert store.get_market("m2").game_id is None
+    assert [m.id for m in store.list_markets(game_id="gameA")] == ["m1"]
+    assert store.list_markets(game_id="autre") == []
+    assert [m.id for m in store.list_markets(game_id="gameA", status=MarketStatus.OPEN)] == ["m1"]
+
+
+def test_migration_adds_game_id_to_legacy_db(tmp_path):
+    """Une base marché d'avant R2 (markets sans game_id) s'ouvre et se migre."""
+    import sqlite3
+
+    path = str(tmp_path / "legacy-market.db")
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        "CREATE TABLE markets (id TEXT PRIMARY KEY, round_id INTEGER NOT NULL, "
+        "type TEXT NOT NULL, question TEXT NOT NULL, status TEXT NOT NULL, b REAL NOT NULL, "
+        "criterion TEXT, resolved_outcome TEXT, created_at TEXT NOT NULL);"
+    )
+    conn.execute(
+        "INSERT INTO markets VALUES ('old', 7, 'binary', 'q ?', 'open', 50.0, NULL, NULL, 't')"
+    )
+    conn.commit()
+    conn.close()
+
+    legacy = SQLiteMarketStore(path)
+    market = legacy.get_market("old")
+    assert market is not None and market.game_id is None
+    legacy.close()

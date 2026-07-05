@@ -101,9 +101,27 @@ soldes (`market_accounts`/`positions`) non exposés. L'implémentation Python =
   monde **depuis le snapshot** quand la session process est absente. Non repris, par
   décision de spec : un round interrompu en plein stream (y compris suspendu sur un tour
   humain) et l'état RNG du jitter d'horloge.
+**Notes d'implémentation (G0-c faite — bot marché + tests JS)** :
+
+- **`markets.game_id` soldé** (note R3) : champ sur `Market`, colonne SQLite (+ migration
+  ALTER idempotente), écrit/relu par le store Supabase, filtre `list_markets(game_id=…)`,
+  API GET/POST `/markets`. Le front ouvre/retrouve le marché de la partie par `game_id` ;
+  le `round_id` dérivé du hash reste **pour la résolution** (`/api/rounds/{id}/resolve`),
+  même dérivation côté back (`int(game_id[:7], 16)`).
+- **Bot marché** : `POST /api/games/{id}/market/bot` — ouvre le marché « utopie finale »
+  de la partie s'il n'existe pas, compte bot stable par modèle (`bot-<modèle>`, kind=bot),
+  `LLMForecaster.quote_and_bet` (prévoit **une fois**, parie sur l'avantage, expose
+  probabilités + prix) avec le monde (session **ou snapshot** — marche après restart) et
+  le dernier événement en contexte. Le théâtre le déclenche en **fire-and-forget** à
+  chaque `done` (garde anti-doublon par round). Vérifié **live sur mistral** : le bot a
+  coté NO (dystopie) à 0,75 et déplacé la cote après un round réel.
+- **Tests JS (vitest, env node, `npm test` + CI)** : parseur SSE (trames partielles
+  recollées, `error` terminale, coupure sans `done` → interrupted, abort distingué,
+  événement inconnu transmis, JSON invalide ignoré, `human_turn` = suspension volontaire)
+  et réducteur de round exporté (tour humain sans `turn_start`, motion, flash, resume,
+  inconnu ignoré sans re-render).
 - **Reste de R2** : promotion des artefacts R4 hors de `judge_json` (colonnes dédiées +
-  `RoundRecord`/`RoundView`/front) et vrai lien `markets.game_id` — prévus avec le bot
-  marché (session suivante).
+  `RoundRecord`/`RoundView`/front) — dernier reliquat, à prendre avant ou avec G1.
 
 ### Phase R3 — Front Next.js (`web/`)
 

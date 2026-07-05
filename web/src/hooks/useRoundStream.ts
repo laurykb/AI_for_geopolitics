@@ -68,7 +68,7 @@ export type LiveRound = {
   flashes: { afterTurn: number; event: GeoEvent }[]; // faits nouveaux, positionnés dans le fil
 };
 
-const INITIAL: LiveRound = {
+export const INITIAL: LiveRound = {
   status: "idle",
   turns: [],
   judgeText: "",
@@ -76,7 +76,7 @@ const INITIAL: LiveRound = {
   flashes: [],
 };
 
-type Action =
+export type Action =
   | { kind: "start" }
   | { kind: "resume" } // le joueur a parlé : le flux reprend
   | { kind: "sse"; event: SseEvent }
@@ -225,7 +225,8 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
   }
 }
 
-function reducer(state: LiveRound, action: Action): LiveRound {
+// Exporté pour les tests (vitest) : le réducteur est la logique la plus critique du théâtre.
+export function reducer(state: LiveRound, action: Action): LiveRound {
   switch (action.kind) {
     case "start":
       return { ...INITIAL, status: "streaming" };

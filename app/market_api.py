@@ -76,6 +76,7 @@ class OutcomeView(BaseModel):
 class MarketView(BaseModel):
     id: str
     round_id: int
+    game_id: str | None = None  # vrai lien partie↔marché (R2)
     question: str
     type: MarketType
     status: MarketStatus
@@ -87,6 +88,7 @@ class MarketView(BaseModel):
 
 class OpenMarketRequest(BaseModel):
     round_id: int
+    game_id: str | None = None  # lien vers la partie (marché « utopie finale » — R2)
     question: str
     b: float = Field(gt=0.0)
     labels: list[str] = Field(default_factory=lambda: ["YES", "NO"])
@@ -147,6 +149,7 @@ def _market_view(engine: MarketEngine, market: Market) -> MarketView:
     return MarketView(
         id=market.id,
         round_id=market.round_id,
+        game_id=market.game_id,
         question=market.question,
         type=market.type,
         status=market.status,
@@ -193,10 +196,11 @@ def _summary_from_decisions(round_id: int, decisions: list[DecisionInput]) -> Ro
 def list_markets(
     engine: Annotated[MarketEngine, Depends(get_engine)],
     round_id: int | None = None,
+    game_id: str | None = None,
     status: MarketStatus | None = None,
 ) -> list[MarketView]:
-    """Marchés (filtrables par round et statut) + prix LMSR courants."""
-    markets = engine.store.list_markets(round_id=round_id, status=status)
+    """Marchés (filtrables par round, partie et statut) + prix LMSR courants."""
+    markets = engine.store.list_markets(round_id=round_id, game_id=game_id, status=status)
     return [_market_view(engine, m) for m in markets]
 
 
@@ -208,6 +212,7 @@ def open_market(
     try:
         market = engine.open_market(
             round_id=body.round_id,
+            game_id=body.game_id,
             question=body.question,
             labels=body.labels,
             b=body.b,
