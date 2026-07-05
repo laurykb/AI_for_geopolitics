@@ -3,7 +3,9 @@
 Trois rôles : **Spectateur** (on regarde), **Game Master humain** (on écrit l'événement),
 **Joueur-pays** (on intervient dans la négociation : à son tour, ça pause, on écrit, les
 super-intelligences reprennent). Round piloté tour par tour (un tour = un rerun) pour
-permettre la pause. Lancer : streamlit run ui/app.py  (Ollama + mistral ; repli si absent).
+permettre la pause. Lancer : streamlit run legacy/app.py  (Ollama + mistral ; repli si absent).
+
+ARCHIVÉ (refonte R4) : remplacé par le front Next.js (web/) + API SSE (app/game_api.py).
 """
 
 from __future__ import annotations
