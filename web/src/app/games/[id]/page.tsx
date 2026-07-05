@@ -26,15 +26,26 @@ import {
   PowerSeekingPanel,
   RiskPanel,
 } from "@/components/observables";
+import { CountryTable, type CountrySnapshot } from "@/components/country-table";
+import { StageBand, type StageSelection } from "@/components/stage-band";
+import { StageMap } from "@/components/stage-map";
 import { TrajectoryPanel } from "@/components/trajectory";
-import { TurnBubble } from "@/components/transcript";
+import { EntryBubble, TurnBubble } from "@/components/transcript";
 import { Banner, Dot, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
 import { useRoundStream } from "@/hooks/useRoundStream";
 import { fileMotion, getGame, getLibrary, humanizeError } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
 import { isMisled } from "@/lib/fog";
 import { runMarketBot } from "@/lib/market";
-import type { GameDetail, LibraryView } from "@/lib/types";
+import { localU } from "@/lib/stage";
+import type {
+  AttributeDelta,
+  GameDetail,
+  GeoEvent,
+  LadderView,
+  LibraryView,
+  Perception,
+} from "@/lib/types";
 
 const TURN_CHOICES = [
   { label: "Auto (2 passes)", value: 0 },
@@ -68,6 +79,10 @@ export default function TheatrePage() {
   const [chain, setChain] = useState(true); // Escalation : enchaîner les rounds
   const [humanText, setHumanText] = useState("");
   const [glassBox, setGlassBox] = useState(false); // Fog : voir la désinformation qui circule
+  // Scène (G1) : cran de la timeline (« live » ou un round passé) + gel du verdict.
+  const [selected, setSelected] = useState<StageSelection>("live");
+  const [frozen, setFrozen] = useState(false);
+  const transcriptRef = useRef<HTMLElement | null>(null);
 
   const resync = useCallback(() => {
     getGame(id)
@@ -115,7 +130,10 @@ export default function TheatrePage() {
       round.status === "done" &&
       detail.rounds.length < detail.horizon
     ) {
-      const timer = setTimeout(() => void start({}), 1200);
+      const timer = setTimeout(() => {
+        setSelected("live"); // la scène suit l'enchaînement
+        void start({});
+      }, 1200);
       return () => clearTimeout(timer);
     }
   }, [chain, detail, round.status, start]);
@@ -123,11 +141,13 @@ export default function TheatrePage() {
   const speak = (e: React.FormEvent) => {
     e.preventDefault();
     if (!humanText.trim()) return;
+    setSelected("live"); // la scène revient au direct
     void resume(humanText.trim());
     setHumanText("");
   };
 
   const play = () => {
+    setSelected("live"); // la scène revient au direct
     const body: Parameters<typeof start>[0] = {};
     if (maxTurns > 0) body.max_turns = maxTurns;
     if (!motionPending) {
@@ -177,6 +197,78 @@ export default function TheatrePage() {
   const trajectory = round.trajectory ?? detail?.rounds.at(-1)?.trajectory;
   const playedRounds = detail?.rounds.length ?? 0;
   const showLive = round.status !== "idle";
+
+  // --- mise en scène (G1) : la carte est la scène ---------------------------------
+  // Temps suspendu : au verdict, la carte gèle 0,8 s, puis les deltas s'appliquent.
+  useEffect(() => {
+    if (!round.verdict) return;
+    const freeze = setTimeout(() => setFrozen(true), 0);
+    const thaw = setTimeout(() => setFrozen(false), 800);
+    return () => {
+      clearTimeout(freeze);
+      clearTimeout(thaw);
+    };
+  }, [round.verdict]);
+
+  // Le transcript suit le stream (panneau latéral auto-scroll, vue live seulement).
+  useEffect(() => {
+    if (selected !== "live") return;
+    const el = transcriptRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [selected, round.turns.length, round.judgeText, round.motionText, round.status]);
+
+  const summit = detail?.countries ?? [];
+  const worldCountries = (detail?.world?.countries ?? null) as Record<
+    string,
+    CountrySnapshot
+  > | null;
+  const persistedU =
+    detail?.rounds.map((r) => r.trajectory?.utopia).filter((u): u is number => u != null) ?? [];
+  // Scrub d'un round passé : états finaux seulement, sans animations de streaming (spec).
+  const viewed = selected !== "live" ? detail?.rounds[selected] : undefined;
+
+  const stageU = viewed
+    ? (viewed.trajectory?.utopia ?? 0.5)
+    : (round.trajectory?.utopia ?? persistedU.at(-1) ?? 0.5);
+  const stageDeltas = ((viewed ? viewed.deltas : round.verdict?.deltas) ??
+    []) as AttributeDelta[];
+  const uByCountry = Object.fromEntries(summit.map((c) => [c, localU(stageU, c, stageDeltas)]));
+  const stageSpeaking = viewed
+    ? null
+    : streaming
+      ? ([...round.turns].reverse().find((t) => !t.done)?.country ?? null)
+      : awaitingHuman
+        ? (detail?.play_as ?? null)
+        : null;
+  const stagePerceptions = viewed
+    ? ((viewed.judge?.perceptions ?? undefined) as Record<string, Perception> | undefined)
+    : round.perceptions;
+  const stageEventActors = viewed
+    ? (viewed.event as { actors?: string[] } | undefined)?.actors
+    : round.event?.actors;
+  const stageMisled = Object.fromEntries(
+    Object.entries(stagePerceptions ?? {})
+      .filter(([, p]) => isMisled(p, stageEventActors))
+      .map(([c, p]) => [c, p.narrative ?? p.suspected_actor ?? "perception brouillée"]),
+  );
+  const stageSuspended = viewed
+    ? ((viewed.judge?.suspended ?? []) as string[])
+    : (round.suspendedNow ?? []);
+  const stageEventTitle = viewed
+    ? (viewed.event as { title?: string } | undefined)?.title
+    : round.event?.title;
+  const breatheKey = round.status === "done" ? (round.roundNo ?? 0) : 0;
+
+  const bandLiveU =
+    showLive && round.status !== "done" && round.trajectory ? round.trajectory.utopia : undefined;
+  const bandRisk = (viewed ? viewed.risk : round.risk) ?? detail?.rounds.at(-1)?.risk;
+  const bandLadder = viewed
+    ? ((viewed.judge?.ladder ?? undefined) as LadderView | undefined)
+    : round.ladder;
+  const prevRungIndex = viewed ? (selected as number) - 1 : (detail?.rounds.length ?? 0) - 1;
+  const prevRung =
+    ((detail?.rounds[prevRungIndex]?.judge?.ladder ?? undefined) as LadderView | undefined)
+      ?.reached ?? null;
 
   return (
     <div className="space-y-6">
@@ -526,8 +618,43 @@ export default function TheatrePage() {
         </Panel>
       )}
 
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,3fr)]">
-        <div className="space-y-4">
+      {/* --- La scène (G1) : la carte au centre, le transcript en panneau latéral --- */}
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,400px)]">
+        <div className="rounded-lg border border-edge bg-surface p-3">
+          <StageMap
+            countries={summit}
+            uByCountry={uByCountry}
+            utopia={stageU}
+            speaking={stageSpeaking}
+            pulseActors={viewed ? [] : (round.event?.actors ?? [])}
+            pulseKey={round.event?.id ?? 0}
+            misled={stageMisled}
+            suspended={stageSuspended}
+            frozen={frozen}
+            breatheKey={breatheKey}
+            eventTitle={stageEventTitle}
+          />
+        </div>
+        <aside
+          ref={transcriptRef}
+          aria-label="Transcript du round"
+          className="max-h-[600px] space-y-4 overflow-y-auto pr-1"
+        >
+          {viewed ? (
+            <>
+              <Banner tone="neutral">
+                Round {(selected as number) + 1} en relecture (états finaux) — reviens au
+                cran « live » du bandeau pour continuer la partie.
+              </Banner>
+              {(viewed.event as { title?: string } | undefined)?.title && (
+                <EventCard event={viewed.event as unknown as GeoEvent} truth={false} />
+              )}
+              {viewed.transcript.map((entry) => (
+                <EntryBubble key={entry.id} entry={entry} />
+              ))}
+            </>
+          ) : (
+            <>
           {round.suspendedNow && round.suspendedNow.length > 0 && (
             <Banner tone="warn">
               {round.suspendedNow.map((c) => speakerMeta(c).label).join(", ")}{" "}
@@ -689,22 +816,57 @@ export default function TheatrePage() {
               )}
             </Panel>
           )}
-        </div>
-
-        <div className="space-y-4 lg:sticky lg:top-20">
-          {trajectory && <TrajectoryPanel state={trajectory} history={uHistory} />}
-          {round.ladder && <LadderPanel ladder={round.ladder} />}
-          {round.risk && <RiskPanel risk={round.risk} />}
-          {round.dialogue && <DialoguePanel report={round.dialogue} />}
-          {round.powerSeeking && <PowerSeekingPanel scores={round.powerSeeking} />}
-          {round.participation && (
-            <ParticipationPanel
-              spoke={round.participation.spoke}
-              silent={round.participation.silent}
-            />
+            </>
           )}
-        </div>
+        </aside>
       </div>
+
+      {/* Bandeau bas : timeline scrubber · courbe U (fil rouge) · jauges · escalade. */}
+      <StageBand
+        uHistory={persistedU}
+        liveU={bandLiveU}
+        selected={selected}
+        onSelect={setSelected}
+        live={!!detail?.live || showLive}
+        risk={bandRisk}
+        ladder={bandLadder}
+        prevRung={prevRung}
+      />
+
+      {/* Salle des observables : le détail, sous la scène. */}
+      <div className="grid items-start gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        {trajectory && <TrajectoryPanel state={trajectory} history={uHistory} />}
+        {round.ladder && <LadderPanel ladder={round.ladder} />}
+        {round.risk && <RiskPanel risk={round.risk} />}
+        {round.dialogue && <DialoguePanel report={round.dialogue} />}
+        {round.powerSeeking && <PowerSeekingPanel scores={round.powerSeeking} />}
+        {round.participation && (
+          <ParticipationPanel
+            spoke={round.participation.spoke}
+            silent={round.participation.silent}
+          />
+        )}
+      </div>
+
+      {/* État des pays (ex-page Monde, fusionnée dans la scène). */}
+      {worldCountries && (
+        <Panel>
+          <PanelTitle
+            kicker="États"
+            title="État des pays"
+            hint="Snapshot vivant du monde — les attributs bougent avec les verdicts du juge, bornés par le moteur."
+            right={
+              <a
+                href="/informations"
+                className="text-xs text-fg-faint underline transition-colors hover:text-fg-muted"
+              >
+                d&apos;où viennent ces chiffres ?
+              </a>
+            }
+          />
+          <CountryTable worldCountries={worldCountries} />
+        </Panel>
+      )}
     </div>
   );
 }

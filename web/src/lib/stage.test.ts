@@ -8,16 +8,10 @@ import type { AttributeDelta } from "./types";
 import { CAPITALS, StageQueue, localU, summitCenter, uTint } from "./stage";
 
 describe("uTint — paliers fixes de la spec", () => {
-  it.each([
-    [0.85, "utopie"],
-    [0.7, "utopie"], // borne incluse
-    [0.6, "vers l'utopie"],
-    [0.5, "neutre"],
-    [0.35, "vers la dystopie"],
-    [0.1, "dystopie"],
-  ])("U=%f → palier %s", (u, _label) => {
-    // Les paliers voisins donnent des teintes différentes ; un même palier, la même.
-    expect(uTint(u as number)).toBeTruthy();
+  it("chaque U tombe dans un palier et reçoit une teinte", () => {
+    for (const u of [0.85, 0.7, 0.6, 0.5, 0.35, 0.1]) {
+      expect(uTint(u)).toMatch(/^rgb\(/);
+    }
   });
 
   it("les cinq paliers ont cinq teintes distinctes", () => {
