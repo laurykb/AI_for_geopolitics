@@ -5,7 +5,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { SpeakerAvatar } from "@/components/avatar";
 import { EventCard } from "@/components/event-card";
@@ -33,6 +33,7 @@ import { useRoundStream } from "@/hooks/useRoundStream";
 import { fileMotion, getGame, getLibrary, humanizeError } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
 import { isMisled } from "@/lib/fog";
+import { runMarketBot } from "@/lib/market";
 import type { GameDetail, LibraryView } from "@/lib/types";
 
 const TURN_CHOICES = [
@@ -92,6 +93,18 @@ export default function TheatrePage() {
   const motionPending = detail?.pending_motion ?? null;
   const awaitingHuman =
     round.status === "awaiting_human" || (round.status === "idle" && !!detail?.awaiting_human);
+
+  // Bot marché : le forecaster cote le marché de la partie après chaque round.
+  // Fire-and-forget (le théâtre n'attend pas le bot) ; garde anti-doublon par round.
+  const botQuotedRound = useRef(0);
+  useEffect(() => {
+    if (round.status === "done" && round.roundNo && botQuotedRound.current !== round.roundNo) {
+      botQuotedRound.current = round.roundNo;
+      runMarketBot(id).catch(() => {
+        // marché résolu ou API marché indisponible : le théâtre continue sans le bot
+      });
+    }
+  }, [id, round.status, round.roundNo]);
 
   // Théâtre Escalation : les rounds s'enchaînent d'un coup jusqu'à l'horizon.
   useEffect(() => {

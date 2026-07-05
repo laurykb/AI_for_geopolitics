@@ -262,6 +262,7 @@ export type OutcomeView = {
 export type MarketView = {
   id: string;
   round_id: number;
+  game_id: string | null; // vrai lien partie↔marché (R2)
   question: string;
   type: string;
   status: "open" | "closed" | "resolved";
@@ -269,6 +270,23 @@ export type MarketView = {
   resolved_outcome: string | null;
   outcomes: OutcomeView[];
   volume: number;
+};
+
+/** Passage du bot forecaster sur le marché de la partie (POST /games/{id}/market/bot). */
+export type BotRunView = {
+  market_id: string;
+  account_id: string;
+  model: string;
+  opened: boolean;
+  probabilities: Record<string, number>; // label -> probabilité prévue
+  trade: {
+    outcome_id: string;
+    label: string;
+    shares: number;
+    cost: number;
+    price: number;
+  } | null;
+  prices: Record<string, number>; // label -> prix LMSR après passage
 };
 
 export type PositionView = {
