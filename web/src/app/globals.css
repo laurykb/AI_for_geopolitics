@@ -268,3 +268,51 @@ body {
     transition: none;
   }
 }
+
+/* ===== Introduction du jeu (Play : plongée sur la Terre) ======================== */
+
+/* La caméra plonge : zoom continu vers la planète (2,6 s, aligné sur LAUNCH_MS). */
+.intro-zoom {
+  animation: intro-zoom 2.6s cubic-bezier(0.55, 0, 0.85, 0.35) both;
+  will-change: transform;
+}
+@keyframes intro-zoom {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(9);
+  }
+}
+
+/* Titre et bouton s'effacent dès le décollage. */
+.intro-fade-out {
+  animation: intro-fade-out 0.6s ease-out both;
+}
+@keyframes intro-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* Voile de fin de course : couvre l'arrivée dans le jeu. */
+.intro-veil {
+  animation: intro-veil 2.6s ease-in both;
+}
+@keyframes intro-veil {
+  0%,
+  72% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro-zoom,
+  .intro-fade-out,
+  .intro-veil {
+    animation: none;
+  }
+}

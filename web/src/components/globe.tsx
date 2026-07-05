@@ -18,7 +18,14 @@ const SUMMIT_ISO = new Set(["840", "156", "364", "250", "818", "682"]);
 const SIZE = 560;
 const MARGIN = 56; // la planète « dézoomée » : de l'espace autour du globe
 
-export function Globe({ className }: { className?: string }) {
+export function Globe({
+  className,
+  spinning = false,
+}: {
+  className?: string;
+  /** Lancement (Play) : la rotation accélère — la Terre se met à tourner sur elle-même. */
+  spinning?: boolean;
+}) {
   const [lambda, setLambda] = useState(-12);
 
   const features = useMemo(() => {
@@ -28,9 +35,13 @@ export function Globe({ className }: { className?: string }) {
 
   useEffect(() => {
     if (prefersReducedMotion()) return;
-    const timer = setInterval(() => setLambda((l) => (l + 0.12) % 360), 50);
+    let velocity = spinning ? 0.4 : 0.12; // degrés par tique
+    const timer = setInterval(() => {
+      if (spinning) velocity = Math.min(velocity * 1.06, 7); // accélération douce
+      setLambda((l) => (l + velocity) % 360);
+    }, 40);
     return () => clearInterval(timer);
-  }, []);
+  }, [spinning]);
 
   const path = useMemo(() => {
     const projection = geoOrthographic()
