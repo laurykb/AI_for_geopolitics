@@ -29,13 +29,13 @@ function parseFrame(frame: string): SseEvent | null {
   }
 }
 
-export async function streamRound(
-  gameId: string,
-  body: PlayRoundBody,
+async function streamSse(
+  path: string,
+  body: unknown,
   onEvent: (event: SseEvent) => void,
   signal?: AbortSignal,
 ): Promise<StreamOutcome> {
-  const resp = await fetch(`${API_BASE}/api/games/${gameId}/rounds`, {
+  const resp = await fetch(`${API_BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -56,7 +56,9 @@ export async function streamRound(
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let sawTerminal = false; // `done` ou `error` : le back a conclu explicitement
+  // `done`/`error` : le back a conclu ; `human_turn` : il suspend le flux exprès
+  // (le round attend le message du joueur — ce n'est pas une coupure).
+  let sawTerminal = false;
 
   const drain = () => {
     let cut: number;
@@ -64,7 +66,9 @@ export async function streamRound(
       const event = parseFrame(buffer.slice(0, cut));
       buffer = buffer.slice(cut + 2);
       if (event) {
-        if (event.type === "done" || event.type === "error") sawTerminal = true;
+        if (event.type === "done" || event.type === "error" || event.type === "human_turn") {
+          sawTerminal = true;
+        }
         onEvent(event);
       }
     }
@@ -85,4 +89,23 @@ export async function streamRound(
     return sawTerminal ? "done" : "interrupted";
   }
   return sawTerminal ? "done" : "interrupted";
+}
+
+export function streamRound(
+  gameId: string,
+  body: PlayRoundBody,
+  onEvent: (event: SseEvent) => void,
+  signal?: AbortSignal,
+): Promise<StreamOutcome> {
+  return streamSse(`/api/games/${gameId}/rounds`, body, onEvent, signal);
+}
+
+/** Reprend un round suspendu sur le tour du joueur : le message entre en négociation. */
+export function streamHumanMessage(
+  gameId: string,
+  text: string,
+  onEvent: (event: SseEvent) => void,
+  signal?: AbortSignal,
+): Promise<StreamOutcome> {
+  return streamSse(`/api/games/${gameId}/rounds/message`, { text }, onEvent, signal);
 }

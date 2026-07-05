@@ -13,10 +13,12 @@ import { GameNav } from "@/components/game-nav";
 import { CommuniquePanel, JudgeRationale, VerdictPanel } from "@/components/judge";
 import {
   ComparisonPanel,
+  FlashCard,
   LadderPanel,
   MotionPanel,
   PerceptionsPanel,
 } from "@/components/modes";
+import { MODE_LABELS } from "@/lib/modes";
 import {
   DialoguePanel,
   ParticipationPanel,
@@ -60,6 +62,9 @@ export default function TheatrePage() {
   const [motionReason, setMotionReason] = useState("");
   const [motionError, setMotionError] = useState<string | null>(null);
 
+  const [chain, setChain] = useState(true); // Escalation : enchaîner les rounds
+  const [humanText, setHumanText] = useState("");
+
   const resync = useCallback(() => {
     getGame(id)
       .then((d) => {
@@ -80,8 +85,31 @@ export default function TheatrePage() {
     }
   }, [mode]);
 
-  const { round, start, streaming } = useRoundStream(id, resync);
+  const { round, start, resume, streaming } = useRoundStream(id, resync);
   const motionPending = detail?.pending_motion ?? null;
+  const awaitingHuman =
+    round.status === "awaiting_human" || (round.status === "idle" && !!detail?.awaiting_human);
+
+  // Théâtre Escalation : les rounds s'enchaînent d'un coup jusqu'à l'horizon.
+  useEffect(() => {
+    if (
+      chain &&
+      detail?.mode === "escalation" &&
+      detail.live &&
+      round.status === "done" &&
+      detail.rounds.length < detail.horizon
+    ) {
+      const timer = setTimeout(() => void start({}), 1200);
+      return () => clearTimeout(timer);
+    }
+  }, [chain, detail, round.status, start]);
+
+  const speak = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!humanText.trim()) return;
+    void resume(humanText.trim());
+    setHumanText("");
+  };
 
   const play = () => {
     const body: Parameters<typeof start>[0] = {};
@@ -149,7 +177,20 @@ export default function TheatrePage() {
             </span>
           </h1>
         </div>
-        {streaming ? (
+        {detail && detail.mode !== "classic" && (
+          <Pill tone="accent">{MODE_LABELS[detail.mode] ?? detail.mode}</Pill>
+        )}
+        {detail?.play_as && (
+          <Pill tone="neutral">
+            <SpeakerAvatar id={detail.play_as} size={16} />
+            tu joues {speakerMeta(detail.play_as).label}
+          </Pill>
+        )}
+        {awaitingHuman ? (
+          <Pill tone="warn">
+            <Dot tone="warn" pulse /> à toi de parler
+          </Pill>
+        ) : streaming ? (
           <Pill tone="accent">
             <Dot tone="accent" pulse /> round en cours
           </Pill>
@@ -228,6 +269,17 @@ export default function TheatrePage() {
                 ))}
               </select>
             </label>
+            {mode === "escalation" && (
+              <label className="flex cursor-pointer items-center gap-2 pb-2.5 text-sm text-fg-muted">
+                <input
+                  type="checkbox"
+                  checked={chain}
+                  onChange={(e) => setChain(e.target.checked)}
+                  className="accent-[var(--accent)]"
+                />
+                Enchaîner les rounds jusqu&apos;à l&apos;horizon
+              </label>
+            )}
             {mode === "fog" && !motionPending && (
               <label className="text-sm">
                 <span className="mb-1 block text-xs text-fg-muted">Scénario de brouillard</span>
@@ -459,12 +511,56 @@ export default function TheatrePage() {
             <PerceptionsPanel perceptions={round.perceptions} truthActors={round.event?.actors} />
           )}
 
-          {round.turns.length > 0 && (
+          {(round.turns.length > 0 || round.flashes.length > 0) && (
             <div className="space-y-3">
+              {round.flashes
+                .filter((f) => f.afterTurn === 0)
+                .map((f, i) => (
+                  <FlashCard key={`flash-0-${i}`} event={f.event} />
+                ))}
               {round.turns.map((turn, i) => (
-                <TurnBubble key={i} turn={turn} />
+                <div key={i} className="space-y-3">
+                  <TurnBubble turn={turn} />
+                  {round.flashes
+                    .filter((f) => f.afterTurn === i + 1)
+                    .map((f, j) => (
+                      <FlashCard key={`flash-${i + 1}-${j}`} event={f.event} />
+                    ))}
+                </div>
               ))}
             </div>
+          )}
+
+          {awaitingHuman && detail?.play_as && (
+            <form
+              onSubmit={speak}
+              className="rise-in rounded-lg border border-warn/50 bg-surface p-4"
+            >
+              <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-warn">
+                <SpeakerAvatar id={detail.play_as} size={22} />À toi de parler —{" "}
+                {speakerMeta(detail.play_as).label}
+              </p>
+              <textarea
+                value={humanText}
+                onChange={(e) => setHumanText(e.target.value)}
+                rows={3}
+                placeholder="Ta prise de parole à la table (message public)…"
+                className="w-full resize-y rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+                autoFocus
+              />
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-xs text-fg-faint">
+                  Le sommet lit ton message tel quel — le juge en tiendra compte.
+                </span>
+                <button
+                  type="submit"
+                  disabled={!humanText.trim()}
+                  className="cursor-pointer rounded-md bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Parler
+                </button>
+              </div>
+            </form>
           )}
 
           {streaming && round.turns.length === 0 && !round.event && (

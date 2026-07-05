@@ -30,6 +30,13 @@ Front **Next.js (App Router) + Tailwind, TypeScript**, branché sur l'API de jeu
   le sommet en débat, le pays visé plaide, puis le **juge arbitre en streaming** — s'il
   suspend, le pays saute un round et l'axe « agentivité humaine » de la trajectoire
   encaisse l'issue.
+- **Joueur-pays** : au lobby, « Ton rôle » — jouer un pays existant ou **inventer le
+  sien** (nom + concept, forgé par le modèle). Pendant le round, le flux se suspend à
+  ton tour (« À toi de parler ») ; ton message entre dans la négociation tel quel et le
+  flux reprend (`POST /api/games/{id}/rounds/message`).
+- **Théâtre Escalation** : les rounds s'enchaînent automatiquement jusqu'à l'horizon
+  (désactivable), et le GM peut annoncer un **fait nouveau en pleine réunion** — les
+  super-intelligences suivantes y réagissent dans le même round.
 
 ## Lancer en local
 

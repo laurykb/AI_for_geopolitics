@@ -21,6 +21,8 @@ export type GameView = {
   mode: GameMode;
   pending_motion: MotionView | null;
   suspended: string[];
+  play_as: string | null; // pays joué par l'humain (Joueur-pays)
+  awaiting_human: boolean; // un round est suspendu sur le tour du joueur
 };
 
 export type TranscriptEntry = {
@@ -184,6 +186,8 @@ export type CreateGameBody = {
   countries?: string[];
   horizon?: number;
   mode?: GameMode;
+  play_as?: string; // id existant, ou NOM du pays inventé (l'API résout le slug)
+  invent?: { name: string; concept?: string };
 };
 
 export type FogScenarioView = {
@@ -231,7 +235,11 @@ export type SseEvent =
   | { type: "suspended"; countries: string[] }
   | { type: "perceptions"; perceptions: Record<string, Perception> }
   | ({ type: "ladder" } & LadderView)
-  | ({ type: "comparison" } & ComparisonView);
+  | ({ type: "comparison" } & ComparisonView)
+  // Joueur-pays : le flux se suspend en attendant le message du joueur
+  | { type: "human_turn"; country: string; pass_no: number }
+  // théâtre Escalation : fait nouveau du GM en pleine négociation
+  | { type: "flash"; event: GeoEvent };
 
 // --- marché de prédiction (app/market_api.py) ---------------------------------
 

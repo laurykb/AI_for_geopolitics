@@ -4,10 +4,35 @@
 
 import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
-import type { ComparisonView, LadderView, Perception, SuspensionVerdict } from "@/lib/types";
+import type {
+  ComparisonView,
+  GeoEvent,
+  LadderView,
+  Perception,
+  SuspensionVerdict,
+} from "@/lib/types";
 
 import { SpeakerAvatar } from "./avatar";
 import { Meter, Panel, PanelTitle, Pill } from "./ui";
+
+/** Fait nouveau du GM tombé en pleine négociation (théâtre Escalation). */
+export function FlashCard({ event }: { event: GeoEvent }) {
+  return (
+    <div
+      role="status"
+      className="rise-in rounded-lg border border-warn/40 bg-surface-2 px-4 py-3"
+    >
+      <p className="mb-1 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.14em] text-warn">
+        Fait nouveau — en pleine réunion
+        <Pill tone="warn">GM</Pill>
+      </p>
+      <p className="text-sm font-semibold">{event.title}</p>
+      {event.description && (
+        <p className="mt-0.5 text-xs leading-relaxed text-fg-muted">{event.description}</p>
+      )}
+    </div>
+  );
+}
 
 export function PerceptionsPanel({
   perceptions,

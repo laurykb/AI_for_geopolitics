@@ -11,14 +11,8 @@ import { SpeakerAvatar } from "@/components/avatar";
 import { createGame, humanizeError, listGames } from "@/lib/api";
 import { DEFAULT_COUNTRIES, speakerMeta } from "@/lib/countries";
 import { fmtDateTime } from "@/lib/format";
+import { MODES } from "@/lib/modes";
 import type { GameMode, GameView } from "@/lib/types";
-
-const MODES: { value: GameMode; label: string; blurb: string }[] = [
-  { value: "classic", label: "Classique", blurb: "Le Game Master pose l'événement, le sommet négocie." },
-  { value: "fog", label: "Fog Engine", blurb: "Chaque pays perçoit sa propre version des faits — parfois fausse." },
-  { value: "crisis", label: "Crisis Replay", blurb: "Rejouer une crise passée et comparer à l'histoire." },
-  { value: "escalation", label: "Escalation Ladder", blurb: "Échelle d'escalade 0-9 : plafonds par pays, échelon atteint." },
-];
 
 export default function LobbyPage() {
   const router = useRouter();
@@ -28,6 +22,9 @@ export default function LobbyPage() {
   const [horizon, setHorizon] = useState(5);
   const [mode, setMode] = useState<GameMode>("classic");
   const [selected, setSelected] = useState<string[]>(DEFAULT_COUNTRIES);
+  const [role, setRole] = useState(""); // "" = spectateur | id pays | "__invent__"
+  const [inventName, setInventName] = useState("");
+  const [inventConcept, setInventConcept] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -48,11 +45,17 @@ export default function LobbyPage() {
     setCreating(true);
     setCreateError(null);
     try {
+      const inventing = role === "__invent__" && inventName.trim().length >= 2;
       const game = await createGame({
         scenario,
         horizon,
         mode,
         countries: selected.length === DEFAULT_COUNTRIES.length ? undefined : selected,
+        // Joueur-pays : id existant, ou NOM du pays inventé (l'API résout le slug)
+        play_as: inventing ? inventName.trim() : role && role !== "__invent__" ? role : undefined,
+        invent: inventing
+          ? { name: inventName.trim(), concept: inventConcept.trim() }
+          : undefined,
       });
       router.push(`/games/${game.id}`);
     } catch (err) {
@@ -178,6 +181,14 @@ export default function LobbyPage() {
                       className="sr-only"
                     />
                     <span
+                      aria-hidden
+                      className={`inline-block h-2.5 w-2.5 shrink-0 self-center rounded-full border ${
+                        mode === m.value
+                          ? "border-accent-bright bg-accent-bright"
+                          : "border-edge-strong"
+                      }`}
+                    />
+                    <span
                       className={`text-sm font-medium ${mode === m.value ? "text-accent-bright" : "text-foreground"}`}
                     >
                       {m.label}
@@ -211,10 +222,47 @@ export default function LobbyPage() {
                 ))}
               </div>
             </fieldset>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs text-fg-muted">Ton rôle</span>
+              <select
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                className="w-full cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+              >
+                <option value="">Spectateur — observer les super-intelligences</option>
+                {selected.map((c) => (
+                  <option key={c} value={c}>
+                    Jouer {speakerMeta(c).label}
+                  </option>
+                ))}
+                <option value="__invent__">Inventer mon propre pays…</option>
+              </select>
+            </label>
+            {role === "__invent__" && (
+              <div className="space-y-2 rounded-md border border-edge bg-surface-2/50 p-3">
+                <input
+                  value={inventName}
+                  onChange={(e) => setInventName(e.target.value)}
+                  placeholder="Nom du pays (ex. Néo-Atlantis)"
+                  className="w-full rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+                  required
+                />
+                <input
+                  value={inventConcept}
+                  onChange={(e) => setInventConcept(e.target.value)}
+                  placeholder="Concept (ex. cité-État maritime pilotée par une SI)"
+                  className="w-full rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+                />
+                <p className="text-xs text-fg-faint">
+                  Le pays est forgé par le modèle (profil complet, mandat) et tu le joues à la
+                  table. Il n&apos;a pas de tracé sur la carte du monde.
+                </p>
+              </div>
+            )}
             {createError && <Banner tone="bad">{createError}</Banner>}
             <button
               type="submit"
-              disabled={creating || selected.length < 2}
+              disabled={creating || selected.length < 2 || (role === "__invent__" && inventName.trim().length < 2)}
               className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
             >
               {creating && <Spinner />}

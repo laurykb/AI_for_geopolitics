@@ -156,6 +156,16 @@ legacy pour l'instant) : invention de pays (country_forge), radar M3, budget LLM
   acteurs), « Échelle d'escalade » (0-9 par pays), « Simulation vs histoire » ; replay :
   les mêmes panneaux depuis `judge_json`. Vérifié live sur MockBackend (motion confirmée →
   round sans le pays → retour ; fog ; crise ; échelle).
+- **Retours de test user (juillet 2026, faits)** : pastille du **mode actif** sur le
+  théâtre + sélection de mode plus visible au lobby ; le **GM énonce en français**
+  (consigne dans GM_SYSTEM + prompt) ; **théâtre Escalation refondu** — les rounds
+  s'enchaînent automatiquement jusqu'à l'horizon et le GM annonce un **fait nouveau en
+  pleine réunion** (`FlashStep`, transcript `gm` filtré des observables par pays, les
+  orateurs suivants réagissent) ; **mode Joueur-pays** — `play_as` à la création (pays
+  existant ou **inventé** via country_forge, nom+concept depuis le lobby), le round se
+  **suspend** sur le tour du joueur (`HumanTurnStep`, `generator.send`, verrou conservé),
+  reprise par `POST /rounds/message` ; le boost de priorité du joueur ne vaut que pour sa
+  **première** prise de parole (un boost permanent lui faisait monopoliser la table).
 - Reste de R4 (après validation de la parité par l'user) : archivage `ui/app.py` →
   `legacy/`, README racine, CI (pytest + build Next).
 
