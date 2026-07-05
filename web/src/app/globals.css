@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+/* Direction artistique (ui-ux-pro-max « SI Theatre ») : dark OLED cinématique,
+   fond minuit, accent or « spotlight », statuts vert/ambre/rouge, motion sobre. */
+:root {
+  --background: #0f0f23;
+  --surface: #16162d;
+  --surface-2: #1d1d38;
+  --muted: #27273b;
+  --foreground: #f8fafc;
+  --foreground-muted: #94a3b8;
+  --foreground-faint: #64748b;
+  --border: rgba(148, 163, 184, 0.14);
+  --border-strong: rgba(148, 163, 184, 0.3);
+  --primary: #1e1b4b;
+  --secondary: #312e81;
+  --accent: #ca8a04;
+  --accent-bright: #eab308;
+  --indigo: #4338ca;
+  --indigo-soft: #818cf8;
+  --good: #34d399;
+  --warn: #fbbf24;
+  --bad: #f87171;
+  --utopia: #34d399;
+  --dystopia: #f87171;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-muted: var(--muted);
+  --color-foreground: var(--foreground);
+  --color-fg-muted: var(--foreground-muted);
+  --color-fg-faint: var(--foreground-faint);
+  --color-edge: var(--border);
+  --color-edge-strong: var(--border-strong);
+  --color-primary: var(--primary);
+  --color-secondary: var(--secondary);
+  --color-accent: var(--accent);
+  --color-accent-bright: var(--accent-bright);
+  --color-indigo: var(--indigo);
+  --color-indigo-soft: var(--indigo-soft);
+  --color-good: var(--good);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-utopia: var(--utopia);
+  --color-dystopia: var(--dystopia);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter), system-ui, sans-serif;
+}
+
+::selection {
+  background: rgba(202, 138, 4, 0.35);
+}
+
+/* Curseur de streaming : un trait or qui bat, discret. */
+.stream-caret::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--accent-bright);
+  animation: caret-blink 1s steps(2) infinite;
+}
+
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rise-in {
+  animation: rise-in 240ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise-in {
+    animation: none;
+  }
+  .stream-caret::after {
+    animation: none;
+  }
+}

@@ -120,6 +120,44 @@ def test_round_respects_max_turns(client):
     assert sum(1 for n, _ in events if n == "turn_start") == 1
 
 
+class ExplodingStore(SQLiteGameStore):
+    """`add_round` casse une fois : simule une panne en plein flux SSE."""
+
+    def __init__(self):
+        super().__init__(":memory:")
+        self.exploded = False
+
+    def add_round(self, round_):
+        if not self.exploded:
+            self.exploded = True
+            raise RuntimeError("panne simulée")
+        super().add_round(round_)
+
+
+def test_round_failure_emits_error_frame_and_releases_lock():
+    store = ExplodingStore()
+    backend = MockBackend("Analyse privée. MESSAGE: Position commune.")
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_backend] = lambda: backend
+    game_api._sessions.clear()
+    try:
+        client = TestClient(app)
+        game = _create(client, countries=["usa", "iran"])
+
+        events = _play(client, game["id"])
+        names = [n for n, _ in events]
+        assert names[-1] == "error" and "done" not in names
+        assert "panne simulée" in events[-1][1]["detail"]
+
+        # Verrou relâché : un nouveau round passe (la panne était one-shot).
+        events = _play(client, game["id"])
+        assert events[-1][0] == "done"
+    finally:
+        app.dependency_overrides.clear()
+        game_api._sessions.clear()
+        store.close()
+
+
 def test_round_on_unknown_game_is_404(client):
     assert client.post("/api/games/nope/rounds").status_code == 404
 

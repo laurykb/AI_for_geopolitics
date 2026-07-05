@@ -77,6 +77,29 @@ Tables minimales :
   **Replay** (relecture d'une partie depuis `transcripts` — servira de mode démo public).
 - Utiliser le skill `ui-ux-pro-max` pour la direction artistique.
 
+**Notes d'implémentation (R3 faite — lobby, théâtre, monde, marché, replay)** :
+
+- `web/` : Next.js 16 (App Router, Turbopack) + Tailwind v4, TypeScript. Pas de shadcn/ui à ce
+  stade (kit UI maison plus léger) ; DA « dark OLED, accent or spotlight » générée via
+  ui-ux-pro-max, tokens CSS dans `globals.css`.
+- Cinq écrans : **lobby** `/` (créer/lister les parties), **théâtre live** `/games/{id}`
+  (round streamé), **monde** `/games/{id}/monde` (carte d3-geo/topojson embarqué, pays du
+  sommet colorés par U + table d'état des pays), **marché** `/games/{id}/marche` (un marché
+  LMSR par partie « utopie finale ? », paris fictifs, clôture sur U final, leaderboard,
+  timeline de U — branché sur `app/market_api.py` inchangé ; lien partie↔marché = `round_id`
+  dérivé du hash de la partie en attendant R2), **replay** `/games/{id}/replay` (relecture
+  ordonnée des `transcripts`, avec « lecture théâtre » progressive).
+- SSE en `fetch` + `ReadableStream` (EventSource ne fait pas de POST) : parseur dans
+  `web/src/lib/sse.ts`, réduction en état affichable dans `web/src/hooks/useRoundStream.ts`.
+  **Le flux peut se couper sans `done`** (restart uvicorn, réseau) : le client le détecte,
+  affiche une bannière et resynchronise via `GET /api/games/{id}` — vérifié en tuant
+  uvicorn en plein round. Événement SSE inconnu = ignoré (compatible avec de futurs RoundStep).
+- Changements Python (retouches de revue R1 comprises) : middleware **CORS** dans
+  `app/main.py` (front :3000 → API :8000) ; `GAME_DB_PATH` par défaut = **`games.db`**
+  (la relecture survit aux restarts — les parties passent en « relecture seule ») ;
+  trame SSE **`error`** si le moteur lève en plein round (plus de coupure muette) ;
+  `GeoEvent` humain construit dans le `try` de `_play_round` (verrou toujours relâché).
+
 ### Phase R4 — Bascule et nettoyage
 
 - Parité validée → `ui/app.py` archivé (`legacy/`), README mis à jour.

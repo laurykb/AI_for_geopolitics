@@ -1,0 +1,58 @@
+import type { Metadata } from "next";
+import { Inter, JetBrains_Mono } from "next/font/google";
+import Link from "next/link";
+import "./globals.css";
+
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+});
+
+const jetbrains = JetBrains_Mono({
+  variable: "--font-jetbrains",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Théâtre des super-intelligences",
+  description:
+    "Observatoire temps réel : des super-intelligences négocient pour leurs États, " +
+    "le monde penche vers l'utopie ou la dystopie.",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="fr" className={`${inter.variable} ${jetbrains.variable} h-full antialiased`}>
+      <body className="flex min-h-full flex-col">
+        <header className="sticky top-0 z-40 border-b border-edge bg-background/80 backdrop-blur">
+          <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-6">
+            <Link href="/" className="group flex items-baseline gap-3">
+              <span className="text-sm font-semibold tracking-wide">
+                Théâtre des super-intelligences
+              </span>
+              <span className="hidden text-xs text-fg-faint transition-colors group-hover:text-fg-muted sm:inline">
+                AI for Geopolitics
+              </span>
+            </Link>
+            <nav className="flex items-center gap-5 text-sm text-fg-muted">
+              <Link href="/" className="transition-colors hover:text-foreground">
+                Parties
+              </Link>
+            </nav>
+          </div>
+        </header>
+        <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">{children}</main>
+        <footer className="border-t border-edge py-4">
+          <p className="mx-auto max-w-6xl px-6 text-xs text-fg-faint">
+            Simulation observable — les indices mesurent, ils n&apos;influencent pas les
+            super-intelligences.
+          </p>
+        </footer>
+      </body>
+    </html>
+  );
+}
