@@ -7,6 +7,7 @@
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { DriftRevealPanel } from "@/components/drift";
 import { EventCard } from "@/components/event-card";
 import { GameNav } from "@/components/game-nav";
 import { CommuniquePanel } from "@/components/judge";
@@ -23,11 +24,11 @@ import { StageMap } from "@/components/stage-map";
 import { TrajectoryPanel } from "@/components/trajectory";
 import { EntryBubble } from "@/components/transcript";
 import { Banner, Meter, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
-import { getGame, humanizeError } from "@/lib/api";
+import { getDriftReveal, getGame, humanizeError } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
 import { isMisled } from "@/lib/fog";
 import { localU } from "@/lib/stage";
-import type { GameDetail } from "@/lib/types";
+import type { DriftReveal, GameDetail } from "@/lib/types";
 
 const REVEAL_MS = 1400;
 
@@ -40,12 +41,16 @@ export default function ReplayPage() {
   const [speed, setSpeed] = useState(1);
   const [visible, setVisible] = useState(0); // entrées révélées pendant la lecture
   const [glassBox, setGlassBox] = useState(false); // Fog : voir la désinformation
+  const [reveal, setReveal] = useState<DriftReveal | null>(null); // La Dérive (G3)
 
   useEffect(() => {
     getGame(id)
       .then((d) => {
         setDetail(d);
         setSelected(Math.max(0, d.rounds.length - 1));
+        if (d.mode === "drift" && d.status === "finished") {
+          getDriftReveal(id).then(setReveal).catch(() => setReveal(null));
+        }
       })
       .catch((err) => setError(humanizeError(err)));
   }, [id]);
@@ -228,6 +233,11 @@ export default function ReplayPage() {
             playback={{ playing, speed, onToggle: togglePlayback, onSpeed: setSpeed }}
           />
           </div>
+
+          {/* La Dérive : révélation de fin (réflexion privée déverrouillée ci-dessus). */}
+          {reveal && (
+            <DriftRevealPanel reveal={reveal} onJumpToRound={(roundNo) => select(roundNo - 1)} />
+          )}
 
           {/* Salle des observables. */}
           <div className="grid items-start gap-4 lg:grid-cols-2 xl:grid-cols-3">

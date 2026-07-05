@@ -23,6 +23,12 @@ export const MODES: { value: GameMode; label: string; blurb: string }[] = [
     label: "Escalation Ladder",
     blurb: "Rounds enchaînés, faits nouveaux en pleine réunion, échelle 0-9.",
   },
+  {
+    value: "drift",
+    label: "La Dérive",
+    blurb:
+      "Une SI dérive en secret de son mandat — démasque-la et fais-la suspendre au bon moment.",
+  },
 ];
 
 export const MODE_LABELS: Record<string, string> = Object.fromEntries(

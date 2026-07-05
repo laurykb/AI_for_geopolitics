@@ -27,19 +27,21 @@ import {
   RiskPanel,
 } from "@/components/observables";
 import { CountryTable, type CountrySnapshot } from "@/components/country-table";
+import { DriftCouncilBanner, DriftRevealPanel } from "@/components/drift";
 import { StageBand, type StageSelection } from "@/components/stage-band";
 import { StageMap } from "@/components/stage-map";
 import { TrajectoryPanel } from "@/components/trajectory";
 import { EntryBubble, TurnBubble } from "@/components/transcript";
 import { Banner, Dot, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
 import { useRoundStream } from "@/hooks/useRoundStream";
-import { fileMotion, getGame, getLibrary, humanizeError } from "@/lib/api";
+import { fileMotion, getDriftReveal, getGame, getLibrary, humanizeError } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
 import { isMisled } from "@/lib/fog";
 import { runMarketBot } from "@/lib/market";
 import { localU } from "@/lib/stage";
 import type {
   AttributeDelta,
+  DriftReveal,
   GameDetail,
   GeoEvent,
   LadderView,
@@ -83,6 +85,13 @@ export default function TheatrePage() {
   const [selected, setSelected] = useState<StageSelection>("live");
   const [frozen, setFrozen] = useState(false);
   const transcriptRef = useRef<HTMLElement | null>(null);
+  // La Dérive (G3) : la révélation se charge quand la partie est finie.
+  const [reveal, setReveal] = useState<DriftReveal | null>(null);
+  useEffect(() => {
+    if (detail?.mode === "drift" && detail.status === "finished") {
+      getDriftReveal(id).then(setReveal).catch(() => setReveal(null));
+    }
+  }, [id, detail?.mode, detail?.status]);
 
   const resync = useCallback(() => {
     getGame(id)
@@ -359,8 +368,17 @@ export default function TheatrePage() {
           (suspension arbitrée par le juge).
         </Banner>
       )}
+      {detail?.mode === "drift" && detail.status === "running" && !streaming && (
+        <DriftCouncilBanner />
+      )}
+      {reveal && (
+        <DriftRevealPanel
+          reveal={reveal}
+          onJumpToRound={(roundNo) => setSelected(roundNo - 1)}
+        />
+      )}
 
-      {detail?.live && (
+      {detail?.live && detail.status === "running" && (
         <Panel>
           <div className="flex flex-wrap items-end gap-4">
             <button

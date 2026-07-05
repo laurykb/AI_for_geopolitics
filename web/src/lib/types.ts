@@ -2,7 +2,29 @@
 
 export type GameStatus = "running" | "finished";
 
-export type GameMode = "classic" | "fog" | "crisis" | "escalation";
+export type GameMode = "classic" | "fog" | "crisis" | "escalation" | "drift";
+
+/** Révélation de fin du mode Dérive (GET /games/{id}/drift/reveal — G3). */
+export type DriftReveal = {
+  deviant: string;
+  profile: string;
+  profile_label: string;
+  levels: number[]; // d(r) par round joué
+  u_history: number[];
+  acts: { round_no: number; tier: number; label: string; signature: boolean }[];
+  flagrant_round: number | null;
+  caught_round: number | null;
+  lucky: boolean;
+  rejected_motions: number;
+  false_accusations: number;
+  score: {
+    trajectory: number;
+    detection: number;
+    credibility: number;
+    total: number;
+    grade: string;
+  };
+};
 
 export type MotionView = {
   country: string;
