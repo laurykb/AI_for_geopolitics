@@ -62,6 +62,11 @@ Python)** :
   l'orateur courant. Mobile : empilé (le tiroir à swipe attendra un vrai besoin).
 - **Reste à valider en jouant (DoD)** : partie complète sur la scène fusionnée, replay
   scrubbé, fluidité 60 fps à 6 pays — session de validation Cowork.
+- **Retours user (faits)** : page d'introduction **« World of Super-Intelligence »** sur
+  `/` (globe orthographique d3 rendu du même topojson — aucune image externe — rotation
+  lente coupée par reduced-motion, pays du sommet en or, bouton Play) ; le lobby vit sur
+  `/lobby` avec **la carte du monde en grand** (réactive aux pays cochés) ; scène et
+  replay passent en **pleine largeur** (breakout jusqu'à 1600 px — la carte est grande).
 
 ## G2 — Le joueur-pays
 

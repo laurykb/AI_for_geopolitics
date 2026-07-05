@@ -618,8 +618,9 @@ export default function TheatrePage() {
         </Panel>
       )}
 
-      {/* --- La scène (G1) : la carte au centre, le transcript en panneau latéral --- */}
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,400px)]">
+      {/* --- La scène (G1) : pleine largeur, la carte en grand --------------------- */}
+      <div className="relative left-1/2 w-screen max-w-[1600px] -translate-x-1/2 space-y-4 px-4 sm:px-6">
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]">
         <div className="rounded-lg border border-edge bg-surface p-3">
           <StageMap
             countries={summit}
@@ -832,6 +833,7 @@ export default function TheatrePage() {
         ladder={bandLadder}
         prevRung={prevRung}
       />
+      </div>
 
       {/* Salle des observables : le détail, sous la scène. */}
       <div className="grid items-start gap-4 lg:grid-cols-2 xl:grid-cols-3">
