@@ -5,8 +5,8 @@ import json
 from core.decisions import AgentDecision
 from core.events import GeoEvent
 from inference.mock_backend import MockBackend
+from legacy.game import AGENT_LLM, GameSession
 from simulation.action_space import ActionType
-from ui.game import AGENT_LLM, GameSession
 
 
 def test_spectator_plays_scenario_then_exhausts():

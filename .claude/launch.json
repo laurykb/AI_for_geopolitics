@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "ui",
+      "name": "legacy-ui",
       "runtimeExecutable": ".venv/Scripts/python.exe",
-      "runtimeArgs": ["-m", "streamlit", "run", "ui/app.py",
+      "runtimeArgs": ["-m", "streamlit", "run", "legacy/app.py",
                       "--server.port", "8501", "--server.headless", "true"],
       "port": 8501
     },

@@ -1,7 +1,8 @@
-"""API FastAPI (backend) — Phase 5.
+"""API FastAPI (backend).
 
-L'UI humaine est l'app Streamlit (`ui/app.py`). FastAPI reste comme backend/service
-(santé + run JSON) pour l'architecture services de P6/P7.
+L'UI humaine est le front Next.js (`web/`), branché sur l'API de jeu SSE
+(`app/game_api.py`) et l'API marché (`app/market_api.py`). L'ancienne app
+Streamlit est archivée dans `legacy/`.
 
 Lancer : `uvicorn app.main:app`.
 """

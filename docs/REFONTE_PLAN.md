@@ -174,11 +174,9 @@ legacy pour l'instant) : invention de pays (country_forge), radar M3, budget LLM
   après la forge) ; **boîte de verre** en mode Fog (théâtre + replay) : bannière « ce qui
   circule vraiment » (vérité vs désinformation en circulation), bulles du débat teintées
   par l'état de croyance de l'orateur, état vide explicite.
-- Reste de R4 (après validation de la parité par l'user) : archivage `ui/app.py` →
-  `legacy/`, README racine, CI (pytest + build Next — **faite**).
-
-- Parité validée → `ui/app.py` archivé (`legacy/`), README mis à jour.
-- CI : lancer les tests Python + build Next.js.
+- **Fin de R4 (faite)** : parité validée → `ui/` archivé dans `legacy/` (`legacy/app.py`
+  Streamlit + `legacy/game.py`, encore testé via `tests/test_legacy_game.py`), README racine
+  réécrit (architecture web/ + API), CI en place (pytest + ruff + build Next.js).
 
 ### Phase R5 (plus tard) — Déploiement
 
