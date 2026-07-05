@@ -181,13 +181,22 @@ export type PlayRoundBody = {
   crisis_id?: string;
 };
 
+export type InventAttributes = {
+  growth: number; // % annuel, borné [-15, 15]
+  political_stability: number; // [0, 1]
+  technology_level: number; // [0, 1]
+  projection: number; // [0, 1]
+  compute: number; // [0, 200]
+  nuclear_power: boolean;
+};
+
 export type CreateGameBody = {
   scenario?: string;
   countries?: string[];
   horizon?: number;
   mode?: GameMode;
   play_as?: string; // id existant, ou NOM du pays inventé (l'API résout le slug)
-  invent?: { name: string; concept?: string };
+  invent?: { name: string; concept?: string; attributes?: InventAttributes };
 };
 
 export type FogScenarioView = {
@@ -300,6 +309,7 @@ export type SourceInfo = {
   year?: number;
   of?: number;
   note?: string; // "subjectif" | "dérivé" | "illustratif"
+  url?: string; // page officielle de la source, vérifiable dans le navigateur
 };
 
 export type AttributeSource = {

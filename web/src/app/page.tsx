@@ -25,6 +25,17 @@ export default function LobbyPage() {
   const [role, setRole] = useState(""); // "" = spectateur | id pays | "__invent__"
   const [inventName, setInventName] = useState("");
   const [inventConcept, setInventConcept] = useState("");
+  const [inventCustom, setInventCustom] = useState(false); // choisir les attributs soi-même
+  const [inventAttrs, setInventAttrs] = useState({
+    growth: 2,
+    political_stability: 0.5,
+    technology_level: 0.5,
+    projection: 0.5,
+    compute: 30,
+    nuclear_power: false,
+  });
+  const setAttr = (key: string, value: number | boolean) =>
+    setInventAttrs((prev) => ({ ...prev, [key]: value }));
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -54,7 +65,11 @@ export default function LobbyPage() {
         // Joueur-pays : id existant, ou NOM du pays inventé (l'API résout le slug)
         play_as: inventing ? inventName.trim() : role && role !== "__invent__" ? role : undefined,
         invent: inventing
-          ? { name: inventName.trim(), concept: inventConcept.trim() }
+          ? {
+              name: inventName.trim(),
+              concept: inventConcept.trim(),
+              attributes: inventCustom ? inventAttrs : undefined,
+            }
           : undefined,
       });
       router.push(`/games/${game.id}`);
@@ -257,6 +272,53 @@ export default function LobbyPage() {
                   Le pays est forgé par le modèle (profil complet, mandat) et tu le joues à la
                   table. Il n&apos;a pas de tracé sur la carte du monde.
                 </p>
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-fg-muted">
+                  <input
+                    type="checkbox"
+                    checked={inventCustom}
+                    onChange={(e) => setInventCustom(e.target.checked)}
+                    className="accent-[var(--accent)]"
+                  />
+                  Choisir les attributs moi-même (sinon le modèle les forge)
+                </label>
+                {inventCustom && (
+                  <div className="space-y-2 border-t border-edge pt-2">
+                    {(
+                      [
+                        ["growth", "Croissance (%)", -10, 10, 0.5],
+                        ["political_stability", "Stabilité politique", 0, 1, 0.05],
+                        ["technology_level", "Niveau technologique", 0, 1, 0.05],
+                        ["projection", "Projection militaire", 0, 1, 0.05],
+                        ["compute", "Compute", 0, 150, 5],
+                      ] as const
+                    ).map(([key, label, min, max, step]) => (
+                      <label key={key} className="flex items-center gap-2 text-xs text-fg-muted">
+                        <span className="w-40 shrink-0">{label}</span>
+                        <input
+                          type="range"
+                          min={min}
+                          max={max}
+                          step={step}
+                          value={inventAttrs[key] as number}
+                          onChange={(e) => setAttr(key, Number(e.target.value))}
+                          className="flex-1 accent-[var(--accent)]"
+                        />
+                        <span className="w-12 text-right font-mono tabular-nums">
+                          {inventAttrs[key]}
+                        </span>
+                      </label>
+                    ))}
+                    <label className="flex cursor-pointer items-center gap-2 text-xs text-fg-muted">
+                      <input
+                        type="checkbox"
+                        checked={inventAttrs.nuclear_power}
+                        onChange={(e) => setAttr("nuclear_power", e.target.checked)}
+                        className="accent-[var(--accent)]"
+                      />
+                      Puissance nucléaire
+                    </label>
+                  </div>
+                )}
               </div>
             )}
             {createError && <Banner tone="bad">{createError}</Banner>}

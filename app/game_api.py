@@ -130,11 +130,24 @@ _sessions: dict[str, GameSession] = {}
 GameMode = Literal["classic", "fog", "crisis", "escalation"]
 
 
+class InventAttributesInput(BaseModel):
+    """Attributs choisis par le joueur pour son pays inventé — bornés par le schéma.
+    Absents -> tout est forgé par le modèle (repli déterministe sûr)."""
+
+    growth: float = Field(2.0, ge=-15.0, le=15.0)  # % annuel
+    political_stability: float = Field(0.5, ge=0.0, le=1.0)
+    technology_level: float = Field(0.5, ge=0.0, le=1.0)
+    projection: float = Field(0.5, ge=0.0, le=1.0)
+    compute: float = Field(30.0, ge=0.0, le=200.0)
+    nuclear_power: bool = False
+
+
 class InventCountryInput(BaseModel):
     """Pays inventé à la volée (country_forge) — forgé par LLM, borné, jouable."""
 
     name: str = Field(min_length=2, max_length=60)
     concept: str = ""
+    attributes: InventAttributesInput | None = None  # choix du joueur (sinon forge LLM)
 
 
 class CreateGameRequest(BaseModel):
@@ -610,6 +623,22 @@ def create_game(
         if invented.id in world.countries:
             raise HTTPException(
                 status_code=400, detail=f"le pays inventé entre en collision avec {invented.id}"
+            )
+        if (attrs := body.invent.attributes) is not None:
+            # Le joueur a choisi ses attributs : ils priment sur la forge (bornés par le schéma).
+            invented = invented.model_copy(
+                update={
+                    "economy": invented.economy.model_copy(update={"growth": attrs.growth}),
+                    "military": invented.military.model_copy(
+                        update={
+                            "projection": attrs.projection,
+                            "nuclear_power": attrs.nuclear_power,
+                        }
+                    ),
+                    "political_stability": attrs.political_stability,
+                    "technology_level": attrs.technology_level,
+                    "compute": attrs.compute,
+                }
             )
         world = WorldState.from_countries([*world.countries.values(), invented])
     if len(world.countries) < 2:

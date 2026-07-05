@@ -181,6 +181,44 @@ def test_play_as_unknown_country_is_400(client):
     assert resp.status_code == 400
 
 
+def test_invented_country_with_chosen_attributes(client):
+    game = _create(
+        client,
+        countries=["usa", "iran"],
+        invent={
+            "name": "Cybertopia",
+            "concept": "technopole autonome",
+            "attributes": {
+                "growth": 4.2,
+                "political_stability": 0.8,
+                "technology_level": 0.9,
+                "projection": 0.7,
+                "compute": 120,
+                "nuclear_power": True,
+            },
+        },
+    )
+    slug = next(c for c in game["countries"] if c not in {"usa", "iran"})
+    country = client.get(f"/api/games/{game['id']}").json()["world"]["countries"][slug]
+    assert country["economy"]["growth"] == 4.2
+    assert country["political_stability"] == 0.8
+    assert country["technology_level"] == 0.9
+    assert country["military"]["projection"] == 0.7
+    assert country["military"]["nuclear_power"] is True
+    assert country["compute"] == 120
+
+
+def test_invented_attributes_out_of_bounds_rejected(client):
+    resp = client.post(
+        "/api/games",
+        json={
+            "countries": ["usa", "iran"],
+            "invent": {"name": "Borderland", "attributes": {"projection": 1.5}},
+        },
+    )
+    assert resp.status_code == 422  # borné par le schéma Pydantic
+
+
 # --- théâtre Escalation : fait nouveau en pleine négociation ----------------------
 
 

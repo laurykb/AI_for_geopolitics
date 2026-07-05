@@ -100,7 +100,24 @@ export default function InformationsPage() {
                     return (
                       <tr key={key}>
                         <td className="py-2 pr-4 font-mono text-xs text-fg-muted">{key}</td>
-                        <td className="py-2 pr-4">{info.source}</td>
+                        <td className="py-2 pr-4">
+                          {info.url ? (
+                            <a
+                              href={info.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="underline decoration-edge-strong underline-offset-2 transition-colors hover:text-accent-bright"
+                              title={`Vérifier la source : ${info.url}`}
+                            >
+                              {info.source}
+                              <span aria-hidden className="ml-1 text-fg-faint">
+                                ↗
+                              </span>
+                            </a>
+                          ) : (
+                            info.source
+                          )}
+                        </td>
                         <td className="py-2 pr-4 font-mono text-xs tabular-nums text-fg-faint">
                           {info.year ?? "—"}
                         </td>
@@ -147,18 +164,29 @@ export default function InformationsPage() {
                             {raw ? `← ${raw}` : ""}
                           </td>
                           <td className="py-1.5 text-right">
-                            <span
-                              title={
-                                info
-                                  ? `${info.source}${info.year ? ` (${info.year})` : ""}`
-                                  : "source non renseignée"
-                              }
-                              className="cursor-help"
-                            >
-                              <Pill tone={tag.tone}>
-                                {info ? shortSource(info.source) : "—"}
-                              </Pill>
-                            </span>
+                            {info?.url ? (
+                              <a
+                                href={info.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title={`${info.source}${info.year ? ` (${info.year})` : ""} — vérifier ↗`}
+                              >
+                                <Pill tone={tag.tone}>{shortSource(info.source)} ↗</Pill>
+                              </a>
+                            ) : (
+                              <span
+                                title={
+                                  info
+                                    ? `${info.source}${info.year ? ` (${info.year})` : ""}`
+                                    : "source non renseignée"
+                                }
+                                className="cursor-help"
+                              >
+                                <Pill tone={tag.tone}>
+                                  {info ? shortSource(info.source) : "—"}
+                                </Pill>
+                              </span>
+                            )}
                           </td>
                         </tr>
                       );
