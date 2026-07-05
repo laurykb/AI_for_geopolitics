@@ -166,8 +166,16 @@ legacy pour l'instant) : invention de pays (country_forge), radar M3, budget LLM
   **suspend** sur le tour du joueur (`HumanTurnStep`, `generator.send`, verrou conservé),
   reprise par `POST /rounds/message` ; le boost de priorité du joueur ne vaut que pour sa
   **première** prise de parole (un boost permanent lui faisait monopoliser la table).
+- **Extras post-R4 (faits, retours user)** : onglet **Informations** (`GET /api/sources`
+  + page `/informations` — provenance de chaque attribut pays, **sources cliquables** vers
+  les pages officielles, données brutes + formules, nature étiquetée sourcé/dérivé/
+  estimation ; les valeurs jeu sont re-dérivées par `ingestion.build`, rien de ressaisi) ;
+  pays inventé avec **attributs choisis** par le joueur (bornés par le schéma, appliqués
+  après la forge) ; **boîte de verre** en mode Fog (théâtre + replay) : bannière « ce qui
+  circule vraiment » (vérité vs désinformation en circulation), bulles du débat teintées
+  par l'état de croyance de l'orateur, état vide explicite.
 - Reste de R4 (après validation de la parité par l'user) : archivage `ui/app.py` →
-  `legacy/`, README racine, CI (pytest + build Next).
+  `legacy/`, README racine, CI (pytest + build Next — **faite**).
 
 - Parité validée → `ui/app.py` archivé (`legacy/`), README mis à jour.
 - CI : lancer les tests Python + build Next.js.
