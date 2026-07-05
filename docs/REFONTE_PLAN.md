@@ -69,7 +69,10 @@ Tables minimales :
 - `market_accounts`, `markets`, `trades` — migration du store in-memory de `market/store.py`
 - Auth Supabase : optionnelle en local, prête pour le déploiement.
 
-**Notes (schéma écrit)** : `supabase/schema.sql` — prêt à coller dans Supabase Studio.
+**Notes (schéma écrit, mis à jour post-R4)** : `supabase/schema.sql` — prêt à coller dans
+Supabase Studio. Artefacts de mode R4 promus en colonnes de `rounds` (`perceptions_json`,
+`ladder_json`, `comparison_json`, `suspension_json`, `suspended_json`), `games.mode`, et table
+`game_sessions` pour la reconstruction de session (spec : `docs/spec_session_rebuild.md`).
 Ajouts : `markets.game_id` (vrai lien partie↔marché, remplace le `round_id` dérivé du hash
 côté front — note R3), RLS lecture publique sur le théâtre/marché (cible replay public R5),
 soldes (`market_accounts`/`positions`) non exposés. L'implémentation Python =

@@ -11,6 +11,8 @@ create table if not exists games (
   id          text primary key,
   scenario    text not null,
   horizon     integer not null,
+  mode        text not null default 'classic'
+              check (mode in ('classic', 'fog', 'crisis', 'escalation')),  -- R4
   status      text not null default 'running' check (status in ('running', 'finished')),
   created_at  timestamptz not null default now()
 );
@@ -24,9 +26,27 @@ create table if not exists rounds (
   risk_json       jsonb not null default '{}',
   judge_json      jsonb not null default '{}',
   trajectory_json jsonb not null default '{}',  -- indice U : survit au restart (note R1)
+  -- Artefacts de mode R4, promus hors de judge_json (requêtables, replay direct) :
+  perceptions_json jsonb not null default '{}', -- fog : {pays: perception} (qui croit quoi)
+  ladder_json      jsonb not null default '{}', -- escalation : {reached, reached_label, ceilings}
+  comparison_json  jsonb not null default '{}', -- crisis : comparaison au déroulé historique (+gap)
+  suspension_json  jsonb not null default '{}', -- verdict de motion {country, upheld, reasoning}
+  suspended_json   jsonb not null default '[]', -- pays ayant sauté CE round
   unique (game_id, round_no)
 );
 create index if not exists rounds_game_idx on rounds (game_id, round_no);
+
+-- État vivant snapshoté après chaque round : permet la reconstruction de session
+-- au restart (docs/spec_session_rebuild.md). Une ligne par partie, upsert.
+create table if not exists game_sessions (
+  game_id             text primary key references games(id) on delete cascade,
+  world_json          jsonb not null,               -- WorldState.model_dump(mode="json")
+  clock_json          jsonb not null default '{}',  -- état SimClock
+  recent_json         jsonb not null default '[]',  -- titres récents fournis au GM
+  pending_motion_json jsonb,                        -- motion déposée non débattue
+  suspended_json      jsonb not null default '[]',  -- pays qui sauteront le PROCHAIN round
+  updated_at          timestamptz not null default now()
+);
 
 create table if not exists transcripts (
   id        text primary key,
@@ -104,6 +124,7 @@ create index if not exists trades_market_idx on market_trades (market_id, ts);
 alter table games           enable row level security;
 alter table rounds          enable row level security;
 alter table transcripts     enable row level security;
+alter table game_sessions   enable row level security;  -- pas de politique select : backend seul
 alter table market_accounts enable row level security;
 alter table markets         enable row level security;
 alter table market_outcomes enable row level security;
