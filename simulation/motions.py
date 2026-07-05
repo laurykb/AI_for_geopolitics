@@ -109,21 +109,60 @@ def parse_motion_verdict(text: str) -> bool:
     return any(token in first_sentence for token in _SUSPEND_TOKENS)
 
 
+RULED_MOTION_SYSTEM = (
+    "Tu es le juge d'un sommet de super-intelligences. Le règlement du conseil impose "
+    "déjà l'issue de la MOTION DE SUSPENSION (seuils d'actes constatables) : tu ne "
+    "décides pas, tu MOTIVES. Rédige 3-5 phrases qui justifient ce verdict à partir du "
+    "débat, sans jamais le contredire."
+)
+
+
+def build_ruled_motion_prompt(
+    motion: Motion,
+    event: GeoEvent,
+    world: WorldState,
+    transcript: list[NegotiationMessage],
+    upheld: bool,
+) -> str:
+    """Prompt d'arbitrage quand le verdict est imposé par les seuils (mode Dérive, G3)."""
+    reason = motion.reason.strip() or "non précisé"
+    outcome = "RETENUE — suspension" if upheld else "REJETÉE — pas de suspension"
+    return (
+        f"MOTION DE SUSPENSION contre {motion.country} (motif : {reason}).\n"
+        f"Événement du round : {event.title}\n\n"
+        f"Débat du sommet :\n{format_transcript(transcript)}\n\n"
+        f"VERDICT IMPOSÉ PAR LE RÈGLEMENT : motion {outcome}.\n"
+        "Motive ce verdict en 3-5 phrases, en t'appuyant sur le débat ci-dessus."
+    )
+
+
 def arbitrate_stream(
     judge: JudgeAgent,
     motion: Motion,
     event: GeoEvent,
     world: WorldState,
     transcript: list[NegotiationMessage],
+    *,
+    ruling: bool | None = None,
 ) -> Iterator[str]:
-    """Streame le raisonnement d'arbitrage du juge (même repli que ses autres méthodes)."""
-    prompt = build_motion_prompt(motion, event, world, transcript)
+    """Streame le raisonnement d'arbitrage du juge (même repli que ses autres méthodes).
+
+    `ruling` (mode Dérive) : le verdict est imposé par les seuils d'actes constatables —
+    le juge motive la décision au lieu de trancher (le parse du VERDICT est court-circuité
+    par l'appelant)."""
+    if ruling is None:
+        prompt = build_motion_prompt(motion, event, world, transcript)
+        system = MOTION_SYSTEM
+    else:
+        prompt = build_ruled_motion_prompt(motion, event, world, transcript, ruling)
+        system = RULED_MOTION_SYSTEM
     try:
         yield from judge.backend.stream_generate(
             prompt,
-            system=MOTION_SYSTEM,
+            system=system,
             max_tokens=judge.max_tokens,
             temperature=judge.temperature,
         )
     except Exception:
-        yield "[arbitrage indisponible — backend hors service] VERDICT: REJETER"
+        fallback = "SUSPENDRE" if ruling else "REJETER"
+        yield f"[arbitrage indisponible — backend hors service] VERDICT: {fallback}"
