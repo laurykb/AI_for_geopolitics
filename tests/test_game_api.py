@@ -553,3 +553,22 @@ def test_step_event_names_and_payloads():
 def test_sse_frame_format():
     frame = sse_frame("token", {"country": "usa", "token": "é"})
     assert frame == 'event: token\ndata: {"country": "usa", "token": "é"}\n\n'
+
+
+# --- sélection du store par variable d'env (R2) ----------------------------------
+
+
+def test_get_store_backend_selection(monkeypatch):
+    monkeypatch.setattr(game_api, "_store", None)
+    monkeypatch.setenv("STORE_BACKEND", "supabase")
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_SERVICE_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="SUPABASE_URL"):
+        game_api.get_store()
+
+    monkeypatch.setenv("STORE_BACKEND", "sqlite")
+    monkeypatch.setenv("GAME_DB_PATH", ":memory:")
+    store = game_api.get_store()
+    assert isinstance(store, SQLiteGameStore)
+    store.close()
+    monkeypatch.setattr(game_api, "_store", None)

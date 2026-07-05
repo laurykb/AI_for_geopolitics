@@ -70,9 +70,11 @@ from storage.game_store import (
     GameRecord,
     GameStore,
     RoundRecord,
+    SessionSnapshot,
     SQLiteGameStore,
     TranscriptEntry,
 )
+from storage.supabase_store import SupabaseGameStore
 
 _RECENT_KEPT = 8  # titres d'événements passés fournis au GM pour éviter les redites
 
@@ -89,11 +91,15 @@ def get_backend() -> InferenceBackend:
 
 
 def get_store() -> GameStore:
-    """Store des parties du process (fichier `games.db` par défaut pour que la relecture
-    survive aux redémarrages ; `GAME_DB_PATH` pour changer, `:memory:` pour l'éphémère)."""
+    """Store des parties du process, choisi par `STORE_BACKEND` (R2) :
+    `sqlite` (défaut — fichier `games.db`, `GAME_DB_PATH` pour changer, `:memory:` pour
+    l'éphémère) ou `supabase` (PostgREST ; exige `SUPABASE_URL` + `SUPABASE_SERVICE_KEY`)."""
     global _store
     if _store is None:
-        _store = SQLiteGameStore(os.getenv("GAME_DB_PATH", "games.db"))
+        if os.getenv("STORE_BACKEND", "sqlite") == "supabase":
+            _store = SupabaseGameStore.from_env()
+        else:
+            _store = SQLiteGameStore(os.getenv("GAME_DB_PATH", "games.db"))
     return _store
 
 
