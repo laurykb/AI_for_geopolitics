@@ -66,6 +66,10 @@ export const getSources = (): Promise<SourcesView> => request("/api/sources");
 export const getDriftReveal = (gameId: string): Promise<DriftReveal> =>
   request(`/api/games/${gameId}/drift/reveal`);
 
+/** Publie le récit de partie (G6) : génère l'épilogue au besoin, pose le flag. */
+export const publishGame = (gameId: string): Promise<GameView> =>
+  request(`/api/games/${gameId}/publish`, { method: "POST" });
+
 /** Carte de campagne (G5) : chapitres, meilleurs scores, déblocage. */
 export const getCampaign = (): Promise<CampaignView> => request("/api/campaign");
 

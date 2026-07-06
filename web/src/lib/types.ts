@@ -48,6 +48,7 @@ export type GameView = {
   awaiting_human: boolean; // un round est suspendu sur le tour du joueur
   turn_seconds: number; // G2 — délai du tour humain
   intel_budget: number | null; // G4 — crédits de renseignement restants
+  published: boolean; // G6 — le récit public existe (/r/{id})
 };
 
 export type TranscriptEntry = {
@@ -182,6 +183,7 @@ export type RoundView = {
 export type GameDetail = GameView & {
   world: Record<string, unknown> | null;
   rounds: RoundView[];
+  epilogue: Record<string, unknown> | null; // G6 — le récit (généré une seule fois)
 };
 
 export type HumanEvent = {

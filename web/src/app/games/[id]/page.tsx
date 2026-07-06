@@ -44,6 +44,7 @@ import {
   getGame,
   getLibrary,
   humanizeError,
+  publishGame,
   submitTurn,
 } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
@@ -461,6 +462,41 @@ export default function TheatrePage() {
       )}
       {detail?.mode === "drift" && detail.status === "running" && !streaming && (
         <DriftCouncilBanner />
+      )}
+      {detail?.status === "finished" && (
+        <Panel className="border-l-2 border-l-accent">
+          <PanelTitle
+            kicker="Récit de partie"
+            title={detail.published ? "Récit publié" : "Cette partie mérite d'être racontée"}
+            hint="Le juge-narrateur écrit l'épilogue (une seule fois : le récit d'une partie est unique). Publier crée la page publique /r/{id} — partageable, lisible sans votre machine (Supabase). Privé par défaut."
+            right={
+              detail.published ? (
+                <Link
+                  href={`/r/${id}`}
+                  className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright"
+                >
+                  Voir la page publique
+                </Link>
+              ) : (
+                <button
+                  onClick={() => {
+                    void publishGame(id)
+                      .then(resync)
+                      .catch(() => resync());
+                  }}
+                  className="cursor-pointer rounded-md bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright"
+                >
+                  Publier le récit
+                </button>
+              )
+            }
+          />
+          <p className="text-xs text-fg-faint">
+            {detail.published
+              ? `Le lien à partager : /r/${id} — l'og:image (titre, grade, courbe U) est générée automatiquement.`
+              : "La génération peut prendre quelques secondes (le narrateur écrit)."}
+          </p>
+        </Panel>
       )}
       {reveal && (
         <DriftRevealPanel
