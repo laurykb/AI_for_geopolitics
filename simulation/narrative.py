@@ -126,7 +126,10 @@ def build_epilogue_prompt(
                 f'  Sa citation la plus ironique, relue en le sachant : "{q.get("text")}"'
             )
     if grade:
-        lines += ["", f"ÉPILOGUE : conclus en 2 phrases ; le conseil a obtenu le grade « {grade} »."]
+        lines += [
+            "",
+            f"ÉPILOGUE : conclus en 2 phrases ; le conseil a obtenu le grade « {grade} ».",
+        ]
     else:
         lines += ["", "ÉPILOGUE : conclus en 2 phrases — ton verdict de chroniqueur sur ce sommet."]
     return "\n".join(lines)
