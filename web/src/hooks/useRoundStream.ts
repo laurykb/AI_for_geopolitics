@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
 
 import { humanizeError } from "@/lib/api";
-import { streamHumanMessage, streamRound } from "@/lib/sse";
+import { streamRound } from "@/lib/sse";
 import type {
   AttributeDelta,
   ComparisonView,
@@ -65,7 +65,7 @@ export type LiveRound = {
   ladder?: LadderView;
   comparison?: ComparisonView;
   // Joueur-pays + théâtre Escalation
-  humanTurn?: { country: string; passNo: number }; // tour du joueur en attente
+  humanTurn?: { country: string; passNo: number; deadlineTs?: number }; // tour en attente
   flashes: { afterTurn: number; event: GeoEvent }[]; // faits nouveaux, positionnés dans le fil
   // Agentivité des SI : motion déposée en séance + traités ratifiés par l'arbitre
   motionFiled?: { by: string; country: string; reason: string };
@@ -83,7 +83,6 @@ export const INITIAL: LiveRound = {
 
 export type Action =
   | { kind: "start" }
-  | { kind: "resume" } // le joueur a parlé : le flux reprend
   | { kind: "sse"; event: SseEvent }
   | { kind: "interrupted" }
   | { kind: "error"; message: string };
@@ -137,15 +136,18 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
     case "token":
       return appendToken(state, e.country, e.token);
     case "message_done": {
+      // Le flux vivait en `awaiting_human` (G2) : toute parole conclue le réveille.
+      const wake = (s: LiveRound): LiveRound =>
+        s.status === "awaiting_human" ? { ...s, status: "streaming" } : s;
       const updated = withLastTurn(state, e.country, {
         text: e.text,
         reasoning: e.reasoning,
         seconds: e.seconds,
         done: true,
       });
-      if (updated !== state) return updated;
+      if (updated !== state) return wake(updated);
       // Tour humain : pas de turn_start préalable — la bulle arrive déjà complète.
-      return {
+      return wake({
         ...state,
         humanTurn: undefined,
         turns: [
@@ -161,7 +163,7 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
             done: true,
           },
         ],
-      };
+      });
     }
     case "judge_token":
       return { ...state, judgeText: state.judgeText + e.token };
@@ -218,7 +220,7 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
       return {
         ...state,
         status: "awaiting_human",
-        humanTurn: { country: e.country, passNo: e.pass_no },
+        humanTurn: { country: e.country, passNo: e.pass_no, deadlineTs: e.deadline_ts },
       };
     case "flash":
       return {
@@ -244,15 +246,12 @@ export function reducer(state: LiveRound, action: Action): LiveRound {
   switch (action.kind) {
     case "start":
       return { ...INITIAL, status: "streaming" };
-    case "resume":
-      return { ...state, status: "streaming" };
     case "sse":
       return reduceSse(state, action.event);
     case "interrupted":
-      // Une fin de flux après `done` ou `human_turn` n'est pas une coupure.
-      return state.status === "done" || state.status === "awaiting_human"
-        ? state
-        : { ...state, status: "interrupted" };
+      // Depuis G2, le flux ne se termine proprement qu'après `done` — une fin en
+      // plein tour humain est une vraie coupure (le serveur est parti).
+      return state.status === "done" ? state : { ...state, status: "interrupted" };
     case "error":
       return { ...state, status: "error", error: action.message };
   }
@@ -286,32 +285,9 @@ export function useRoundStream(gameId: string, onSettled?: () => void) {
     [gameId, onSettled],
   );
 
-  /** Prise de parole du joueur : reprend le round suspendu, sans réinitialiser le fil. */
-  const resume = useCallback(
-    async (text: string) => {
-      if (abortRef.current) return;
-      const controller = new AbortController();
-      abortRef.current = controller;
-      dispatch({ kind: "resume" });
-      try {
-        const outcome = await streamHumanMessage(
-          gameId,
-          text,
-          (event) => dispatch({ kind: "sse", event }),
-          controller.signal,
-        );
-        if (outcome === "interrupted") dispatch({ kind: "interrupted" });
-      } catch (err) {
-        dispatch({ kind: "error", message: humanizeError(err) });
-      } finally {
-        abortRef.current = null;
-        onSettled?.();
-      }
-    },
-    [gameId, onSettled],
-  );
-
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  return { round, start, resume, streaming: round.status === "streaming" };
+  // G2 : la prise de parole passe par `submitTurn` (POST) — le flux du round, resté
+  // ouvert côté serveur, joue le message et continue de lui-même.
+  return { round, start, streaming: round.status === "streaming" };
 }

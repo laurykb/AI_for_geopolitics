@@ -33,9 +33,17 @@ import { StageMap } from "@/components/stage-map";
 import { TrajectoryPanel } from "@/components/trajectory";
 import { EntryBubble, TurnBubble } from "@/components/transcript";
 import { TreatiesPanel } from "@/components/treaties";
+import { TurnComposer } from "@/components/turn-composer";
 import { Banner, Dot, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
 import { useRoundStream } from "@/hooks/useRoundStream";
-import { fileMotion, getDriftReveal, getGame, getLibrary, humanizeError } from "@/lib/api";
+import {
+  fileMotion,
+  getDriftReveal,
+  getGame,
+  getLibrary,
+  humanizeError,
+  submitTurn,
+} from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
 import { isMisled } from "@/lib/fog";
 import { runMarketBot } from "@/lib/market";
@@ -80,7 +88,6 @@ export default function TheatrePage() {
   const [motionError, setMotionError] = useState<string | null>(null);
 
   const [chain, setChain] = useState(true); // Escalation : enchaîner les rounds
-  const [humanText, setHumanText] = useState("");
   const [glassBox, setGlassBox] = useState(false); // Fog : voir la désinformation qui circule
   // Scène (G1) : cran de la timeline (« live » ou un round passé) + gel du verdict.
   const [selected, setSelected] = useState<StageSelection>("live");
@@ -114,7 +121,7 @@ export default function TheatrePage() {
     }
   }, [mode]);
 
-  const { round, start, resume, streaming } = useRoundStream(id, resync);
+  const { round, start, streaming } = useRoundStream(id, resync);
   const motionPending = detail?.pending_motion ?? null;
   const awaitingHuman =
     round.status === "awaiting_human" || (round.status === "idle" && !!detail?.awaiting_human);
@@ -168,12 +175,10 @@ export default function TheatrePage() {
     }
   }, [chain, detail, round.status, start]);
 
-  const speak = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!humanText.trim()) return;
+  // G2 : la parole part en POST — le flux SSE du round, resté ouvert, la joue.
+  const speak = (text: string) => {
     setSelected("live"); // la scène revient au direct
-    void resume(humanText.trim());
-    setHumanText("");
+    submitTurn(id, text).catch(() => resync());
   };
 
   const play = () => {
@@ -320,7 +325,7 @@ export default function TheatrePage() {
         {detail && detail.mode !== "classic" && (
           <Pill tone="accent">{MODE_LABELS[detail.mode] ?? detail.mode}</Pill>
         )}
-        {mode === "fog" && (
+        {mode === "fog" && !detail?.play_as && (
           <button
             onClick={() => setGlassBox((v) => !v)}
             title="Boîte de verre : révéler ce que chaque pays croit vraiment pendant qu'il parle — la désinformation qui circule. En vue normale, le théâtre reste tel quel."
@@ -769,38 +774,6 @@ export default function TheatrePage() {
             </Banner>
           )}
 
-          {awaitingHuman && detail?.play_as && (
-            <form
-              onSubmit={speak}
-              className="rise-in rounded-lg border border-warn/50 bg-surface p-4"
-            >
-              <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-warn">
-                <SpeakerAvatar id={detail.play_as} size={22} />À toi de parler —{" "}
-                {speakerMeta(detail.play_as).label}
-              </p>
-              <textarea
-                value={humanText}
-                onChange={(e) => setHumanText(e.target.value)}
-                rows={3}
-                placeholder="Ta prise de parole à la table (message public)…"
-                className="w-full resize-y rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
-                autoFocus
-              />
-              <div className="mt-2 flex items-center justify-between">
-                <span className="text-xs text-fg-faint">
-                  Le sommet lit ton message tel quel — le juge en tiendra compte.
-                </span>
-                <button
-                  type="submit"
-                  disabled={!humanText.trim()}
-                  className="cursor-pointer rounded-md bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Parler
-                </button>
-              </div>
-            </form>
-          )}
-
           {streaming && round.turns.length === 0 && !round.event && (
             <Panel>
               <p className="flex items-center gap-2 text-sm text-fg-muted">
@@ -873,6 +846,16 @@ export default function TheatrePage() {
         </aside>
       </div>
 
+      {/* Composeur du joueur (G2) : fixe sous la carte, toujours ouvert. */}
+      {detail?.play_as && detail.live && detail.status === "running" && (
+        <TurnComposer
+          country={detail.play_as}
+          awaiting={awaitingHuman}
+          deadlineTs={round.humanTurn?.deadlineTs}
+          onSubmit={speak}
+        />
+      )}
+
       {/* Bandeau bas : timeline scrubber · courbe U (fil rouge) · jauges · escalade. */}
       <StageBand
         uHistory={persistedU}
@@ -888,6 +871,18 @@ export default function TheatrePage() {
 
       {/* Salle des observables : le détail, sous la scène. */}
       <div className="grid items-start gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        {detail?.play_as && worldCountries?.[detail.play_as] && (
+          <Panel>
+            <PanelTitle
+              kicker="Ta position"
+              title={speakerMeta(detail.play_as).label}
+              hint="Rien de plus que ce que ta super-intelligence recevrait dans son prompt : ton état, tes contraintes. En fog, tu ne vois que la perception de ton pays."
+            />
+            <CountryTable
+              worldCountries={{ [detail.play_as]: worldCountries[detail.play_as] }}
+            />
+          </Panel>
+        )}
         {treatiesUpdate && <TreatiesPanel update={treatiesUpdate} />}
         {trajectory && <TrajectoryPanel state={trajectory} history={uHistory} />}
         {round.ladder && <LadderPanel ladder={round.ladder} />}

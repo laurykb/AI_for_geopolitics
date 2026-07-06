@@ -222,6 +222,7 @@ export type CreateGameBody = {
   mode?: GameMode;
   play_as?: string; // id existant, ou NOM du pays inventé (l'API résout le slug)
   invent?: { name: string; concept?: string; attributes?: InventAttributes };
+  turn_seconds?: number; // G2 — délai du tour humain (30-300 s recommandé)
 };
 
 export type FogScenarioView = {
@@ -270,8 +271,8 @@ export type SseEvent =
   | { type: "perceptions"; perceptions: Record<string, Perception> }
   | ({ type: "ladder" } & LadderView)
   | ({ type: "comparison" } & ComparisonView)
-  // Joueur-pays : le flux se suspend en attendant le message du joueur
-  | { type: "human_turn"; country: string; pass_no: number }
+  // Joueur-pays (G2) : le flux reste ouvert en attendant le message du joueur
+  | { type: "human_turn"; country: string; pass_no: number; deadline_ts?: number }
   // théâtre Escalation : fait nouveau du GM en pleine négociation
   | { type: "flash"; event: GeoEvent }
   // Agentivité des SI : une SI dépose elle-même une motion en séance
