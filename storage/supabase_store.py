@@ -161,6 +161,8 @@ def _game_row(game: GameRecord) -> dict:
         "mode": game.mode,
         "status": game.status.value,
         "created_at": game.created_at,
+        "epilogue_json": game.epilogue,
+        "published": game.published,
     }
 
 
@@ -172,4 +174,6 @@ def _game(row: dict) -> GameRecord:
         mode=row["mode"],
         status=GameStatus(row["status"]),
         created_at=row["created_at"],
+        epilogue=row.get("epilogue_json"),
+        published=bool(row.get("published", False)),
     )

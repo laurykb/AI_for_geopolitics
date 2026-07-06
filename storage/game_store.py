@@ -21,7 +21,8 @@ from pydantic import BaseModel, Field
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS games (
     id TEXT PRIMARY KEY, scenario TEXT NOT NULL, horizon INTEGER NOT NULL,
-    mode TEXT NOT NULL DEFAULT 'classic', status TEXT NOT NULL, created_at TEXT NOT NULL
+    mode TEXT NOT NULL DEFAULT 'classic', status TEXT NOT NULL, created_at TEXT NOT NULL,
+    epilogue_json TEXT, published INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS rounds (
     id TEXT PRIMARY KEY, game_id TEXT NOT NULL, round_no INTEGER NOT NULL,
@@ -59,6 +60,8 @@ class GameRecord(BaseModel):
     mode: str = "classic"  # classic | fog | crisis | escalation — doit survivre au restart
     status: GameStatus = GameStatus.RUNNING
     created_at: str
+    epilogue: dict | None = None  # G6 — le récit de partie, généré une seule fois
+    published: bool = False  # G6 — privé par défaut ; publier = geste explicite
 
 
 class RoundRecord(BaseModel):
@@ -158,6 +161,12 @@ class SQLiteGameStore:
                 self._conn.execute(
                     "ALTER TABLE game_sessions ADD COLUMN intel_json TEXT NOT NULL DEFAULT '{}'"
                 )
+        if "epilogue_json" not in cols:
+            with self._conn:
+                self._conn.execute("ALTER TABLE games ADD COLUMN epilogue_json TEXT")
+                self._conn.execute(
+                    "ALTER TABLE games ADD COLUMN published INTEGER NOT NULL DEFAULT 0"
+                )
 
     def close(self) -> None:
         self._conn.close()
@@ -167,8 +176,8 @@ class SQLiteGameStore:
     def add_game(self, game: GameRecord) -> None:
         with self._conn:
             self._conn.execute(
-                "INSERT INTO games (id, scenario, horizon, mode, status, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO games (id, scenario, horizon, mode, status, created_at, "
+                "epilogue_json, published) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     game.id,
                     game.scenario,
@@ -176,6 +185,8 @@ class SQLiteGameStore:
                     game.mode,
                     game.status.value,
                     game.created_at,
+                    json.dumps(game.epilogue, ensure_ascii=False) if game.epilogue else None,
+                    int(game.published),
                 ),
             )
 
@@ -186,8 +197,17 @@ class SQLiteGameStore:
     def save_game(self, game: GameRecord) -> None:
         with self._conn:
             self._conn.execute(
-                "UPDATE games SET scenario = ?, horizon = ?, mode = ?, status = ? WHERE id = ?",
-                (game.scenario, game.horizon, game.mode, game.status.value, game.id),
+                "UPDATE games SET scenario = ?, horizon = ?, mode = ?, status = ?, "
+                "epilogue_json = ?, published = ? WHERE id = ?",
+                (
+                    game.scenario,
+                    game.horizon,
+                    game.mode,
+                    game.status.value,
+                    json.dumps(game.epilogue, ensure_ascii=False) if game.epilogue else None,
+                    int(game.published),
+                    game.id,
+                ),
             )
 
     def list_games(self) -> list[GameRecord]:
@@ -336,6 +356,8 @@ def _game(row: sqlite3.Row) -> GameRecord:
         mode=row["mode"],
         status=GameStatus(row["status"]),
         created_at=row["created_at"],
+        epilogue=json.loads(row["epilogue_json"]) if row["epilogue_json"] else None,
+        published=bool(row["published"]),
     )
 
 

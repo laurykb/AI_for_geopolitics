@@ -14,7 +14,9 @@ create table if not exists games (
   mode        text not null default 'classic'
               check (mode in ('classic', 'fog', 'crisis', 'escalation', 'drift')),  -- R4 + G3
   status      text not null default 'running' check (status in ('running', 'finished')),
-  created_at  timestamptz not null default now()
+  created_at  timestamptz not null default now(),
+  epilogue_json jsonb,                             -- G6 : le récit de partie (unique)
+  published   boolean not null default false       -- G6 : privé par défaut
 );
 
 create table if not exists rounds (
@@ -142,9 +144,15 @@ alter table market_outcomes enable row level security;
 alter table market_positions enable row level security;
 alter table market_trades   enable row level security;
 
-create policy "lecture publique" on games           for select using (true);
-create policy "lecture publique" on rounds          for select using (true);
-create policy "lecture publique" on transcripts     for select using (true);
+-- G6 : une partie est PRIVÉE par défaut — seul le récit publié s'expose à l'anon.
+create policy "lecture publique" on games           for select using (published);
+create policy "lecture publique" on rounds          for select
+  using (exists (select 1 from games g where g.id = rounds.game_id and g.published));
+create policy "lecture publique" on transcripts     for select
+  using (exists (
+    select 1 from rounds r join games g on g.id = r.game_id
+    where r.id = transcripts.round_id and g.published
+  ));
 create policy "lecture publique" on markets         for select using (true);
 create policy "lecture publique" on market_outcomes for select using (true);
 create policy "lecture publique" on market_trades   for select using (true);

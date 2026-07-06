@@ -236,6 +236,28 @@ Les crises rejouables (`data/crises` + `comparison` R4) deviennent une progressi
 - **Cowork** : gabarit du récit (prompt du juge-narrateur), page vitrine, README/démo.
 - **Claude Code** : génération d'épilogue, page replay publique, pipeline de déploiement.
 
+**Notes d'implémentation (G6 faite — vérifiée live sur mistral)** :
+
+- **Épilogue** : `simulation/narrative.py` — pivots par CODE (3 plus grands |ΔU|),
+  citation par round (plus longue prise de parole publique), gabarit contraint (titre
+  ≤ 60, trois actes verbatim, révélation Dérive incluse À la génération — l'épilogue est
+  **auto-suffisant**, la page publique n'a besoin que de Supabase anon), généré UNE fois
+  (`games.epilogue_json`, migration), repli déterministe. **Leçon backend** :
+  `OllamaBackend` forçait le JSON → `generate(plain=True)` pour la prose (le narrateur
+  écrivait du JSON tronqué — diagnostiqué live) + consigne FRANÇAIS.
+- **Publication** : privée par défaut ; `POST /publish` (génère au besoin) pose
+  `games.published` ; **RLS anon limitée au publié** (games/rounds/transcripts —
+  re-coller `supabase/schema.sql` dans Studio pour l'appliquer).
+- **Page publique `/r/{id}`** : rendu serveur, Supabase anon prioritaire (repli API
+  locale en dev), titre + courbe U + grade au-dessus du pli, récit, moments clés cités,
+  révélation, pieds campagne/marché ; **og:image** `next/og` (titre+grade+courbe U) ;
+  partie non publiée → 404. Vérifié live (publication mistral, 200, PNG, 404).
+- **Déploiement Vercel (geste user)** : `vercel` depuis `web/` (ou connecter le repo,
+  root directory = `web`), variables de `web/.env.example` (`NEXT_PUBLIC_SUPABASE_URL`
+  + `ANON_KEY`) ; le backend local écrit dans Supabase avec `STORE_BACKEND=supabase`.
+  Limite v1 : « Revoir le théâtre » exige le backend (le replay public 100 % Supabase
+  = reliquat R5) ; le bouton scrubber des moments clés renvoie au replay simple.
+
 ---
 
 ## Specs Cowork (rédigées)

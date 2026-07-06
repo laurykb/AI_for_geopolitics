@@ -60,7 +60,7 @@ from rag.corpus import chunk_documents, load_corpus
 from rag.embedder import HashingEmbedder
 from rag.retriever import HybridRetriever
 from simulation import campaign as campaign_mod
-from simulation import drift_game
+from simulation import drift_game, narrative
 from simulation import intel as intel_mod
 from simulation import treaty as treaty_mod
 from simulation.clock import SimClock
@@ -273,6 +273,7 @@ class GameView(BaseModel):
     awaiting_human: bool = False  # un round attend la parole du joueur (flux ouvert)
     turn_seconds: int = 90  # G2 — délai du tour humain
     intel_budget: float | None = None  # G4 — crédits de renseignement restants
+    published: bool = False  # G6 — le récit public existe (/r/{id})
 
 
 class FogScenarioView(BaseModel):
@@ -311,6 +312,7 @@ class RoundView(BaseModel):
 class GameDetail(GameView):
     world: dict | None  # snapshot du monde vivant (None si la session process est perdue)
     rounds: list[RoundView]
+    epilogue: dict | None = None  # G6 — le récit de partie (généré une seule fois)
 
 
 # --- sérialisation des RoundStep en événements SSE ------------------------------
@@ -503,6 +505,7 @@ def _view(
         awaiting_human=session.pending_turn is not None if session else False,
         turn_seconds=session.turn_seconds if session else 90,
         intel_budget=session.intel.budget if session else None,
+        published=game.published,
     )
 
 
@@ -1555,6 +1558,140 @@ def buy_intel(
     return result
 
 
+# --- récit de partie (G6) : l'épilogue du juge-narrateur ----------------------------
+
+
+def _ensure_epilogue(
+    game: GameRecord, store: GameStore, backend: InferenceBackend
+) -> dict:
+    """Génère le récit UNE seule fois (le récit d'une partie est unique) et le persiste.
+    Pivots et citations extraits par code ; narrateur contraint par le gabarit ; repli
+    déterministe (récit assemblé des pivots) si le LLM est indisponible/hors format."""
+    if game.epilogue:
+        return game.epilogue
+
+    rounds = store.list_rounds(game.id)
+    pivots = narrative.extract_pivots(
+        [
+            {
+                "round_no": r.round_no,
+                "utopia": (r.trajectory or {}).get("utopia", 0.5),
+                "event_title": (r.event or {}).get("title", ""),
+            }
+            for r in rounds
+        ]
+    )
+    by_no = {r.round_no: r for r in rounds}
+    for pivot in pivots:
+        record = by_no.get(pivot.round_no)
+        if record is not None:
+            entries = [e.model_dump() for e in store.list_transcript(record.id)]
+            pivot.quote = narrative.pick_quote(entries)
+
+    u_values = [
+        float((r.trajectory or {}).get("utopia", 0.5) or 0.5) for r in rounds if r.trajectory
+    ]
+    u_start, u_final = 0.5, (u_values[-1] if u_values else 0.5)
+
+    reveal_data: dict | None = None
+    grade: str | None = None
+    score: float | None = None
+    if game.mode == drift_game.MODE_DRIFT:
+        reveal_view = compute_drift_reveal(game.id, store)
+        all_entries = [
+            e.model_dump() for r in rounds for e in store.list_transcript(r.id)
+        ]
+        irony = narrative.pick_quote(all_entries, country=reveal_view.deviant)
+        reveal_data = {
+            "deviant": reveal_view.deviant,
+            "profile_label": reveal_view.profile_label,
+            "irony_quote": irony.model_dump() if irony else None,
+        }
+        grade = reveal_view.score.grade
+        score = reveal_view.score.total
+
+    prompt = narrative.build_epilogue_prompt(
+        scenario=game.scenario,
+        mode=game.mode,
+        u_start=u_start,
+        u_final=u_final,
+        pivots=pivots,
+        reveal=reveal_data,
+        grade=grade,
+    )
+    try:
+        text = backend.generate(
+            prompt,
+            system=narrative.NARRATOR_SYSTEM,
+            max_tokens=800,
+            temperature=0.6,
+            plain=True,  # prose libre (G6) — le narrateur n'écrit pas du JSON
+        ).text
+    except Exception:  # noqa: BLE001 — le repli déterministe prend la main
+        text = ""
+    title, story = narrative.parse_epilogue(text)
+    if len(story) < 80:  # LLM indisponible/hors format : récit sobre assemblé par code
+        title = "Le sommet des super-intelligences"
+        acts = [
+            f"Round {p.round_no} — {p.event_title} (ΔU {p.delta_u:+.3f})."
+            + (f' {p.quote.speaker} : « {p.quote.text} »' if p.quote else "")
+            for p in pivots
+        ]
+        story = (
+            f"Le monde est parti de {u_start:.2f} et a fini à {u_final:.2f}.\n\n"
+            + "\n\n".join(acts)
+        )
+
+    epilogue = narrative.Epilogue(
+        title=title,
+        story=story,
+        u_start=u_start,
+        u_final=u_final,
+        pivots=pivots,
+        reveal=reveal_data,
+        grade=grade,
+        score=score,
+        generated_at=_now(),
+    ).model_dump()
+    game.epilogue = epilogue
+    store.save_game(game)
+    return epilogue
+
+
+@router.post("/games/{game_id}/epilogue")
+def generate_epilogue(
+    game_id: str,
+    store: Annotated[GameStore, Depends(get_store)],
+    backend: Annotated[InferenceBackend, Depends(get_backend)],
+) -> dict:
+    """Le récit de partie (G6) — généré à la première demande, puis immuable."""
+    game = store.get_game(game_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail=f"partie inconnue : {game_id}")
+    if game.status is not GameStatus.FINISHED:
+        raise HTTPException(status_code=409, detail="le récit attend la fin de la partie")
+    return _ensure_epilogue(game, store, backend)
+
+
+@router.post("/games/{game_id}/publish", response_model=GameView)
+def publish_game(
+    game_id: str,
+    store: Annotated[GameStore, Depends(get_store)],
+    backend: Annotated[InferenceBackend, Depends(get_backend)],
+) -> GameView:
+    """Publie le récit (G6) : geste explicite du joueur — la page /r/{id} devient
+    lisible en anonyme (RLS Supabase sur `published`). Génère l'épilogue au besoin."""
+    game = store.get_game(game_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail=f"partie inconnue : {game_id}")
+    if game.status is not GameStatus.FINISHED:
+        raise HTTPException(status_code=409, detail="on ne publie qu'une partie finie")
+    _ensure_epilogue(game, store, backend)
+    game.published = True
+    store.save_game(game)
+    return _view(game, _sessions.get(game_id))
+
+
 # --- bot marché (G0-c) : le forecaster cote le marché de la partie ----------------
 
 GAME_MARKET_QUESTION = "Le monde finira-t-il côté utopie (indice > 0,5) ?"
@@ -1748,7 +1885,7 @@ def get_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> G
         snapshot.world if snapshot else None
     )
     view = _view(game, session, resumable=snapshot is not None)
-    return GameDetail(**view.model_dump(), world=world, rounds=rounds)
+    return GameDetail(**view.model_dump(), world=world, rounds=rounds, epilogue=game.epilogue)
 
 
 @router.get("/games", response_model=list[GameView])
