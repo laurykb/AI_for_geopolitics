@@ -23,6 +23,7 @@ export default function LobbyPage() {
   const [mode, setMode] = useState<GameMode>("classic");
   const [selected, setSelected] = useState<string[]>(DEFAULT_COUNTRIES);
   const [role, setRole] = useState(""); // "" = spectateur | id pays | "__invent__"
+  const [turnSeconds, setTurnSeconds] = useState(90); // G2 — délai du tour humain
   const [inventName, setInventName] = useState("");
   const [inventConcept, setInventConcept] = useState("");
   const [inventCustom, setInventCustom] = useState(false); // choisir les attributs soi-même
@@ -52,6 +53,7 @@ export default function LobbyPage() {
         scenario,
         horizon,
         mode,
+        turn_seconds: role ? turnSeconds : undefined, // G2 — seulement si on incarne
         countries: selected.length === DEFAULT_COUNTRIES.length ? undefined : selected,
         // Joueur-pays : id existant, ou NOM du pays inventé (l'API résout le slug)
         play_as: inventing ? inventName.trim() : role && role !== "__invent__" ? role : undefined,
@@ -204,6 +206,24 @@ export default function LobbyPage() {
                 <option value="__invent__">Inventer mon propre pays…</option>
               </select>
             </label>
+            {role && (
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs text-fg-muted">
+                  Délai de ton tour de parole (les SI n&apos;attendent pas)
+                </span>
+                <select
+                  value={turnSeconds}
+                  onChange={(e) => setTurnSeconds(Number(e.target.value))}
+                  className="cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+                >
+                  {[30, 60, 90, 120, 180, 300].map((s) => (
+                    <option key={s} value={s}>
+                      {s} secondes
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             {role === "__invent__" && (
               <div className="space-y-2 rounded-md border border-edge bg-surface-2/50 p-3">
                 <input

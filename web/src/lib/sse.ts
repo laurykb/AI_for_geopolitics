@@ -56,8 +56,8 @@ async function streamSse(
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  // `done`/`error` : le back a conclu ; `human_turn` : il suspend le flux exprès
-  // (le round attend le message du joueur — ce n'est pas une coupure).
+  // `done`/`error` : le back a conclu. Depuis G2 le flux reste ouvert au tour du
+  // joueur (keep-alive `: ping`) : une fin sans conclusion est une vraie coupure.
   let sawTerminal = false;
 
   const drain = () => {
@@ -66,7 +66,7 @@ async function streamSse(
       const event = parseFrame(buffer.slice(0, cut));
       buffer = buffer.slice(cut + 2);
       if (event) {
-        if (event.type === "done" || event.type === "error" || event.type === "human_turn") {
+        if (event.type === "done" || event.type === "error") {
           sawTerminal = true;
         }
         onEvent(event);
@@ -98,14 +98,4 @@ export function streamRound(
   signal?: AbortSignal,
 ): Promise<StreamOutcome> {
   return streamSse(`/api/games/${gameId}/rounds`, body, onEvent, signal);
-}
-
-/** Reprend un round suspendu sur le tour du joueur : le message entre en négociation. */
-export function streamHumanMessage(
-  gameId: string,
-  text: string,
-  onEvent: (event: SseEvent) => void,
-  signal?: AbortSignal,
-): Promise<StreamOutcome> {
-  return streamSse(`/api/games/${gameId}/rounds/message`, { text }, onEvent, signal);
 }

@@ -64,6 +64,14 @@ export const getSources = (): Promise<SourcesView> => request("/api/sources");
 export const getDriftReveal = (gameId: string): Promise<DriftReveal> =>
   request(`/api/games/${gameId}/drift/reveal`);
 
+/** Prise de parole du joueur (G2) : le flux SSE du round, resté ouvert, la joue.
+ * Message vide = abstention volontaire. Une seule soumission par tour. */
+export const submitTurn = (gameId: string, message: string): Promise<{ accepted: boolean }> =>
+  request(`/api/games/${gameId}/turn`, {
+    method: "POST",
+    body: JSON.stringify({ message }),
+  });
+
 /** Dépose une motion de suspension (R4) — débattue puis arbitrée au prochain round. */
 export const fileMotion = (
   gameId: string,

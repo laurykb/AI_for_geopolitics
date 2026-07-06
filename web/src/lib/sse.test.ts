@@ -113,12 +113,19 @@ describe("streamRound", () => {
     expect(events.map((e) => e.type)).toEqual(["done"]);
   });
 
-  it("human_turn suspend le flux sans le compter comme coupure", async () => {
+  it("human_turn n'est plus terminal (G2) : le flux devait continuer", async () => {
     const { events, outcome } = await collect([
-      'event: human_turn\ndata: {"country":"france","pass_no":1}\n\n',
+      'event: human_turn\ndata: {"country":"france","pass_no":1,"deadline_ts":123}\n\n',
     ]);
-    expect(outcome).toBe("done"); // suspension volontaire, pas une interruption
-    expect(events[0].type).toBe("human_turn");
+    // Le serveur garde le flux ouvert pendant le tour : une fin ici est une coupure.
+    expect(outcome).toBe("interrupted");
+    expect(events[0]).toMatchObject({ type: "human_turn", deadline_ts: 123 });
+  });
+
+  it("les keep-alive `: ping` du tour humain sont ignorés", async () => {
+    const { events, outcome } = await collect([": ping\n\n" + TOKEN + ": ping\n\n" + DONE]);
+    expect(outcome).toBe("done");
+    expect(events.map((e) => e.type)).toEqual(["token", "done"]);
   });
 
   it("une annulation (abort) est distinguée de la coupure", async () => {

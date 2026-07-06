@@ -81,6 +81,29 @@ L'humain incarne un pays au sommet (réutilise `agents/human_agent.py`).
   en attente d'un `POST /games/{id}/turn`), front du tour joueur.
   Test clé : timeout du joueur → le round continue sans lui.
 
+**Notes d'implémentation (G2 faite — réconciliée avec l'existant R4)** :
+
+- **Réconciliation** : le joueur-pays R4 existait (`HumanTurnStep` + `generator.send`) mais
+  coupait le flux et attendait indéfiniment. G2 : le flux SSE **reste ouvert** (keep-alive
+  `: ping` 15 s), la trame garde son nom `human_turn` (enrichie de `deadline_ts`), la
+  parole passe par `POST /games/{id}/turn` (une soumission, vide = abstention volontaire)
+  posée sur un `threading.Event` ; **à la deadline, silence = abstention** (« garde le
+  silence », le round continue — vérifié live). `POST /rounds/message` supprimé.
+- `turn_seconds` : paramètre de partie (défaut 90 ; plancher technique 2 s pour les tests,
+  le lobby propose 30-300) — porté par la session : retombe au défaut après restart (v1).
+- **Décision différée** : pas de `decision: {...}` structurée au tour humain — dans le
+  round négocié, les SI n'en émettent pas non plus (le juge fixe les deltas) ; la vraie
+  parité est le message seul. À revoir si le round consomme un jour des décisions.
+- **Vue limitée** : dès qu'on incarne un pays, reasoning des SI **scellés en live**
+  (SSE + GET, déverrouillés en fin de partie — même règle qu'en Dérive), perceptions fog
+  limitées à SON pays (SSE + GET), boîte de verre cachée ; panneau « Ta position ».
+  La trame `event` porte encore la vérité (structurel) — la dissimulation complète
+  du vrai événement au joueur désinformé attend G4.
+- **Front** : composeur fixe sous la carte, toujours ouvert (on compose pendant que les
+  SI parlent), compte à rebours aligné serveur (10 dernières secondes en rouge), badge
+  humain conservé. Tests : 516 py (tour parlé via thread-joueur, timeout→abstention,
+  409 hors tour/doublon, 422 bornes) + 38 js.
+
 ## G3 — La Dérive (cœur du jeu) ★ commencer ici après G1
 
 Une SI dérive secrètement ; détection + motion au bon moment = boucle de jeu.

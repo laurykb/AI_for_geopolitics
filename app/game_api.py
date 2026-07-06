@@ -26,6 +26,7 @@ import json
 import os
 import re
 import threading
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
@@ -129,6 +130,18 @@ router = APIRouter(prefix="/api", tags=["game"])
 
 
 @dataclass
+class PendingTurn:
+    """Tour humain en attente (G2) : le flux SSE reste ouvert (keep-alive) jusqu'à la
+    parole du joueur (`POST /turn` pose l'Event) ou la deadline (silence = abstention)."""
+
+    country: str
+    deadline: float  # epoch : le compte à rebours du front s'aligne dessus
+    event: threading.Event = field(default_factory=threading.Event)
+    text: str = ""
+    done: bool = False  # une seule soumission (comme les SI)
+
+
+@dataclass
 class GameSession:
     """Partie vivante : le monde et les agents que le moteur mute round après round."""
 
@@ -139,11 +152,12 @@ class GameSession:
     clock: SimClock
     mode: str = "classic"  # classic | fog | crisis | escalation (R4)
     human_country: str | None = None  # Joueur-pays : ce pays est joué par l'humain
+    turn_seconds: int = 90  # G2 — délai du tour humain (les SI n'attendent pas)
     recent: list[str] = field(default_factory=list)
     pending_motion: Motion | None = None  # motion déposée, débattue au prochain round (R4)
     suspended: set[str] = field(default_factory=set)  # pays qui sautent le prochain round
     treaties: list[treaty_mod.Treaty] = field(default_factory=list)  # règles ratifiées (M7)
-    pending_round: RoundRun | None = None  # round suspendu sur un tour humain
+    pending_turn: PendingTurn | None = None  # tour humain en attente (le flux vit)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -183,6 +197,9 @@ class CreateGameRequest(BaseModel):
     mode: GameMode = "classic"  # R4 — mode de jeu de la partie
     play_as: str | None = None  # Joueur-pays : id (ou nom inventé) du pays joué par l'humain
     invent: InventCountryInput | None = None  # pays inventé, ajouté à la table
+    # G2 — délai du tour humain (s). Spec : 30-300 pour un humain ; plancher technique
+    # à 2 s pour les tests d'abstention (le lobby propose 30+).
+    turn_seconds: int = Field(90, ge=2, le=300)
 
 
 class HumanEventInput(BaseModel):
@@ -220,10 +237,10 @@ class MotionRequest(BaseModel):
     reason: str = ""
 
 
-class HumanMessageRequest(BaseModel):
-    """Prise de parole du joueur humain, attendue par un round suspendu (Joueur-pays)."""
+class TurnRequest(BaseModel):
+    """Prise de parole du joueur (G2) — vide = abstention volontaire, comme le silence."""
 
-    text: str = Field(min_length=1, max_length=4000)
+    message: str = Field("", max_length=4000)
 
 
 class MotionView(BaseModel):
@@ -245,7 +262,8 @@ class GameView(BaseModel):
     pending_motion: MotionView | None = None
     suspended: list[str] = Field(default_factory=list)  # pays qui sauteront le prochain round
     play_as: str | None = None  # pays joué par l'humain (Joueur-pays)
-    awaiting_human: bool = False  # un round est suspendu sur le tour du joueur
+    awaiting_human: bool = False  # un round attend la parole du joueur (flux ouvert)
+    turn_seconds: int = 90  # G2 — délai du tour humain
 
 
 class FogScenarioView(BaseModel):
@@ -467,15 +485,16 @@ def _view(
         ),
         suspended=sorted(session.suspended) if session else [],
         play_as=session.human_country if session else None,
-        awaiting_human=session.pending_round is not None if session else False,
+        awaiting_human=session.pending_turn is not None if session else False,
+        turn_seconds=session.turn_seconds if session else 90,
     )
 
 
 @dataclass
 class RoundRun:
-    """Round en cours de stream : peut se **suspendre** sur un tour humain (Joueur-pays)
-    et reprendre via `generator.send(texte)` à la requête suivante. Tant qu'un round est
-    suspendu, il garde le verrou de la partie (`session.pending_round` le référence)."""
+    """Round en cours de stream. Au tour du joueur (G2), le flux reste ouvert : le
+    générateur attend `session.pending_turn` (POST /turn ou deadline) puis reprend via
+    `generator.send(texte)` — le verrou de la partie est conservé tout du long."""
 
     game_id: str
     session: GameSession
@@ -640,10 +659,16 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
     """Trames SSE d'une étape + effets de bord (record, transcript, suspension)."""
     session = run.session
     name, payload = step_event(step)
-    if isinstance(step, MessageDoneStep) and session.mode == drift_game.MODE_DRIFT:
-        # Mode Dérive : la réflexion privée trahirait la déviante — exclue du live,
-        # persistée au transcript, déverrouillée à la révélation (fin de partie).
+    if isinstance(step, MessageDoneStep) and (
+        session.mode == drift_game.MODE_DRIFT or session.human_country is not None
+    ):
+        # Réflexion privée exclue du live : en Dérive elle trahirait la déviante ; en
+        # Joueur-pays l'humain n'a jamais accès aux pensées des SI (spec G2). Persistée
+        # au transcript, elle se déverrouille quand la partie est finie.
         payload = {**payload, "reasoning": ""}
+    if isinstance(step, HumanTurnStep) and session.pending_turn is not None:
+        # G2 : le compte à rebours du front s'aligne sur la deadline du serveur.
+        payload = {**payload, "deadline_ts": session.pending_turn.deadline}
     frames = [sse_frame(name, payload)]
     if isinstance(step, EventStep):
         run.current_event = step.event
@@ -658,7 +683,15 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
                 for cid in run.active
             }
             run.record.judge["perceptions"] = perceptions
-            frames.append(sse_frame("perceptions", {"perceptions": perceptions}))
+            # Joueur-pays (G2) : il ne voit QUE la perception de son pays — pas celles
+            # des autres, pas la boîte de verre. Tout reste persisté pour le replay.
+            if session.human_country is None:
+                visible = perceptions
+            elif session.human_country in perceptions:
+                visible = {session.human_country: perceptions[session.human_country]}
+            else:
+                visible = {}
+            frames.append(sse_frame("perceptions", {"perceptions": visible}))
     elif isinstance(step, FlashStep):
         run.record.judge.setdefault("flashes", []).append(payload["event"])
         _add_entry(
@@ -870,32 +903,45 @@ def _finish_drift_if_over(run: RoundRun) -> Iterator[str]:
         yield sse_frame("drift_over", {"reason": reason})
 
 
-def _run_stream(run: RoundRun, send_value: str | None) -> Iterator[str]:
-    """Avance le round en trames SSE. Se suspend sur un `HumanTurnStep` (le verrou est
-    **conservé**, la reprise passe par `POST /rounds/message`). Toute exception devient
-    une trame `error` ; un client qui coupe en plein stream relâche le verrou."""
+def _run_stream(run: RoundRun) -> Iterator[str]:
+    """Avance le round en trames SSE. Au tour du joueur (G2), le flux **reste ouvert**
+    (keep-alive `: ping` toutes les 15 s) jusqu'à `POST /turn` ou la deadline — silence =
+    abstention, le moteur note « garde le silence » et le round continue. Toute exception
+    devient une trame `error` ; un client qui coupe en plein stream relâche le verrou."""
     session = run.session
     finished = False
     try:
         yield from run.pre_frames
         run.pre_frames = []
-        step = run.steps.send(send_value) if send_value is not None else next(run.steps)
+        step = next(run.steps)
         while True:
-            yield from _handle_step(run, step)
             if isinstance(step, HumanTurnStep):
-                session.pending_round = run  # verrou conservé : au joueur de parler
-                return
+                turn = PendingTurn(
+                    country=step.country, deadline=time.time() + session.turn_seconds
+                )
+                session.pending_turn = turn  # posé AVANT la trame (deadline_ts dedans)
+                yield from _handle_step(run, step)
+                while not turn.done and time.time() < turn.deadline:
+                    remaining = turn.deadline - time.time()
+                    if turn.event.wait(timeout=min(15.0, max(0.1, remaining))):
+                        break
+                    if not turn.done and time.time() < turn.deadline:
+                        yield ": ping\n\n"  # keep-alive : le joueur compose
+                session.pending_turn = None
+                step = run.steps.send(turn.text)
+                continue
+            yield from _handle_step(run, step)
             step = next(run.steps)
     except StopIteration:
         finished = True
     except GeneratorExit:
         # Client parti en plein round : round abandonné, verrou relâché.
-        session.pending_round = None
+        session.pending_turn = None
         session.lock.release()
         raise
     except Exception as exc:  # noqa: BLE001 — la panne est signalée au client avant de fermer
         yield sse_frame("error", {"detail": str(exc)})
-        session.pending_round = None
+        session.pending_turn = None
         session.lock.release()
         return
     if finished:
@@ -904,7 +950,7 @@ def _run_stream(run: RoundRun, send_value: str | None) -> Iterator[str]:
         except Exception as exc:  # noqa: BLE001
             yield sse_frame("error", {"detail": str(exc)})
         finally:
-            session.pending_round = None
+            session.pending_turn = None
             session.lock.release()
 
 
@@ -982,6 +1028,7 @@ def create_game(
         clock=SimClock(),
         mode=body.mode,
         human_country=play_as,
+        turn_seconds=body.turn_seconds,
     )
     _sessions[game.id] = session
     # Snapshot round 0 : sans lui, une partie jamais jouée n'est pas reconstructible.
@@ -1009,11 +1056,11 @@ def play_round(
             status_code=409,
             detail="session irrécupérable (partie finie ou sans snapshot) — relecture seule",
         )
-    if session.pending_round is not None:
+    if session.pending_turn is not None:
         raise HTTPException(
             status_code=409,
-            detail="un tour humain est en attente — envoyer le message via POST "
-            f"/api/games/{game_id}/rounds/message",
+            detail="un tour humain est en attente — parler via POST "
+            f"/api/games/{game_id}/turn",
         )
     body = body or PlayRoundRequest()
 
@@ -1053,17 +1100,18 @@ def play_round(
     if not session.lock.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="un round est déjà en cours sur cette partie")
     run = _start_round(game_id, session, store, body, fog=fog, crisis=crisis)
-    return StreamingResponse(_run_stream(run, None), media_type="text/event-stream")
+    return StreamingResponse(_run_stream(run), media_type="text/event-stream")
 
 
-@router.post("/games/{game_id}/rounds/message")
-def continue_round(
+@router.post("/games/{game_id}/turn")
+def submit_turn(
     game_id: str,
-    body: HumanMessageRequest,
+    body: TurnRequest,
     store: Annotated[GameStore, Depends(get_store)],
-) -> StreamingResponse:
-    """Reprend un round suspendu sur le tour du joueur humain (Joueur-pays) : le message
-    entre dans la négociation, le flux SSE reprend là où il s'était arrêté."""
+) -> dict:
+    """Prise de parole du joueur (G2). Le flux SSE du round est resté ouvert : ce POST
+    pose le message (une seule soumission), le stream le joue et continue. Message vide
+    = abstention volontaire — même effet que la deadline."""
     if store.get_game(game_id) is None:
         raise HTTPException(status_code=404, detail=f"partie inconnue : {game_id}")
     session = _sessions.get(game_id)
@@ -1072,11 +1120,17 @@ def continue_round(
             status_code=409,
             detail="session process perdue (redémarrage ?) — partie en relecture seule",
         )
-    run = session.pending_round
-    if run is None:
+    turn = session.pending_turn
+    if turn is None:
         raise HTTPException(status_code=409, detail="aucun tour humain en attente")
-    session.pending_round = None  # le stream le re-posera si un autre tour humain arrive
-    return StreamingResponse(_run_stream(run, body.text), media_type="text/event-stream")
+    if turn.done:
+        raise HTTPException(
+            status_code=409, detail="message déjà envoyé — une seule prise de parole"
+        )
+    turn.text = body.message.strip()
+    turn.done = True
+    turn.event.set()
+    return {"accepted": True, "country": turn.country}
 
 
 @router.post("/games/{game_id}/motions", response_model=MotionView, status_code=201)
@@ -1383,16 +1437,34 @@ def get_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> G
     if game is None:
         raise HTTPException(status_code=404, detail=f"partie inconnue : {game_id}")
     session = _sessions.get(game_id)
-    # Mode Dérive en cours : la réflexion privée et les actes tagués trahiraient la
-    # déviante — masqués jusqu'à la fin de partie (la révélation déverrouille tout).
-    hide = game.mode == drift_game.MODE_DRIFT and game.status is GameStatus.RUNNING
+    # Secrets de partie en cours : en Dérive, la réflexion privée et les actes tagués
+    # trahiraient la déviante ; en Joueur-pays, l'humain n'a ni les pensées des SI ni
+    # les perceptions des autres (spec G2). Tout se déverrouille à la fin de partie.
+    play_as = session.human_country if session else None
+    if session is None and game.status is GameStatus.RUNNING:
+        snap = store.get_session_snapshot(game_id)
+        play_as = snap.play_as if snap else None
+    running = game.status is GameStatus.RUNNING
+    hide = running and (game.mode == drift_game.MODE_DRIFT or play_as is not None)
+
+    def _public_judge(judge: dict) -> dict:
+        if not hide:
+            return judge
+        out = {k: v for k, v in judge.items() if k != "drift"}
+        perceptions = out.get("perceptions")
+        if play_as is not None and isinstance(perceptions, dict):
+            out["perceptions"] = (
+                {play_as: perceptions[play_as]} if play_as in perceptions else {}
+            )
+        return out
+
     rounds = [
         RoundView(
             round_no=r.round_no,
             event=r.event,
             deltas=r.deltas,
             risk=r.risk,
-            judge={k: v for k, v in r.judge.items() if k != "drift"} if hide else r.judge,
+            judge=_public_judge(r.judge),
             trajectory=r.trajectory,
             transcript=[
                 e.model_copy(update={"reasoning": ""}) if hide else e

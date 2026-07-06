@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import type { SseEvent } from "@/lib/types";
 
-import { INITIAL, reducer, type Action, type LiveRound } from "./useRoundStream";
+import { INITIAL, reducer, type LiveRound } from "./useRoundStream";
 
 function play(events: Partial<SseEvent>[], from: LiveRound = INITIAL): LiveRound {
   let state = reducer(from, { kind: "start" });
@@ -53,9 +53,9 @@ describe("réducteur de round", () => {
     expect(state.turns[0]).toMatchObject({ country: "iran", raw: "…", done: false });
   });
 
-  it("le tour humain arrive complet, sans turn_start, et referme humanTurn", () => {
+  it("le tour humain arrive complet, referme humanTurn et réveille le flux", () => {
     const state = play([
-      { type: "human_turn", country: "france", pass_no: 2 },
+      { type: "human_turn", country: "france", pass_no: 2, deadline_ts: 999 },
       {
         type: "message_done",
         country: "france",
@@ -64,22 +64,26 @@ describe("réducteur de round", () => {
       },
     ]);
     expect(state.humanTurn).toBeUndefined();
+    expect(state.status).toBe("streaming"); // le round continue après la parole
     expect(state.turns).toHaveLength(1);
     expect(state.turns[0]).toMatchObject({ model: "humain", passNo: 2, done: true });
   });
 
-  it("human_turn met le round en attente du joueur", () => {
-    const state = play([TURN_START, { type: "human_turn", country: "france", pass_no: 1 }]);
+  it("human_turn met le round en attente, avec la deadline du serveur", () => {
+    const state = play([
+      TURN_START,
+      { type: "human_turn", country: "france", pass_no: 1, deadline_ts: 1234.5 },
+    ]);
     expect(state.status).toBe("awaiting_human");
-    expect(state.humanTurn).toEqual({ country: "france", passNo: 1 });
+    expect(state.humanTurn).toEqual({ country: "france", passNo: 1, deadlineTs: 1234.5 });
   });
 
-  it("une fin de flux après done ou human_turn n'est pas une coupure", () => {
+  it("seul done protège d'une coupure — un flux mort en plein tour humain est interrompu", () => {
     const done = play([{ type: "done", round_no: 3 }]);
     expect(reducer(done, { kind: "interrupted" })).toBe(done);
 
     const waiting = play([{ type: "human_turn", country: "usa", pass_no: 0 }]);
-    expect(reducer(waiting, { kind: "interrupted" }).status).toBe("awaiting_human");
+    expect(reducer(waiting, { kind: "interrupted" }).status).toBe("interrupted");
   });
 
   it("une fin de flux en plein round est interrupted", () => {
@@ -105,13 +109,6 @@ describe("réducteur de round", () => {
       event: { type: "hologramme", x: 1 } as unknown as SseEvent,
     });
     expect(after).toBe(before); // même référence : aucun re-render inutile
-  });
-
-  it("resume repart en streaming sans réinitialiser le fil", () => {
-    const waiting = play([TURN_START, { type: "human_turn", country: "usa", pass_no: 0 }]);
-    const resumed = reducer(waiting, { kind: "resume" } as Action);
-    expect(resumed.status).toBe("streaming");
-    expect(resumed.turns).toHaveLength(1); // le fil est conservé
   });
 
   it("l'arbitrage de motion s'accumule puis se conclut", () => {
