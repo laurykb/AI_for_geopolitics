@@ -21,6 +21,7 @@ _PRIMARY_KEYS = {
     "rounds": ("id",),
     "transcripts": ("id",),
     "game_sessions": ("game_id",),
+    "campaign_scores": ("game_id",),
     "market_accounts": ("id",),
     "markets": ("id",),
     "market_outcomes": ("id",),

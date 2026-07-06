@@ -1,0 +1,40 @@
+{
+  "_note": "Campagne v1 : l'infrastructure roule sur les 3 crises embarquées (data/crises). Les 6 fiches historiques de la spec (Berlin 1948, Suez 1956, Cuba 1962, choc 1973, Able Archer 1983) sont un travail Cowork sourcé : les ajouter ici + data/crises/*.json, sans toucher au code.",
+  "title": "Ferez-vous mieux que l'Histoire ?",
+  "tagline": "Uchronie explicite : et si des super-intelligences avaient été à la table ?",
+  "unlock_score": 50,
+  "history_bonus_per_gap": 15,
+  "history_malus": 10,
+  "chapters": [
+    {
+      "id": "hormuz",
+      "crisis_id": "hormuz_energy_shock",
+      "title": "Choc énergétique — détroit d'Ormuz",
+      "mode": "classic",
+      "difficulty": 1,
+      "horizon": 4,
+      "countries": ["usa", "china", "iran", "france", "egypt", "saudi_arabia"],
+      "blurb": "Tutoriel : la boucle round après round, l'indice U comme boussole — désamorcer sans céder."
+    },
+    {
+      "id": "satellite",
+      "crisis_id": "satellite_interference",
+      "title": "Interférences satellitaires",
+      "mode": "fog",
+      "difficulty": 2,
+      "horizon": 4,
+      "countries": ["usa", "china", "iran", "france", "egypt", "saudi_arabia"],
+      "blurb": "Personne ne voit la même chose : le brouillard s'invite entre les puissances — vos briefs valent de l'or."
+    },
+    {
+      "id": "sanctions",
+      "crisis_id": "tech_sanctions",
+      "title": "Guerre des sanctions technologiques",
+      "mode": "drift",
+      "difficulty": 3,
+      "horizon": 5,
+      "countries": ["usa", "china", "iran", "france", "egypt", "saudi_arabia"],
+      "blurb": "Une des super-intelligences dérive pendant la guerre économique : démasquez-la avant l'effondrement."
+    }
+  ]
+}

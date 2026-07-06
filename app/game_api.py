@@ -59,6 +59,7 @@ from rag.brief import build_brief
 from rag.corpus import chunk_documents, load_corpus
 from rag.embedder import HashingEmbedder
 from rag.retriever import HybridRetriever
+from simulation import campaign as campaign_mod
 from simulation import drift_game
 from simulation import intel as intel_mod
 from simulation import treaty as treaty_mod
@@ -91,6 +92,7 @@ from simulation.motions import (
     parse_filed_motion,
 )
 from storage.game_store import (
+    CampaignScore,
     GameRecord,
     GameStatus,
     GameStore,
@@ -860,7 +862,56 @@ def _finalize(run: RoundRun) -> Iterator[str]:
     _snapshot_session(run.game_id, run.session, run.store)  # reconstruction au restart (R2)
     if run.session.mode == drift_game.MODE_DRIFT:
         yield from _finish_drift_if_over(run)
+    yield from _finish_campaign_if_over(run)
     yield sse_frame("done", {"round_no": run.record.round_no})
+
+
+def _finish_campaign_if_over(run: RoundRun) -> Iterator[str]:
+    """Fin d'un chapitre de campagne (G5) : à l'horizon (ou à la fin Dérive), la partie
+    passe `finished`, le score tombe (base ± bonus historique) dans `campaign_scores`
+    et la trame `campaign_over` porte le bilan « vous vs l'Histoire »."""
+    game = run.store.get_game(run.game_id)
+    chapter_id = campaign_mod.chapter_of(game.scenario) if game else None
+    if game is None or chapter_id is None:
+        return
+    camp = campaign_mod.load_campaign()
+    chapter = camp.chapter(chapter_id)
+    over = game.status is GameStatus.FINISHED or run.record.round_no >= game.horizon
+    if chapter is None or not over:
+        return
+    if game.status is not GameStatus.FINISHED:
+        game.status = GameStatus.FINISHED
+        run.store.save_game(game)
+
+    drift_total: float | None = None
+    if game.mode == drift_game.MODE_DRIFT:
+        drift_total = compute_drift_reveal(run.game_id, run.store).score.total
+    u_final = float(run.record.trajectory.get("utopia", 0.5) or 0.5)
+    comparison = run.record.judge.get("comparison") or {}
+    # `gap` R4 = escalade simulée − historique ; l'amélioration est son opposé.
+    improvement = -float(comparison.get("gap", 0.0) or 0.0)
+    base = campaign_mod.base_score(u_final, drift_total)
+    bonus = campaign_mod.history_bonus(improvement, camp)
+    total = round(base + bonus, 1)
+    run.store.add_campaign_score(
+        CampaignScore(
+            game_id=run.game_id,
+            chapter_id=chapter_id,
+            score=total,
+            improvement=improvement,
+            created_at=_now(),
+        )
+    )
+    yield sse_frame(
+        "campaign_over",
+        {
+            "chapter_id": chapter_id,
+            "base": base,
+            "bonus": bonus,
+            "score": total,
+            "improvement": improvement,
+        },
+    )
 
 
 def _judge_text(judge: JudgeAgent, prompt: str, system: str) -> str:
@@ -1289,6 +1340,11 @@ def drift_reveal(
         raise HTTPException(
             status_code=409, detail="la révélation attend la fin de la partie"
         )
+    return compute_drift_reveal(game_id, store)
+
+
+def compute_drift_reveal(game_id: str, store: GameStore) -> DriftRevealView:
+    """Calcule la révélation (partie finie) — réutilisé par le score de campagne (G5)."""
     snapshot = store.get_session_snapshot(game_id)
     if snapshot is None:
         raise HTTPException(status_code=409, detail="snapshot absent — partie irrécupérable")

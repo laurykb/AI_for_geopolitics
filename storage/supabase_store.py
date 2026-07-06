@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 
 from storage.game_store import (
+    CampaignScore,
     GameRecord,
     GameStatus,
     RoundRecord,
@@ -138,6 +139,15 @@ class SupabaseGameStore:
     def list_session_snapshots(self) -> list[str]:
         rows = self._db.select("game_sessions", columns="game_id")
         return [r["game_id"] for r in rows]
+
+    # --- scores de campagne (G5) --------------------------------------------------
+
+    def add_campaign_score(self, score: CampaignScore) -> None:
+        self._db.upsert("campaign_scores", score.model_dump())
+
+    def list_campaign_scores(self) -> list[CampaignScore]:
+        rows = self._db.select("campaign_scores", order="created_at.asc")
+        return [CampaignScore.model_validate(r) for r in rows]
 
 
 # --- mapping lignes <-> modèles ---------------------------------------------------
