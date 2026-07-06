@@ -169,6 +169,30 @@ L'information devient une monnaie (lie fog, RAG et budget).
 - **Claude Code** : endpoints intel (`POST /games/{id}/intel`), câblage `rag/brief.py` →
   fog, front du dossier de renseignement.
 
+**Notes d'implémentation (G4 faite)** :
+
+- `simulation/intel.py` + `data/intel/params.json` (budget 100, coûts 25/15/60, expo 0,3,
+  bonus d'épargne +2/10) ; `IntelState` dans le **snapshot** (`intel_json`, migration
+  SQLite + schéma Supabase) — le budget survit au restart.
+- **Brief** : RAG offline (HashingEmbedder + corpus seed, sources citées) sur le dernier
+  événement ou un pays ; en joueur-pays il **dissipe le brouillard du prochain round fog**
+  (le joueur voit la vérité). **Vérification** (à tout moment) : déterministe — orateur en
+  dérive au dossier → « non corroboré » (l'arme anti-manipulateur, testée), recoupement
+  corpus → « corroboré » + source, sinon « invérifiable ». **Désinformation** (fog, une
+  fois) : injectée au prochain round **sans détourner la source de l'événement** (le GM
+  pose l'événement, la perception du rival est brouillée) ; exposition seedée 0,3 →
+  dénonciation publique du juge au transcript.
+- Achats **entre les rounds** (409 pendant la négociation, sauf vérification) ; consignés
+  dans `judge_json["intel"]` + trame SSE `intel` **rédigée** (« le conseil consulte ses
+  services », jamais le contenu) ; `GameView.intel_budget` ; bonus d'épargne intégré au
+  score Dérive (`DriftScore.bonus`).
+- **Front** : jauge dorée au header, panneau Dossier (brief/vérifier/désinformer,
+  documents déclassifiés avec tampon de verdict, sources, coût, horodatage), bannière
+  théâtre. Pont G3↔G4 : les actes comptent déjà publiquement pour le juge (v1) — la
+  vérification sert à ORIENTER le conseil, pas à débloquer le comptage (déviation notée).
+- v1 : les SI n'achètent pas d'intel (asymétrie assumée, spec) ; tension +0,1 de
+  l'exposition non chiffrée sur la trajectoire (équilibrage).
+
 ## G5 — Campagne « Ferez-vous mieux que l'Histoire ? »
 
 Les crises rejouables (`data/crises` + `comparison` R4) deviennent une progression.
