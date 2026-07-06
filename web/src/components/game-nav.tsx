@@ -1,13 +1,13 @@
 "use client";
 
-/** Navigation d'une partie : Théâtre / Monde / Marché / Replay. */
+/** Navigation d'une partie : Scène / Marché / Replay. Le monde a fusionné avec la
+ * scène (G1 : la carte est le théâtre) — /monde redirige. */
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const TABS = [
-  { slug: "", label: "Théâtre" },
-  { slug: "monde", label: "Monde" },
+  { slug: "", label: "Scène" },
   { slug: "marche", label: "Marché" },
   { slug: "replay", label: "Replay" },
 ] as const;
