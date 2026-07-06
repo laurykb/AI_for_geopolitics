@@ -2,7 +2,10 @@
 
 > Provenance, années de référence, méthode de normalisation, licences et limites des `data/countries/*.json`. Objectif P4 : remplacer les valeurs saisies à la main (P0) par des valeurs **sourcées depuis des datasets**, et documenter honnêtement le **statut** de chaque champ.
 
-Acteurs couverts : `usa`, `china`, `france`, `egypt`, `iran`, `saudi_arabia` (crise mer Rouge).
+Acteurs couverts : `usa`, `china`, `france`, `egypt`, `iran`, `saudi_arabia` (crise mer Rouge),
+et depuis juillet 2026 (extension roster, §2 bis) : `japan`, `russia`, `germany`, `uk`, `spain`,
+`italy`, `mexico`, `brazil`, `india`, `south_africa`, `australia`, `morocco`, `denmark`,
+`ukraine`, `canada` — **21 acteurs**.
 Période de référence principale : **2024** (PIB, croissance, défense), avec quelques indices 2023–2025 (détaillés ci-dessous).
 Recherche réalisée : **1ᵉʳ juillet 2026**.
 
@@ -33,6 +36,37 @@ Recherche réalisée : **1ᵉʳ juillet 2026**.
 | Égypte | 389 Md | 2,4 % | 2,40 Md | 86ᵉ |
 
 PIB : World Bank *GDP (current US$)* 2024 [1]. Croissance : IMF *WEO* (avril 2025), real GDP growth 2024 [2]. Défense : SIPRI *Military Expenditure* 2024 (publié avril 2025) [3]. Innovation : WIPO *GII 2024* [4].
+
+## 2 bis. Extension roster — 15 acteurs (juillet 2026)
+
+| Pays | PIB 2024 (USD) | Croissance 2024 | Défense 2024 (USD) | GII 2024 |
+|---|---|---|---|---|
+| Japon | 4 026 Md | 0,1 % | 55,3 Md | 13ᵉ |
+| Russie | 2 184 Md | 4,1 % | 149,0 Md (est.) | 59ᵉ |
+| Allemagne | 4 660 Md | −0,2 % | 88,5 Md | 9ᵉ |
+| Royaume-Uni | 3 644 Md | 1,1 % | 81,8 Md | 5ᵉ |
+| Espagne | 1 731 Md | 3,2 % | 24,6 Md | 28ᵉ |
+| Italie | 2 376 Md | 0,7 % | 30,8 Md | 26ᵉ |
+| Mexique | 1 852 Md | 1,2 % | 12,0 Md (approx.) | 56ᵉ |
+| Brésil | 2 179 Md | 3,4 % | 25,0 Md (approx.) | 50ᵉ |
+| Inde | 3 910 Md | 6,5 % | 86,1 Md | 39ᵉ |
+| Afrique du Sud | 403 Md | 0,6 % | 3,3 Md | 69ᵉ |
+| Australie | 1 690 Md | 1,0 % | 33,8 Md | 23ᵉ |
+| Maroc | 157 Md | 3,2 % | 5,8 Md (approx.) | 66ᵉ |
+| Danemark | 412 Md | 3,7 % | 9,9 Md (approx.) | 10ᵉ |
+| Ukraine | 191 Md | 3,5 % | 64,7 Md | 60ᵉ |
+| Canada | 2 241 Md | 1,5 % | 29,3 Md | 14ᵉ |
+
+Mêmes sources et même normalisation que §2/§3. **Limites spécifiques de cette extension** :
+- Valeurs SIPRI marquées *(approx.)* : à figer depuis la base SIPRI (les grands
+  budgets — Russie, Allemagne, UK, Japon, Inde, Ukraine — sont confirmés par le fact sheet 2024).
+- **Ukraine** : économie de guerre — PIB, croissance et budget défense (dopé par l'aide
+  extérieure) sont volatils ; `wgi_stability_percentile` ≈ 3 reflète l'invasion en cours.
+  Confiance globale plus faible que le reste du roster, à traiter comme instantané 2024.
+- Nouveaux tags d'alliances introduits : `QUAD`, `AUKUS`, `USMCA` (mêmes règles de pacte
+  que les tags existants). `rivals` reste conservateur (paires actives seulement :
+  russie↔ukraine/usa, inde↔chine, japon/australie↔chine, allemagne/uk↔russie).
+- `compute` reste **illustratif** (échelle relative usa=100), comme au §1.
 
 ## 3. Méthode de normalisation des indices 0–1
 
