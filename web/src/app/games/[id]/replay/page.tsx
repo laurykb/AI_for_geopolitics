@@ -23,6 +23,7 @@ import { StageBand, type StageSelection } from "@/components/stage-band";
 import { StageMap } from "@/components/stage-map";
 import { TrajectoryPanel } from "@/components/trajectory";
 import { EntryBubble } from "@/components/transcript";
+import { TreatiesPanel } from "@/components/treaties";
 import { Banner, Meter, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
 import { getDriftReveal, getGame, humanizeError } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
@@ -241,6 +242,7 @@ export default function ReplayPage() {
 
           {/* Salle des observables. */}
           <div className="grid items-start gap-4 lg:grid-cols-2 xl:grid-cols-3">
+            {round.judge.treaties && <TreatiesPanel update={round.judge.treaties} />}
             {round.trajectory && Object.keys(round.trajectory).length > 0 && (
               <TrajectoryPanel
                 state={round.trajectory}

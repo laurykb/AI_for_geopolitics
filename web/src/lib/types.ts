@@ -158,11 +158,13 @@ export type JudgeRecord = {
   escalation?: number;
   economic_disruption?: number;
   communique?: string;
-  suspension?: SuspensionVerdict;
+  suspension?: SuspensionVerdict & { filed_by?: string };
   suspended?: string[];
   perceptions?: Record<string, Perception>;
   ladder?: LadderView;
   comparison?: ComparisonView;
+  motion_filed?: { country: string; reason: string; filed_by: string };
+  treaties?: TreatiesUpdate;
 };
 
 export type RoundView = {
@@ -271,7 +273,30 @@ export type SseEvent =
   // Joueur-pays : le flux se suspend en attendant le message du joueur
   | { type: "human_turn"; country: string; pass_no: number }
   // théâtre Escalation : fait nouveau du GM en pleine négociation
-  | { type: "flash"; event: GeoEvent };
+  | { type: "flash"; event: GeoEvent }
+  // Agentivité des SI : une SI dépose elle-même une motion en séance
+  | { type: "motion_filed"; by: string; country: string; reason: string }
+  // Traités M7 : ratifications du juge-arbitre + état des règles en vigueur
+  | ({ type: "treaties" } & TreatiesUpdate)
+  // La Dérive : fin de partie (déviante suspendue / horizon / effondrement)
+  | { type: "drift_over"; reason: "caught" | "horizon" | "collapse" };
+
+/** Une règle ratifiée (M7) — `clause` se traduit côté front (TREATY_LABELS). */
+export type TreatyView = {
+  clause: string;
+  signatories: string[];
+  round_signed: number;
+  threshold: number;
+  integrity: number;
+  active: boolean;
+};
+
+export type TreatiesUpdate = {
+  ratified: TreatyView[];
+  rejected: { label: string; signatories: string[] }[];
+  verifications: { label: string; note: string; integrity: number; active: boolean }[];
+  active: TreatyView[];
+};
 
 // --- marché de prédiction (app/market_api.py) ---------------------------------
 

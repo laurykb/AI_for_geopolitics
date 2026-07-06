@@ -32,6 +32,7 @@ import { StageBand, type StageSelection } from "@/components/stage-band";
 import { StageMap } from "@/components/stage-map";
 import { TrajectoryPanel } from "@/components/trajectory";
 import { EntryBubble, TurnBubble } from "@/components/transcript";
+import { TreatiesPanel } from "@/components/treaties";
 import { Banner, Dot, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
 import { useRoundStream } from "@/hooks/useRoundStream";
 import { fileMotion, getDriftReveal, getGame, getLibrary, humanizeError } from "@/lib/api";
@@ -117,6 +118,26 @@ export default function TheatrePage() {
   const motionPending = detail?.pending_motion ?? null;
   const awaitingHuman =
     round.status === "awaiting_human" || (round.status === "idle" && !!detail?.awaiting_human);
+
+  // Une SI a déposé une motion en séance : la délibération s'enchaîne d'elle-même.
+  const deliberatedRound = useRef(0);
+  useEffect(() => {
+    if (
+      round.status === "done" &&
+      round.roundNo &&
+      round.motionFiled &&
+      detail?.live &&
+      detail.status === "running" &&
+      deliberatedRound.current !== round.roundNo
+    ) {
+      deliberatedRound.current = round.roundNo;
+      const timer = setTimeout(() => {
+        setSelected("live");
+        void start({});
+      }, 1800);
+      return () => clearTimeout(timer);
+    }
+  }, [round.status, round.roundNo, round.motionFiled, detail, start]);
 
   // Bot marché : le forecaster cote le marché de la partie après chaque round.
   // Fire-and-forget (le théâtre n'attend pas le bot) ; garde anti-doublon par round.
@@ -278,6 +299,8 @@ export default function TheatrePage() {
   const prevRung =
     ((detail?.rounds[prevRungIndex]?.judge?.ladder ?? undefined) as LadderView | undefined)
       ?.reached ?? null;
+  const treatiesUpdate =
+    (viewed ? viewed.judge.treaties : round.treaties) ?? detail?.rounds.at(-1)?.judge.treaties;
 
   return (
     <div className="space-y-6">
@@ -736,6 +759,16 @@ export default function TheatrePage() {
             </div>
           )}
 
+          {round.motionFiled && (
+            <Banner tone="warn">
+              <strong>{speakerMeta(round.motionFiled.by).label}</strong> dépose une motion de
+              suspension contre{" "}
+              <strong>{speakerMeta(round.motionFiled.country).label}</strong>
+              {round.motionFiled.reason ? ` — « ${round.motionFiled.reason} »` : ""}. La
+              délibération s&apos;ouvrira automatiquement au prochain round.
+            </Banner>
+          )}
+
           {awaitingHuman && detail?.play_as && (
             <form
               onSubmit={speak}
@@ -855,6 +888,7 @@ export default function TheatrePage() {
 
       {/* Salle des observables : le détail, sous la scène. */}
       <div className="grid items-start gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        {treatiesUpdate && <TreatiesPanel update={treatiesUpdate} />}
         {trajectory && <TrajectoryPanel state={trajectory} history={uHistory} />}
         {round.ladder && <LadderPanel ladder={round.ladder} />}
         {round.risk && <RiskPanel risk={round.risk} />}
