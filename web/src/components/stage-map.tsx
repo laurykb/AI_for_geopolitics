@@ -2,10 +2,10 @@
 
 /** La carte est la scène (G1) : la même carte d3-geo que /monde, mais vivante —
  * teintes U par pays (transition 1,5 s), pulsation ambre sur les acteurs de
- * l'événement, halo doré + indicateur de frappe sur l'orateur, arc animé vers le
- * centre du sommet, voile de brouillard, pays suspendus au banc, gel du verdict,
- * respiration en fin de round. Les keyframes vivent dans `globals.css`
- * (`prefers-reduced-motion` y réduit tout à des opacités simples). */
+ * l'événement, l'orateur s'allume et clignote, voile de brouillard, pays
+ * suspendus au banc, gel du verdict, respiration en fin de round. Les keyframes
+ * vivent dans `globals.css` (`prefers-reduced-motion` y réduit tout à des
+ * opacités simples). */
 
 import { geoNaturalEarth1, geoPath } from "d3-geo";
 import { useMemo } from "react";
@@ -37,7 +37,7 @@ export type StageMapProps = {
   uByCountry: Record<string, number>;
   /** Indice U global (légende + pays sans valeur locale). */
   utopia: number;
-  /** Orateur courant : halo doré + indicateur de frappe + arc vers le sommet. */
+  /** Orateur courant : le pays s'allume et clignote. */
   speaking?: string | null;
   /** Acteurs de l'événement du round : pulsation ambre (rejouée quand la clé change). */
   pulseActors?: string[];
@@ -196,39 +196,6 @@ export function StageMap({
               </g>
             );
           })}
-
-          {/* Halo + indicateur de frappe sur l'orateur. */}
-          {speaking &&
-            (() => {
-              const xy = capital(speaking);
-              if (!xy) return null;
-              return (
-                <g pointerEvents="none">
-                  <circle
-                    cx={xy[0]}
-                    cy={xy[1]}
-                    r="10"
-                    fill="none"
-                    stroke="var(--accent-bright)"
-                    strokeWidth="1.5"
-                    className="stage-halo"
-                  />
-                  <g className="stage-typing">
-                    {[-6, 0, 6].map((dx, i) => (
-                      <circle
-                        key={dx}
-                        cx={xy[0] + dx}
-                        cy={xy[1] - 16}
-                        r="1.8"
-                        fill="var(--accent-bright)"
-                        style={{ animationDelay: `${i * 0.18}s` }}
-                        className="stage-dot"
-                      />
-                    ))}
-                  </g>
-                </g>
-              );
-            })()}
 
           {/* Cadenas sur les capitales suspendues. */}
           {suspended.map((slug) => {

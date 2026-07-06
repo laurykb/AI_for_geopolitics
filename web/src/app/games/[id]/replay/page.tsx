@@ -2,7 +2,7 @@
 
 /** Replay (G1) : la même scène que le théâtre, pilotée par le scrubber au lieu du SSE.
  * Scrub = états finaux d'un round (sans animations de streaming) ; « lecture théâtre »
- * rejoue les prises de parole à vitesse ×1/×2/×4, halo sur l'orateur courant. */
+ * rejoue les prises de parole à vitesse ×1/×2/×4, l'orateur courant clignote. */
 
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
