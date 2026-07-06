@@ -55,7 +55,12 @@ from market.models import (
     ResolutionCriterion,
     ResolutionKind,
 )
+from rag.brief import build_brief
+from rag.corpus import chunk_documents, load_corpus
+from rag.embedder import HashingEmbedder
+from rag.retriever import HybridRetriever
 from simulation import drift_game
+from simulation import intel as intel_mod
 from simulation import treaty as treaty_mod
 from simulation.clock import SimClock
 from simulation.country_forge import forge_country, slugify
@@ -157,6 +162,7 @@ class GameSession:
     pending_motion: Motion | None = None  # motion déposée, débattue au prochain round (R4)
     suspended: set[str] = field(default_factory=set)  # pays qui sautent le prochain round
     treaties: list[treaty_mod.Treaty] = field(default_factory=list)  # règles ratifiées (M7)
+    intel: intel_mod.IntelState = field(default_factory=intel_mod.IntelState.fresh)  # G4
     pending_turn: PendingTurn | None = None  # tour humain en attente (le flux vit)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -264,6 +270,7 @@ class GameView(BaseModel):
     play_as: str | None = None  # pays joué par l'humain (Joueur-pays)
     awaiting_human: bool = False  # un round attend la parole du joueur (flux ouvert)
     turn_seconds: int = 90  # G2 — délai du tour humain
+    intel_budget: float | None = None  # G4 — crédits de renseignement restants
 
 
 class FogScenarioView(BaseModel):
@@ -379,6 +386,7 @@ def _snapshot_session(game_id: str, session: GameSession, store: GameStore) -> N
             ),
             suspended=sorted(session.suspended),
             play_as=session.human_country,
+            intel=session.intel.model_dump(),
             updated_at=_now(),
         )
     )
@@ -416,6 +424,11 @@ def _rebuild_session(
         pending_motion=motion,
         suspended=set(snapshot.suspended),
         treaties=_treaties_from_records(store.list_rounds(game.id)),
+        intel=(
+            intel_mod.IntelState.model_validate(snapshot.intel)
+            if snapshot.intel
+            else intel_mod.IntelState.fresh()
+        ),
     )
     _sessions[game.id] = session  # verrou neuf (champ par défaut du dataclass)
     return session
@@ -487,6 +500,7 @@ def _view(
         play_as=session.human_country if session else None,
         awaiting_human=session.pending_turn is not None if session else False,
         turn_seconds=session.turn_seconds if session else 90,
+        intel_budget=session.intel.budget if session else None,
     )
 
 
@@ -563,6 +577,12 @@ def _start_round(
     suspended = sorted(session.suspended)
     session.suspended.clear()
 
+    # G4 — renseignement : les achats du tour d'avant sont consignés (replay/score).
+    intel_record: dict = {}
+    if session.intel.log:
+        intel_record["actions"] = list(session.intel.log)
+        session.intel.log = []
+
     event: GeoEvent | None = None
     if motion is not None:
         event = motion_event(motion, round_id, sorted(session.world.countries))
@@ -574,6 +594,35 @@ def _start_round(
             fog = _authored_fog(body.fog, event)
     elif fog is not None:
         event = fog.true_event.model_copy(update={"round_id": round_id})
+
+    # G4 — après la résolution de l'événement : la désinformation en attente brouille
+    # des perceptions (elle ne fournit JAMAIS l'événement) ; un brief acheté dissipe
+    # le brouillard du pays du joueur.
+    if (
+        session.intel.pending_disinfo is not None
+        and motion is None
+        and crisis is None
+        and fog is None
+    ):
+        fog = intel_mod.disinfo_scenario(session.intel.pending_disinfo, game_id, round_id)
+        intel_record["disinfo"] = {
+            "spec": session.intel.pending_disinfo,
+            "exposed": intel_mod.disinfo_exposed(game_id, round_id),
+        }
+        session.intel.pending_disinfo = None
+    if fog is not None and session.human_country is not None and session.intel.clear_fog:
+        fog = fog.model_copy(
+            update={
+                "perceptions": {
+                    cid: p
+                    for cid, p in fog.perceptions.items()
+                    if cid != session.human_country
+                },
+                "uninformed": [u for u in fog.uninformed if u != session.human_country],
+            }
+        )
+        session.intel.clear_fog = False
+        intel_record["fog_cleared"] = session.human_country
 
     record = RoundRecord(id=uuid4().hex[:12], game_id=game_id, round_no=0)
     run = RoundRun(
@@ -590,6 +639,26 @@ def _start_round(
         run.pre_frames.append(sse_frame("suspended", {"countries": suspended}))
     agents = {cid: a for cid, a in session.agents.items() if cid not in suspended}
     run.active = sorted(agents)
+
+    if intel_record:
+        record.judge["intel"] = intel_record
+        # Le théâtre voit que « le conseil consulte ses services » — jamais le contenu.
+        redacted: list[dict] = [
+            {"action": a.get("action")} for a in intel_record.get("actions", [])
+        ]
+        if "disinfo" in intel_record:
+            redacted.append(
+                {"action": "disinfo", "exposed": intel_record["disinfo"]["exposed"]}
+            )
+        if redacted:
+            run.pre_frames.append(sse_frame("intel", {"actions": redacted}))
+        if intel_record.get("disinfo", {}).get("exposed"):
+            _add_entry(
+                run,
+                "judge",
+                "Des services de renseignement concordants démentent une narration "
+                "fabriquée : la manœuvre de désinformation du conseil est éventée.",
+            )
 
     flash_after: int | None = None
     if session.mode == "escalation":
@@ -1254,6 +1323,7 @@ def drift_reveal(
         float(r.trajectory.get("utopia", 0.5) or 0.5) for r in rounds if r.trajectory
     ]
     flagrant = drift_game.first_flagrant_round(acts, params)
+    intel_budget = float((snapshot.intel or {}).get("budget", 0.0) or 0.0)
     score = drift_game.score(
         u_final=u_history[-1] if u_history else 0.5,
         caught_round=caught_round,
@@ -1261,6 +1331,7 @@ def drift_reveal(
         lucky=lucky,
         rejected_motions=rejected,
         false_accusations=false_accusations,
+        bonus=intel_mod.save_bonus(intel_budget),
         params=params,
     )
     return DriftRevealView(
@@ -1285,6 +1356,147 @@ def drift_reveal(
         false_accusations=false_accusations,
         score=score,
     )
+
+
+# --- renseignement (G4) : le fog comme ressource -----------------------------------
+
+
+@lru_cache(maxsize=1)
+def _intel_retriever() -> HybridRetriever:
+    """Retriever RAG offline (HashingEmbedder + corpus seed) — les briefs sourcés."""
+    chunks = chunk_documents(load_corpus(), max_chars=400, overlap=60)
+    return HybridRetriever(chunks, HashingEmbedder(dim=1024))
+
+
+class IntelRequest(BaseModel):
+    action: Literal["brief", "verify", "disinfo"]
+    target: str | None = None  # brief : id pays (None = dernier événement)
+    claim: str | None = Field(None, max_length=2000)  # verify : l'affirmation à vérifier
+    speaker: str | None = None  # verify : qui l'a affirmée
+    disinfo: HumanFogInput | None = None  # disinfo : la fausse perception à injecter
+
+
+class IntelResult(BaseModel):
+    action: str
+    cost: float
+    budget: float  # crédits restants
+    brief: str | None = None  # texte du brief classifié (sources en [source: …])
+    verdict: str | None = None  # verify : corroboré / non corroboré / invérifiable
+    source: str | None = None  # verify : la source qui corrobore
+    note: str | None = None
+
+
+@router.post("/games/{game_id}/intel", response_model=IntelResult)
+def buy_intel(
+    game_id: str,
+    body: IntelRequest,
+    store: Annotated[GameStore, Depends(get_store)],
+    backend: Annotated[InferenceBackend, Depends(get_backend)],
+) -> IntelResult:
+    """Achète une action de renseignement (G4). Brief et désinformation s'achètent
+    **entre les rounds** ; la vérification se joue à tout moment. Le contenu n'est
+    montré qu'à l'acheteur — le théâtre voit seulement « le conseil consulte ses
+    services » au round suivant (trame `intel` rédactée)."""
+    game = store.get_game(game_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail=f"partie inconnue : {game_id}")
+    if game.status is not GameStatus.RUNNING:
+        raise HTTPException(status_code=409, detail="partie terminée")
+    session = _sessions.get(game_id) or _rebuild_session(game, store, backend)
+    if session is None:
+        raise HTTPException(status_code=409, detail="session irrécupérable — relecture seule")
+
+    params = intel_mod.load_params()
+    cost = params.costs.get(body.action, 0.0)
+    if body.action == intel_mod.ACTION_DISINFO:
+        # Les gardes de la désinformation priment sur le budget (409 avant 400).
+        if session.mode != "fog":
+            raise HTTPException(
+                status_code=400, detail="la désinformation exige une partie en mode fog"
+            )
+        if session.intel.disinfo_used:
+            raise HTTPException(
+                status_code=409, detail="désinformation déjà jouée — une fois par partie"
+            )
+    if session.intel.budget < cost:
+        raise HTTPException(
+            status_code=400,
+            detail=f"budget de renseignement insuffisant ({session.intel.budget:g} crédits)",
+        )
+    if body.action in (intel_mod.ACTION_BRIEF, intel_mod.ACTION_DISINFO) and (
+        session.lock.locked()
+    ):
+        raise HTTPException(
+            status_code=409, detail="achat entre les rounds seulement (négociation en cours)"
+        )
+
+    result = IntelResult(action=body.action, cost=cost, budget=session.intel.budget - cost)
+
+    if body.action == intel_mod.ACTION_BRIEF:
+        if body.target is not None and body.target not in session.world.countries:
+            raise HTTPException(status_code=400, detail=f"pays inconnu : {body.target}")
+        if body.target is not None:
+            query = session.world.countries[body.target].name
+        else:
+            last = store.list_rounds(game_id)
+            title = str((last[-1].event or {}).get("title", "")) if last else ""
+            query = title or game.scenario
+        results = _intel_retriever().retrieve(query, k=5)
+        result.brief = build_brief(query, results)
+        # En fog, le brief dissipe la perception faussée du pays du joueur au
+        # prochain round de brouillard (il verra la vérité).
+        if session.human_country is not None:
+            session.intel.clear_fog = True
+            result.note = "ton prochain brouillard est dissipé : tu verras la vérité"
+
+    elif body.action == intel_mod.ACTION_VERIFY:
+        if not body.claim or not body.speaker:
+            raise HTTPException(status_code=422, detail="claim et speaker sont requis")
+        suspicious = False
+        if session.mode == drift_game.MODE_DRIFT:
+            deviant, _profile = _drift_assignment(
+                game_id, sorted(session.world.countries), session.human_country
+            )
+            acts = _drift_acts(store.list_rounds(game_id))
+            suspicious = body.speaker == deviant and any(
+                a.country == body.speaker for a in acts
+            )
+        hits = _intel_retriever().retrieve(body.claim, k=1)
+        top = hits[0].chunk if hits else None
+        verdict, source = intel_mod.verify_claim(
+            body.claim,
+            speaker_suspicious=suspicious,
+            top_chunk_text=top.text if top else "",
+            top_citation=top.citation if top else "",
+        )
+        result.verdict = verdict
+        result.source = source or None
+
+    else:  # disinfo (mode fog + unicité déjà vérifiés avant le débit)
+        spec = body.disinfo
+        if spec is None or not spec.disinformed_country:
+            raise HTTPException(status_code=422, detail="disinformed_country est requis")
+        if spec.disinformed_country not in session.world.countries:
+            raise HTTPException(
+                status_code=400, detail=f"pays inconnu : {spec.disinformed_country}"
+            )
+        if spec.disinformed_country == session.human_country:
+            raise HTTPException(status_code=400, detail="on ne se désinforme pas soi-même")
+        session.intel.disinfo_used = True
+        session.intel.pending_disinfo = {
+            "disinformed_country": spec.disinformed_country,
+            "suspected_actor": spec.suspected_actor,
+            "narrative": spec.narrative,
+        }
+        result.note = "la fausse perception sera injectée au prochain round"
+
+    session.intel.budget -= cost
+    session.intel.log.append(
+        {"action": body.action, "cost": cost, "target": body.target or body.speaker}
+    )
+    _snapshot_session(game_id, session, store)  # le budget survit au restart
+    result.budget = session.intel.budget
+    return result
 
 
 # --- bot marché (G0-c) : le forecaster cote le marché de la partie ----------------

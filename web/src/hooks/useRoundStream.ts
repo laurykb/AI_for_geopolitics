@@ -71,6 +71,7 @@ export type LiveRound = {
   motionFiled?: { by: string; country: string; reason: string };
   treaties?: TreatiesUpdate;
   driftOver?: string; // La Dérive : raison de la fin de partie (caught/horizon/collapse)
+  intelActions?: { action: string; exposed?: boolean }[]; // G4 — le conseil a consulté
 };
 
 export const INITIAL: LiveRound = {
@@ -236,6 +237,8 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
     }
     case "drift_over":
       return { ...state, driftOver: e.reason };
+    case "intel":
+      return { ...state, intelActions: e.actions };
     default:
       return state; // événement inconnu (nouveau RoundStep) : ignoré sans casser
   }

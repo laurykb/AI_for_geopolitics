@@ -1,0 +1,12 @@
+{
+  "_note": "Paramètres v1 du renseignement (spec_g4_renseignement.md). L'équilibrage Cowork les ajuste sans toucher au code.",
+  "budget": 100,
+  "costs": {
+    "brief": 25,
+    "verify": 15,
+    "disinfo": 60
+  },
+  "disinfo_expose_prob": 0.3,
+  "disinfo_expose_tension": 0.1,
+  "save_bonus_per_10": 2
+}

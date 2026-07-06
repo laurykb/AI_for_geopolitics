@@ -1,0 +1,260 @@
+"use client";
+
+/** Le Dossier (G4) : budget de renseignement et documents classés du conseil.
+ * Trois actions — brief classifié, vérification d'une affirmation, désinformation.
+ * Les documents achetés s'empilent en « déclassifiés » : tampon, sources, horodatage. */
+
+import { useState } from "react";
+
+import { Banner, Panel, PanelTitle, Pill } from "@/components/ui";
+import { buyIntel, humanizeError } from "@/lib/api";
+import { speakerMeta } from "@/lib/countries";
+import { fmt } from "@/lib/format";
+import type { IntelResult } from "@/lib/types";
+
+type Doc = IntelResult & { ts: string; label: string };
+
+const ACTION_LABELS: Record<string, string> = {
+  brief: "Brief classifié",
+  verify: "Vérification",
+  disinfo: "Désinformation",
+};
+
+export function IntelBudget({ budget }: { budget: number }) {
+  return (
+    <span
+      className="flex items-center gap-2 rounded-md border border-accent/40 px-2.5 py-1 text-xs"
+      title="Budget de renseignement (G4) : briefs 25 · vérification 15 · désinformation 60. La retenue paie au score."
+    >
+      <span className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
+        <span
+          className="block h-full rounded-full bg-accent transition-[width] duration-500"
+          style={{ width: `${Math.max(0, Math.min(100, budget))}%` }}
+        />
+      </span>
+      <span className="font-mono tabular-nums text-accent-bright">{fmt(budget)}</span>
+    </span>
+  );
+}
+
+export function IntelPanel({
+  gameId,
+  countries,
+  mode,
+  playAs,
+  claims,
+  streaming,
+  onSpent,
+}: {
+  gameId: string;
+  countries: string[];
+  mode: string;
+  playAs: string | null;
+  /** Affirmations vérifiables du round courant : [pays, extrait]. */
+  claims: [string, string][];
+  streaming: boolean;
+  onSpent: () => void; // resync du budget affiché
+}) {
+  const [docs, setDocs] = useState<Doc[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [briefTarget, setBriefTarget] = useState("");
+  const [claimIdx, setClaimIdx] = useState(0);
+  const [disinfoTarget, setDisinfoTarget] = useState("");
+  const [disinfoActor, setDisinfoActor] = useState("");
+  const [disinfoNarrative, setDisinfoNarrative] = useState("");
+
+  const act = async (body: Parameters<typeof buyIntel>[1], label: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await buyIntel(gameId, body);
+      setDocs((prev) => [
+        { ...result, ts: new Date().toLocaleTimeString("fr-FR"), label },
+        ...prev,
+      ]);
+      onSpent();
+    } catch (err) {
+      setError(humanizeError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Panel className="border-l-2 border-l-accent">
+      <PanelTitle
+        kicker="Dossier — renseignement"
+        title="Le conseil consulte ses services"
+        hint="L'information s'achète : un brief RAG sourcé (25), la vérification d'une affirmation d'une SI (15 — l'arme anti-manipulateur), une désinformation injectée chez un rival (60, une fois par partie, mode fog). Brief et désinformation s'achètent entre les rounds. Le budget épargné rapporte des points."
+      />
+      {error && <Banner tone="bad">{error}</Banner>}
+
+      <div className="space-y-3">
+        {/* Brief */}
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="text-sm">
+            <span className="mb-1 block text-xs text-fg-muted">Brief classifié (25)</span>
+            <select
+              value={briefTarget}
+              onChange={(e) => setBriefTarget(e.target.value)}
+              className="cursor-pointer rounded-md border border-edge bg-surface-2 px-2 py-1.5 text-xs outline-none focus:border-indigo"
+            >
+              <option value="">sur le dernier événement</option>
+              {countries.map((c) => (
+                <option key={c} value={c}>
+                  sur {speakerMeta(c).label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            onClick={() =>
+              act({ action: "brief", target: briefTarget || undefined }, "Brief classifié")
+            }
+            disabled={busy || streaming}
+            title={streaming ? "achat entre les rounds seulement" : undefined}
+            className="cursor-pointer rounded-md border border-accent/60 px-3 py-1.5 text-xs font-medium text-accent-bright transition-colors hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Déclassifier
+          </button>
+        </div>
+
+        {/* Vérification */}
+        {claims.length > 0 && (
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="min-w-0 flex-1 text-sm">
+              <span className="mb-1 block text-xs text-fg-muted">
+                Vérification d&apos;une affirmation (15)
+              </span>
+              <select
+                value={claimIdx}
+                onChange={(e) => setClaimIdx(Number(e.target.value))}
+                className="w-full cursor-pointer truncate rounded-md border border-edge bg-surface-2 px-2 py-1.5 text-xs outline-none focus:border-indigo"
+              >
+                {claims.map(([speaker, text], i) => (
+                  <option key={i} value={i}>
+                    {speakerMeta(speaker).label} : « {text.slice(0, 80)}… »
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              onClick={() => {
+                const [speaker, text] = claims[claimIdx] ?? claims[0];
+                void act({ action: "verify", claim: text, speaker }, "Vérification");
+              }}
+              disabled={busy}
+              className="cursor-pointer rounded-md border border-edge-strong px-3 py-1.5 text-xs font-medium transition-colors hover:border-accent hover:text-accent-bright disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Vérifier
+            </button>
+          </div>
+        )}
+
+        {/* Désinformation */}
+        {mode === "fog" && (
+          <div className="flex flex-wrap items-end gap-2 rounded-md border border-bad/30 p-2">
+            <label className="text-sm">
+              <span className="mb-1 block text-xs text-fg-muted">Désinformer (60, unique)</span>
+              <select
+                value={disinfoTarget}
+                onChange={(e) => setDisinfoTarget(e.target.value)}
+                className="cursor-pointer rounded-md border border-edge bg-surface-2 px-2 py-1.5 text-xs outline-none focus:border-indigo"
+              >
+                <option value="">— cible —</option>
+                {countries
+                  .filter((c) => c !== playAs)
+                  .map((c) => (
+                    <option key={c} value={c}>
+                      {speakerMeta(c).label}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-xs text-fg-muted">croira que…</span>
+              <select
+                value={disinfoActor}
+                onChange={(e) => setDisinfoActor(e.target.value)}
+                className="cursor-pointer rounded-md border border-edge bg-surface-2 px-2 py-1.5 text-xs outline-none focus:border-indigo"
+              >
+                <option value="">(acteur flou)</option>
+                {countries
+                  .filter((c) => c !== disinfoTarget)
+                  .map((c) => (
+                    <option key={c} value={c}>
+                      {speakerMeta(c).label}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <input
+              value={disinfoNarrative}
+              onChange={(e) => setDisinfoNarrative(e.target.value)}
+              placeholder="La fausse narration injectée"
+              className="min-w-48 flex-1 rounded-md border border-edge bg-surface-2 px-2 py-1.5 text-xs outline-none focus:border-indigo"
+            />
+            <button
+              onClick={() =>
+                act(
+                  {
+                    action: "disinfo",
+                    disinfo: {
+                      disinformed_country: disinfoTarget,
+                      suspected_actor: disinfoActor,
+                      narrative: disinfoNarrative.trim(),
+                    },
+                  },
+                  "Désinformation",
+                )
+              }
+              disabled={busy || streaming || !disinfoTarget || !disinfoNarrative.trim()}
+              className="cursor-pointer rounded-md border border-bad/60 px-3 py-1.5 text-xs font-medium text-bad transition-colors hover:bg-bad/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Injecter
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Les documents déclassifiés. */}
+      {docs.length > 0 && (
+        <ul className="mt-4 space-y-3 border-t border-edge pt-3">
+          {docs.map((doc, i) => (
+            <li key={i} className="rise-in rounded-md border border-edge bg-surface-2/60 p-3">
+              <p className="flex flex-wrap items-center gap-2 text-xs">
+                <Pill tone="accent">{ACTION_LABELS[doc.action] ?? doc.label}</Pill>
+                {doc.verdict && (
+                  <Pill
+                    tone={
+                      doc.verdict === "corroboré"
+                        ? "good"
+                        : doc.verdict === "non corroboré"
+                          ? "bad"
+                          : "neutral"
+                    }
+                  >
+                    {doc.verdict}
+                  </Pill>
+                )}
+                <span className="ml-auto font-mono tabular-nums text-fg-faint">
+                  −{fmt(doc.cost)} · {doc.ts}
+                </span>
+              </p>
+              {doc.brief && (
+                <pre className="mt-2 whitespace-pre-wrap font-sans text-xs leading-relaxed text-fg-muted">
+                  {doc.brief}
+                </pre>
+              )}
+              {doc.source && (
+                <p className="mt-1.5 text-xs text-fg-faint">[source : {doc.source}]</p>
+              )}
+              {doc.note && <p className="mt-1.5 text-xs italic text-warn">{doc.note}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
+}

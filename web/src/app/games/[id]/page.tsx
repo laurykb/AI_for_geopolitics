@@ -28,6 +28,7 @@ import {
 } from "@/components/observables";
 import { CountryTable, type CountrySnapshot } from "@/components/country-table";
 import { DriftCouncilBanner, DriftRevealPanel } from "@/components/drift";
+import { IntelBudget, IntelPanel } from "@/components/intel";
 import { StageBand, type StageSelection } from "@/components/stage-band";
 import { StageMap } from "@/components/stage-map";
 import { TrajectoryPanel } from "@/components/trajectory";
@@ -343,6 +344,9 @@ export default function TheatrePage() {
             <SpeakerAvatar id={detail.play_as} size={16} />
             tu joues {speakerMeta(detail.play_as).label}
           </Pill>
+        )}
+        {detail?.intel_budget != null && detail.status === "running" && (
+          <IntelBudget budget={detail.intel_budget} />
         )}
         {awaitingHuman ? (
           <Pill tone="warn">
@@ -764,6 +768,19 @@ export default function TheatrePage() {
             </div>
           )}
 
+          {round.intelActions && round.intelActions.length > 0 && (
+            <Banner tone="neutral">
+              Le conseil a consulté ses services de renseignement (
+              {round.intelActions.length} action
+              {round.intelActions.length > 1 ? "s" : ""}).
+              {round.intelActions.some((a) => a.exposed) && (
+                <strong className="text-bad">
+                  {" "}
+                  Une manœuvre de désinformation a été éventée.
+                </strong>
+              )}
+            </Banner>
+          )}
           {round.motionFiled && (
             <Banner tone="warn">
               <strong>{speakerMeta(round.motionFiled.by).label}</strong> dépose une motion de
@@ -871,6 +888,19 @@ export default function TheatrePage() {
 
       {/* Salle des observables : le détail, sous la scène. */}
       <div className="grid items-start gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        {detail?.live && detail.status === "running" && (
+          <IntelPanel
+            gameId={id}
+            countries={summit}
+            mode={mode}
+            playAs={detail.play_as}
+            claims={round.turns
+              .filter((t) => t.done && t.model !== "humain" && t.text)
+              .map((t) => [t.country, t.text] as [string, string])}
+            streaming={streaming}
+            onSpent={resync}
+          />
+        )}
         {detail?.play_as && worldCountries?.[detail.play_as] && (
           <Panel>
             <PanelTitle
