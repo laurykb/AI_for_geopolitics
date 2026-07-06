@@ -20,6 +20,7 @@ import type {
   SseEvent,
   SuspensionVerdict,
   TrajectoryState,
+  TreatiesUpdate,
 } from "@/lib/types";
 
 export type LiveTurn = {
@@ -66,6 +67,10 @@ export type LiveRound = {
   // Joueur-pays + théâtre Escalation
   humanTurn?: { country: string; passNo: number }; // tour du joueur en attente
   flashes: { afterTurn: number; event: GeoEvent }[]; // faits nouveaux, positionnés dans le fil
+  // Agentivité des SI : motion déposée en séance + traités ratifiés par l'arbitre
+  motionFiled?: { by: string; country: string; reason: string };
+  treaties?: TreatiesUpdate;
+  driftOver?: string; // La Dérive : raison de la fin de partie (caught/horizon/collapse)
 };
 
 export const INITIAL: LiveRound = {
@@ -220,6 +225,15 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
         ...state,
         flashes: [...state.flashes, { afterTurn: state.turns.length, event: e.event }],
       };
+    case "motion_filed":
+      return { ...state, motionFiled: { by: e.by, country: e.country, reason: e.reason } };
+    case "treaties": {
+      const update = { ...e } as Partial<typeof e>;
+      delete update.type;
+      return { ...state, treaties: update as TreatiesUpdate };
+    }
+    case "drift_over":
+      return { ...state, driftOver: e.reason };
     default:
       return state; // événement inconnu (nouveau RoundStep) : ignoré sans casser
   }

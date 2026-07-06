@@ -128,6 +128,42 @@ describe("réducteur de round", () => {
     });
   });
 
+  it("une motion déposée par une SI est signalée au fil", () => {
+    const state = play([
+      { type: "motion_filed", by: "usa", country: "iran", reason: "accapare le compute" },
+    ]);
+    expect(state.motionFiled).toEqual({
+      by: "usa",
+      country: "iran",
+      reason: "accapare le compute",
+    });
+  });
+
+  it("les traités ratifiés arrivent au panneau", () => {
+    const update = {
+      ratified: [
+        {
+          clause: "compute_cap",
+          signatories: ["usa", "iran"],
+          round_signed: 1,
+          threshold: 3.6,
+          integrity: 1,
+          active: true,
+        },
+      ],
+      rejected: [],
+      verifications: [],
+      active: [],
+    };
+    const state = play([{ type: "treaties", ...update }]);
+    expect(state.treaties?.ratified[0].clause).toBe("compute_cap");
+  });
+
+  it("drift_over porte la raison de fin de partie", () => {
+    const state = play([{ type: "drift_over", reason: "caught" }]);
+    expect(state.driftOver).toBe("caught");
+  });
+
   it("un flash est positionné après le tour courant", () => {
     const flash = { id: "f1", title: "Fait nouveau" };
     const state = play([

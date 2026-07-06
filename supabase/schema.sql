@@ -12,7 +12,7 @@ create table if not exists games (
   scenario    text not null,
   horizon     integer not null,
   mode        text not null default 'classic'
-              check (mode in ('classic', 'fog', 'crisis', 'escalation')),  -- R4
+              check (mode in ('classic', 'fog', 'crisis', 'escalation', 'drift')),  -- R4 + G3
   status      text not null default 'running' check (status in ('running', 'finished')),
   created_at  timestamptz not null default now()
 );

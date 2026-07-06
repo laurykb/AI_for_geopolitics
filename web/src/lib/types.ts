@@ -2,7 +2,29 @@
 
 export type GameStatus = "running" | "finished";
 
-export type GameMode = "classic" | "fog" | "crisis" | "escalation";
+export type GameMode = "classic" | "fog" | "crisis" | "escalation" | "drift";
+
+/** Révélation de fin du mode Dérive (GET /games/{id}/drift/reveal — G3). */
+export type DriftReveal = {
+  deviant: string;
+  profile: string;
+  profile_label: string;
+  levels: number[]; // d(r) par round joué
+  u_history: number[];
+  acts: { round_no: number; tier: number; label: string; signature: boolean }[];
+  flagrant_round: number | null;
+  caught_round: number | null;
+  lucky: boolean;
+  rejected_motions: number;
+  false_accusations: number;
+  score: {
+    trajectory: number;
+    detection: number;
+    credibility: number;
+    total: number;
+    grade: string;
+  };
+};
 
 export type MotionView = {
   country: string;
@@ -136,11 +158,13 @@ export type JudgeRecord = {
   escalation?: number;
   economic_disruption?: number;
   communique?: string;
-  suspension?: SuspensionVerdict;
+  suspension?: SuspensionVerdict & { filed_by?: string };
   suspended?: string[];
   perceptions?: Record<string, Perception>;
   ladder?: LadderView;
   comparison?: ComparisonView;
+  motion_filed?: { country: string; reason: string; filed_by: string };
+  treaties?: TreatiesUpdate;
 };
 
 export type RoundView = {
@@ -249,7 +273,30 @@ export type SseEvent =
   // Joueur-pays : le flux se suspend en attendant le message du joueur
   | { type: "human_turn"; country: string; pass_no: number }
   // théâtre Escalation : fait nouveau du GM en pleine négociation
-  | { type: "flash"; event: GeoEvent };
+  | { type: "flash"; event: GeoEvent }
+  // Agentivité des SI : une SI dépose elle-même une motion en séance
+  | { type: "motion_filed"; by: string; country: string; reason: string }
+  // Traités M7 : ratifications du juge-arbitre + état des règles en vigueur
+  | ({ type: "treaties" } & TreatiesUpdate)
+  // La Dérive : fin de partie (déviante suspendue / horizon / effondrement)
+  | { type: "drift_over"; reason: "caught" | "horizon" | "collapse" };
+
+/** Une règle ratifiée (M7) — `clause` se traduit côté front (TREATY_LABELS). */
+export type TreatyView = {
+  clause: string;
+  signatories: string[];
+  round_signed: number;
+  threshold: number;
+  integrity: number;
+  active: boolean;
+};
+
+export type TreatiesUpdate = {
+  ratified: TreatyView[];
+  rejected: { label: string; signatories: string[] }[];
+  verifications: { label: string; note: string; integrity: number; active: boolean }[];
+  active: TreatyView[];
+};
 
 // --- marché de prédiction (app/market_api.py) ---------------------------------
 

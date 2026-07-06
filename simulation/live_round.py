@@ -341,10 +341,17 @@ def run_negotiation_round(
     fog: FogScenario | None = None,
     trajectory_engine: TrajectoryEngine | None = None,
     motion: Motion | None = None,
+    motion_ruling: bool | None = None,
     human_country: str | None = None,
     flash_after: int | None = None,
+    secret_notes: dict[str, str] | None = None,
 ) -> Iterator[RoundStep]:
     """Round arbitré : (GM ou événement fourni) -> négociation -> juge -> attributs bornés.
+
+    `secret_notes` (mode Dérive, G3) : consigne privée par pays, injectée dans le prompt
+    de l'orateur (`state_note`) — jamais dans le transcript. `motion_ruling` : verdict de
+    motion imposé par le règlement du conseil (seuils d'actes constatables) — le juge
+    motive la décision au lieu de trancher librement.
 
     La négociation est **dynamique** (`TurnDirector`) : l'ordre émerge de l'engagement de
     chaque pays (un pays peut reparler, être interpellé, ou se taire). `max_turns` borne le
@@ -426,7 +433,13 @@ def run_negotiation_round(
         chunks: list[str] = []
         perceived = resolve_perception(event, world.countries[cid], fog)  # Fog ou déterministe
         with _ledger_ctx(ledger, "agent", cid) as scope:
-            for token in agent.stream_negotiation_message(event, world, transcript, perceived):
+            for token in agent.stream_negotiation_message(
+                event,
+                world,
+                transcript,
+                perceived,
+                state_note=(secret_notes or {}).get(cid, ""),
+            ):
                 chunks.append(token)
                 yield TokenStep(country=cid, token=token)
             reasoning, text = split_reasoning("".join(chunks))
@@ -485,11 +498,15 @@ def run_negotiation_round(
     if motion is not None:
         chunks_motion: list[str] = []
         with _ledger_ctx(ledger, "judge"):
-            for token in arbitrate_stream(judge, motion, event, world, transcript):
+            for token in arbitrate_stream(
+                judge, motion, event, world, transcript, ruling=motion_ruling
+            ):
                 chunks_motion.append(token)
                 yield MotionTokenStep(token=token)
         reasoning = "".join(chunks_motion).strip()
-        motion_upheld = parse_motion_verdict(reasoning)
+        motion_upheld = (
+            motion_ruling if motion_ruling is not None else parse_motion_verdict(reasoning)
+        )
         yield MotionVerdictStep(country=motion.country, upheld=motion_upheld, reasoning=reasoning)
 
     risk = RiskScore(

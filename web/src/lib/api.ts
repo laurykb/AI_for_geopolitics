@@ -2,6 +2,7 @@
 
 import type {
   CreateGameBody,
+  DriftReveal,
   GameDetail,
   GameView,
   LibraryView,
@@ -58,6 +59,10 @@ export const getLibrary = (): Promise<LibraryView> => request("/api/library");
 
 /** Provenance des attributs pays (onglet Informations) : brut, source, transformation. */
 export const getSources = (): Promise<SourcesView> => request("/api/sources");
+
+/** Révélation de fin du mode Dérive (G3) — 409 tant que la partie court. */
+export const getDriftReveal = (gameId: string): Promise<DriftReveal> =>
+  request(`/api/games/${gameId}/drift/reveal`);
 
 /** Dépose une motion de suspension (R4) — débattue puis arbitrée au prochain round. */
 export const fileMotion = (
