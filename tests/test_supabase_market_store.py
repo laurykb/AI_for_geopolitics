@@ -92,3 +92,15 @@ def test_positions_filtered_by_market(store):
     engine.place_bet(alice.id, m1.id, m1.outcomes[0].id, 2.0)
     assert store.get_position(alice.id, m1.outcomes[0].id).shares == pytest.approx(7.0)
     assert len(store.list_positions(account_id=alice.id)) == 2
+
+
+def test_game_id_link_roundtrip(store):
+    engine = MarketEngine(store)
+    linked = engine.open_binary_market(
+        round_id=1, game_id="game42", question="Utopie ?", b=50.0
+    )
+    engine.open_binary_market(round_id=1, question="autre", b=50.0)
+
+    assert store.get_market(linked.id).game_id == "game42"
+    assert [m.id for m in store.list_markets(game_id="game42")] == [linked.id]
+    assert store.list_markets(game_id="inconnu") == []

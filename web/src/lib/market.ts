@@ -1,12 +1,12 @@
 /** Client du marché de prédiction (`app/market_api.py`) — un marché par partie.
  *
- * Le store marché n'a pas de notion de partie (les marchés portent un `round_id` entier) :
- * on dérive un id stable du hash hexadécimal de la partie. Filtrage ET résolution restent
- * ainsi isolés par partie sans toucher au back (le vrai lien viendra avec le schéma R2).
+ * Depuis R2, le marché porte le vrai lien `game_id` (filtrage par partie). Le
+ * `round_id` dérivé du hash de la partie reste pour la **résolution** (l'endpoint
+ * `/api/rounds/{round_id}/resolve` raisonne par round) — même dérivation côté back.
  */
 
 import { API_BASE, ApiError } from "./api";
-import type { AccountView, LeaderboardEntry, MarketView, TradeView } from "./types";
+import type { AccountView, BotRunView, LeaderboardEntry, MarketView, TradeView } from "./types";
 
 const ACCOUNT_KEY = "si-theatre.market-account";
 
@@ -34,9 +34,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 /** Marché « utopie finale » de la partie, s'il a déjà été ouvert. */
 export async function getGameMarket(gameId: string): Promise<MarketView | null> {
-  const markets = await request<MarketView[]>(
-    `/api/markets?round_id=${marketRoundId(gameId)}`,
-  );
+  const markets = await request<MarketView[]>(`/api/markets?game_id=${gameId}`);
   return markets[0] ?? null;
 }
 
@@ -44,13 +42,19 @@ export function openGameMarket(gameId: string): Promise<MarketView> {
   return request<MarketView>("/api/markets", {
     method: "POST",
     body: JSON.stringify({
-      round_id: marketRoundId(gameId),
+      round_id: marketRoundId(gameId), // compat résolution par round
+      game_id: gameId,
       question: `Le monde finira-t-il côté utopie (indice > 0,5) ? — partie ${gameId}`,
       b: 100,
       labels: ["YES", "NO"],
       criterion: { kind: "trajectory" }, // résolu sur ΔU = U final − 0,5
     }),
   });
+}
+
+/** Fait coter le marché de la partie par le bot forecaster (après chaque round). */
+export function runMarketBot(gameId: string): Promise<BotRunView> {
+  return request<BotRunView>(`/api/games/${gameId}/market/bot`, { method: "POST" });
 }
 
 /** Compte humain du navigateur (créé une fois, retrouvé via localStorage). */

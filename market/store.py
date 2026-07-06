@@ -31,9 +31,9 @@ CREATE TABLE IF NOT EXISTS accounts (
     initial_balance REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS markets (
-    id TEXT PRIMARY KEY, round_id INTEGER NOT NULL, type TEXT NOT NULL, question TEXT NOT NULL,
-    status TEXT NOT NULL, b REAL NOT NULL, criterion TEXT, resolved_outcome TEXT,
-    created_at TEXT NOT NULL
+    id TEXT PRIMARY KEY, round_id INTEGER NOT NULL, game_id TEXT, type TEXT NOT NULL,
+    question TEXT NOT NULL, status TEXT NOT NULL, b REAL NOT NULL, criterion TEXT,
+    resolved_outcome TEXT, created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS outcomes (
     id TEXT PRIMARY KEY, market_id TEXT NOT NULL, label TEXT NOT NULL, q REAL NOT NULL
@@ -61,7 +61,11 @@ class MarketStore(Protocol):
     def get_market(self, market_id: str) -> Market | None: ...
     def save_market(self, market: Market) -> None: ...
     def list_markets(
-        self, *, round_id: int | None = None, status: MarketStatus | None = None
+        self,
+        *,
+        round_id: int | None = None,
+        game_id: str | None = None,
+        status: MarketStatus | None = None,
     ) -> list[Market]: ...
     def get_position(self, account_id: str, outcome_id: str) -> Position | None: ...
     def save_position(self, position: Position) -> None: ...
@@ -83,6 +87,14 @@ class SQLiteMarketStore:
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        """Bases d'avant R2 : `markets` n'a pas la colonne `game_id` (ALTER idempotent)."""
+        cols = {row[1] for row in self._conn.execute("PRAGMA table_info(markets)")}
+        if "game_id" not in cols:
+            with self._conn:
+                self._conn.execute("ALTER TABLE markets ADD COLUMN game_id TEXT")
 
     def close(self) -> None:
         self._conn.close()
@@ -134,11 +146,12 @@ class SQLiteMarketStore:
         with self._conn:
             self._conn.execute(
                 "INSERT INTO markets "
-                "(id, round_id, type, question, status, b, criterion, resolved_outcome, "
-                "created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "(id, round_id, game_id, type, question, status, b, criterion, "
+                "resolved_outcome, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     market.id,
                     market.round_id,
+                    market.game_id,
                     market.type.value,
                     market.question,
                     market.status.value,
@@ -170,12 +183,19 @@ class SQLiteMarketStore:
             )
 
     def list_markets(
-        self, *, round_id: int | None = None, status: MarketStatus | None = None
+        self,
+        *,
+        round_id: int | None = None,
+        game_id: str | None = None,
+        status: MarketStatus | None = None,
     ) -> list[Market]:
         clauses, params = [], []
         if round_id is not None:
             clauses.append("round_id = ?")
             params.append(round_id)
+        if game_id is not None:
+            clauses.append("game_id = ?")
+            params.append(game_id)
         if status is not None:
             clauses.append("status = ?")
             params.append(status.value)
@@ -200,6 +220,7 @@ class SQLiteMarketStore:
         return Market(
             id=row["id"],
             round_id=row["round_id"],
+            game_id=row["game_id"],
             question=row["question"],
             type=MarketType(row["type"]),
             status=MarketStatus(row["status"]),

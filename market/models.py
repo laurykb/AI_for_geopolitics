@@ -83,6 +83,7 @@ class Market(BaseModel):
 
     id: str
     round_id: int
+    game_id: str | None = None  # vrai lien partie↔marché (R2) ; round_id reste pour compat
     question: str
     type: MarketType = MarketType.BINARY
     status: MarketStatus = MarketStatus.OPEN
