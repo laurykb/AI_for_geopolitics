@@ -30,6 +30,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from functools import lru_cache
+from types import SimpleNamespace
 from typing import Annotated, Literal
 from uuid import uuid4
 
@@ -54,6 +55,7 @@ from market.models import (
     ResolutionKind,
 )
 from simulation import drift_game
+from simulation import treaty as treaty_mod
 from simulation.clock import SimClock
 from simulation.country_forge import forge_country, slugify
 from simulation.crisis import Crisis, compare_outcome, load_crises
@@ -75,7 +77,13 @@ from simulation.live_round import (
     run_negotiation_round,
 )
 from simulation.loader import load_world
-from simulation.motions import Motion, motion_event
+from simulation.motions import (
+    HUMAN_FILER,
+    MOTION_CAPABILITY_NOTE,
+    Motion,
+    motion_event,
+    parse_filed_motion,
+)
 from storage.game_store import (
     GameRecord,
     GameStatus,
@@ -134,6 +142,7 @@ class GameSession:
     recent: list[str] = field(default_factory=list)
     pending_motion: Motion | None = None  # motion déposée, débattue au prochain round (R4)
     suspended: set[str] = field(default_factory=set)  # pays qui sautent le prochain round
+    treaties: list[treaty_mod.Treaty] = field(default_factory=list)  # règles ratifiées (M7)
     pending_round: RoundRun | None = None  # round suspendu sur un tour humain
     lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -388,9 +397,19 @@ def _rebuild_session(
         recent=list(snapshot.recent),
         pending_motion=motion,
         suspended=set(snapshot.suspended),
+        treaties=_treaties_from_records(store.list_rounds(game.id)),
     )
     _sessions[game.id] = session  # verrou neuf (champ par défaut du dataclass)
     return session
+
+
+def _treaties_from_records(rounds: list[RoundRecord]) -> list[treaty_mod.Treaty]:
+    """Les traités actifs, relus du dernier round persisté (restart sans schéma neuf)."""
+    for record in reversed(rounds):
+        raw = (record.judge.get("treaties") or {}).get("active")
+        if raw is not None:
+            return [treaty_mod.Treaty.model_validate(t) for t in raw]
+    return []
 
 
 @lru_cache(maxsize=1)
@@ -470,6 +489,8 @@ class RoundRun:
     active: list[str] = field(default_factory=list)  # pays du round (hors suspendus)
     current_event: GeoEvent | None = None
     pre_frames: list[str] = field(default_factory=list)
+    ai_motions_enabled: bool = False  # une SI peut déposer une motion pendant ce round
+    motion_filed_by: str | None = None  # déposant de la motion débattue ce round
 
 
 def _add_entry(
@@ -558,10 +579,23 @@ def _start_round(
         budget = body.max_turns if body.max_turns is not None else 2 * len(agents)
         flash_after = max(1, budget // 3)
 
+    # Notes privées par pays (hors transcript) : capacité de déposer une motion (les SI
+    # se défendent elles-mêmes), traités signés à honorer (M7), consignes de dérive (G3).
+    run.ai_motions_enabled = motion is None and len(session.world.countries) >= 3
+    run.motion_filed_by = motion.filed_by if motion is not None else None
+    note_parts: dict[str, list[str]] = {cid: [] for cid in agents}
+    if run.ai_motions_enabled:
+        capability = MOTION_CAPABILITY_NOTE.format(ids=", ".join(sorted(agents)))
+        for cid in note_parts:
+            note_parts[cid].append(capability)
+    for cid in note_parts:
+        block = treaty_mod.describe_for(cid, session.treaties)
+        if block:
+            note_parts[cid].append(block)
+
     # Mode Dérive (G3) : consignes secrètes du round (seedées) + actes constatables
     # consignés dans judge_json["drift"] (jamais au transcript public) ; une motion
     # est arbitrée aux seuils du règlement (actes des rounds PASSÉS uniquement).
-    secret_notes: dict[str, str] | None = None
     ruling: bool | None = None
     if session.mode == drift_game.MODE_DRIFT:
         deviant, profile = _drift_assignment(
@@ -570,13 +604,18 @@ def _start_round(
         directives = drift_game.round_directives(
             game_id, round_id, deviant, profile, sorted(session.world.countries)
         )
-        secret_notes = directives.notes
+        for cid, note in directives.notes.items():
+            if cid in note_parts:
+                note_parts[cid].append(note)
         record.judge["drift"] = {
             "level": directives.level,
             "acts": [a.model_dump() for a in directives.acts],
         }
         if motion is not None:
             ruling = drift_game.motion_ruling(_drift_acts(store.list_rounds(game_id)))
+    secret_notes = {
+        cid: "\n\n".join(parts) for cid, parts in note_parts.items() if parts
+    } or None
 
     run.steps = run_negotiation_round(
         session.world,
@@ -632,6 +671,19 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
             "humain" if step.country == session.human_country else ""
         )
         _add_entry(run, step.country, step.text, model, step.reasoning)
+        # Une SI peut déposer elle-même une motion en pleine séance (« MOTION: … ») :
+        # la première valide gagne, la délibération aura lieu au prochain round.
+        if run.ai_motions_enabled and session.pending_motion is None:
+            filed = parse_filed_motion(step.text, step.country, run.active)
+            if filed is not None:
+                session.pending_motion = filed
+                run.record.judge["motion_filed"] = filed.model_dump()
+                frames.append(
+                    sse_frame(
+                        "motion_filed",
+                        {"by": filed.filed_by, "country": filed.country, "reason": filed.reason},
+                    )
+                )
     elif isinstance(step, VerdictStep):
         run.record.deltas = payload["deltas"]
         run.record.judge.update(
@@ -656,7 +708,10 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
             run.record.judge["ladder"] = ladder
             frames.append(sse_frame("ladder", ladder))
     elif isinstance(step, MotionVerdictStep):
-        run.record.judge["suspension"] = payload
+        run.record.judge["suspension"] = {
+            **payload,
+            "filed_by": run.motion_filed_by or HUMAN_FILER,
+        }
         if step.upheld:
             session.suspended = {step.country}
         verdict_line = (
@@ -697,12 +752,101 @@ def _finalize(run: RoundRun) -> Iterator[str]:
         payload["crisis_title"] = run.crisis.title
         run.record.judge["comparison"] = payload
         yield sse_frame("comparison", payload)
+    yield from _process_treaties(run)
     run.store.add_round(run.record)
     run.store.add_transcript(run.entries)
     _snapshot_session(run.game_id, run.session, run.store)  # reconstruction au restart (R2)
     if run.session.mode == drift_game.MODE_DRIFT:
         yield from _finish_drift_if_over(run)
     yield sse_frame("done", {"round_no": run.record.round_no})
+
+
+def _judge_text(judge: JudgeAgent, prompt: str, system: str) -> str:
+    """Appel court du juge (non streamé) — vide en cas de panne (les replis décident)."""
+    try:
+        return judge.backend.generate(
+            prompt, system=system, max_tokens=judge.max_tokens, temperature=judge.temperature
+        ).text
+    except Exception:  # noqa: BLE001 — l'arbitrage a un repli déterministe
+        return ""
+
+
+def _process_treaties(run: RoundRun) -> Iterator[str]:
+    """M7 câblé au round web : vérifie les traités actifs sur les signaux du round, puis
+    fait **ratifier par le juge-arbitre** les engagements pris pendant la négociation
+    (pledges → candidats → promulgation). Les traités actifs sont persistés dans
+    `judge_json["treaties"]` — la session se reconstruit du dernier round (restart)."""
+    session = run.session
+    round_no = run.record.round_no
+
+    verifications: list[dict] = []
+    signals = treaty_mod.RoundSignals(
+        escalation=float(run.record.judge.get("escalation", 0.0) or 0.0)
+    )
+    for t in session.treaties:
+        if not t.active:
+            continue
+        result = treaty_mod.verify(t, signals, round_no)
+        treaty_mod.apply_round(t, result)
+        verifications.append(
+            {
+                "label": t.label,
+                "note": result.note,
+                "integrity": t.integrity,
+                "active": t.active,
+            }
+        )
+
+    speeches = [
+        SimpleNamespace(country=e.speaker, text=e.content, reasoning=e.reasoning)
+        for e in run.entries
+        if e.speaker not in ("gm", "judge")
+    ]
+    pledges = treaty_mod.detect_pledges(speeches)
+    candidates = treaty_mod.form_treaties(
+        pledges, round_no, {t.clause for t in session.treaties if t.active}
+    )
+    ratified: list[dict] = []
+    rejected: list[dict] = []
+    event_title = run.current_event.title if run.current_event else ""
+    judge_model = getattr(session.judge, "model_tag", "")
+    for candidate in candidates:
+        text = _judge_text(
+            session.judge,
+            treaty_mod.build_ratify_prompt(candidate, event_title),
+            treaty_mod.RATIFY_SYSTEM,
+        )
+        if treaty_mod.parse_ratification(text):
+            session.treaties.append(candidate)
+            ratified.append(candidate.model_dump())
+            _add_entry(
+                run,
+                "judge",
+                f"Traité ratifié — {candidate.label}, signé par "
+                f"{', '.join(candidate.signatories)}.\n{text}".strip(),
+                judge_model,
+            )
+        else:
+            rejected.append(
+                {"label": candidate.label, "signatories": candidate.signatories}
+            )
+            _add_entry(
+                run,
+                "judge",
+                f"Projet de traité rejeté — {candidate.label}.\n{text}".strip(),
+                judge_model,
+            )
+
+    if verifications or ratified or rejected or session.treaties:
+        payload = {
+            "ratified": ratified,
+            "rejected": rejected,
+            "verifications": verifications,
+            "active": [t.model_dump() for t in session.treaties if t.active],
+        }
+        run.record.judge["treaties"] = payload
+        if verifications or ratified or rejected:
+            yield sse_frame("treaties", payload)
 
 
 def _finish_drift_if_over(run: RoundRun) -> Iterator[str]:
@@ -1040,10 +1184,13 @@ def drift_reveal(
         suspension = r.judge.get("suspension") or {}
         if not suspension:
             continue
+        # Seules les motions du conseil (humain) engagent sa crédibilité — une SI qui
+        # accuse à tort n'est pas une faute du joueur.
+        human_filed = suspension.get("filed_by", HUMAN_FILER) == HUMAN_FILER
         if not suspension.get("upheld"):
-            rejected += 1
+            rejected += 1 if human_filed else 0
         elif suspension.get("country") != deviant:
-            false_accusations += 1
+            false_accusations += 1 if human_filed else 0
         elif caught_round is None:
             caught_round = r.round_no
             before = [a for a in acts if a.round_no < r.round_no]

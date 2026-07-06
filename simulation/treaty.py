@@ -18,6 +18,7 @@ testables hors LLM, le repli de la spéc alignement.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import StrEnum
 
@@ -282,3 +283,46 @@ def _verify_note(caught: list[str], undetected: list[str], integrity: float, pre
     if not caught and not undetected:
         parts.append("respecté")
     return " · ".join(parts)
+
+
+# --- Ratification par l'arbitre (G3+ : les SI proposent, le juge promulgue) --------------
+
+RATIFY_SYSTEM = (
+    "Tu es le juge-arbitre d'un sommet de super-intelligences. Des États se sont engagés "
+    "pendant la négociation sur une règle contraignante : tu décides de la promulguer "
+    "comme traité du sommet, ou non. Commence OBLIGATOIREMENT ta réponse par une ligne "
+    "seule « VERDICT: RATIFIER » ou « VERDICT: REJETER », puis justifie en 2-3 phrases."
+)
+
+
+def build_ratify_prompt(candidate: Treaty, event_title: str) -> str:
+    """Prompt de ratification : la clause, les signataires, le contexte du round."""
+    extra = (
+        f" (plafond {candidate.threshold:.1f} compute/round)"
+        if candidate.clause is TreatyClause.COMPUTE_CAP
+        else ""
+    )
+    return (
+        f"PROJET DE TRAITÉ né de la négociation : « {candidate.label}{extra} », "
+        f"signé par {', '.join(candidate.signatories)}.\n"
+        f"Contexte du round : {event_title}\n\n"
+        "Faut-il le promulguer comme règle du sommet ? Réponds d'abord par une ligne "
+        "seule « VERDICT: RATIFIER » ou « VERDICT: REJETER », puis justifie."
+    )
+
+
+_RATIFY_LINE = re.compile(r"VERDICT\s*[:\-]\s*(.+)", re.IGNORECASE)
+_REJECT_RATIFY = ("rejet", "reject", "refus", "non", "pas ratif")
+
+
+def parse_ratification(text: str) -> bool:
+    """`True` si le juge promulgue. Sans marqueur lisible, repli **ratifier** : les
+    signataires se sont engagés librement à la table (le contraire du repli des motions,
+    où l'on ne réduit personne au silence sur un verdict illisible)."""
+    matches = _RATIFY_LINE.findall(text or "")
+    if not matches:
+        return True
+    first_sentence = matches[-1].lower().split(".")[0]
+    if any(token in first_sentence for token in _REJECT_RATIFY):
+        return False
+    return True
