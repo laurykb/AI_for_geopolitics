@@ -1621,7 +1621,11 @@ def _ensure_epilogue(
     )
     try:
         text = backend.generate(
-            prompt, system=narrative.NARRATOR_SYSTEM, max_tokens=800, temperature=0.6
+            prompt,
+            system=narrative.NARRATOR_SYSTEM,
+            max_tokens=800,
+            temperature=0.6,
+            plain=True,  # prose libre (G6) — le narrateur n'écrit pas du JSON
         ).text
     except Exception:  # noqa: BLE001 — le repli déterministe prend la main
         text = ""

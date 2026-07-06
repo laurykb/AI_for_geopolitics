@@ -44,8 +44,11 @@ class InferenceBackend(ABC):
         max_tokens: int = 512,
         temperature: float = 0.7,
         schema: dict[str, Any] | None = None,
+        plain: bool = False,
     ) -> InferenceResult:
-        """Génère une complétion pour `prompt` et renvoie le texte + la télémétrie."""
+        """Génère une complétion pour `prompt` et renvoie le texte + la télémétrie.
+
+        `plain=True` (G6) : prose libre, sans contrainte JSON — pour le narrateur."""
         raise NotImplementedError
 
     def stream_generate(

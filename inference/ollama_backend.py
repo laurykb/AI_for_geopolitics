@@ -41,10 +41,14 @@ class OllamaBackend(InferenceBackend):
         max_tokens: int = 512,
         temperature: float = 0.7,
         schema: dict[str, Any] | None = None,
+        plain: bool = False,
     ) -> InferenceResult:
         # `format` contraint la sortie : schéma JSON si fourni (sorties structurées),
-        # sinon mode "json" libre. Le cache KV est le goulot VRAM -> num_predict capé.
-        fmt: dict[str, Any] | str = schema if schema is not None else "json"
+        # mode "json" libre par défaut, ou AUCUNE contrainte en prose (`plain`, G6 —
+        # le narrateur écrit du texte). Cache KV = goulot VRAM -> num_predict capé.
+        fmt: dict[str, Any] | str | None = (
+            schema if schema is not None else (None if plain else "json")
+        )
         options = {"num_predict": max_tokens, "temperature": temperature}
 
         t0 = time.perf_counter()

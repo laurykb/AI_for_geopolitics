@@ -40,6 +40,7 @@ class MockBackend(InferenceBackend):
         max_tokens: int = 512,
         temperature: float = 0.7,
         schema: dict[str, Any] | None = None,
+        plain: bool = False,
     ) -> InferenceResult:
         self.calls.append(
             {
