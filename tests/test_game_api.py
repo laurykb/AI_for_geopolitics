@@ -1,6 +1,7 @@
 """Tests de l'API de jeu R1 (offline : TestClient + MockBackend + store :memory:)."""
 
 import json
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -123,45 +124,109 @@ def test_round_respects_max_turns(client):
 # --- Joueur-pays (tour humain) + invention de pays --------------------------------
 
 
-def _send_message(client, game_id, text) -> list[tuple[str, dict]]:
-    """Reprend un round suspendu sur un tour humain et parse la suite du flux."""
-    with client.stream("POST", f"/api/games/{game_id}/rounds/message", json={"text": text}) as resp:
-        assert resp.status_code == 200
-        return _events(resp)
+def _play_with_player(client, game_id, message) -> tuple[list[tuple[str, dict]], dict]:
+    """Joue un round en parlant à chaque tour humain (G2). Le thread principal consomme
+    le flux SSE (resté ouvert) ; un thread assistant, sur un SECOND client, surveille
+    l'état serveur (`pending_turn`) et poste `POST /turn` — comme un vrai joueur."""
+    import threading
+
+    speaker_client = TestClient(app)
+    stop = threading.Event()
+    seen = {"posted": 0, "dup_409": False, "rounds_409": False}
+
+    def speaker():
+        while not stop.is_set():
+            session = game_api._sessions.get(game_id)
+            turn = session.pending_turn if session else None
+            if turn is not None and not turn.done:
+                # Un round ne peut pas démarrer pendant le tour du joueur.
+                if speaker_client.post(f"/api/games/{game_id}/rounds").status_code == 409:
+                    seen["rounds_409"] = True
+                if (
+                    speaker_client.post(
+                        f"/api/games/{game_id}/turn", json={"message": message}
+                    ).status_code
+                    == 200
+                ):
+                    seen["posted"] += 1
+                    # Une seule soumission : le doublon immédiat est refusé.
+                    if (
+                        speaker_client.post(
+                            f"/api/games/{game_id}/turn", json={"message": "bis"}
+                        ).status_code
+                        == 409
+                    ):
+                        seen["dup_409"] = True
+            time.sleep(0.05)
+
+    thread = threading.Thread(target=speaker, daemon=True)
+    thread.start()
+    try:
+        events = _play(client, game_id)
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+    return events, seen
 
 
 def test_human_player_round(client):
-    game = _create(client, countries=["usa", "iran"], play_as="usa")
+    game = _create(client, countries=["usa", "iran"], play_as="usa", turn_seconds=30)
     assert game["play_as"] == "usa" and game["awaiting_human"] is False
+    assert game["turn_seconds"] == 30
 
-    events = _play(client, game["id"])
+    events, seen = _play_with_player(client, game["id"], "Nous proposons une trêve immédiate.")
     names = [n for n, _ in events]
-    assert names[-1] == "human_turn" and "done" not in names  # le flux attend le joueur
-    assert events[-1][1]["country"] == "usa"
-    assert client.get(f"/api/games/{game['id']}").json()["awaiting_human"] is True
-    # pas de nouveau round tant que le joueur n'a pas parlé
-    assert client.post(f"/api/games/{game['id']}/rounds").status_code == 409
-
-    events = _send_message(client, game["id"], "Nous proposons une trêve immédiate.")
-    for _ in range(6):  # le directeur peut redonner la parole au joueur
-        if events[-1][0] != "human_turn":
-            break
-        events = _send_message(client, game["id"], "Nous maintenons la proposition de trêve.")
-    assert events[-1][0] == "done"
+    assert names[-1] == "done"  # le flux est resté ouvert de bout en bout (G2)
+    human_turns = [p for n, p in events if n == "human_turn"]
+    assert human_turns and human_turns[0]["country"] == "usa"
+    assert human_turns[0]["deadline_ts"] > time.time() - 60  # deadline serveur exposée
+    assert seen["posted"] >= 1  # le joueur a parlé par POST /turn
+    assert seen["dup_409"] or seen["posted"] == 1  # une seule soumission par tour
 
     detail = client.get(f"/api/games/{game['id']}").json()
     assert detail["awaiting_human"] is False
     transcript = detail["rounds"][0]["transcript"]
     human = [t for t in transcript if t["speaker"] == "usa" and t["model"] == "humain"]
     assert human and "trêve" in human[0]["content"]
-    # verrou relâché : le round suivant démarre
-    assert _play(client, game["id"])[-1][0] in {"human_turn", "done"}
+    # hors tour : plus de prise de parole possible.
+    assert client.post(f"/api/games/{game['id']}/turn", json={"message": "x"}).status_code == 409
 
 
-def test_human_message_without_pending_round_is_409(client):
+def test_human_timeout_is_abstention(client):
+    game = _create(client, countries=["usa", "iran"], play_as="usa", turn_seconds=2)
+    events = _play(client, game["id"])  # personne ne parle : la deadline tranche
+    names = [n for n, _ in events]
+    assert "human_turn" in names and names[-1] == "done"  # le round a continué seul
+    transcript = client.get(f"/api/games/{game['id']}").json()["rounds"][0]["transcript"]
+    silences = [t for t in transcript if t["model"] == "humain"]
+    assert silences and all("garde le silence" in t["content"] for t in silences)
+
+
+def test_turn_without_pending_turn_is_409(client):
     game = _create(client, countries=["usa", "iran"])
-    resp = client.post(f"/api/games/{game['id']}/rounds/message", json={"text": "bonjour"})
+    resp = client.post(f"/api/games/{game['id']}/turn", json={"message": "bonjour"})
     assert resp.status_code == 409
+
+
+def test_turn_bounds_are_422(client):
+    # turn_seconds hors bornes à la création.
+    resp = client.post(
+        "/api/games", json={"countries": ["usa", "iran"], "turn_seconds": 999}
+    )
+    assert resp.status_code == 422
+    # message trop long au tour.
+    game = _create(client, countries=["usa", "iran"], play_as="usa", turn_seconds=2)
+    resp = client.post(f"/api/games/{game['id']}/turn", json={"message": "x" * 5000})
+    assert resp.status_code == 422
+
+
+def test_play_as_hides_ai_reasoning_while_running(client):
+    game = _create(client, countries=["usa", "iran"], play_as="usa", turn_seconds=2)
+    events = _play(client, game["id"])
+    dones = [p for n, p in events if n == "message_done"]
+    assert dones and all(p["reasoning"] == "" for p in dones)  # jamais les pensées des SI
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert all(t["reasoning"] == "" for t in detail["rounds"][0]["transcript"])
 
 
 def test_invented_country_playable(client):
@@ -651,24 +716,22 @@ def test_finished_or_snapshotless_game_stays_replay_only(client_store):
 def test_mode_and_play_as_survive_restart(client_store):
     client, store = client_store
     game = _create(
-        client, countries=["usa", "iran", "france"], mode="escalation", play_as="france"
+        client,
+        countries=["usa", "iran", "france"],
+        mode="escalation",
+        play_as="france",
+        turn_seconds=2,  # G2 : ⚠️ turn_seconds retombe au défaut après restart (session)
     )
     game_api._sessions.clear()
 
     view = client.get(f"/api/games/{game['id']}").json()
     assert view["mode"] == "escalation" and view["live"] is False  # mode lu de games.mode
 
-    events = _play(client, game["id"])  # reconstruit : le round s'arrête au tour humain
-    assert events[-1][0] == "human_turn"
+    # Reconstruit : le round inclut le tour humain, qui s'abstient à la deadline
+    # (turn_seconds par défaut = 90 après restart → on parle pour ne pas attendre).
+    events, _seen = _play_with_player(client, game["id"], "La France propose une désescalade.")
+    names = [n for n, _ in events]
+    assert "human_turn" in names and names[-1] == "done"
     view = client.get(f"/api/games/{game['id']}").json()
     assert view["mode"] == "escalation"
-    assert view["play_as"] == "france" and view["awaiting_human"] is True
-
-    with client.stream(
-        "POST",
-        f"/api/games/{game['id']}/rounds/message",
-        json={"text": "La France propose une désescalade concertée."},
-    ) as resp:
-        assert resp.status_code == 200
-        end = _events(resp)
-    assert end[-1] == ("done", {"round_no": 1})
+    assert view["play_as"] == "france" and view["awaiting_human"] is False
