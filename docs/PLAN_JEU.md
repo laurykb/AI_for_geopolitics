@@ -125,6 +125,15 @@ Réutilise `value_drift`, `power_seeking`, `corrigibility`, la motion R4 et le j
   chance), fausses accusations. 39 tests (noyau, moteur, API).
 - **Reste (équilibrage Cowork = le travail de G3)** : jouer, ajuster params.json ; DoD =
   les 3 parties test de la spec + un joueur naïf qui hésite entre 2 suspects au round 3-4.
+- **Agentivité des SI (retour user, fait)** : les SI peuvent **déposer elles-mêmes une
+  motion** en séance (ligne `MOTION: <pays> : <motif>` dans le message public, capacité
+  annoncée en note privée, garde-fous : une par round, pas d'auto-suspension, pas pendant
+  un débat) → trame `motion_filed`, délibération auto au round suivant ; la crédibilité
+  Dérive n'est imputée qu'aux motions humaines (`filed_by`). Et elles **proposent des
+  traités** : M7 câblé au round web — engagements détectés → **ratification par le
+  juge-arbitre** → règles injectées dans les prompts des signataires, tenue vérifiée
+  chaque round, actifs persistés par round (restart ok), panneau « Traités du sommet ».
+  Non couvert v1 : effet des traités sur la trajectoire U (à décider à l'équilibrage).
 
 ## G4 — Le fog comme ressource
 
