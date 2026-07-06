@@ -284,7 +284,38 @@ export type SseEvent =
   // La Dérive : fin de partie (déviante suspendue / horizon / effondrement)
   | { type: "drift_over"; reason: "caught" | "horizon" | "collapse" }
   // G4 : le théâtre voit que le conseil a consulté ses services (jamais le contenu)
-  | { type: "intel"; actions: { action: string; exposed?: boolean }[] };
+  | { type: "intel"; actions: { action: string; exposed?: boolean }[] }
+  // G5 : fin d'un chapitre de campagne — le bilan « vous vs l'Histoire »
+  | {
+      type: "campaign_over";
+      chapter_id: string;
+      base: number;
+      bonus: number;
+      score: number;
+      improvement: number;
+    };
+
+/** Carte de campagne (GET /api/campaign — G5). */
+export type ChapterView = {
+  id: string;
+  crisis_id: string;
+  title: string;
+  mode: GameMode;
+  difficulty: number;
+  horizon: number;
+  blurb: string;
+  best: number | null;
+  improvement: number | null;
+  medal: "or" | "argent" | "bronze" | null;
+  unlocked: boolean;
+};
+
+export type CampaignView = {
+  title: string;
+  tagline: string;
+  unlock_score: number;
+  chapters: ChapterView[];
+};
 
 /** Résultat d'un achat de renseignement (POST /games/{id}/intel — G4). */
 export type IntelResult = {

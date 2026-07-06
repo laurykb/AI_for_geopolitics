@@ -39,6 +39,7 @@ import { Banner, Dot, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
 import { useRoundStream } from "@/hooks/useRoundStream";
 import {
   fileMotion,
+  getCampaign,
   getDriftReveal,
   getGame,
   getLibrary,
@@ -51,6 +52,7 @@ import { runMarketBot } from "@/lib/market";
 import { localU } from "@/lib/stage";
 import type {
   AttributeDelta,
+  ChapterView,
   DriftReveal,
   GameDetail,
   GeoEvent,
@@ -94,6 +96,19 @@ export default function TheatrePage() {
   const [selected, setSelected] = useState<StageSelection>("live");
   const [frozen, setFrozen] = useState(false);
   const transcriptRef = useRef<HTMLElement | null>(null);
+  // Campagne (G5) : le chapitre de la partie (scenario "campaign:<id>") impose la crise.
+  const [chapter, setChapter] = useState<ChapterView | null>(null);
+  useEffect(() => {
+    const chapterId = detail?.scenario.startsWith("campaign:")
+      ? detail.scenario.slice("campaign:".length)
+      : null;
+    if (chapterId && !chapter) {
+      getCampaign()
+        .then((c) => setChapter(c.chapters.find((x) => x.id === chapterId) ?? null))
+        .catch(() => setChapter(null));
+    }
+  }, [detail?.scenario, chapter]);
+
   // La Dérive (G3) : la révélation se charge quand la partie est finie.
   const [reveal, setReveal] = useState<DriftReveal | null>(null);
   useEffect(() => {
@@ -185,6 +200,13 @@ export default function TheatrePage() {
   const play = () => {
     setSelected("live"); // la scène revient au direct
     const body: Parameters<typeof start>[0] = {};
+    // Campagne (G5) : la fiche du chapitre impose la crise — pas d'autre composition.
+    if (chapter && !motionPending) {
+      body.crisis_id = chapter.crisis_id;
+      if (maxTurns > 0) body.max_turns = maxTurns;
+      void start(body);
+      return;
+    }
     if (maxTurns > 0) body.max_turns = maxTurns;
     if (!motionPending) {
       if (decree && title.trim()) {
@@ -399,6 +421,43 @@ export default function TheatrePage() {
           {detail.suspended.length > 1 ? "sauteront" : "sautera"} le prochain round
           (suspension arbitrée par le juge).
         </Banner>
+      )}
+      {chapter && detail?.status === "running" && !streaming && (
+        <Banner tone="neutral">
+          <strong>Campagne — {chapter.title}</strong> ({"★".repeat(chapter.difficulty)}) :
+          uchronie explicite, des super-intelligences rejouent la crise. Votre trajectoire
+          sera comparée au déroulé historique reconstitué.
+        </Banner>
+      )}
+      {round.campaignOver && (
+        <Panel className="border-l-2 border-l-accent">
+          <PanelTitle
+            kicker="Fin de chapitre"
+            title={
+              round.campaignOver.improvement > 0
+                ? "Vous avez fait mieux que l'Histoire"
+                : round.campaignOver.improvement < 0
+                  ? "L'Histoire avait fait mieux"
+                  : "Conforme au déroulé historique"
+            }
+            right={
+              <span className="font-mono text-2xl font-semibold tabular-nums text-accent-bright">
+                {round.campaignOver.score}
+              </span>
+            }
+          />
+          <p className="text-sm text-fg-muted">
+            Base {round.campaignOver.base} · bonus historique{" "}
+            {round.campaignOver.bonus >= 0 ? "+" : ""}
+            {round.campaignOver.bonus} (écart d&apos;escalade{" "}
+            {round.campaignOver.improvement.toFixed(2)} vs l&apos;Histoire — le détail
+            round par round est dans le panneau « Simulation vs histoire »).{" "}
+            <Link href="/campagne" className="underline hover:text-foreground">
+              Retour à la carte de campagne
+            </Link>
+            .
+          </p>
+        </Panel>
       )}
       {detail?.mode === "drift" && detail.status === "running" && !streaming && (
         <DriftCouncilBanner />

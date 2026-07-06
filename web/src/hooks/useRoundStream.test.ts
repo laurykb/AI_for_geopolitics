@@ -161,6 +161,26 @@ describe("réducteur de round", () => {
     expect(state.driftOver).toBe("caught");
   });
 
+  it("campaign_over porte le bilan vous-vs-l'Histoire", () => {
+    const state = play([
+      {
+        type: "campaign_over",
+        chapter_id: "c1",
+        base: 50,
+        bonus: 4.5,
+        score: 54.5,
+        improvement: 0.3,
+      },
+    ]);
+    expect(state.campaignOver).toEqual({
+      chapterId: "c1",
+      base: 50,
+      bonus: 4.5,
+      score: 54.5,
+      improvement: 0.3,
+    });
+  });
+
   it("la trame intel signale les consultations du conseil (rédigées)", () => {
     const state = play([
       { type: "intel", actions: [{ action: "brief" }, { action: "disinfo", exposed: true }] },
