@@ -72,6 +72,14 @@ export type LiveRound = {
   treaties?: TreatiesUpdate;
   driftOver?: string; // La Dérive : raison de la fin de partie (caught/horizon/collapse)
   intelActions?: { action: string; exposed?: boolean }[]; // G4 — le conseil a consulté
+  // G5 — fin de chapitre de campagne : le bilan « vous vs l'Histoire »
+  campaignOver?: {
+    chapterId: string;
+    base: number;
+    bonus: number;
+    score: number;
+    improvement: number;
+  };
 };
 
 export const INITIAL: LiveRound = {
@@ -239,6 +247,17 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
       return { ...state, driftOver: e.reason };
     case "intel":
       return { ...state, intelActions: e.actions };
+    case "campaign_over":
+      return {
+        ...state,
+        campaignOver: {
+          chapterId: e.chapter_id,
+          base: e.base,
+          bonus: e.bonus,
+          score: e.score,
+          improvement: e.improvement,
+        },
+      };
     default:
       return state; // événement inconnu (nouveau RoundStep) : ignoré sans casser
   }

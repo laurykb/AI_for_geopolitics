@@ -203,6 +203,29 @@ Les crises rejouables (`data/crises` + `comparison` R4) deviennent une progressi
   `data/crises` existants), courbe de difficulté.
 - **Claude Code** : structure de campagne, persistance des scores, front de progression.
 
+**Notes d'implémentation (G5 faite — infrastructure complète, fiches historiques = Cowork)** :
+
+- **Tout est data-driven** : `data/campaign/campaign.json` (chapitres, modes, horizons,
+  seuil de déblocage, barème historique — `CAMPAIGN_PATH` pour les tests). v1 roule sur
+  les **3 crises embarquées** (Ormuz classique ★, satellites fog ★★, sanctions drift ★★★) ;
+  les 6 fiches historiques de la spec (Berlin 48, Suez 56, Cuba 62, choc 73, Able Archer
+  83) sont **le travail Cowork sourcé** : les écrire dans `data/crises/` + les référencer
+  dans campaign.json, zéro code.
+- Un chapitre EST une partie normale : `POST /api/campaign/{id}/start` la crée avec
+  `scenario = "campaign:<id>"` (le lien, sans schéma neuf) ; le front impose la crise de
+  la fiche à chaque round. Fin de chapitre (horizon, ou fin Dérive) → `finished`, score
+  dans `campaign_scores` (SQLite + Supabase), trame `campaign_over`.
+- **Score** : base = score Dérive complet (mode drift) ou trajectoire seule 0-100 (même
+  ancrage 0,15-0,85) ; **± bonus historique** : +15 × amélioration (= escalade historique
+  − simulée, le `gap` R4 inversé) si mieux que l'Histoire, −10 sinon. Déblocage linéaire
+  (≥ 50), médailles or/argent/bronze (85/70/50).
+- **Front** : `/campagne` (carte de progression, étoiles, médailles, verrous) + bannière
+  uchronie au théâtre + écran de fin « vous vs l'Histoire » (le détail round par round
+  reste dans le panneau Simulation vs histoire de R4).
+- Limites v1 notées : un chapitre fog joue la crise avec le fog déterministe par pays
+  (le combo crise+scénario fog n'existe pas côté moteur — à décider en écrivant Suez) ;
+  pas de leaderboard multi-joueurs (la table est prête).
+
 ## G6 — Le replay comme produit (lancement public)
 
 - Page publique par partie finie : le récit (épilogue généré par le juge), la courbe U,

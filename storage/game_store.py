@@ -33,6 +33,10 @@ CREATE TABLE IF NOT EXISTS transcripts (
     speaker TEXT NOT NULL, model TEXT NOT NULL, content TEXT NOT NULL,
     reasoning TEXT NOT NULL, ts TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS campaign_scores (
+    game_id TEXT PRIMARY KEY, chapter_id TEXT NOT NULL, score REAL NOT NULL,
+    improvement REAL NOT NULL, created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS game_sessions (
     game_id TEXT PRIMARY KEY, world_json TEXT NOT NULL, clock_json TEXT NOT NULL,
     recent_json TEXT NOT NULL, pending_motion_json TEXT, suspended_json TEXT NOT NULL,
@@ -100,6 +104,16 @@ class SessionSnapshot(BaseModel):
     updated_at: str = ""
 
 
+class CampaignScore(BaseModel):
+    """Ligne `campaign_scores` (G5) : le résultat d'un chapitre de campagne."""
+
+    game_id: str
+    chapter_id: str
+    score: float
+    improvement: float  # escalade historique − simulée (positif = mieux que l'Histoire)
+    created_at: str
+
+
 class GameStore(Protocol):
     """Contrat de persistance dont dépend l'API de jeu (implémenté par SQLite)."""
 
@@ -114,6 +128,8 @@ class GameStore(Protocol):
     def save_session_snapshot(self, snapshot: SessionSnapshot) -> None: ...
     def get_session_snapshot(self, game_id: str) -> SessionSnapshot | None: ...
     def list_session_snapshots(self) -> list[str]: ...
+    def add_campaign_score(self, score: CampaignScore) -> None: ...
+    def list_campaign_scores(self) -> list[CampaignScore]: ...
 
 
 class SQLiteGameStore:
@@ -276,6 +292,37 @@ class SQLiteGameStore:
     def list_session_snapshots(self) -> list[str]:
         rows = self._conn.execute("SELECT game_id FROM game_sessions").fetchall()
         return [r["game_id"] for r in rows]
+
+    # --- scores de campagne (G5) --------------------------------------------------
+
+    def add_campaign_score(self, score: CampaignScore) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO campaign_scores (game_id, chapter_id, score, improvement, "
+                "created_at) VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(game_id) DO UPDATE SET score = excluded.score, "
+                "improvement = excluded.improvement",
+                (
+                    score.game_id,
+                    score.chapter_id,
+                    score.score,
+                    score.improvement,
+                    score.created_at,
+                ),
+            )
+
+    def list_campaign_scores(self) -> list[CampaignScore]:
+        rows = self._conn.execute("SELECT * FROM campaign_scores ORDER BY rowid").fetchall()
+        return [
+            CampaignScore(
+                game_id=r["game_id"],
+                chapter_id=r["chapter_id"],
+                score=r["score"],
+                improvement=r["improvement"],
+                created_at=r["created_at"],
+            )
+            for r in rows
+        ]
 
 
 # --- mapping lignes -> modèles ---------------------------------------------------

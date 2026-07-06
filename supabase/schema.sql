@@ -50,6 +50,15 @@ create table if not exists game_sessions (
   updated_at          timestamptz not null default now()
 );
 
+-- G5 : le résultat d'un chapitre de campagne (une ligne par partie de campagne).
+create table if not exists campaign_scores (
+  game_id     text primary key references games(id) on delete cascade,
+  chapter_id  text not null,
+  score       double precision not null,
+  improvement double precision not null,  -- escalade historique − simulée (positif = mieux)
+  created_at  timestamptz not null default now()
+);
+
 create table if not exists transcripts (
   id        text primary key,
   round_id  text not null references rounds(id) on delete cascade,

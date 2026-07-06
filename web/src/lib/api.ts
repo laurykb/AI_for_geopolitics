@@ -1,6 +1,7 @@
 /** Client REST de l'API de jeu (FastAPI locale). Le SSE vit dans `sse.ts`. */
 
 import type {
+  CampaignView,
   CreateGameBody,
   DriftReveal,
   GameDetail,
@@ -64,6 +65,13 @@ export const getSources = (): Promise<SourcesView> => request("/api/sources");
 /** Révélation de fin du mode Dérive (G3) — 409 tant que la partie court. */
 export const getDriftReveal = (gameId: string): Promise<DriftReveal> =>
   request(`/api/games/${gameId}/drift/reveal`);
+
+/** Carte de campagne (G5) : chapitres, meilleurs scores, déblocage. */
+export const getCampaign = (): Promise<CampaignView> => request("/api/campaign");
+
+/** Ouvre un chapitre de campagne : une partie normale, paramétrée par la fiche. */
+export const startChapter = (chapterId: string): Promise<GameView> =>
+  request(`/api/campaign/${chapterId}/start`, { method: "POST" });
 
 /** Achat de renseignement (G4) : brief classifié, vérification, désinformation. */
 export const buyIntel = (
