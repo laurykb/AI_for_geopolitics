@@ -46,6 +46,7 @@ create table if not exists game_sessions (
   pending_motion_json jsonb,                        -- motion déposée non débattue
   suspended_json      jsonb not null default '[]',  -- pays qui sauteront le PROCHAIN round
   play_as             text,                         -- pays joué par l'humain (Joueur-pays)
+  intel_json          jsonb not null default '{}',  -- G4 : budget/état de renseignement
   updated_at          timestamptz not null default now()
 );
 

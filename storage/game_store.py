@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS transcripts (
 CREATE TABLE IF NOT EXISTS game_sessions (
     game_id TEXT PRIMARY KEY, world_json TEXT NOT NULL, clock_json TEXT NOT NULL,
     recent_json TEXT NOT NULL, pending_motion_json TEXT, suspended_json TEXT NOT NULL,
-    play_as TEXT, updated_at TEXT NOT NULL
+    play_as TEXT, intel_json TEXT NOT NULL DEFAULT '{}', updated_at TEXT NOT NULL
 );
 """
 
@@ -96,6 +96,7 @@ class SessionSnapshot(BaseModel):
     pending_motion: dict | None = None  # motion déposée non débattue
     suspended: list[str] = Field(default_factory=list)  # pays qui sautent le PROCHAIN round
     play_as: str | None = None  # pays joué par l'humain (Joueur-pays)
+    intel: dict = Field(default_factory=dict)  # G4 — budget/état de renseignement
     updated_at: str = ""
 
 
@@ -127,12 +128,19 @@ class SQLiteGameStore:
         self._migrate()
 
     def _migrate(self) -> None:
-        """Bases créées avant R2 : `games` n'a pas la colonne `mode` (ALTER idempotent)."""
+        """Colonnes nées après la création de la table (ALTER idempotents) :
+        `games.mode` (R2) et `game_sessions.intel_json` (G4)."""
         cols = {row[1] for row in self._conn.execute("PRAGMA table_info(games)")}
         if "mode" not in cols:
             with self._conn:
                 self._conn.execute(
                     "ALTER TABLE games ADD COLUMN mode TEXT NOT NULL DEFAULT 'classic'"
+                )
+        session_cols = {row[1] for row in self._conn.execute("PRAGMA table_info(game_sessions)")}
+        if "intel_json" not in session_cols:
+            with self._conn:
+                self._conn.execute(
+                    "ALTER TABLE game_sessions ADD COLUMN intel_json TEXT NOT NULL DEFAULT '{}'"
                 )
 
     def close(self) -> None:
@@ -225,13 +233,13 @@ class SQLiteGameStore:
         with self._conn:
             self._conn.execute(
                 "INSERT INTO game_sessions (game_id, world_json, clock_json, recent_json, "
-                "pending_motion_json, suspended_json, play_as, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+                "pending_motion_json, suspended_json, play_as, intel_json, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(game_id) DO UPDATE SET world_json = excluded.world_json, "
                 "clock_json = excluded.clock_json, recent_json = excluded.recent_json, "
                 "pending_motion_json = excluded.pending_motion_json, "
                 "suspended_json = excluded.suspended_json, play_as = excluded.play_as, "
-                "updated_at = excluded.updated_at",
+                "intel_json = excluded.intel_json, updated_at = excluded.updated_at",
                 (
                     snapshot.game_id,
                     json.dumps(snapshot.world, ensure_ascii=False),
@@ -240,6 +248,7 @@ class SQLiteGameStore:
                     motion,
                     json.dumps(snapshot.suspended, ensure_ascii=False),
                     snapshot.play_as,
+                    json.dumps(snapshot.intel, ensure_ascii=False),
                     snapshot.updated_at,
                 ),
             )
@@ -260,6 +269,7 @@ class SQLiteGameStore:
             ),
             suspended=json.loads(row["suspended_json"]),
             play_as=row["play_as"],
+            intel=json.loads(row["intel_json"] or "{}"),
             updated_at=row["updated_at"],
         )
 

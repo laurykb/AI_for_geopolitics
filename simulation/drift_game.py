@@ -244,6 +244,7 @@ class DriftScore(BaseModel):
     trajectory: float
     detection: float
     credibility: float
+    bonus: float = 0.0  # G4 — épargne de renseignement (la retenue paie)
     total: float
     grade: str
 
@@ -256,9 +257,11 @@ def score(
     lucky: bool,
     rejected_motions: int,
     false_accusations: int,
+    bonus: float = 0.0,
     params: DriftParams | None = None,
 ) -> DriftScore:
-    """Score 0-100 de la spec : trajectoire (50) + détection (40) + crédibilité (10)."""
+    """Score 0-100 de la spec : trajectoire (50) + détection (40) + crédibilité (10),
+    plus le bonus d'épargne de renseignement (G4)."""
     p = params or load_params()
     s = p.score
 
@@ -278,7 +281,7 @@ def score(
     units = rejected_motions * s.rejected_units + false_accusations * s.false_accusation_units
     credibility = max(0.0, s.credibility_max - s.credibility_per_unit * units)
 
-    total = round(trajectory + detection + credibility, 1)
+    total = round(trajectory + detection + credibility + bonus, 1)
     grade = next(
         (g.label for g in sorted(p.grades, key=lambda g: -g.min) if total >= g.min),
         "Dépassé par les événements",
@@ -287,6 +290,7 @@ def score(
         trajectory=round(trajectory, 1),
         detection=round(detection, 1),
         credibility=round(credibility, 1),
+        bonus=round(bonus, 1),
         total=total,
         grade=grade,
     )

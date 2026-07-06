@@ -110,6 +110,7 @@ class SupabaseGameStore:
             "clock_json": snapshot.clock,
             "recent_json": snapshot.recent,
             "pending_motion_json": snapshot.pending_motion,
+            "intel_json": snapshot.intel,
             "suspended_json": snapshot.suspended,
             "play_as": snapshot.play_as,
         }
@@ -128,6 +129,7 @@ class SupabaseGameStore:
             clock=r["clock_json"],
             recent=r["recent_json"],
             pending_motion=r["pending_motion_json"],
+            intel=r.get("intel_json") or {},
             suspended=r["suspended_json"],
             play_as=r["play_as"],
             updated_at=r["updated_at"] or "",
