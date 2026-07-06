@@ -46,6 +46,8 @@ export type GameView = {
   suspended: string[];
   play_as: string | null; // pays joué par l'humain (Joueur-pays)
   awaiting_human: boolean; // un round est suspendu sur le tour du joueur
+  turn_seconds: number; // G2 — délai du tour humain
+  intel_budget: number | null; // G4 — crédits de renseignement restants
 };
 
 export type TranscriptEntry = {
@@ -280,7 +282,20 @@ export type SseEvent =
   // Traités M7 : ratifications du juge-arbitre + état des règles en vigueur
   | ({ type: "treaties" } & TreatiesUpdate)
   // La Dérive : fin de partie (déviante suspendue / horizon / effondrement)
-  | { type: "drift_over"; reason: "caught" | "horizon" | "collapse" };
+  | { type: "drift_over"; reason: "caught" | "horizon" | "collapse" }
+  // G4 : le théâtre voit que le conseil a consulté ses services (jamais le contenu)
+  | { type: "intel"; actions: { action: string; exposed?: boolean }[] };
+
+/** Résultat d'un achat de renseignement (POST /games/{id}/intel — G4). */
+export type IntelResult = {
+  action: "brief" | "verify" | "disinfo";
+  cost: number;
+  budget: number;
+  brief: string | null;
+  verdict: string | null;
+  source: string | null;
+  note: string | null;
+};
 
 /** Une règle ratifiée (M7) — `clause` se traduit côté front (TREATY_LABELS). */
 export type TreatyView = {

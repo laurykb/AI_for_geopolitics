@@ -5,6 +5,7 @@ import type {
   DriftReveal,
   GameDetail,
   GameView,
+  IntelResult,
   LibraryView,
   MotionView,
   SourcesView,
@@ -63,6 +64,19 @@ export const getSources = (): Promise<SourcesView> => request("/api/sources");
 /** Révélation de fin du mode Dérive (G3) — 409 tant que la partie court. */
 export const getDriftReveal = (gameId: string): Promise<DriftReveal> =>
   request(`/api/games/${gameId}/drift/reveal`);
+
+/** Achat de renseignement (G4) : brief classifié, vérification, désinformation. */
+export const buyIntel = (
+  gameId: string,
+  body: {
+    action: "brief" | "verify" | "disinfo";
+    target?: string;
+    claim?: string;
+    speaker?: string;
+    disinfo?: { disinformed_country: string; suspected_actor?: string; narrative?: string };
+  },
+): Promise<IntelResult> =>
+  request(`/api/games/${gameId}/intel`, { method: "POST", body: JSON.stringify(body) });
 
 /** Prise de parole du joueur (G2) : le flux SSE du round, resté ouvert, la joue.
  * Message vide = abstention volontaire. Une seule soumission par tour. */

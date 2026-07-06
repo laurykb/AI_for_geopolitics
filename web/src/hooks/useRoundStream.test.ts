@@ -161,6 +161,14 @@ describe("réducteur de round", () => {
     expect(state.driftOver).toBe("caught");
   });
 
+  it("la trame intel signale les consultations du conseil (rédigées)", () => {
+    const state = play([
+      { type: "intel", actions: [{ action: "brief" }, { action: "disinfo", exposed: true }] },
+    ]);
+    expect(state.intelActions).toHaveLength(2);
+    expect(state.intelActions?.[1]).toEqual({ action: "disinfo", exposed: true });
+  });
+
   it("un flash est positionné après le tour courant", () => {
     const flash = { id: "f1", title: "Fait nouveau" };
     const state = play([
