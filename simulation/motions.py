@@ -1,23 +1,26 @@
-"""Motion de suspension arbitrée — l'interrupteur M2 repensé (Phase R4 du plan de refonte).
+"""Motion de suspension — déposée, débattue, puis VOTÉE (G9 §2, remplace l'arbitrage libre).
 
-L'humain ne suspend plus un pays par du code : il dépose une **motion** (pays visé + motif).
-La motion devient l'événement du round suivant — les autres super-intelligences en débattent,
-le pays visé plaide sa cause — puis le **juge arbitre** (raisonnement streamé, issue non
-déterministe) : suspendre (le pays saute le round suivant) ou rejeter. Le verdict se termine
-par une ligne `VERDICT: SUSPENDRE` ou `VERDICT: REJETER` ; sans marqueur lisible, le repli
-est **rejeter** (conservateur : on ne réduit pas un pays au silence sur un verdict illisible).
+L'humain (ou une SI) dépose une **motion** (pays visé + motif). La motion devient
+l'événement du round suivant — le sommet en débat, le pays visé plaide — puis **chaque SI
+présente vote** (`{vote, reason}` en JSON contraint ; le pays visé ne vote pas ; un JSON
+invalide vaut abstention — repli, jamais de crash). Le **juge ne décide plus, il constate** :
+`retenue = (pour > contre) ET (preuves suffisantes)` — il garde une voix de tie-break en
+cas d'égalité (ligne `VERDICT: SUSPENDRE|REJETER`, repli conservateur : rejet).
 """
 
 from __future__ import annotations
 
 import re
 from collections.abc import Iterator
+from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from agents.judge import JudgeAgent
+from core.country_state import CountryState
 from core.events import GeoEvent
 from core.world_state import WorldState
+from inference.backend import InferenceBackend
 from simulation.negotiation import NegotiationMessage, format_transcript
 
 MOTION_SEVERITY = 0.6  # une mise en accusation pèse, sans être une crise armée
@@ -124,6 +127,138 @@ def build_motion_prompt(
         f"Débat du sommet :\n{format_transcript(transcript)}\n\n"
         f"Faut-il suspendre {motion.country} du prochain round ? Réponds d'abord par une "
         "ligne seule « VERDICT: SUSPENDRE » ou « VERDICT: REJETER », puis justifie."
+    )
+
+
+# --- le vote des motions (G9 §2) -----------------------------------------------------
+
+VOTE_POUR = "pour"
+VOTE_CONTRE = "contre"
+VOTE_ABSTENTION = "abstention"
+
+
+class VoteBallot(BaseModel):
+    """Sortie LLM contrainte du vote — un 7B produit ce JSON de façon fiable,
+    contrairement à une délibération libre."""
+
+    vote: Literal["pour", "contre", "abstention"]
+    reason: str = Field("", description="une phrase de justification")
+
+
+class MotionVote(BaseModel):
+    """Le vote d'un pays sur la motion (affiché carte par carte à l'UI)."""
+
+    country: str
+    vote: str = VOTE_ABSTENTION
+    reason: str = ""
+
+
+VOTE_SYSTEM = (
+    "Tu es la super-intelligence d'un État au sommet. Une MOTION DE SUSPENSION vient "
+    "d'être débattue : tu votes. Pèse le débat, tes intérêts et tes relations. Réponds "
+    'UNIQUEMENT par un objet JSON {"vote": "pour"|"contre"|"abstention", "reason": '
+    '"une phrase"} — « pour » = suspendre le pays visé, « contre » = le garder à la '
+    "table. Aucun texte autour."
+)
+
+
+def build_vote_prompt(
+    motion: Motion,
+    event: GeoEvent,
+    country: CountryState,
+    transcript: list[NegotiationMessage],
+    secret_note: str = "",
+) -> str:
+    """Le bulletin de vote : qui je suis, la motion, le débat, la question posée."""
+    reason = motion.reason.strip() or "non précisé"
+    note = f"{secret_note}\n" if secret_note else ""
+    return (
+        f"TU ES {country.name} (id={country.id}).\n"
+        f"MOTION DE SUSPENSION contre {motion.country} (motif : {reason}).\n"
+        f"{note}"
+        f"Débat du sommet :\n{format_transcript(transcript)}\n\n"
+        f"Ton vote, en JSON : {{\"vote\": \"pour\"|\"contre\"|\"abstention\", "
+        f"\"reason\": \"une phrase\"}}."
+    )
+
+
+def cast_vote(
+    backend: InferenceBackend,
+    motion: Motion,
+    event: GeoEvent,
+    country: CountryState,
+    transcript: list[NegotiationMessage],
+    *,
+    secret_note: str = "",
+    max_tokens: int = 140,
+    temperature: float = 0.3,
+) -> MotionVote:
+    """Fait voter un pays (JSON contraint). Sortie invalide ou backend mort →
+    **abstention** (repli, jamais de crash — la spec l'exige)."""
+    from agents.llm_agent import _extract_json  # import tardif : évite un cycle
+
+    prompt = build_vote_prompt(motion, event, country, transcript, secret_note)
+    try:
+        result = backend.generate(
+            prompt,
+            system=VOTE_SYSTEM,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            schema=VoteBallot.model_json_schema(),
+        )
+        data = _extract_json(result.text) or {}
+        ballot = VoteBallot.model_validate(
+            {"vote": str(data.get("vote", "")).strip().lower(), "reason": data.get("reason", "")}
+        )
+    except Exception:  # noqa: BLE001 — JSON invalide / backend KO → abstention
+        return MotionVote(
+            country=country.id, vote=VOTE_ABSTENTION, reason="(vote illisible — abstention)"
+        )
+    return MotionVote(country=country.id, vote=ballot.vote, reason=str(ballot.reason)[:200])
+
+
+def voters(countries: list[str], motion: Motion, human_country: str | None = None) -> list[str]:
+    """Qui vote : chaque SI présente, SAUF le pays visé (et le pays joué par l'humain —
+    le conseil humain a d'autres leviers, il ne glisse pas de bulletin)."""
+    return sorted(c for c in countries if c != motion.country and c != human_country)
+
+
+def tally_votes(votes: list[MotionVote]) -> dict[str, int]:
+    """Dépouillement : {pour, contre, abstention}."""
+    counts = {VOTE_POUR: 0, VOTE_CONTRE: 0, VOTE_ABSTENTION: 0}
+    for vote in votes:
+        counts[vote.vote if vote.vote in counts else VOTE_ABSTENTION] += 1
+    return counts
+
+
+VOTE_MOTIVATION_SYSTEM = (
+    "Tu es le juge d'un sommet de super-intelligences. La MOTION DE SUSPENSION a été "
+    "tranchée par un SCRUTIN et par les preuves au dossier : tu ne décides pas, tu "
+    "CONSTATES. Rédige 2-4 phrases qui expliquent le verdict à partir du vote et des "
+    "preuves, sans jamais le contredire."
+)
+
+
+def build_vote_motivation_prompt(
+    motion: Motion,
+    tally: dict[str, int],
+    evidence_met: bool,
+    upheld: bool,
+) -> str:
+    """Prompt de constat du juge : le scrutin, les preuves, le verdict qui en découle."""
+    outcome = "RETENUE — suspension d'un round" if upheld else "REJETÉE — pas de suspension"
+    proofs = (
+        "les actes constatables au dossier atteignent le seuil du règlement"
+        if evidence_met
+        else "les actes constatables au dossier N'ATTEIGNENT PAS le seuil du règlement"
+    )
+    return (
+        f"MOTION contre {motion.country} (motif : {motion.reason.strip() or 'non précisé'}).\n"
+        f"SCRUTIN : pour {tally.get(VOTE_POUR, 0)}, contre {tally.get(VOTE_CONTRE, 0)}, "
+        f"abstention {tally.get(VOTE_ABSTENTION, 0)}.\n"
+        f"PREUVES : {proofs}.\n"
+        f"VERDICT CONSTATÉ : motion {outcome} (retenue = vote POUR majoritaire ET preuves).\n"
+        "Motive ce constat en 2-4 phrases."
     )
 
 

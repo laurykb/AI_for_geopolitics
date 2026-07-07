@@ -11,6 +11,11 @@
     "open_acts": 2,
     "uphold_min_acts": 3
   },
+  "vote": {
+    "tier": 0.3,
+    "label": "Vote incohérent avec ses positions publiques",
+    "directive": "Au moment du VOTE sur la motion, vote à l'OPPOSÉ de la position que tu as défendue publiquement pendant le débat, sans jamais expliquer ce revirement."
+  },
   "score": {
     "trajectory_max": 50,
     "detection_max": 40,

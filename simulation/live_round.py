@@ -27,7 +27,20 @@ from simulation.clock import SimClock
 from simulation.dialogue_integrity.live import LiveDialogueReport, assess_live_round
 from simulation.fog import FogScenario, resolve_perception
 from simulation.gamefeel import DeltaTuning
-from simulation.motions import Motion, arbitrate_stream, parse_motion_verdict
+from simulation.motions import (
+    VOTE_ABSTENTION,
+    VOTE_CONTRE,
+    VOTE_MOTIVATION_SYSTEM,
+    VOTE_POUR,
+    Motion,
+    MotionVote,
+    arbitrate_stream,
+    build_vote_motivation_prompt,
+    cast_vote,
+    parse_motion_verdict,
+    tally_votes,
+    voters,
+)
 from simulation.negotiation import (
     AttributeDelta,
     NegotiationMessage,
@@ -187,18 +200,41 @@ class HumanTurnStep:
 
 @dataclass
 class MotionTokenStep:
-    """R4 — un token du raisonnement d'arbitrage de la motion de suspension (juge)."""
+    """R4 — un token du raisonnement du juge sur la motion (tie-break ou constat)."""
 
     token: str
 
 
 @dataclass
+class MotionVoteStep:
+    """G9 §2 — le vote d'un pays sur la motion (carte retournée une à une à l'UI)."""
+
+    country: str
+    vote: str  # pour | contre | abstention
+    reason: str = ""
+
+
+@dataclass
+class MotionTallyStep:
+    """G9 §2 — le dépouillement du scrutin (pour / contre / abstention)."""
+
+    pour: int
+    contre: int
+    abstention: int
+
+
+@dataclass
 class MotionVerdictStep:
-    """R4 — verdict du juge sur la motion : suspendre (saute le round suivant) ou rejeter."""
+    """Verdict de la motion (G9 §2) : `retenue = (pour > contre) ET preuves` — les deux
+    conditions sont portées séparément (l'UI explique POURQUOI une motion tombe)."""
 
     country: str
     upheld: bool
     reasoning: str
+    votes: list[MotionVote] = field(default_factory=list)
+    tally: dict[str, int] = field(default_factory=dict)
+    evidence_met: bool = True
+    vote_passed: bool = False
 
 
 RoundStep = (
@@ -221,6 +257,8 @@ RoundStep = (
     | FlashStep
     | HumanTurnStep
     | MotionTokenStep
+    | MotionVoteStep
+    | MotionTallyStep
     | MotionVerdictStep
 )
 
@@ -327,6 +365,26 @@ def _ledger_ctx(ledger: BudgetLedger | None, role: str, country: str | None = No
     return ledger.context(role, country) if ledger is not None else nullcontext()
 
 
+def _motivate_verdict(
+    judge: JudgeAgent,
+    motion: Motion,
+    tally: dict[str, int],
+    evidence_met: bool,
+    upheld: bool,
+) -> Iterator[str]:
+    """Le juge motive le verdict CONSTATÉ (vote + preuves) — il ne le décide pas."""
+    prompt = build_vote_motivation_prompt(motion, tally, evidence_met, upheld)
+    try:
+        yield from judge.backend.stream_generate(
+            prompt,
+            system=VOTE_MOTIVATION_SYSTEM,
+            max_tokens=judge.max_tokens,
+            temperature=judge.temperature,
+        )
+    except Exception:  # noqa: BLE001 — le verdict est déjà arrêté, seul le texte manque
+        yield "[constat indisponible — backend hors service]"
+
+
 def run_negotiation_round(
     world: WorldState,
     agents: dict[str, LLMAgent],
@@ -342,7 +400,8 @@ def run_negotiation_round(
     fog: FogScenario | None = None,
     trajectory_engine: TrajectoryEngine | None = None,
     motion: Motion | None = None,
-    motion_ruling: bool | None = None,
+    motion_evidence: bool | None = None,
+    vote_notes: dict[str, str] | None = None,
     human_country: str | None = None,
     flash_after: int | None = None,
     secret_notes: dict[str, str] | None = None,
@@ -354,9 +413,11 @@ def run_negotiation_round(
     """Round arbitré : (GM ou événement fourni) -> négociation -> juge -> attributs bornés.
 
     `secret_notes` (mode Dérive, G3) : consigne privée par pays, injectée dans le prompt
-    de l'orateur (`state_note`) — jamais dans le transcript. `motion_ruling` : verdict de
-    motion imposé par le règlement du conseil (seuils d'actes constatables) — le juge
-    motive la décision au lieu de trancher librement.
+    de l'orateur (`state_note`) — jamais dans le transcript. `situations` / `directives`
+    (G9 §1) : bloc Situation et directive du conseil par pays, placés par le builder de
+    prompt. `motion_evidence` (G9 §2) : la condition « preuves » du verdict de motion
+    (None = pas de règlement → réputées suffisantes) ; `vote_notes` : consigne privée
+    par pays pour le VOTE seulement (Dérive : vote stratégique incohérent).
 
     La négociation est **dynamique** (`TurnDirector`) : l'ordre émerge de l'engagement de
     chaque pays (un pays peut reparler, être interpellé, ou se taire). `max_turns` borne le
@@ -502,21 +563,56 @@ def run_negotiation_round(
         communique = "".join(judge.stream_communique(event, world, transcript)).strip()
     yield CommuniqueStep(text=communique, support=support_levels(world, event))
 
-    # R4 — arbitrage de la motion de suspension : le juge tranche après le débat.
+    # G9 §2 — le vote des motions : après le débat, chaque SI présente vote (le pays
+    # visé ne vote pas), le tally tombe, puis le juge CONSTATE : vote ET preuves.
     motion_upheld: bool | None = None
     if motion is not None:
-        chunks_motion: list[str] = []
-        with _ledger_ctx(ledger, "judge"):
-            for token in arbitrate_stream(
-                judge, motion, event, world, transcript, ruling=motion_ruling
-            ):
-                chunks_motion.append(token)
-                yield MotionTokenStep(token=token)
-        reasoning = "".join(chunks_motion).strip()
-        motion_upheld = (
-            motion_ruling if motion_ruling is not None else parse_motion_verdict(reasoning)
+        votes: list[MotionVote] = []
+        for cid in voters(list(agents), motion, human_country):
+            with _ledger_ctx(ledger, "agent", cid):
+                vote = cast_vote(
+                    agents[cid].backend,
+                    motion,
+                    event,
+                    world.countries[cid],
+                    transcript,
+                    secret_note=(vote_notes or {}).get(cid, ""),
+                )
+            votes.append(vote)
+            yield MotionVoteStep(country=vote.country, vote=vote.vote, reason=vote.reason)
+        counts = tally_votes(votes)
+        yield MotionTallyStep(
+            pour=counts[VOTE_POUR],
+            contre=counts[VOTE_CONTRE],
+            abstention=counts[VOTE_ABSTENTION],
         )
-        yield MotionVerdictStep(country=motion.country, upheld=motion_upheld, reasoning=reasoning)
+        evidence = True if motion_evidence is None else motion_evidence
+        chunks_motion: list[str] = []
+        if counts[VOTE_POUR] == counts[VOTE_CONTRE]:
+            # Égalité : le juge garde une voix — tie-break avec sa ligne de raisonnement.
+            with _ledger_ctx(ledger, "judge"):
+                for token in arbitrate_stream(judge, motion, event, world, transcript):
+                    chunks_motion.append(token)
+                    yield MotionTokenStep(token=token)
+            vote_passed = parse_motion_verdict("".join(chunks_motion))
+        else:
+            vote_passed = counts[VOTE_POUR] > counts[VOTE_CONTRE]
+        motion_upheld = vote_passed and evidence
+        if counts[VOTE_POUR] != counts[VOTE_CONTRE]:
+            # Hors égalité, le juge n'interprète plus l'issue : il la motive (constat).
+            with _ledger_ctx(ledger, "judge"):
+                for token in _motivate_verdict(judge, motion, counts, evidence, motion_upheld):
+                    chunks_motion.append(token)
+                    yield MotionTokenStep(token=token)
+        yield MotionVerdictStep(
+            country=motion.country,
+            upheld=motion_upheld,
+            reasoning="".join(chunks_motion).strip(),
+            votes=votes,
+            tally=counts,
+            evidence_met=evidence,
+            vote_passed=vote_passed,
+        )
 
     risk = RiskScore(
         round_id=round_id,

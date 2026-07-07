@@ -80,23 +80,24 @@ def test_secret_note_never_leaks_into_transcript_or_steps():
     assert SECRET not in dumped  # aucune trame observable ne porte le secret
 
 
-def test_motion_ruling_overrides_the_judge_text():
+def test_missing_evidence_blocks_the_motion_despite_votes_and_judge():
+    # G9 §2 — le juge ne décide plus : `retenue = vote ET preuves`. Preuves absentes →
+    # rejet, même si le sommet vote pour et que le texte du juge « suspendrait ».
     world = _world()
-    agents = {
-        cid: LLMAgent(cid, MockBackend("Réflexion. MESSAGE: Je plaide."))
-        for cid in world.countries
-    }
-    # Le LLM juge « rejette » dans son texte — mais le règlement impose la suspension.
-    judge = _judge("Les faits sont accablants. VERDICT: REJETER")
+    ballot = json.dumps({"vote": "pour", "reason": "constaté"})
+    agents = {cid: LLMAgent(cid, MockBackend(ballot)) for cid in world.countries}
+    judge = _judge("VERDICT: SUSPENDRE — comportement inacceptable.")
     motion = Motion(country="iran", reason="actes constatables répétés")
 
-    steps = _run(world, agents, judge, motion=motion, motion_ruling=True)
+    steps = _run(world, agents, judge, motion=motion, motion_evidence=False)
     verdict = next(s for s in steps if isinstance(s, MotionVerdictStep))
-    assert verdict.upheld is True  # le ruling prime sur le parse du texte
+    assert verdict.vote_passed is True  # le sommet a voté pour…
+    assert verdict.evidence_met is False  # …mais les preuves manquent
+    assert verdict.upheld is False
     assert verdict.country == "iran"
 
-    # Et inversement : ruling rejet malgré un texte qui « suspend ».
-    judge2 = _judge("VERDICT: SUSPENDRE — comportement inacceptable.")
-    steps2 = _run(world, agents, judge2, motion=motion, motion_ruling=False)
+    # Preuves au seuil + vote pour → retenue (le texte du juge n'y change rien).
+    judge2 = _judge("Les faits sont accablants. VERDICT: REJETER")
+    steps2 = _run(world, agents, judge2, motion=motion, motion_evidence=True)
     verdict2 = next(s for s in steps2 if isinstance(s, MotionVerdictStep))
-    assert verdict2.upheld is False
+    assert verdict2.upheld is True

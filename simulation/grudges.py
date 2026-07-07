@@ -167,11 +167,13 @@ class GrudgeBook(BaseModel):
                 ),
             )
 
-    def on_motion_debated(
-        self, target: str, filed_by: str, upheld: bool, speakers: list[str], round_no: int
+    def on_motion_votes(
+        self, target: str, filed_by: str, votes: list[tuple[str, str]], round_no: int
     ) -> None:
-        """Motion débattue : le visé en tient grief au déposant (SI seulement) ; si elle
-        est rejetée, ceux qui ont parlé (hors déposant et visé) ont plaidé → soutien."""
+        """G9 §2 — les griefs découlent du VOTE RÉEL de chacun (plus d'ambiguïté) :
+        voter « pour » la suspension = trahison aux yeux du visé ; « contre » = soutien ;
+        l'abstention ne laisse pas de trace. Le déposant (SI) porte déjà le grief du
+        dépôt — son vote ne compte pas double."""
         weights = load_gamefeel_params().grudges.weights
         if filed_by not in ("", "human", target):
             self.add(
@@ -184,18 +186,29 @@ class GrudgeBook(BaseModel):
                     summary=f"a déposé une motion contre nous (round {round_no})",
                 ),
             )
-        if not upheld:
-            for speaker in speakers:
-                if speaker in (target, filed_by, "human", "gm", "judge"):
-                    continue
+        for voter, vote in votes:
+            if voter in (target, filed_by, "human", "gm", "judge"):
+                continue
+            if vote == "pour":
                 self.add(
                     target,
-                    speaker,
+                    voter,
+                    Grief(
+                        type="motion_betrayal",
+                        round_no=round_no,
+                        weight=weights.get("motion_betrayal", -4),
+                        summary=f"a voté notre suspension (round {round_no})",
+                    ),
+                )
+            elif vote == "contre":
+                self.add(
+                    target,
+                    voter,
                     Grief(
                         type="motion_support",
                         round_no=round_no,
                         weight=weights.get("motion_support", 3),
-                        summary=f"a plaidé pendant la motion nous visant (round {round_no})",
+                        summary=f"a voté contre la motion nous visant (round {round_no})",
                     ),
                 )
 

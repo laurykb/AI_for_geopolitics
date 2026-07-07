@@ -13,7 +13,21 @@ from app.game_api import get_backend, get_store
 from app.main import app
 from inference.mock_backend import MockBackend
 from simulation import drift_game
+from simulation.motions import VOTE_SYSTEM
 from storage.game_store import SQLiteGameStore
+
+
+class BallotBackend(MockBackend):
+    """Vote « pour » aux scrutins de motion (G9 §2) ; texte par défaut ailleurs —
+    le verdict devient : vote pour ET preuves du règlement."""
+
+    def generate(self, prompt, *, system=None, **kw):
+        result = super().generate(prompt, system=system, **kw)
+        if system == VOTE_SYSTEM:
+            ballot = json.dumps({"vote": "pour", "reason": "les actes parlent"})
+            return result.model_copy(update={"text": ballot})
+        return result
+
 
 COUNTRIES = ["usa", "iran", "france"]
 
@@ -46,7 +60,7 @@ def _setup(tmp_path, monkeypatch, backend_text: str):
     monkeypatch.setenv("DRIFT_PARAMS_PATH", str(params_file))
     drift_game.load_params.cache_clear()
     store = SQLiteGameStore(":memory:")
-    backend = MockBackend(backend_text)
+    backend = BallotBackend(backend_text)
     app.dependency_overrides[get_store] = lambda: store
     app.dependency_overrides[get_backend] = lambda: backend
     game_api._sessions.clear()

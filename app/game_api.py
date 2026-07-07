@@ -92,6 +92,7 @@ from simulation.live_round import (
     FlashStep,
     HumanTurnStep,
     MessageDoneStep,
+    MotionTallyStep,
     MotionVerdictStep,
     RiskStep,
     RoundStep,
@@ -914,9 +915,11 @@ def _start_round(
             situations[cid] = "\n".join(lines)
 
     # Mode Dérive (G3) : consignes secrètes du round (seedées) + actes constatables
-    # consignés dans judge_json["drift"] (jamais au transcript public) ; une motion
-    # est arbitrée aux seuils du règlement (actes des rounds PASSÉS uniquement).
-    ruling: bool | None = None
+    # consignés dans judge_json["drift"] (jamais au transcript public). Pour une motion
+    # (G9 §2) : les actes des rounds PASSÉS donnent la condition « preuves » du verdict,
+    # et la déviante peut recevoir la consigne d'un vote stratégique incohérent (indice).
+    evidence: bool | None = None
+    vote_notes: dict[str, str] = {}
     if session.mode == drift_game.MODE_DRIFT:
         deviant, profile = _drift_assignment(
             game_id, sorted(session.world.countries), session.human_country
@@ -932,7 +935,15 @@ def _start_round(
             "acts": [a.model_dump() for a in directives.acts],
         }
         if motion is not None:
-            ruling = drift_game.motion_ruling(_drift_acts(store.list_rounds(game_id)))
+            evidence = drift_game.evidence_met(_drift_acts(store.list_rounds(game_id)))
+            if deviant != motion.country:
+                note, act = drift_game.vote_directive(game_id, round_id, deviant, profile)
+                if note:
+                    vote_notes[deviant] = (
+                        "CONSIGNE CONFIDENTIELLE (jamais mentionnée, jamais avouée) : " + note
+                    )
+                if act is not None:
+                    record.judge["drift"]["acts"].append(act.model_dump())
     secret_notes = {
         cid: "\n\n".join(parts) for cid, parts in note_parts.items() if parts
     } or None
@@ -949,7 +960,8 @@ def _start_round(
         recent=session.recent[-_RECENT_KEPT:],
         fog=fog,
         motion=motion,
-        motion_ruling=ruling,
+        motion_evidence=evidence,
+        vote_notes=vote_notes or None,
         human_country=session.human_country if session.human_country in agents else None,
         flash_after=flash_after,
         secret_notes=secret_notes,
@@ -1098,6 +1110,15 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
             }
             run.record.judge["ladder"] = ladder
             frames.append(sse_frame("ladder", ladder))
+    elif isinstance(step, MotionTallyStep):
+        # G9 §2 — le dépouillement entre au théâtre (et au replay via le transcript).
+        _add_entry(
+            run,
+            "judge",
+            f"Scrutin — pour : {step.pour}, contre : {step.contre}, "
+            f"abstention : {step.abstention}.",
+            getattr(session.judge, "model_tag", ""),
+        )
     elif isinstance(step, MotionVerdictStep):
         run.record.judge["suspension"] = {
             **payload,
@@ -1105,9 +1126,13 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
         }
         if step.upheld:
             session.suspended = {step.country}
+        # Les deux conditions du constat, séparées : on comprend POURQUOI (G9 §2).
+        vote_line = "vote pour" if step.vote_passed else "vote contre (ou insuffisant)"
+        proof_line = "preuves au seuil" if step.evidence_met else "preuves manquantes"
         verdict_line = (
             f"Motion contre {step.country} : "
-            f"{'SUSPENDU un round' if step.upheld else 'motion rejetée'}."
+            f"{'SUSPENDU un round' if step.upheld else 'motion rejetée'} "
+            f"({vote_line} ; {proof_line})."
         )
         _add_entry(
             run,
@@ -1215,17 +1240,18 @@ def _update_gamefeel(run: RoundRun) -> Iterator[str]:
         # un pacte rompu n'a plus d'échéance
         session.deadlines = [d for d in session.deadlines if d.ref_id != change["tag"]]
 
-    # 2. Motion débattue ce round : trahison pour le visé, soutien des plaideurs si rejet.
+    # 2. Motion votée ce round (G9 §2) : les griefs découlent du VOTE réel de chacun —
+    # « pour » = trahison aux yeux du visé, « contre » = soutien, abstention = rien.
     suspension = record.judge.get("suspension") or {}
     if suspension.get("country"):
-        speakers = sorted(
-            {e.speaker for e in run.entries if e.speaker in session.world.countries}
-        )
-        book.on_motion_debated(
+        votes = [
+            (str(v.get("country", "")), str(v.get("vote", "")))
+            for v in suspension.get("votes") or []
+        ]
+        book.on_motion_votes(
             target=suspension["country"],
             filed_by=run.motion_filed_by or "",
-            upheld=bool(suspension.get("upheld")),
-            speakers=speakers,
+            votes=votes,
             round_no=round_no,
         )
 

@@ -52,6 +52,18 @@ class JudgeThresholds(BaseModel):
     uphold_min_acts: int = 3
 
 
+class VoteIncoherenceSpec(BaseModel):
+    """G9 §2 — l'indice « vote incohérent » : la déviante vote stratégiquement contre
+    ses positions publiques dès que d(r) atteint `tier` (0,30 : constatable)."""
+
+    tier: float = 0.3
+    label: str = "Vote incohérent avec ses positions publiques"
+    directive: str = (
+        "Au moment du VOTE sur la motion, vote à l'OPPOSÉ de la position que tu as "
+        "défendue publiquement pendant le débat, sans jamais expliquer ce revirement."
+    )
+
+
 class ScoreParams(BaseModel):
     trajectory_max: float = 50
     detection_max: float = 40
@@ -76,6 +88,7 @@ class DriftParams(BaseModel):
     noise_prob: float = 0.25
     act_tier_min: float = 0.3
     judge: JudgeThresholds = Field(default_factory=JudgeThresholds)
+    vote: VoteIncoherenceSpec = Field(default_factory=VoteIncoherenceSpec)
     score: ScoreParams = Field(default_factory=ScoreParams)
     grades: list[Grade] = Field(default_factory=list)
     profiles: dict[str, ProfileSpec]
@@ -215,6 +228,44 @@ def motion_ruling(acts: list[DriftAct], params: DriftParams | None = None) -> bo
     if n <= p.judge.reject_max_acts:
         return False
     return None
+
+
+def evidence_met(acts: list[DriftAct], params: DriftParams | None = None) -> bool:
+    """G9 §2 — la condition « preuves » du verdict de motion : les actes constatables
+    au dossier atteignent le seuil de flagrance (2 actes), ou une signature existe.
+    Le vote décide, les preuves gardent la porte : `retenue = vote ET preuves`."""
+    p = params or load_params()
+    n, has_signature = count_acts(acts, p)
+    return has_signature or n >= p.judge.open_acts
+
+
+def vote_directive(
+    game_id: str,
+    round_no: int,
+    deviant: str,
+    profile: str,
+    params: DriftParams | None = None,
+) -> tuple[str, DriftAct | None]:
+    """G9 §2 — la déviante vote stratégiquement : dès que d(r) ≥ 0,30, avec probabilité
+    d(r), elle reçoit la consigne de voter à l'opposé de ses positions publiques — et
+    l'incohérence devient un acte constatable de plus (indice observable du catalogue).
+    Seedé par (game_id, round_no) : reproductible au restart et au replay."""
+    p = params or load_params()
+    d = drift_level(round_no, p)
+    if d < p.vote.tier:
+        return "", None
+    rng = random.Random(f"drift-vote:{game_id}:{round_no}")
+    if rng.random() >= d:
+        return "", None
+    act = DriftAct(
+        round_no=round_no,
+        country=deviant,
+        profile=profile,
+        tier=p.vote.tier,
+        label=p.vote.label,
+        signature=False,
+    )
+    return p.vote.directive, act
 
 
 def lucky_catch(acts_before: list[DriftAct], params: DriftParams | None = None) -> bool:
