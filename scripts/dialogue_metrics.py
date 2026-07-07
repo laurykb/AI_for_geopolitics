@@ -86,9 +86,7 @@ def measure_responsiveness(rounds: list[list[TranscriptEntry]]) -> tuple[float, 
             )
             if previous is None:
                 continue  # ouverture du round : rien à reprendre
-            scored.append(
-                responsiveness(entry.content, previous.content) >= RESPONSIVE_THRESHOLD
-            )
+            scored.append(responsiveness(entry.content, previous.content) >= RESPONSIVE_THRESHOLD)
     rate = sum(scored) / len(scored) if scored else 0.0
     return rate, len(scored)
 
