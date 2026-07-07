@@ -16,7 +16,8 @@
     "energy_independence": 0.7
   },
   "alliances": [
-    "ArabLeague"
+    "ArabLeague",
+    "BRICS"
   ],
   "rivals": [],
   "political_system": "authoritarian",

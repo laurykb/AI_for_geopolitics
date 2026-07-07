@@ -64,6 +64,13 @@ def load_crises(directory: str | Path = CRISES_DIR) -> list[Crisis]:
     return [Crisis.model_validate(json.loads(p.read_text(encoding="utf-8"))) for p in paths]
 
 
+def fits_cast(crisis: Crisis, cast: set[str]) -> bool:
+    """La crise est-elle rejouable avec ce casting ? Tous les acteurs historiques
+    doivent siéger — sinon personne n'est concerné et le round tourne à vide."""
+    actors = {a for event in crisis.events for a in event.actors}
+    return actors <= cast
+
+
 def _norm(text: str) -> str:
     """Minuscule + sans accents (pour un recoupement robuste)."""
     decomposed = unicodedata.normalize("NFKD", text.lower())

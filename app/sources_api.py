@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from ingestion.build import build_all, load_indicators
 from ingestion.normalize import GII_TOTAL
+from simulation.alliances import AllianceInfo, load_alliances
 
 router = APIRouter(prefix="/api", tags=["sources"])
 
@@ -46,7 +47,9 @@ class CountrySources(BaseModel):
     id: str
     name: str
     attributes: list[AttributeSource]
-    profile: dict  # alliances, rivaux, système, idéologie, priorités (profil analyste)
+    profile: dict  # rivaux, système, idéologie, priorités (profil analyste)
+    # Attribut à part entière, DÉRIVÉ du registre sourcé (data/sources/alliances.json).
+    alliances: list[str] = Field(default_factory=list)
 
 
 class SourcesView(BaseModel):
@@ -54,6 +57,8 @@ class SourcesView(BaseModel):
     transformations: dict[str, str]
     build_command: str
     countries: list[CountrySources] = Field(default_factory=list)
+    # Registre des accords/traités réels : tag -> {name, domain, basis, url, members…}.
+    alliances: dict[str, AllianceInfo] = Field(default_factory=dict)
 
 
 def _country_rows(country, raw: dict) -> list[AttributeSource]:
@@ -130,6 +135,7 @@ def _sources_view() -> SourcesView:
             name=entry["name"],
             attributes=_country_rows(built[cid], entry["raw"]),
             profile=entry["profile"],
+            alliances=built[cid].alliances,
         )
         for cid, entry in sorted(indicators["countries"].items())
     ]
@@ -138,6 +144,7 @@ def _sources_view() -> SourcesView:
         transformations=TRANSFORMATIONS,
         build_command=BUILD_COMMAND,
         countries=countries,
+        alliances=load_alliances(),
     )
 
 

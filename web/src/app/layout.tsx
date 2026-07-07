@@ -30,6 +30,12 @@ export default function RootLayout({
   return (
     <html lang="fr" className={`${inter.variable} ${jetbrains.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col">
+        <a
+          href="#contenu"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:z-50 focus:rounded-md focus:bg-surface-2 focus:px-3 focus:py-2 focus:text-sm"
+        >
+          Aller au contenu
+        </a>
         <header className="sticky top-0 z-40 border-b border-edge bg-background/80 backdrop-blur">
           <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-6">
             <Link href="/" className="group flex items-baseline gap-3">
@@ -43,7 +49,9 @@ export default function RootLayout({
             <HeaderNav />
           </div>
         </header>
-        <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">{children}</main>
+        <main id="contenu" className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
+          {children}
+        </main>
         <footer className="border-t border-edge py-4">
           <p className="mx-auto max-w-6xl px-6 text-xs text-fg-faint">
             Simulation observable — les indices mesurent, ils n&apos;influencent pas les

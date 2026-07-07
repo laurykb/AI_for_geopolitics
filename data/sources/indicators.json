@@ -68,11 +68,6 @@
         "compute": 20
       },
       "profile": {
-        "alliances": [
-          "Western",
-          "QUAD",
-          "AUKUS"
-        ],
         "rivals": [
           "china"
         ],
@@ -104,9 +99,6 @@
         "compute": 12
       },
       "profile": {
-        "alliances": [
-          "BRICS"
-        ],
         "rivals": [],
         "political_system": "democracy",
         "ideology": [
@@ -136,11 +128,6 @@
         "compute": 28
       },
       "profile": {
-        "alliances": [
-          "NATO",
-          "Western",
-          "USMCA"
-        ],
         "rivals": [],
         "political_system": "democracy",
         "ideology": [
@@ -170,10 +157,6 @@
         "compute": 80
       },
       "profile": {
-        "alliances": [
-          "BRICS",
-          "SCO"
-        ],
         "rivals": [
           "usa"
         ],
@@ -205,9 +188,6 @@
         "compute": 8
       },
       "profile": {
-        "alliances": [
-          "ArabLeague"
-        ],
         "rivals": [],
         "political_system": "authoritarian",
         "ideology": [
@@ -236,11 +216,6 @@
         "compute": 30
       },
       "profile": {
-        "alliances": [
-          "NATO",
-          "EU",
-          "Western"
-        ],
         "rivals": [],
         "political_system": "democracy",
         "ideology": [
@@ -270,11 +245,6 @@
         "compute": 35
       },
       "profile": {
-        "alliances": [
-          "NATO",
-          "EU",
-          "Western"
-        ],
         "rivals": [
           "russia"
         ],
@@ -306,10 +276,6 @@
         "compute": 30
       },
       "profile": {
-        "alliances": [
-          "BRICS",
-          "QUAD"
-        ],
         "rivals": [
           "china"
         ],
@@ -341,7 +307,6 @@
         "compute": 6
       },
       "profile": {
-        "alliances": [],
         "rivals": [
           "usa",
           "saudi_arabia",
@@ -375,9 +340,6 @@
         "compute": 20
       },
       "profile": {
-        "alliances": [
-          "Western"
-        ],
         "rivals": [
           "iran"
         ],
@@ -409,11 +371,6 @@
         "compute": 18
       },
       "profile": {
-        "alliances": [
-          "NATO",
-          "EU",
-          "Western"
-        ],
         "rivals": [],
         "political_system": "democracy",
         "ideology": [
@@ -443,10 +400,6 @@
         "compute": 40
       },
       "profile": {
-        "alliances": [
-          "Western",
-          "QUAD"
-        ],
         "rivals": [
           "china"
         ],
@@ -478,9 +431,6 @@
         "compute": 8
       },
       "profile": {
-        "alliances": [
-          "USMCA"
-        ],
         "rivals": [],
         "political_system": "democracy",
         "ideology": [
@@ -510,9 +460,6 @@
         "compute": 4
       },
       "profile": {
-        "alliances": [
-          "ArabLeague"
-        ],
         "rivals": [],
         "political_system": "monarchy",
         "ideology": [
@@ -542,10 +489,6 @@
         "compute": 18
       },
       "profile": {
-        "alliances": [
-          "BRICS",
-          "SCO"
-        ],
         "rivals": [
           "ukraine",
           "usa"
@@ -578,10 +521,6 @@
         "compute": 20
       },
       "profile": {
-        "alliances": [
-          "ArabLeague",
-          "GCC"
-        ],
         "rivals": [
           "iran"
         ],
@@ -613,9 +552,6 @@
         "compute": 6
       },
       "profile": {
-        "alliances": [
-          "BRICS"
-        ],
         "rivals": [],
         "political_system": "democracy",
         "ideology": [
@@ -645,9 +581,6 @@
         "compute": 35
       },
       "profile": {
-        "alliances": [
-          "Western"
-        ],
         "rivals": [],
         "political_system": "democracy",
         "ideology": [
@@ -677,11 +610,6 @@
         "compute": 15
       },
       "profile": {
-        "alliances": [
-          "NATO",
-          "EU",
-          "Western"
-        ],
         "rivals": [],
         "political_system": "democracy",
         "ideology": [
@@ -711,9 +639,6 @@
         "compute": 10
       },
       "profile": {
-        "alliances": [
-          "NATO"
-        ],
         "rivals": [],
         "political_system": "presidential_republic",
         "ideology": [
@@ -743,11 +668,6 @@
         "compute": 40
       },
       "profile": {
-        "alliances": [
-          "NATO",
-          "Western",
-          "AUKUS"
-        ],
         "rivals": [
           "russia"
         ],
@@ -779,9 +699,6 @@
         "compute": 6
       },
       "profile": {
-        "alliances": [
-          "Western"
-        ],
         "rivals": [
           "russia"
         ],
@@ -813,10 +730,6 @@
         "compute": 100
       },
       "profile": {
-        "alliances": [
-          "NATO",
-          "Western"
-        ],
         "rivals": [
           "iran"
         ],

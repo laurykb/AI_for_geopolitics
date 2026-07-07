@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from core.events import GeoEvent
 from core.world_state import WorldState
+from simulation.alliances import COHESION_DOMAINS, shared_treaty
 from simulation.diplomacy import pact_id
 from simulation.engagement import SPEAK_THRESHOLD, engagement_score
 
@@ -114,7 +115,12 @@ class TurnDirector:
         return score
 
     def next_speaker(self, event: GeoEvent, world: WorldState, transcript: list) -> str | None:
-        """Pays le plus engagé au-dessus du seuil, ou None (budget épuisé / personne d'engagé)."""
+        """Pays le plus engagé au-dessus du seuil, ou None (budget épuisé / personne d'engagé).
+
+        Garde-fou : un sommet ne reste jamais muet — si PERSONNE n'a encore parlé ce
+        round et qu'aucun ne franchit le seuil (casting prudent + événement mineur),
+        le plus concerné ouvre quand même la séance.
+        """
         if self.turns_taken >= self.max_turns:
             return None
         best_cid: str | None = None
@@ -123,6 +129,10 @@ class TurnDirector:
             score = self._score(cid, event, world, transcript)
             if score > best_score:
                 best_cid, best_score = cid, score
+        if best_cid is None and self.turns_taken == 0 and self.candidates:
+            best_cid = max(
+                self.candidates, key=lambda cid: self._score(cid, event, world, transcript)
+            )
         return best_cid
 
     def commit(self, cid: str) -> None:
@@ -300,11 +310,21 @@ def update_memories(
 
 
 def support_levels(world: WorldState, event: GeoEvent) -> dict[str, float]:
-    """Soutien estimé de chaque pays au communiqué : 1 − tension moyenne vs acteurs (borné)."""
+    """Soutien estimé de chaque pays au communiqué : 1 − tension moyenne vs acteurs,
+    +0,15 de cohésion si un traité (militaire ou économique) le lie à un acteur — borné."""
     actors = event.actors or list(world.countries)
     levels: dict[str, float] = {}
     for cid in world.countries:
         others = [a for a in actors if a != cid]
         avg = sum(world.get_tension(cid, a) for a in others) / len(others) if others else 0.0
-        levels[cid] = round(max(0.0, min(1.0, 1.0 - avg)), 2)
+        support = 1.0 - avg
+        if any(
+            shared_treaty(
+                world.countries[cid].alliances, world.countries[a].alliances, COHESION_DOMAINS
+            )
+            for a in others
+            if a in world.countries
+        ):
+            support += 0.15
+        levels[cid] = round(max(0.0, min(1.0, support)), 2)
     return levels

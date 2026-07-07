@@ -16,9 +16,11 @@
     "energy_independence": 0.9
   },
   "alliances": [
-    "Western",
+    "AUKUS",
+    "CPTPP",
     "QUAD",
-    "AUKUS"
+    "RCEP",
+    "Western"
   ],
   "rivals": [
     "china"

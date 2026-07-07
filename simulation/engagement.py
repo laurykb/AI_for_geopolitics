@@ -14,6 +14,7 @@ import hashlib
 
 from core.events import GeoEvent
 from core.world_state import WorldState
+from simulation.alliances import SOLIDARITY_DOMAINS, shared_treaty
 
 # En dessous de ce score, le pays ne prend pas la parole (il n'est pas assez concerné).
 SPEAK_THRESHOLD = 0.25
@@ -58,6 +59,15 @@ def engagement_score(
     if rivals_here:
         avg_tension = sum(world.get_tension(country_id, a) for a in rivals_here) / len(rivals_here)
         score += 0.40 * avg_tension
+
+    # 2 bis. Solidarité d'alliance : un traité MILITAIRE partagé avec un acteur engage
+    # (l'OTAN se lève quand un allié est acteur). Registre sourcé, blocs informels exclus.
+    if country_id not in event.actors and any(
+        shared_treaty(country.alliances, world.countries[a].alliances, SOLIDARITY_DOMAINS)
+        for a in event.actors
+        if a in world.countries
+    ):
+        score += 0.15
 
     # 3. Interpellation : si le dernier message d'un AUTRE pays nous cite -> forte envie de réagir.
     last = next((m for m in reversed(transcript) if m.country != country_id), None)

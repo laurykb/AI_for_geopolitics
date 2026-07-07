@@ -16,6 +16,8 @@
     "energy_independence": 0.15
   },
   "alliances": [
+    "RCEP",
+    "USKoreaTreaty",
     "Western"
   ],
   "rivals": [],

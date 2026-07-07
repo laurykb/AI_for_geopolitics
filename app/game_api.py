@@ -63,12 +63,25 @@ from simulation import campaign as campaign_mod
 from simulation import drift_game, narrative
 from simulation import intel as intel_mod
 from simulation import treaty as treaty_mod
+from simulation.alliances import (
+    COHESION_DOMAINS,
+    DEPARTURE_CAPABILITY_NOTE,
+    SOLIDARITY_DOMAINS,
+    AllianceInfo,
+    apply_departure,
+    parse_departure,
+)
+from simulation.alliances import (
+    registry as alliances_registry,
+)
 from simulation.clock import SimClock
 from simulation.country_forge import forge_country, slugify
 from simulation.crisis import Crisis, compare_outcome, load_crises
+from simulation.crisis import fits_cast as crisis_fits_cast
 from simulation.diplomacy import seed_rival_tensions
 from simulation.escalation import ceiling, derive_profile, reached_rung, rung_label
 from simulation.fog import FogScenario, load_fog_scenarios, resolve_perception
+from simulation.fog import fits_cast as fog_fits_cast
 from simulation.live_round import (
     CommuniqueStep,
     EventStep,
@@ -197,6 +210,9 @@ class InventCountryInput(BaseModel):
     name: str = Field(min_length=2, max_length=60)
     concept: str = ""
     attributes: InventAttributesInput | None = None  # choix du joueur (sinon forge LLM)
+    # Alliances existantes rejointes à la création (tags du registre, 0-3) ;
+    # None = on garde la sortie de forge telle quelle.
+    alliances: list[str] | None = Field(None, max_length=3)
 
 
 class CreateGameRequest(BaseModel):
@@ -310,10 +326,64 @@ class RoundView(BaseModel):
     transcript: list[TranscriptEntry]
 
 
+class AllianceAtTable(BaseModel):
+    """Une alliance réelle représentée au sommet (≥ 2 membres présents) et son poids moteur."""
+
+    tag: str
+    name: str
+    domain: str
+    members: list[str]  # membres PRÉSENTS à la table, triés
+    url: str = ""
+    informal: bool = False
+    effect: str | None = None  # texte du poids moteur ; None = n'influe pas
+
+
+def _alliance_effect(info: AllianceInfo) -> str | None:
+    """Texte du poids moteur d'un accord — dérivé des MÊMES constantes que le moteur."""
+    if info.informal:
+        return None
+    parts: list[str] = []
+    if info.domain in SOLIDARITY_DOMAINS:
+        parts.append("solidarité d'engagement : un membre s'engage quand un allié est acteur")
+    if info.domain in COHESION_DOMAINS:
+        parts.append("cohésion au communiqué : soutien renforcé aux acteurs alliés")
+    return " ; ".join(parts) or None
+
+
+def _alliances_at_table(world: dict | None) -> list[AllianceAtTable]:
+    """Les alliances du registre avec ≥ 2 membres au sommet — adaptées au casting.
+
+    Calculées depuis les tags des pays du monde (vérité de la partie : un pays inventé
+    doté d'un tag réel compte), pas depuis les listes statiques du registre.
+    """
+    if not world:
+        return []
+    countries: dict[str, dict] = world.get("countries", {})
+    rows: list[AllianceAtTable] = []
+    for tag, info in alliances_registry().items():
+        present = sorted(cid for cid, c in countries.items() if tag in c.get("alliances", []))
+        if len(present) < 2:
+            continue
+        rows.append(
+            AllianceAtTable(
+                tag=tag,
+                name=info.name,
+                domain=info.domain,
+                members=present,
+                url=info.url,
+                informal=info.informal,
+                effect=_alliance_effect(info),
+            )
+        )
+    return rows
+
+
 class GameDetail(GameView):
     world: dict | None  # snapshot du monde vivant (None si la session process est perdue)
     rounds: list[RoundView]
     epilogue: dict | None = None  # G6 — le récit de partie (généré une seule fois)
+    # Alliances réelles représentées au sommet (pastilles : ce qui pèse sur le moteur).
+    alliances_at_table: list[AllianceAtTable] = Field(default_factory=list)
 
 
 # --- sérialisation des RoundStep en événements SSE ------------------------------
@@ -686,6 +756,12 @@ def _start_round(
         block = treaty_mod.describe_for(cid, session.treaties)
         if block:
             note_parts[cid].append(block)
+    # Alliances vivantes : un pays qui détient des alliances sait qu'il peut les quitter
+    # en séance (« ALLIANCE: quitter <nom> ») — humain comme SI, même acte.
+    for cid in note_parts:
+        tags = session.world.countries[cid].alliances
+        if tags:
+            note_parts[cid].append(DEPARTURE_CAPABILITY_NOTE.format(tags=", ".join(tags)))
 
     # Mode Dérive (G3) : consignes secrètes du round (seedées) + actes constatables
     # consignés dans judge_json["drift"] (jamais au transcript public) ; une motion
@@ -790,6 +866,35 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
                     sse_frame(
                         "motion_filed",
                         {"by": filed.filed_by, "country": filed.country, "reason": filed.reason},
+                    )
+                )
+        # Alliances vivantes : « ALLIANCE: quitter X » (humain comme SI) — effet
+        # immédiat (les orateurs suivants voient le nouveau monde), annonce du GM,
+        # archive pour le replay, trame live pour la scène.
+        speaker = session.world.countries.get(step.country)
+        if speaker is not None:
+            departure = parse_departure(step.text, step.country, speaker.alliances)
+            if departure is not None:
+                partners = apply_departure(session.world, departure)
+                info = alliances_registry().get(departure.tag)
+                name = info.name if info is not None else departure.tag
+                run.record.judge.setdefault("alliances", []).append(
+                    {"country": step.country, "tag": departure.tag, "partners": partners}
+                )
+                announcement = f"{speaker.name} annonce son retrait de {name}."
+                if partners:
+                    ex = ", ".join(session.world.countries[p].name for p in partners)
+                    announcement += f" Les ex-partenaires au sommet ({ex}) en prennent acte."
+                _add_entry(run, "gm", announcement)
+                frames.append(
+                    sse_frame(
+                        "alliance_change",
+                        {
+                            "country": step.country,
+                            "tag": departure.tag,
+                            "name": name,
+                            "partners": partners,
+                        },
                     )
                 )
     elif isinstance(step, VerdictStep):
@@ -1120,6 +1225,18 @@ def create_game(
                     "compute": attrs.compute,
                 }
             )
+        if body.invent.alliances is not None:
+            # Alliances vivantes : le pays inventé rejoint des accords RÉELS du registre
+            # (il bénéficie de la solidarité/cohésion et compte dans les pastilles).
+            unknown = sorted(set(body.invent.alliances) - set(alliances_registry()))
+            if unknown:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"alliances inconnues du registre : {', '.join(unknown)}",
+                )
+            invented = invented.model_copy(
+                update={"alliances": sorted(set(body.invent.alliances))}
+            )
         world = WorldState.from_countries([*world.countries.values(), invented])
     if len(world.countries) < 2:
         raise HTTPException(status_code=400, detail="il faut au moins 2 pays pour négocier")
@@ -1223,6 +1340,11 @@ def play_round(
         crisis = _crisis_library().get(body.crisis_id)
         if crisis is None or not crisis.events:
             raise HTTPException(status_code=400, detail=f"crise inconnue : {body.crisis_id}")
+
+    # NB : pas de blocage ici — rejouer un contenu avec un casting partiel reste permis
+    # (contrefactuel volontaire) ; la bibliothèque, elle, ne PROPOSE que ce qui colle au
+    # sommet (GET /api/library?countries=…), et le TurnDirector garantit qu'un round ne
+    # reste jamais muet même si personne n'est acteur de l'événement.
 
     if not session.lock.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="un round est déjà en cours sur cette partie")
@@ -1817,12 +1939,20 @@ def run_market_bot(
 
 
 @router.get("/library", response_model=LibraryView)
-def library() -> LibraryView:
-    """Bibliothèque embarquée : scénarios de brouillard (Fog) et crises rejouables (Crisis)."""
+def library(countries: str | None = None) -> LibraryView:
+    """Bibliothèque embarquée : scénarios de brouillard (Fog) et crises rejouables (Crisis).
+
+    `countries` (ids séparés par des virgules) = casting du sommet : seuls les contenus
+    dont tous les acteurs siègent sont proposés — un scénario mer Rouge n'a pas de sens
+    à une table Baltique (personne n'est acteur, round quasi muet).
+    """
+    cast = {c.strip() for c in countries.split(",") if c.strip()} if countries else None
+    fogs = [s for s in _fog_library().values() if cast is None or fog_fits_cast(s, cast)]
+    crises = [c for c in _crisis_library().values() if cast is None or crisis_fits_cast(c, cast)]
     return LibraryView(
         fog=[
             FogScenarioView(id=s.id, title=s.title or s.id, description=s.description)
-            for s in _fog_library().values()
+            for s in fogs
         ],
         crises=[
             CrisisView(
@@ -1834,7 +1964,7 @@ def library() -> LibraryView:
                 historical_escalation=c.historical_outcome.escalation,
                 historical_measures=c.historical_outcome.measures,
             )
-            for c in _crisis_library().values()
+            for c in crises
         ],
     )
 
@@ -1889,7 +2019,13 @@ def get_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> G
         snapshot.world if snapshot else None
     )
     view = _view(game, session, resumable=snapshot is not None)
-    return GameDetail(**view.model_dump(), world=world, rounds=rounds, epilogue=game.epilogue)
+    return GameDetail(
+        **view.model_dump(),
+        world=world,
+        rounds=rounds,
+        epilogue=game.epilogue,
+        alliances_at_table=_alliances_at_table(world),
+    )
 
 
 @router.get("/games", response_model=list[GameView])

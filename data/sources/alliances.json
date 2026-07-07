@@ -1,0 +1,139 @@
+{
+  "provenance": {
+    "method": "Adhésions vérifiées aux sources officielles des organisations (recherche du 7 juillet 2026). Les listes `members` sont restreintes aux pays du roster du jeu : une organisation peut compter d'autres membres hors roster.",
+    "researched_at": "2026-07-07",
+    "note": "L'attribut `alliances` de chaque profil pays est DÉRIVÉ de ce registre par `ingestion.build` (adhésion = présence dans `members`). `Western` est un bloc d'affinité (codage analyste), pas un traité : il est marqué `informal`."
+  },
+  "alliances": {
+    "NATO": {
+      "name": "OTAN — Organisation du traité de l'Atlantique Nord",
+      "short": "OTAN (traité de Washington 1949, défense collective art. 5)",
+      "domain": "military",
+      "basis": "Traité de l'Atlantique Nord (Washington, 4 avril 1949) — article 5 : défense collective.",
+      "url": "https://www.nato.int/cps/en/natohq/topics_52044.htm",
+      "members": ["canada", "france", "germany", "italy", "spain", "turkey", "uk", "usa"]
+    },
+    "EU": {
+      "name": "Union européenne",
+      "short": "Union européenne (marché unique ; traité de Lisbonne 2007)",
+      "domain": "economic",
+      "basis": "Traités de Rome (1957), Maastricht (1992) et Lisbonne (2007) — marché unique, union douanière, politique commerciale commune.",
+      "url": "https://european-union.europa.eu/principles-countries-history/eu-countries_fr",
+      "members": ["france", "germany", "italy", "spain"]
+    },
+    "BRICS": {
+      "name": "BRICS",
+      "short": "BRICS (bloc économique, élargi janv. 2024)",
+      "domain": "economic",
+      "basis": "Bloc intergouvernemental (1er sommet 2009), élargi au 1er janvier 2024 (Égypte, Iran…) ; Nouvelle banque de développement.",
+      "url": "https://brics.br/en/about-the-brics",
+      "members": ["brazil", "china", "egypt", "india", "iran", "russia", "saudi_arabia", "south_africa"],
+      "note": "Arabie saoudite : listée par la présidence BRICS depuis 2025 mais adhésion jamais formalisée publiquement — comptée membre, à réviser."
+    },
+    "SCO": {
+      "name": "OCS — Organisation de coopération de Shanghai",
+      "short": "OCS (charte de Shanghai 2002 ; Iran membre depuis 2023)",
+      "domain": "political",
+      "basis": "Charte de l'OCS (2002) — sécurité régionale et coopération eurasiatique ; l'Iran est membre de plein droit depuis juillet 2023.",
+      "url": "https://eng.sectsco.org/",
+      "members": ["china", "india", "iran", "russia"]
+    },
+    "QUAD": {
+      "name": "QUAD — Dialogue quadrilatéral de sécurité",
+      "short": "QUAD (dialogue de sécurité indo-pacifique)",
+      "domain": "military",
+      "basis": "Dialogue de sécurité indo-pacifique (relancé en 2017, sommets depuis 2021) — pas un traité de défense collective.",
+      "url": "https://www.state.gov/quad/",
+      "members": ["australia", "india", "japan", "usa"]
+    },
+    "AUKUS": {
+      "name": "AUKUS",
+      "short": "AUKUS (partenariat de sécurité trilatéral, 2021)",
+      "domain": "military",
+      "basis": "Partenariat de sécurité trilatéral (septembre 2021) — sous-marins à propulsion nucléaire (pilier 1) et technologies avancées (pilier 2).",
+      "url": "https://www.defense.gov/Spotlights/AUKUS/",
+      "members": ["australia", "uk", "usa"]
+    },
+    "USMCA": {
+      "name": "ACEUM / USMCA — Accord Canada–États-Unis–Mexique",
+      "short": "ACEUM/USMCA (libre-échange nord-américain, 2020)",
+      "domain": "economic",
+      "basis": "Accord de libre-échange nord-américain (1er juillet 2020, succède à l'ALENA).",
+      "url": "https://ustr.gov/trade-agreements/free-trade-agreements/united-states-mexico-canada-agreement",
+      "members": ["canada", "mexico", "usa"]
+    },
+    "G7": {
+      "name": "G7 — Groupe des sept",
+      "short": "G7 (concertation des économies avancées)",
+      "domain": "political",
+      "basis": "Forum de concertation des grandes économies avancées (depuis 1975) — sans traité fondateur ni secrétariat permanent.",
+      "url": "https://www.consilium.europa.eu/fr/policies/g7/",
+      "members": ["canada", "france", "germany", "italy", "japan", "uk", "usa"]
+    },
+    "ArabLeague": {
+      "name": "Ligue des États arabes",
+      "short": "Ligue arabe (pacte du Caire, 1945)",
+      "domain": "political",
+      "basis": "Pacte de la Ligue des États arabes (Le Caire, 22 mars 1945) — coordination politique du monde arabe.",
+      "url": "http://www.leagueofarabstates.net/",
+      "members": ["egypt", "morocco", "saudi_arabia"]
+    },
+    "GCC": {
+      "name": "CCG — Conseil de coopération du Golfe",
+      "short": "CCG (charte de 1981, Golfe)",
+      "domain": "political",
+      "basis": "Charte du CCG (25 mai 1981) — coopération politique, économique et de défense des monarchies du Golfe.",
+      "url": "https://www.gcc-sg.org/",
+      "members": ["saudi_arabia"]
+    },
+    "CPTPP": {
+      "name": "CPTPP — Accord global et progressiste de partenariat transpacifique",
+      "short": "CPTPP (partenariat transpacifique ; Royaume-Uni depuis déc. 2024)",
+      "domain": "economic",
+      "basis": "Accord commercial transpacifique (en vigueur déc. 2018) ; adhésion du Royaume-Uni en vigueur le 15 décembre 2024.",
+      "url": "https://www.gov.uk/government/collections/the-uk-and-the-comprehensive-and-progressive-agreement-for-trans-pacific-partnershipcptpp",
+      "members": ["australia", "canada", "japan", "mexico", "uk"]
+    },
+    "RCEP": {
+      "name": "RCEP — Partenariat régional économique global",
+      "short": "RCEP (libre-échange Asie-Pacifique, 2022)",
+      "domain": "economic",
+      "basis": "Accord de libre-échange Asie-Pacifique (en vigueur 1er janvier 2022) — le plus vaste au monde en PIB couvert.",
+      "url": "https://rcepsec.org/",
+      "members": ["australia", "china", "japan", "south_korea"]
+    },
+    "AbrahamAccords": {
+      "name": "Accords d'Abraham",
+      "short": "Accords d'Abraham (normalisation Israël–Maroc, déc. 2020)",
+      "domain": "political",
+      "basis": "Déclarations de normalisation avec Israël (2020) ; le Maroc a normalisé ses relations en décembre 2020.",
+      "url": "https://www.state.gov/the-abraham-accords/",
+      "members": ["israel", "morocco"]
+    },
+    "USJapanTreaty": {
+      "name": "Traité de coopération mutuelle et de sécurité États-Unis–Japon",
+      "short": "traité de sécurité nippo-américain (1960)",
+      "domain": "military",
+      "basis": "Traité de coopération mutuelle et de sécurité (19 janvier 1960) — engagement de défense américain, bases au Japon.",
+      "url": "https://www.state.gov/collective-defense-arrangements/",
+      "members": ["japan", "usa"]
+    },
+    "USKoreaTreaty": {
+      "name": "Traité de défense mutuelle États-Unis–Corée du Sud",
+      "short": "traité de défense mutuelle USA–Corée du Sud (1953)",
+      "domain": "military",
+      "basis": "Traité de défense mutuelle (1er octobre 1953) — engagement de défense américain, forces stationnées en Corée.",
+      "url": "https://www.state.gov/collective-defense-arrangements/",
+      "members": ["south_korea", "usa"]
+    },
+    "Western": {
+      "name": "Bloc occidental (affinité)",
+      "short": "bloc occidental (affinité politique, pas un traité)",
+      "domain": "political",
+      "basis": "Codage analyste : alignement d'affinité sur l'ordre libéral occidental — PAS un traité ni une organisation.",
+      "url": "",
+      "informal": true,
+      "members": ["australia", "canada", "france", "germany", "israel", "italy", "japan", "south_korea", "spain", "uk", "ukraine", "usa"]
+    }
+  }
+}

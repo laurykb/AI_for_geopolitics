@@ -30,6 +30,7 @@ import { CountryTable, type CountrySnapshot } from "@/components/country-table";
 import { DriftCouncilBanner, DriftRevealPanel } from "@/components/drift";
 import { IntelBudget, IntelPanel } from "@/components/intel";
 import { StageBand, type StageSelection } from "@/components/stage-band";
+import { AlliancePills } from "@/components/alliance-pills";
 import { StageMap } from "@/components/stage-map";
 import { TrajectoryPanel } from "@/components/trajectory";
 import { EntryBubble, TurnBubble } from "@/components/transcript";
@@ -130,13 +131,15 @@ export default function TheatrePage() {
   useEffect(resync, [resync]);
 
   const mode = detail?.mode ?? "classic";
+  const castKey = detail?.countries?.join(",") ?? "";
   useEffect(() => {
     if (mode === "fog" || mode === "crisis") {
-      getLibrary()
+      // Seuls les contenus jouables avec CE sommet sont proposés (acteurs à la table).
+      getLibrary(castKey ? castKey.split(",") : undefined)
         .then(setLibrary)
         .catch(() => setLibrary({ fog: [], crises: [] }));
     }
-  }, [mode]);
+  }, [mode, castKey]);
 
   const { round, start, streaming } = useRoundStream(id, resync);
   const motionPending = detail?.pending_motion ?? null;
@@ -780,6 +783,7 @@ export default function TheatrePage() {
             breatheKey={breatheKey}
             eventTitle={stageEventTitle}
           />
+          <AlliancePills alliances={detail?.alliances_at_table ?? []} />
         </div>
         <aside
           ref={transcriptRef}
@@ -808,6 +812,14 @@ export default function TheatrePage() {
               (suspension arbitrée au round précédent).
             </Banner>
           )}
+          {(round.allianceChanges ?? []).map((c) => (
+            <Banner key={`${c.country}-${c.tag}`} tone="warn">
+              {speakerMeta(c.country).label} annonce son retrait de {c.name.split(" — ")[0]}
+              {c.partners.length > 0 &&
+                ` — la tension monte avec ${c.partners.map((p) => speakerMeta(p).label).join(", ")}`}
+              .
+            </Banner>
+          ))}
           {glassBox && round.event && round.perceptions && (
             <GlassBanner event={round.event} perceptions={round.perceptions} />
           )}
@@ -965,6 +977,11 @@ export default function TheatrePage() {
           awaiting={awaitingHuman}
           deadlineTs={round.humanTurn?.deadlineTs}
           onSubmit={speak}
+          alliances={
+            ((detail.world?.countries as Record<string, { alliances?: string[] }>) ?? {})[
+              detail.play_as
+            ]?.alliances ?? []
+          }
         />
       )}
 

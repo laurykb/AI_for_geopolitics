@@ -15,7 +15,10 @@
     "oil_dependency": 0.05,
     "energy_independence": 0.98
   },
-  "alliances": [],
+  "alliances": [
+    "BRICS",
+    "SCO"
+  ],
   "rivals": [
     "usa",
     "saudi_arabia",

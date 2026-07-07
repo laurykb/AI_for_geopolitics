@@ -16,8 +16,12 @@
     "energy_independence": 0.1
   },
   "alliances": [
-    "Western",
-    "QUAD"
+    "CPTPP",
+    "G7",
+    "QUAD",
+    "RCEP",
+    "USJapanTreaty",
+    "Western"
   ],
   "rivals": [
     "china"

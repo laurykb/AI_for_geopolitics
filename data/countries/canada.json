@@ -16,9 +16,11 @@
     "energy_independence": 0.95
   },
   "alliances": [
+    "CPTPP",
+    "G7",
     "NATO",
-    "Western",
-    "USMCA"
+    "USMCA",
+    "Western"
   ],
   "rivals": [],
   "political_system": "democracy",

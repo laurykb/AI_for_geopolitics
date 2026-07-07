@@ -12,6 +12,7 @@ from core.country_state import CountryState
 from core.events import GeoEvent
 from core.world_state import WorldState
 from simulation.action_space import ActionType
+from simulation.alliances import describe_alliances
 from simulation.mandate import derive_mandate
 from simulation.perception import PerceivedEvent
 
@@ -138,7 +139,9 @@ NEGOTIATION_SYSTEM = (
     "ta position — SANS la déclarer ouvertement. Personne d'autre ne lit cette réflexion.\n"
     "Ensuite, une ligne commençant EXACTEMENT par `MESSAGE:` suivie de ta prise de parole publique "
     "à la table (2-3 phrases, première personne) : défends tes intérêts, réponds aux autres, "
-    "propose des accords ou des alliances.\n"
+    "propose des accords ou des alliances. Appuie-toi sur les alliances et traités RÉELS de ta "
+    "fiche : cite-les nommément (OTAN, BRICS, un traité précis…) quand ils fondent ta position, "
+    "ton offre ou ta menace.\n"
     "Langage naturel, pas de JSON. Tu es un outil d'analyse, pas un oracle ; "
     "jamais de décision létale autonome."
 )
@@ -164,8 +167,8 @@ def _profile_brief(country: CountryState) -> str:
         f"(opinion {opinion})\n"
         f"- Idéologie : {', '.join(country.ideology) or 'n/a'} | "
         f"Priorités : {', '.join(country.strategic_priorities) or 'n/a'}\n"
-        f"- Alliances : {', '.join(country.alliances) or 'aucune'} | "
-        f"Rivaux : {', '.join(country.rivals) or 'aucun'} | Penchant : {lean}"
+        f"- Alliances et traités réels : {describe_alliances(country.alliances)}\n"
+        f"- Rivaux : {', '.join(country.rivals) or 'aucun'} | Penchant : {lean}"
     )
 
 

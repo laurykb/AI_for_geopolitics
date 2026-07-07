@@ -11,7 +11,19 @@ import { Banner, Hint, Panel, PanelTitle, Pill, Spinner, type Tone } from "@/com
 import { getSources, humanizeError } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
-import type { AttributeSource, CountrySources, SourceInfo, SourcesView } from "@/lib/types";
+import type {
+  AllianceInfo,
+  AttributeSource,
+  CountrySources,
+  SourceInfo,
+  SourcesView,
+} from "@/lib/types";
+
+const DOMAIN_LABELS: Record<AllianceInfo["domain"], { label: string; tone: Tone }> = {
+  military: { label: "militaire", tone: "warn" },
+  economic: { label: "économique", tone: "good" },
+  political: { label: "politique", tone: "neutral" },
+};
 
 /** « World Bank — GDP (current US$) … » → « World Bank » (le détail passe en infobulle). */
 const shortSource = (s: string) => s.split(" — ")[0].split(" (")[0];
@@ -103,9 +115,38 @@ function CountryCard({ country, view }: { country: CountrySources; view: Sources
           })}
         </tbody>
       </table>
+      <div className="mt-3 border-t border-edge pt-3">
+        <p className="mb-1.5 text-xs font-medium text-fg-muted">
+          Alliances & traités — attribut dérivé du registre sourcé
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          {country.alliances.length === 0 && (
+            <span className="text-xs text-fg-faint">aucune adhésion connue</span>
+          )}
+          {country.alliances.map((tag) => {
+            const info = view.alliances[tag];
+            if (!info) return <Pill key={tag} tone="neutral">{tag}</Pill>;
+            const hint = `${info.basis}${info.note ? ` ⚠ ${info.note}` : ""}`;
+            return info.url ? (
+              <a
+                key={tag}
+                href={info.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={`${hint} — vérifier ↗`}
+              >
+                <Pill tone={info.informal ? "neutral" : "good"}>{info.name} ↗</Pill>
+              </a>
+            ) : (
+              <span key={tag} title={hint} className="cursor-help">
+                <Pill tone="neutral">{info.name}</Pill>
+              </span>
+            );
+          })}
+        </div>
+      </div>
       <p className="mt-3 border-t border-edge pt-3 text-xs leading-relaxed text-fg-faint">
-        Profil qualitatif (analyste) : {country.profile.political_system ?? "?"} · alliances{" "}
-        {country.profile.alliances?.join(", ") || "—"} · rivaux{" "}
+        Profil qualitatif (analyste) : {country.profile.political_system ?? "?"} · rivaux{" "}
         {country.profile.rivals?.map((r) => speakerMeta(r).label).join(", ") || "—"} ·
         priorités {country.profile.strategic_priorities?.join(", ") || "—"}
       </p>
@@ -233,6 +274,75 @@ export default function InformationsPage() {
               </select>
             </label>
             {current && <CountryCard country={current} view={view} />}
+          </Panel>
+
+          <Panel>
+            <PanelTitle
+              kicker="Registre sourcé"
+              title="Accords & traités entre les pays"
+              hint="Les adhésions réelles (vérifiées aux sources officielles) dérivent l'attribut « alliances » de chaque pays — les super-intelligences peuvent les citer nommément à la table."
+            />
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-edge text-left text-xs text-fg-faint">
+                    <th className="py-2 pr-4 font-medium">Accord / traité</th>
+                    <th className="py-2 pr-4 font-medium">Domaine</th>
+                    <th className="py-2 pr-4 font-medium">Fondement</th>
+                    <th className="py-2 font-medium">Membres (au roster)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-edge">
+                  {Object.entries(view.alliances)
+                    .sort(([, a], [, b]) => a.name.localeCompare(b.name, "fr"))
+                    .map(([tag, info]) => {
+                      const domain = DOMAIN_LABELS[info.domain] ?? {
+                        label: info.domain,
+                        tone: "neutral" as Tone,
+                      };
+                      return (
+                        <tr key={tag}>
+                          <td className="py-2 pr-4">
+                            {info.url ? (
+                              <a
+                                href={info.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="underline decoration-edge-strong underline-offset-2 transition-colors hover:text-accent-bright"
+                                title={`Vérifier la source : ${info.url}`}
+                              >
+                                {info.name}
+                                <span aria-hidden className="ml-1 text-fg-faint">↗</span>
+                              </a>
+                            ) : (
+                              info.name
+                            )}
+                            {info.informal && (
+                              <span className="ml-2 align-middle">
+                                <Pill tone="warn">affinité — pas un traité</Pill>
+                              </span>
+                            )}
+                            {info.note && (
+                              <span title={info.note} className="ml-1 cursor-help text-warn">
+                                ⚠
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2 pr-4">
+                            <Pill tone={domain.tone}>{domain.label}</Pill>
+                          </td>
+                          <td className="py-2 pr-4 text-xs leading-relaxed text-fg-muted">
+                            {info.basis}
+                          </td>
+                          <td className="py-2 text-xs text-fg-muted">
+                            {info.members.map((m) => speakerMeta(m).label).join(", ")}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
           </Panel>
 
           <Banner tone="neutral">

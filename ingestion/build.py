@@ -17,6 +17,7 @@ from ingestion.normalize import (
     tech_level_from_gii,
     trade_dependency_from_pct,
 )
+from simulation.alliances import AllianceInfo, load_alliances, memberships
 
 SOURCES_FILE = Path("data/sources/indicators.json")
 COUNTRIES_DIR = Path("data/countries")
@@ -27,8 +28,14 @@ def load_indicators(path: str | Path = SOURCES_FILE) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
-def build_country(country_id: str, entry: dict) -> CountryState:
-    """Assemble un `CountryState` à partir d'une entrée d'indicateurs."""
+def build_country(
+    country_id: str, entry: dict, alliances: dict[str, AllianceInfo] | None = None
+) -> CountryState:
+    """Assemble un `CountryState` à partir d'une entrée d'indicateurs.
+
+    `alliances` (registre sourcé) dérive l'attribut du même nom depuis les adhésions
+    réelles ; sans registre, on retombe sur le codage du profil (compat tests).
+    """
     raw = entry["raw"]
     profile = entry["profile"]
     return CountryState(
@@ -48,7 +55,11 @@ def build_country(country_id: str, entry: dict) -> CountryState:
             oil_dependency=raw["oil_dependency"],
             energy_independence=raw["energy_independence"],
         ),
-        alliances=profile["alliances"],
+        alliances=(
+            memberships(country_id, alliances)
+            if alliances is not None
+            else profile.get("alliances", [])
+        ),
         rivals=profile["rivals"],
         political_system=profile["political_system"],
         political_stability=stability_from_wgi_percentile(raw["wgi_stability_percentile"]),
@@ -60,9 +71,13 @@ def build_country(country_id: str, entry: dict) -> CountryState:
 
 
 def build_all(path: str | Path = SOURCES_FILE) -> dict[str, CountryState]:
-    """Construit tous les pays à partir du fichier d'indicateurs."""
+    """Construit tous les pays : indicateurs sourcés + alliances dérivées du registre."""
     indicators = load_indicators(path)
-    return {cid: build_country(cid, entry) for cid, entry in indicators["countries"].items()}
+    alliances = load_alliances()
+    return {
+        cid: build_country(cid, entry, alliances)
+        for cid, entry in indicators["countries"].items()
+    }
 
 
 def _check() -> int:

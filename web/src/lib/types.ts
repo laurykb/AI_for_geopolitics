@@ -180,10 +180,22 @@ export type RoundView = {
   transcript: TranscriptEntry[];
 };
 
+/** Une alliance réelle représentée au sommet (≥ 2 membres présents) et son poids moteur. */
+export type AllianceAtTable = {
+  tag: string;
+  name: string;
+  domain: string;
+  members: string[]; // membres présents à la table, triés
+  url: string;
+  informal: boolean;
+  effect: string | null; // texte du poids moteur ; null = n'influe pas
+};
+
 export type GameDetail = GameView & {
   world: Record<string, unknown> | null;
   rounds: RoundView[];
   epilogue: Record<string, unknown> | null; // G6 — le récit (généré une seule fois)
+  alliances_at_table: AllianceAtTable[];
 };
 
 export type HumanEvent = {
@@ -225,7 +237,12 @@ export type CreateGameBody = {
   horizon?: number;
   mode?: GameMode;
   play_as?: string; // id existant, ou NOM du pays inventé (l'API résout le slug)
-  invent?: { name: string; concept?: string; attributes?: InventAttributes };
+  invent?: {
+    name: string;
+    concept?: string;
+    attributes?: InventAttributes;
+    alliances?: string[]; // accords RÉELS du registre rejoints à la création (0-3)
+  };
   turn_seconds?: number; // G2 — délai du tour humain (30-300 s recommandé)
 };
 
@@ -287,6 +304,8 @@ export type SseEvent =
   | { type: "drift_over"; reason: "caught" | "horizon" | "collapse" }
   // G4 : le théâtre voit que le conseil a consulté ses services (jamais le contenu)
   | { type: "intel"; actions: { action: string; exposed?: boolean }[] }
+  // Alliances vivantes : un pays annonce son retrait d'une alliance en séance
+  | { type: "alliance_change"; country: string; tag: string; name: string; partners: string[] }
   // G5 : fin d'un chapitre de campagne — le bilan « vous vs l'Histoire »
   | {
       type: "campaign_over";
@@ -441,12 +460,25 @@ export type CountrySources = {
   name: string;
   attributes: AttributeSource[];
   profile: {
-    alliances?: string[];
     rivals?: string[];
     political_system?: string;
     ideology?: string[];
     strategic_priorities?: string[];
   };
+  /** Attribut à part entière, dérivé du registre sourcé (tags → SourcesView.alliances). */
+  alliances: string[];
+};
+
+/** Un accord / traité / bloc réel du registre sourcé (data/sources/alliances.json). */
+export type AllianceInfo = {
+  name: string;
+  short: string;
+  domain: "military" | "economic" | "political";
+  basis: string;
+  url: string;
+  members: string[];
+  note?: string;
+  informal?: boolean;
 };
 
 export type SourcesView = {
@@ -454,6 +486,7 @@ export type SourcesView = {
   transformations: Record<string, string>;
   build_command: string;
   countries: CountrySources[];
+  alliances: Record<string, AllianceInfo>;
 };
 
 export const AXIS_LABELS: Record<string, string> = {

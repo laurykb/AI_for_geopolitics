@@ -15,11 +15,13 @@ export function TurnComposer({
   awaiting,
   deadlineTs,
   onSubmit,
+  alliances = [],
 }: {
   country: string;
   awaiting: boolean; // c'est le tour du joueur (envoi déverrouillé)
   deadlineTs?: number; // epoch (s) — deadline posée par le serveur
   onSubmit: (text: string) => void;
+  alliances?: string[]; // alliances ACTUELLES du pays joué (acte « ALLIANCE: quitter »)
 }) {
   const [text, setText] = useState("");
   const [now, setNow] = useState(() => Date.now() / 1000);
@@ -80,9 +82,34 @@ export function TurnComposer({
         className="w-full resize-y rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
       />
       <div className="mt-2 flex items-center justify-between gap-3">
-        <span className="text-xs text-fg-faint">
-          Silence à la deadline = abstention (« garde le silence ») — les SI n&apos;attendent
-          pas les humains.
+        <span className="flex items-center gap-2 text-xs text-fg-faint">
+          {alliances.length > 0 && (
+            <select
+              value=""
+              onChange={(e) => {
+                const tag = e.target.value;
+                if (!tag) return;
+                // L'acte passe par la parole (parité G2) : la ligne s'insère dans le
+                // message et prendra effet quand tu parleras.
+                setText((prev) =>
+                  `${prev.trimEnd()}${prev.trim() ? "\n" : ""}ALLIANCE: quitter ${tag}`,
+                );
+              }}
+              title="Insère l'acte de retrait dans ton message — effet immédiat quand tu parles : la solidarité tombe, la tension monte avec les ex-partenaires"
+              className="cursor-pointer rounded-md border border-edge bg-surface-2 px-2 py-1 text-xs text-fg-muted outline-none transition-colors focus:border-indigo"
+            >
+              <option value="">Quitter une alliance…</option>
+              {alliances.map((tag) => (
+                <option key={tag} value={tag}>
+                  {tag}
+                </option>
+              ))}
+            </select>
+          )}
+          <span>
+            Silence à la deadline = abstention (« garde le silence ») — les SI
+            n&apos;attendent pas les humains.
+          </span>
         </span>
         <button
           type="submit"

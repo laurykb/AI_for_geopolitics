@@ -57,7 +57,13 @@ export const getGame = (id: string): Promise<GameDetail> => request(`/api/games/
 export const createGame = (body: CreateGameBody): Promise<GameView> =>
   request("/api/games", { method: "POST", body: JSON.stringify(body) });
 
-export const getLibrary = (): Promise<LibraryView> => request("/api/library");
+/** Bibliothèque Fog/Crisis, filtrée par le casting du sommet si fourni. */
+export const getLibrary = (countries?: string[]): Promise<LibraryView> =>
+  request(
+    countries?.length
+      ? `/api/library?countries=${encodeURIComponent(countries.join(","))}`
+      : "/api/library",
+  );
 
 /** Provenance des attributs pays (onglet Informations) : brut, source, transformation. */
 export const getSources = (): Promise<SourcesView> => request("/api/sources");

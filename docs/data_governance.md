@@ -23,7 +23,8 @@ Recherche réalisée : **1ᵉʳ juillet 2026**.
 | `resources.oil_dependency` / `energy_independence` | EIA / IEA (profils énergie) ; ref. World Bank *Energy imports, net* | ~2023 | Moyenne (dérivé) |
 | `political_stability` | World Bank, *WGI — Political Stability* (rang percentile) | 2023 | Faible-moyenne (approx.) |
 | `military.projection` | Estimation analyste informée par *Global Firepower* + structure de forces | 2025 | **Faible** (subjectif) |
-| `alliances`, `rivals`, `political_system`, `ideology`, `strategic_priorities` | Codage qualitatif (appartenances factuelles ; reste analyste) — **inchangé depuis P0** | — | Mixte |
+| `alliances` | **Dérivé du registre sourcé** `data/sources/alliances.json` (§2 quater) — adhésions vérifiées aux sources officielles | 2026-07 | **Élevée** (sauf notes) |
+| `rivals`, `political_system`, `ideology`, `strategic_priorities` | Codage qualitatif analyste | — | Mixte |
 
 ## 2. Valeurs « dures » sourcées (par pays)
 
@@ -93,6 +94,33 @@ Limites spécifiques :
 - **Matrice `rivals`** : ajout de la paire active `iran ↔ israel` (frappes directes
   d'avril et octobre 2024 — critère « paires actives seulement » du §2 bis). La Turquie
   reste sans rival déclaré (rupture diplomatique Turquie–Israël jugée sous le seuil).
+
+## 2 quater. Alliances & traités — registre sourcé (7 juillet 2026)
+
+L'attribut `alliances` de chaque pays n'est **plus codé à la main** : il est **dérivé**
+(par `ingestion.build`) du registre machine-lisible `data/sources/alliances.json` —
+16 accords/traités/blocs réels, chacun avec nom, domaine (militaire/économique/politique),
+traité fondateur daté, **URL officielle** et membres (restreints au roster). Les mêmes
+données alimentent l'onglet Informations et les prompts de négociation (les SI citent les
+traités par leur nom).
+
+Accords couverts : OTAN, UE, BRICS, OCS, QUAD, AUKUS, ACEUM/USMCA, G7, Ligue arabe, CCG,
+CPTPP, RCEP, Accords d'Abraham, traités de défense bilatéraux États-Unis–Japon (1960) et
+États-Unis–Corée du Sud (1953), plus le bloc `Western` (marqué `informal` : **codage
+analyste d'affinité, pas un traité**).
+
+Limites documentées :
+- **Arabie saoudite / BRICS** : listée par la présidence du bloc depuis 2025 mais adhésion
+  jamais formalisée publiquement — comptée membre avec note, à réviser.
+- Le QUAD et le G7 n'ont **pas de traité fondateur** (dialogues/forums) : le champ `basis`
+  le précise ; ne pas les traiter comme des engagements de défense collective.
+- Les pactes conclus **en partie** (`pact:a+b`, moteur de diplomatie) s'ajoutent à cet
+  attribut en cours de jeu et n'appartiennent pas au registre.
+- **Poids moteur (7 juillet 2026)** : un traité **militaire** partagé avec un acteur de
+  l'événement donne +0,15 d'engagement (solidarité) ; un traité **militaire ou
+  économique** partagé donne +0,15 de soutien au communiqué (cohésion). Les forums sans
+  traité et les blocs informels ne pèsent pas. Spéc :
+  `docs/superpowers/specs/2026-07-07-alliances-moteur-pastilles-design.md`.
 
 ## 3. Méthode de normalisation des indices 0–1
 

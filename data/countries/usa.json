@@ -16,7 +16,13 @@
     "energy_independence": 0.95
   },
   "alliances": [
+    "AUKUS",
+    "G7",
     "NATO",
+    "QUAD",
+    "USJapanTreaty",
+    "USKoreaTreaty",
+    "USMCA",
     "Western"
   ],
   "rivals": [

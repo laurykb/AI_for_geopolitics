@@ -23,8 +23,10 @@ export function HeaderNav() {
           key={l.href}
           href={l.href}
           aria-current={pathname === l.href ? "page" : undefined}
-          className={`transition-colors hover:text-foreground ${
-            pathname === l.href ? "text-accent-bright" : ""
+          className={`py-1 transition-colors hover:text-foreground ${
+            pathname === l.href
+              ? "text-accent-bright underline decoration-accent-bright/60 decoration-2 underline-offset-8"
+              : ""
           }`}
         >
           {l.label}
