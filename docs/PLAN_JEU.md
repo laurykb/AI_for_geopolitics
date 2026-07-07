@@ -353,8 +353,17 @@ bouge, aucun système n'existe pour le joueur.
   `default_storyline`), persistée session + snapshot, affichée sous la scène ; badge
   « ↳ suite du round N » sur la carte événement (live + replay).
 - **Périmètre** : le vieux chemin `run_live_round`/`ConsequenceEngine` (P0, hors jeu web)
-  n'est pas indexé sur l'horizon. À jouer ensuite (§6 de la spec) : 3 parties d'équilibrage
-  Cowork mesurées par `scripts/dialogue_metrics.py`, puis le protocole 7B sur prompt corrigé.
+  n'est pas indexé sur l'horizon.
+- **Protocole 7B joué (2026-07-07, même séquence scriptée — blocus d'Ormuz puis saisie du
+  pétrolier —, 2 rounds, directive au round 2, mesures `scripts/dialogue_metrics.py`,
+  n = 1 partie/modèle donc indicatif) : mistral 75 % réponse directe / 0,2 % répétition /
+  directive 1/1 → PASSE ; qwen2.5:7b-instruct 75 % / 1,2 % / 1/1 → PASSE (et 15 % plus
+  rapide ; son iran a déposé une motion en séance) ; llama3.1:8b 100 % / 6,6 % / 0/1 →
+  échoue sur la directive (il répond très directement mais la perd).** mistral reste le
+  défaut ; le choix final (« le meilleur devient le défaut par rôle ») = décision
+  d'équilibrage avec plus de parties. Leçon de mesure : la visibilité des directives se
+  mesure avec un stemming FR naïf (`_reflects` — « corridors humanitaires supervisés »
+  reflète bien « corridor humanitaire supervisé »).
 
 ---
 

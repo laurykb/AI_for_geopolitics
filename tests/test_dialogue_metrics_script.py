@@ -83,6 +83,14 @@ def test_directive_visibility_counts_reflection_or_public_refusal():
     )
     assert dm.measure_game(store2, gid2).directives_visible == 1
 
+    # tolérance aux accords (constaté sur mistral réel) : « corridors humanitaires
+    # supervisés » reflète bien « propose un corridor humanitaire supervisé »
+    store3, gid3 = _store_with_round(
+        [("france", "Nous proposons des corridors humanitaires supervisés dès demain.")],
+        judge={"directives": {"france": "propose un corridor humanitaire supervisé"}},
+    )
+    assert dm.measure_game(store3, gid3).directives_visible == 1
+
 
 def test_offline_script_on_a_reproducible_mock_game():
     # Une partie MockBackend jouée via l'API, mesurée deux fois : mêmes chiffres

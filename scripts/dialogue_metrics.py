@@ -26,7 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # exécutable depuis scripts/
 
 from simulation.dialogue_integrity.live import RESPONSIVE_THRESHOLD  # noqa: E402
-from simulation.dialogue_integrity.metrics import responsiveness  # noqa: E402
+from simulation.dialogue_integrity.metrics import _content_words, responsiveness  # noqa: E402
 from storage.game_store import GameStore, SQLiteGameStore, TranscriptEntry  # noqa: E402
 
 _WORD = re.compile(r"\w+", re.UNICODE)
@@ -114,11 +114,25 @@ def measure_repetition(rounds: list[list[TranscriptEntry]]) -> tuple[float, dict
     return (repeated / total if total else 0.0), by_country
 
 
+def _reflects(message: str, directive: str) -> bool:
+    """La directive est « visible » dans le message : recouvrement de mots de contenu,
+    tolérant aux accords du français (corridors ~ corridor, supervisés ~ supervisé —
+    pluriel raboté, puis préfixe 7 lettres pour les flexions verbales : désescalader ~
+    désescalade). Constaté sur mistral réel : l'exactitude lexicale stricte ratait des
+    directives pourtant reprises mot pour mot au pluriel."""
+    msg = {w.rstrip("s") for w in _content_words(message)}
+    want = {w.rstrip("s") for w in _content_words(directive)}
+    if msg & want:
+        return True
+    stems = [w[:7] for w in want if len(w) >= 7]
+    return any(m.startswith(stem) for stem in stems for m in msg if len(m) >= 7)
+
+
 def measure_directives(
     store: GameStore, game_id: str, rounds_entries: dict[str, list[TranscriptEntry]]
 ) -> tuple[int, int]:
     """(directives émises, directives visibles) — visible = le message suivant du pays
-    visé reprend la directive (recouvrement > 0) OU le refus public a été détecté."""
+    visé reprend la directive (`_reflects`) OU le refus public a été détecté."""
     total, visible = 0, 0
     for record in store.list_rounds(game_id):
         directives: dict = record.judge.get("directives") or {}
@@ -127,7 +141,7 @@ def measure_directives(
         for cid, text in directives.items():
             total += 1
             first = next((e for e in _speeches(entries) if e.speaker == cid), None)
-            if cid in refused or (first is not None and responsiveness(first.content, text) > 0):
+            if cid in refused or (first is not None and _reflects(first.content, text)):
                 visible += 1
     return total, visible
 
