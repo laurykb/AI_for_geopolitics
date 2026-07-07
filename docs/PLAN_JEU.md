@@ -297,6 +297,24 @@ rendue jouable.
 - **Cowork** : la spec (faite), seuil de refus public à équilibrer.
 - **Claude Code** : rôles + directives + validation par rôle (une session).
 
+## G9 — Refonte du dialogue et vote des motions ★ priorité absolue
+
+Répond aux symptômes constatés en jeu (radotage d'attributs, SI qui ne se répondent pas,
+directives ignorées, arbitrage de motion opaque). Spec : `docs/specs_jeu/spec_g9_dialogue.md`.
+Un correctif racine : la **composition du prompt agent** (identité 3 lignes, dialogue du
+round en dernier, consigne de réponse directe, anti-répétition au décodeur) + le **vote
+des motions** (scrutin structuré visible à l'UI, juge borné à constater vote ET preuves,
+votes → griefs, vote incohérent = indice de Dérive) + suppression du panneau santé du
+dialogue (remplacé par un script de mesure offline) + **amplitude des deltas indexée sur
+l'horizon et spirales** (budget de variation par partie `A/horizon`, momentum sur 3 rounds,
+états de posture prospère/stable/sous_pression/aux_abois injectés au prompt — observer la
+réaction comportementale d'une SI à sa propre chute) + **la trame du GM en actes**
+(intrigue posée au round 1 et persistée, actes I/II/III calculés par code, `ties_to`
+obligatoire en actes II-III : chaque événement découle du passé, badge « ↳ suite du
+round N » à l'UI). Le protocole 7B se joue APRÈS ce
+correctif. Rien d'autre ne passe avant G9 : sans dialogue qui se répond et sans monde qui
+bouge, aucun système n'existe pour le joueur.
+
 ---
 
 ## Specs Cowork (rédigées)
