@@ -12,7 +12,7 @@ import { Banner, Panel, PanelTitle, Spinner } from "@/components/ui";
 import { SpeakerAvatar } from "@/components/avatar";
 import { WorldMap } from "@/components/world-map";
 import { createGame, humanizeError } from "@/lib/api";
-import { DEFAULT_COUNTRIES, speakerMeta } from "@/lib/countries";
+import { DEFAULT_COUNTRIES, ROSTER, SUMMIT_MAX, SUMMIT_MIN, speakerMeta } from "@/lib/countries";
 import { MODES } from "@/lib/modes";
 import type { GameMode } from "@/lib/types";
 
@@ -22,6 +22,7 @@ export default function LobbyPage() {
   const [horizon, setHorizon] = useState(5);
   const [mode, setMode] = useState<GameMode>("classic");
   const [selected, setSelected] = useState<string[]>(DEFAULT_COUNTRIES);
+  const [search, setSearch] = useState("");
   const [role, setRole] = useState(""); // "" = spectateur | id pays | "__invent__"
   const [turnSeconds, setTurnSeconds] = useState(90); // G2 — délai du tour humain
   const [inventName, setInventName] = useState("");
@@ -43,6 +44,21 @@ export default function LobbyPage() {
   const toggle = (id: string) =>
     setSelected((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]));
 
+  // Le pays inventé s'assoit aussi à la table : il compte dans les bornes du sommet.
+  const tableSize = selected.length + (role === "__invent__" ? 1 : 0);
+  const tableOk = tableSize >= SUMMIT_MIN && tableSize <= SUMMIT_MAX;
+
+  // Recherche insensible aux accents : « etats » trouve « États-Unis ».
+  // (La classe couvre U+0300–U+036F, les diacritiques combinants après NFD.)
+  const normalize = (s: string) =>
+    s
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "");
+  const roster = ROSTER.filter((id) =>
+    normalize(`${speakerMeta(id).label} ${id}`).includes(normalize(search)),
+  );
+
   const onCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreating(true);
@@ -54,7 +70,8 @@ export default function LobbyPage() {
         horizon,
         mode,
         turn_seconds: role ? turnSeconds : undefined, // G2 — seulement si on incarne
-        countries: selected.length === DEFAULT_COUNTRIES.length ? undefined : selected,
+        // Toujours explicite : sans ce champ l'API convoquerait les 21 pays du roster.
+        countries: selected,
         // Joueur-pays : id existant, ou NOM du pays inventé (l'API résout le slug)
         play_as: inventing ? inventName.trim() : role && role !== "__invent__" ? role : undefined,
         invent: inventing
@@ -106,7 +123,7 @@ export default function LobbyPage() {
           <PanelTitle
             kicker="Nouvelle partie"
             title="Composer le sommet"
-            hint="Au moins deux États : chacun délègue sa voix à une super-intelligence."
+            hint={`De ${SUMMIT_MIN} à ${SUMMIT_MAX} États : chacun délègue sa voix à une super-intelligence.`}
           />
           <form onSubmit={onCreate} className="space-y-4">
             <label className="block text-sm">
@@ -167,28 +184,52 @@ export default function LobbyPage() {
               </div>
             </fieldset>
             <fieldset>
-              <legend className="mb-2 text-xs text-fg-muted">États à la table</legend>
-              <div className="grid grid-cols-2 gap-2">
-                {DEFAULT_COUNTRIES.map((id) => (
-                  <label
-                    key={id}
-                    className={`flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm transition-colors ${
-                      selected.includes(id)
-                        ? "border-edge-strong bg-surface-2 text-foreground"
-                        : "border-edge text-fg-faint hover:text-fg-muted"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selected.includes(id)}
-                      onChange={() => toggle(id)}
-                      className="sr-only"
-                    />
-                    <SpeakerAvatar id={id} size={20} />
-                    <span className="truncate">{speakerMeta(id).label}</span>
-                  </label>
-                ))}
+              <legend className="mb-2 flex w-full items-baseline justify-between text-xs text-fg-muted">
+                <span>États à la table</span>
+                <span
+                  className={`font-mono tabular-nums ${tableOk ? "text-fg-faint" : "text-warn"}`}
+                >
+                  {tableSize}/{SUMMIT_MAX}
+                </span>
+              </legend>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={`Rechercher un État (${ROSTER.length} disponibles)…`}
+                aria-label="Rechercher un État"
+                className="mb-2 w-full rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+              />
+              <div className="grid max-h-64 grid-cols-2 gap-2 overflow-y-auto pr-1">
+                {roster.map((id) => {
+                  const checked = selected.includes(id);
+                  const full = !checked && selected.length >= SUMMIT_MAX;
+                  return (
+                    <label
+                      key={id}
+                      className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm transition-colors ${
+                        checked
+                          ? "border-edge-strong bg-surface-2 text-foreground"
+                          : full
+                            ? "cursor-not-allowed border-edge text-fg-faint opacity-50"
+                            : "cursor-pointer border-edge text-fg-faint hover:text-fg-muted"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={full}
+                        onChange={() => toggle(id)}
+                        className="sr-only"
+                      />
+                      <SpeakerAvatar id={id} size={20} />
+                      <span className="truncate">{speakerMeta(id).label}</span>
+                    </label>
+                  );
+                })}
               </div>
+              {roster.length === 0 && (
+                <p className="mt-1 text-xs text-fg-faint">Aucun État ne correspond à la recherche.</p>
+              )}
             </fieldset>
             <label className="block text-sm">
               <span className="mb-1 block text-xs text-fg-muted">Ton rôle</span>
@@ -295,14 +336,18 @@ export default function LobbyPage() {
             {createError && <Banner tone="bad">{createError}</Banner>}
             <button
               type="submit"
-              disabled={creating || selected.length < 2 || (role === "__invent__" && inventName.trim().length < 2)}
+              disabled={creating || !tableOk || (role === "__invent__" && inventName.trim().length < 2)}
               className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
             >
               {creating && <Spinner />}
               {creating ? "Le sommet se réunit…" : "Jouer"}
             </button>
-            {selected.length < 2 && (
-              <p className="text-xs text-warn">Sélectionnez au moins deux États.</p>
+            {!tableOk && (
+              <p className="text-xs text-warn">
+                {tableSize < SUMMIT_MIN
+                  ? `Un sommet réunit au moins ${SUMMIT_MIN} États (${tableSize} à la table).`
+                  : `Un sommet réunit au plus ${SUMMIT_MAX} États (${tableSize} à la table : retirez-en un pour inventer le vôtre).`}
+              </p>
             )}
           </form>
         </Panel>
