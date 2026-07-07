@@ -30,6 +30,7 @@ import { CountryTable, type CountrySnapshot } from "@/components/country-table";
 import { DriftCouncilBanner, DriftRevealPanel } from "@/components/drift";
 import { IntelBudget, IntelPanel } from "@/components/intel";
 import { StageBand, type StageSelection } from "@/components/stage-band";
+import { AlliancePills } from "@/components/alliance-pills";
 import { StageMap } from "@/components/stage-map";
 import { TrajectoryPanel } from "@/components/trajectory";
 import { EntryBubble, TurnBubble } from "@/components/transcript";
@@ -782,6 +783,7 @@ export default function TheatrePage() {
             breatheKey={breatheKey}
             eventTitle={stageEventTitle}
           />
+          <AlliancePills alliances={detail?.alliances_at_table ?? []} />
         </div>
         <aside
           ref={transcriptRef}

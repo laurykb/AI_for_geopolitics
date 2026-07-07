@@ -180,10 +180,22 @@ export type RoundView = {
   transcript: TranscriptEntry[];
 };
 
+/** Une alliance réelle représentée au sommet (≥ 2 membres présents) et son poids moteur. */
+export type AllianceAtTable = {
+  tag: string;
+  name: string;
+  domain: string;
+  members: string[]; // membres présents à la table, triés
+  url: string;
+  informal: boolean;
+  effect: string | null; // texte du poids moteur ; null = n'influe pas
+};
+
 export type GameDetail = GameView & {
   world: Record<string, unknown> | null;
   rounds: RoundView[];
   epilogue: Record<string, unknown> | null; // G6 — le récit (généré une seule fois)
+  alliances_at_table: AllianceAtTable[];
 };
 
 export type HumanEvent = {

@@ -63,6 +63,14 @@ from simulation import campaign as campaign_mod
 from simulation import drift_game, narrative
 from simulation import intel as intel_mod
 from simulation import treaty as treaty_mod
+from simulation.alliances import (
+    COHESION_DOMAINS,
+    SOLIDARITY_DOMAINS,
+    AllianceInfo,
+)
+from simulation.alliances import (
+    registry as alliances_registry,
+)
 from simulation.clock import SimClock
 from simulation.country_forge import forge_country, slugify
 from simulation.crisis import Crisis, compare_outcome, load_crises
@@ -312,10 +320,64 @@ class RoundView(BaseModel):
     transcript: list[TranscriptEntry]
 
 
+class AllianceAtTable(BaseModel):
+    """Une alliance réelle représentée au sommet (≥ 2 membres présents) et son poids moteur."""
+
+    tag: str
+    name: str
+    domain: str
+    members: list[str]  # membres PRÉSENTS à la table, triés
+    url: str = ""
+    informal: bool = False
+    effect: str | None = None  # texte du poids moteur ; None = n'influe pas
+
+
+def _alliance_effect(info: AllianceInfo) -> str | None:
+    """Texte du poids moteur d'un accord — dérivé des MÊMES constantes que le moteur."""
+    if info.informal:
+        return None
+    parts: list[str] = []
+    if info.domain in SOLIDARITY_DOMAINS:
+        parts.append("solidarité d'engagement : un membre s'engage quand un allié est acteur")
+    if info.domain in COHESION_DOMAINS:
+        parts.append("cohésion au communiqué : soutien renforcé aux acteurs alliés")
+    return " ; ".join(parts) or None
+
+
+def _alliances_at_table(world: dict | None) -> list[AllianceAtTable]:
+    """Les alliances du registre avec ≥ 2 membres au sommet — adaptées au casting.
+
+    Calculées depuis les tags des pays du monde (vérité de la partie : un pays inventé
+    doté d'un tag réel compte), pas depuis les listes statiques du registre.
+    """
+    if not world:
+        return []
+    countries: dict[str, dict] = world.get("countries", {})
+    rows: list[AllianceAtTable] = []
+    for tag, info in alliances_registry().items():
+        present = sorted(cid for cid, c in countries.items() if tag in c.get("alliances", []))
+        if len(present) < 2:
+            continue
+        rows.append(
+            AllianceAtTable(
+                tag=tag,
+                name=info.name,
+                domain=info.domain,
+                members=present,
+                url=info.url,
+                informal=info.informal,
+                effect=_alliance_effect(info),
+            )
+        )
+    return rows
+
+
 class GameDetail(GameView):
     world: dict | None  # snapshot du monde vivant (None si la session process est perdue)
     rounds: list[RoundView]
     epilogue: dict | None = None  # G6 — le récit de partie (généré une seule fois)
+    # Alliances réelles représentées au sommet (pastilles : ce qui pèse sur le moteur).
+    alliances_at_table: list[AllianceAtTable] = Field(default_factory=list)
 
 
 # --- sérialisation des RoundStep en événements SSE ------------------------------
@@ -1904,7 +1966,13 @@ def get_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> G
         snapshot.world if snapshot else None
     )
     view = _view(game, session, resumable=snapshot is not None)
-    return GameDetail(**view.model_dump(), world=world, rounds=rounds, epilogue=game.epilogue)
+    return GameDetail(
+        **view.model_dump(),
+        world=world,
+        rounds=rounds,
+        epilogue=game.epilogue,
+        alliances_at_table=_alliances_at_table(world),
+    )
 
 
 @router.get("/games", response_model=list[GameView])

@@ -116,6 +116,11 @@ Limites documentées :
   le précise ; ne pas les traiter comme des engagements de défense collective.
 - Les pactes conclus **en partie** (`pact:a+b`, moteur de diplomatie) s'ajoutent à cet
   attribut en cours de jeu et n'appartiennent pas au registre.
+- **Poids moteur (7 juillet 2026)** : un traité **militaire** partagé avec un acteur de
+  l'événement donne +0,15 d'engagement (solidarité) ; un traité **militaire ou
+  économique** partagé donne +0,15 de soutien au communiqué (cohésion). Les forums sans
+  traité et les blocs informels ne pèsent pas. Spéc :
+  `docs/superpowers/specs/2026-07-07-alliances-moteur-pastilles-design.md`.
 
 ## 3. Méthode de normalisation des indices 0–1
 

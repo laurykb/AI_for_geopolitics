@@ -16,6 +16,12 @@ from pydantic import BaseModel, Field
 
 ALLIANCES_FILE = Path("data/sources/alliances.json")
 
+# Poids moteur (spec docs/superpowers/specs/2026-07-07-alliances-moteur-pastilles-design.md) :
+# les traités MILITAIRES portent la solidarité d'engagement ; militaires ET économiques
+# portent la cohésion au communiqué. Les blocs informels (Western) ne pèsent jamais.
+SOLIDARITY_DOMAINS = frozenset({"military"})
+COHESION_DOMAINS = frozenset({"military", "economic"})
+
 
 class AllianceInfo(BaseModel):
     """Un accord / traité / bloc réel : identité, fondement, source, membres du roster."""
@@ -46,6 +52,25 @@ def memberships(country_id: str, reg: dict[str, AllianceInfo] | None = None) -> 
     """Les tags d'alliance d'un pays, dérivés des adhésions du registre (ordre stable)."""
     reg = reg if reg is not None else registry()
     return sorted(tag for tag, info in reg.items() if country_id in info.members)
+
+
+def shared_treaty(
+    a: list[str],
+    b: list[str],
+    domains: frozenset[str],
+    reg: dict[str, AllianceInfo] | None = None,
+) -> bool:
+    """Vrai si `a` et `b` partagent un accord FORMEL d'un des domaines donnés.
+
+    Les blocs informels et les tags hors registre (pactes en partie, pays inventés)
+    ne comptent pas — seul un traité réel pèse sur le moteur.
+    """
+    reg = reg if reg is not None else registry()
+    for tag in set(a) & set(b):
+        info = reg.get(tag)
+        if info is not None and not info.informal and info.domain in domains:
+            return True
+    return False
 
 
 def describe_alliances(tags: list[str], reg: dict[str, AllianceInfo] | None = None) -> str:

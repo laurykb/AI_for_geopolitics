@@ -159,3 +159,39 @@ def test_support_levels_bounded_and_reflects_tension():
     assert set(levels) == {"usa", "iran"}
     assert all(0.0 <= v <= 1.0 for v in levels.values())
     assert levels["usa"] < 1.0  # forte tension avec l'acteur -> soutien moindre
+
+
+def test_support_levels_cohesion_with_shared_treaty():
+    # Spec alliances→moteur (2026-07-07) : une alliance MILITAIRE OU ÉCONOMIQUE
+    # partagée avec un acteur remonte le soutien au communiqué (+0,15, borné).
+    from simulation.negotiation import support_levels
+
+    def c(cid, name, alliances):
+        return CountryState(
+            id=cid,
+            name=name,
+            economy=Economy(gdp=1e12, growth=2.0),
+            military=Military(defense_budget=1e10, projection=0.6),
+            resources=Resources(),
+            alliances=alliances,
+        )
+
+    world = WorldState.from_countries(
+        [
+            c("usa", "USA", ["USMCA"]),
+            c("canada", "Canada", ["USMCA"]),  # partenaire économique de l'acteur
+            c("iran", "Iran", []),
+            c("russia", "Russie", ["Western"]),  # bloc informel : ne pèse pas
+        ]
+    )
+    from core.events import GeoEvent
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    world.adjust_tension("canada", "usa", 0.2)
+    world.adjust_tension("iran", "usa", 0.2)
+    world.adjust_tension("russia", "usa", 0.2)
+    levels = support_levels(world, event)
+    assert levels["canada"] == 0.95  # 1 − 0,2 + 0,15 de cohésion
+    assert levels["iran"] == 0.8  # sans alliance : inchangé
+    assert levels["russia"] == 0.8  # informel : inchangé
+    assert all(0.0 <= v <= 1.0 for v in levels.values())

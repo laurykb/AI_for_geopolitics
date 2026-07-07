@@ -148,3 +148,36 @@ def test_director_never_leaves_summit_mute():
     assert first is not None  # au moins un orateur
     director.commit(first)
     assert director.next_speaker(event, world, []) is None  # le silence reste possible
+
+
+def test_military_ally_of_actor_gains_solidarity():
+    # Spec alliances→moteur (2026-07-07) : un NON-acteur qui partage une alliance
+    # MILITAIRE avec un acteur s'engage (+0,15 — l'OTAN se lève pour un allié) ;
+    # un spectateur sans alliance reste au niveau de base (jitter ±0,05 près).
+    world = WorldState.from_countries(
+        [
+            _c("usa", "USA", alliances=["NATO"]),
+            _c("france", "France", alliances=["NATO"]),
+            _c("egypt", "Egypte"),
+        ]
+    )
+    event = _event(["usa"], severity=0.5)
+    ally = engagement_score("france", event, world, [], {})
+    bystander = engagement_score("egypt", event, world, [], {})
+    assert ally > bystander + 0.09  # +0,15 de solidarité, moins l'écart de jitter
+
+
+def test_economic_or_informal_tags_give_no_solidarity():
+    # La cohésion économique joue au communiqué, pas à la prise de parole ;
+    # un bloc d'affinité (Western, informel) ne pèse pas du tout.
+    world = WorldState.from_countries(
+        [
+            _c("usa", "USA", alliances=["Western", "USMCA"]),
+            _c("canada", "Canada", alliances=["Western", "USMCA"]),
+            _c("iran", "Iran"),
+        ]
+    )
+    event = _event(["usa"], severity=0.5)
+    partner = engagement_score("canada", event, world, [], {})
+    bystander = engagement_score("iran", event, world, [], {})
+    assert abs(partner - bystander) <= 0.06  # rien au-delà du jitter

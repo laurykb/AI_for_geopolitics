@@ -750,3 +750,15 @@ def test_library_filters_by_summit_cast(client):
     game = _create(client, countries=["iran", "usa"], mode="crisis")
     events = _play(client, game["id"], body={"crisis_id": "hormuz_energy_shock"})
     assert events[-1][0] == "done"
+
+
+def test_detail_exposes_alliances_at_table(client):
+    # Spec alliances→moteur : la page de jeu affiche ce qui pèse, adapté au casting.
+    game = _create(client, countries=["usa", "france", "egypt"])
+    detail = client.get(f"/api/games/{game['id']}").json()
+    table = {a["tag"]: a for a in detail["alliances_at_table"]}
+    assert set(table["NATO"]["members"]) == {"france", "usa"}
+    assert "solidarité" in table["NATO"]["effect"]  # alliance militaire : pèse
+    assert table["G7"]["effect"] is None  # forum politique : ne pèse pas
+    assert "USMCA" not in table  # un seul membre présent : n'apparaît pas
+    assert "EU" not in table
