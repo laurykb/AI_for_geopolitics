@@ -9,6 +9,7 @@ import type {
   IntelResult,
   LibraryView,
   MotionView,
+  PromptsView,
   SourcesView,
 } from "./types";
 
@@ -67,6 +68,10 @@ export const getLibrary = (countries?: string[]): Promise<LibraryView> =>
 
 /** Provenance des attributs pays (onglet Informations) : brut, source, transformation. */
 export const getSources = (): Promise<SourcesView> => request("/api/sources");
+
+/** G7-c — prompts complets capturés (panneau admin ; 403 hors partie admin). */
+export const getPrompts = (id: string): Promise<PromptsView> =>
+  request(`/api/games/${id}/prompts`);
 
 /** Révélation de fin du mode Dérive (G3) — 409 tant que la partie court. */
 export const getDriftReveal = (gameId: string): Promise<DriftReveal> =>

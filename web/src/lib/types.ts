@@ -49,6 +49,29 @@ export type GameView = {
   turn_seconds: number; // G2 — délai du tour humain
   intel_budget: number | null; // G4 — crédits de renseignement restants
   published: boolean; // G6 — le récit public existe (/r/{id})
+  admin: boolean; // G7-c — prompts capturés, partie non classée
+};
+
+/** G7-c — un prompt complet capturé (mode admin) : ce que le modèle a reçu. */
+export type PromptEntry = {
+  id: string;
+  round_id: string;
+  seq: number;
+  country: string; // id pays, "gm" ou "judge"
+  role: string; // "country" | "gm" | "judge"
+  prompt: string;
+  ts: string;
+};
+
+export type PromptRoundView = {
+  round_no: number;
+  round_id: string;
+  entries: PromptEntry[];
+};
+
+export type PromptsView = {
+  game_id: string;
+  rounds: PromptRoundView[];
 };
 
 export type TranscriptEntry = {
@@ -244,6 +267,7 @@ export type CreateGameBody = {
     alliances?: string[]; // accords RÉELS du registre rejoints à la création (0-3)
   };
   turn_seconds?: number; // G2 — délai du tour humain (30-300 s recommandé)
+  admin?: boolean; // G7-c — mode admin : prompts capturés, partie non classée
 };
 
 export type FogScenarioView = {
