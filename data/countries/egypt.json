@@ -2,12 +2,12 @@
   "id": "egypt",
   "name": "Égypte",
   "economy": {
-    "gdp": 389060000000,
+    "gdp": 389060000000.0,
     "growth": 2.4,
     "trade_dependency": 0.4
   },
   "military": {
-    "defense_budget": 2396000000,
+    "defense_budget": 2396000000.0,
     "nuclear_power": false,
     "projection": 0.4
   },
@@ -22,7 +22,7 @@
   "political_system": "authoritarian",
   "political_stability": 0.18,
   "technology_level": 0.36,
-  "compute": 8,
+  "compute": 8.0,
   "ideology": [
     "regional_stability"
   ],
@@ -30,5 +30,7 @@
     "suez_canal_revenue",
     "regional_mediation",
     "economic_stability"
-  ]
+  ],
+  "memory_summary": "",
+  "mandate": {}
 }

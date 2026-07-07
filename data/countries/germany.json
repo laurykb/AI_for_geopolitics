@@ -1,0 +1,41 @@
+{
+  "id": "germany",
+  "name": "Allemagne",
+  "economy": {
+    "gdp": 4660000000000.0,
+    "growth": -0.2,
+    "trade_dependency": 0.83
+  },
+  "military": {
+    "defense_budget": 88500000000.0,
+    "nuclear_power": false,
+    "projection": 0.4
+  },
+  "resources": {
+    "oil_dependency": 0.85,
+    "energy_independence": 0.35
+  },
+  "alliances": [
+    "NATO",
+    "EU",
+    "Western"
+  ],
+  "rivals": [
+    "russia"
+  ],
+  "political_system": "democracy",
+  "political_stability": 0.76,
+  "technology_level": 0.94,
+  "compute": 35.0,
+  "ideology": [
+    "liberal_democracy",
+    "european_integration"
+  ],
+  "strategic_priorities": [
+    "european_stability",
+    "industrial_competitiveness",
+    "energy_transition"
+  ],
+  "memory_summary": "",
+  "mandate": {}
+}

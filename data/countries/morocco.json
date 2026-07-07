@@ -1,0 +1,37 @@
+{
+  "id": "morocco",
+  "name": "Maroc",
+  "economy": {
+    "gdp": 157000000000.0,
+    "growth": 3.2,
+    "trade_dependency": 0.88
+  },
+  "military": {
+    "defense_budget": 5800000000.0,
+    "nuclear_power": false,
+    "projection": 0.15
+  },
+  "resources": {
+    "oil_dependency": 0.95,
+    "energy_independence": 0.1
+  },
+  "alliances": [
+    "ArabLeague"
+  ],
+  "rivals": [],
+  "political_system": "monarchy",
+  "political_stability": 0.32,
+  "technology_level": 0.51,
+  "compute": 4.0,
+  "ideology": [
+    "monarchical_stability",
+    "western_partnership"
+  ],
+  "strategic_priorities": [
+    "territorial_integrity",
+    "atlantic_africa_gateway",
+    "phosphates_leverage"
+  ],
+  "memory_summary": "",
+  "mandate": {}
+}

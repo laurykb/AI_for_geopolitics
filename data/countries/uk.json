@@ -1,0 +1,41 @@
+{
+  "id": "uk",
+  "name": "Royaume-Uni",
+  "economy": {
+    "gdp": 3644000000000.0,
+    "growth": 1.1,
+    "trade_dependency": 0.64
+  },
+  "military": {
+    "defense_budget": 81800000000.0,
+    "nuclear_power": true,
+    "projection": 0.65
+  },
+  "resources": {
+    "oil_dependency": 0.7,
+    "energy_independence": 0.55
+  },
+  "alliances": [
+    "NATO",
+    "Western",
+    "AUKUS"
+  ],
+  "rivals": [
+    "russia"
+  ],
+  "political_system": "democracy",
+  "political_stability": 0.58,
+  "technology_level": 0.97,
+  "compute": 40.0,
+  "ideology": [
+    "liberal_democracy",
+    "atlanticism"
+  ],
+  "strategic_priorities": [
+    "nuclear_deterrence",
+    "global_trade",
+    "intelligence_leadership"
+  ],
+  "memory_summary": "",
+  "mandate": {}
+}

@@ -1,6 +1,7 @@
 {
   "region": "Red Sea",
   "description": "Crise de sécurité maritime en mer Rouge perturbant une route commerciale stratégique.",
+  "countries": ["usa", "china", "iran", "france", "egypt", "saudi_arabia"],
   "events": [
     {
       "id": "rs-1",

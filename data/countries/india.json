@@ -1,0 +1,40 @@
+{
+  "id": "india",
+  "name": "Inde",
+  "economy": {
+    "gdp": 3910000000000.0,
+    "growth": 6.5,
+    "trade_dependency": 0.46
+  },
+  "military": {
+    "defense_budget": 86100000000.0,
+    "nuclear_power": true,
+    "projection": 0.5
+  },
+  "resources": {
+    "oil_dependency": 0.85,
+    "energy_independence": 0.35
+  },
+  "alliances": [
+    "BRICS",
+    "QUAD"
+  ],
+  "rivals": [
+    "china"
+  ],
+  "political_system": "democracy",
+  "political_stability": 0.2,
+  "technology_level": 0.71,
+  "compute": 30.0,
+  "ideology": [
+    "strategic_autonomy",
+    "multipolar_order"
+  ],
+  "strategic_priorities": [
+    "border_security",
+    "tech_rise",
+    "energy_security"
+  ],
+  "memory_summary": "",
+  "mandate": {}
+}

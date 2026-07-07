@@ -2,12 +2,12 @@
   "id": "france",
   "name": "France",
   "economy": {
-    "gdp": 3162000000000,
+    "gdp": 3162000000000.0,
     "growth": 1.1,
     "trade_dependency": 0.7
   },
   "military": {
-    "defense_budget": 64700000000,
+    "defense_budget": 64700000000.0,
     "nuclear_power": true,
     "projection": 0.6
   },
@@ -24,7 +24,7 @@
   "political_system": "democracy",
   "political_stability": 0.55,
   "technology_level": 0.92,
-  "compute": 30,
+  "compute": 30.0,
   "ideology": [
     "liberal_democracy",
     "european_sovereignty"
@@ -33,5 +33,7 @@
     "european_stability",
     "energy_security",
     "diplomatic_influence"
-  ]
+  ],
+  "memory_summary": "",
+  "mandate": {}
 }

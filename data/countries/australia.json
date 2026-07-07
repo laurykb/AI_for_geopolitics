@@ -1,0 +1,41 @@
+{
+  "id": "australia",
+  "name": "Australie",
+  "economy": {
+    "gdp": 1690000000000.0,
+    "growth": 1.0,
+    "trade_dependency": 0.48
+  },
+  "military": {
+    "defense_budget": 33800000000.0,
+    "nuclear_power": false,
+    "projection": 0.35
+  },
+  "resources": {
+    "oil_dependency": 0.5,
+    "energy_independence": 0.9
+  },
+  "alliances": [
+    "Western",
+    "QUAD",
+    "AUKUS"
+  ],
+  "rivals": [
+    "china"
+  ],
+  "political_system": "democracy",
+  "political_stability": 0.84,
+  "technology_level": 0.83,
+  "compute": 20.0,
+  "ideology": [
+    "liberal_democracy",
+    "indo_pacific_engagement"
+  ],
+  "strategic_priorities": [
+    "indo_pacific_security",
+    "minerals_exports",
+    "us_alliance"
+  ],
+  "memory_summary": "",
+  "mandate": {}
+}
