@@ -4,7 +4,7 @@ from core.country_state import CountryState, Economy, Military, Resources
 from core.decisions import AgentDecision
 from core.world_state import WorldState
 from simulation.action_space import ActionType
-from simulation.diplomacy import DiplomacyEngine, pact_id
+from simulation.diplomacy import DiplomacyEngine, pact_id, seed_rival_tensions
 
 
 def _country(cid: str, name: str, **kw) -> CountryState:
@@ -111,3 +111,33 @@ def test_unknown_and_self_targets_are_ignored():
     outcome = engine.resolve(world, decisions, 1)
     assert outcome.messages == []
     assert outcome.summary == "Aucune proposition"
+
+
+# --- Tensions initiales depuis la matrice des rivalités (casting du sommet) ----------
+
+
+def test_seed_rival_tensions_mutual_and_one_way():
+    world = _world(
+        _country("russia", "Russie", rivals=["ukraine"]),
+        _country("ukraine", "Ukraine", rivals=["russia"]),
+        _country("germany", "Allemagne", rivals=["russia"]),
+        _country("denmark", "Danemark"),
+    )
+    seed_rival_tensions(world)
+
+    assert world.get_tension("russia", "ukraine") == 0.60  # réciproque : ligne de faille vive
+    assert world.get_tension("ukraine", "russia") == 0.60  # symétrique
+    assert world.get_tension("germany", "russia") == 0.35  # déclarée à sens unique
+    assert world.get_tension("denmark", "germany") == 0.0  # aucune rivalité -> rien
+
+
+def test_seed_rival_tensions_ignores_absent_rivals_and_existing_tensions():
+    world = _world(
+        _country("india", "Inde", rivals=["china"]),  # china absent du sommet
+        _country("japan", "Japon", rivals=["india"]),
+    )
+    world.adjust_tension("india", "japan", 0.10)  # déjà posée (snapshot restauré)
+    seed_rival_tensions(world)
+
+    assert "china" not in world.tensions.get("india", {})  # hors casting : ignoré
+    assert world.get_tension("india", "japan") == 0.10  # jamais écrasée

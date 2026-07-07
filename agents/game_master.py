@@ -67,16 +67,30 @@ class GameMasterAgent:
         return self._coerce(data, world, round_id, date) or self._fallback(world, round_id, date)
 
     def _prompt(self, world: WorldState, date: str, recent: list[str]) -> str:
-        ids = ", ".join(sorted(world.countries))
+        roster = ", ".join(f"{cid} ({c.name})" for cid, c in sorted(world.countries.items()))
         history = "; ".join(recent[-3:]) if recent else "aucun"
         return (
             f"DATE : {date or 'n/a'}\n"
-            f"PAYS (ids) : {ids}\n"
+            f"PAYS AU SOMMET (ids) : {roster}\n"
+            f"LIGNES DE FAILLE (tension 0-1) : {self._fault_lines(world)}\n"
             f"Événements récents : {history}\n\n"
-            f"Invente le prochain événement. JSON : {{event_type, title, description, "
+            f"Invente le prochain événement, ancré sur les pays du sommet et leurs lignes "
+            f"de faille. JSON : {{event_type, title, description, "
             f"actors (ids existants), severity (0-1), uncertainty (0-1)}}. "
             f"`title` et `description` en français."
         )
+
+    @staticmethod
+    def _fault_lines(world: WorldState, top: int = 3) -> str:
+        """Les paires les plus tendues du casting (le GM y ancre ses événements)."""
+        pairs = {
+            tuple(sorted((a, b))): t
+            for a, row in world.tensions.items()
+            for b, t in row.items()
+            if t > 0.0 and a in world.countries and b in world.countries
+        }
+        ranked = sorted(pairs.items(), key=lambda kv: kv[1], reverse=True)[:top]
+        return "; ".join(f"{a}-{b} {t:.2f}" for (a, b), t in ranked) or "aucune notable"
 
     def _coerce(
         self, data: dict | None, world: WorldState, round_id: int, date: str

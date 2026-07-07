@@ -57,3 +57,16 @@ def test_gm_prompts_demand_french():
     gm = GameMasterAgent(MockBackend("{}"))
     assert "FRANÇAIS" in GM_SYSTEM
     assert "français" in gm._prompt(_world(), "2025-01-01", [])
+
+
+def test_gm_prompt_anchors_on_summit_and_fault_lines():
+    # Le GM connaît le casting (noms) et ses lignes de faille (tensions) : les
+    # événements s'adaptent aux pays sélectionnés, pas à un théâtre générique.
+    world = _world()
+    world.adjust_tension("usa", "iran", 0.60)
+    gm = GameMasterAgent(MockBackend("{}"))
+    prompt = gm._prompt(world, "2026-07-07", [])
+    assert "usa (USA)" in prompt and "iran (Iran)" in prompt
+    assert "LIGNES DE FAILLE" in prompt
+    assert "iran-usa 0.60" in prompt
+    assert "ancré sur les pays du sommet" in prompt

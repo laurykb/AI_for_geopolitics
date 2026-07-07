@@ -218,11 +218,13 @@ def build_negotiation_prompt(
         f"- Urgence sur cette crise : {m.urgency}"
     )
     state_block = f"{state_note}\n" if state_note else ""
+    table = ", ".join(cid for cid in sorted(world.countries) if cid != country.id)
     return (
         f"PAYS : {country.name} (id={country.id})\n"
         f"{_profile_brief(country)}\n"
         f"{mandate_block}\n"
         f"{state_block}"
+        f"À LA TABLE avec toi : {table or 'personne'}\n"
         f"MÉMOIRE récente : {memory_str}\n"
         f"{_perception_block(event, perceived)}\n"
         f"NÉGOCIATION EN COURS :\n{transcript_text}\n\n"
