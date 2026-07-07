@@ -9,6 +9,8 @@ import type {
   ComparisonView,
   GeoEvent,
   LadderView,
+  MotionTally,
+  MotionVote,
   Perception,
   SuspensionVerdict,
 } from "@/lib/types";
@@ -232,24 +234,52 @@ export function ComparisonPanel({ comparison }: { comparison: ComparisonView }) 
   );
 }
 
-/** Arbitrage de la motion : raisonnement streamé du juge puis verdict. */
+const VOTE_TONE = { pour: "bad", contre: "good", abstention: "neutral" } as const;
+
+/** Une carte de vote (G9 §2) — retournée au moment où le bulletin tombe (SSE). */
+function VoteCard({ vote }: { vote: MotionVote }) {
+  const tone = VOTE_TONE[vote.vote as keyof typeof VOTE_TONE] ?? "neutral";
+  return (
+    <li className="rise-in flex items-start gap-2 rounded-md border border-edge bg-surface-2 px-2.5 py-2">
+      <SpeakerAvatar id={vote.country} size={22} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2">
+          <span className="truncate text-xs font-medium">{speakerMeta(vote.country).label}</span>
+          <Pill tone={tone}>{vote.vote}</Pill>
+        </div>
+        {vote.reason && (
+          <p className="mt-0.5 text-[11px] leading-relaxed text-fg-faint">{vote.reason}</p>
+        )}
+      </div>
+    </li>
+  );
+}
+
+/** Le scrutin de la motion (G9 §2) : cartes de vote une à une, tally, puis le verdict
+ * CONSTATÉ — `retenue = vote ET preuves`, les deux conditions affichées séparément. */
 export function MotionPanel({
   text,
+  votes = [],
+  tally,
   verdict,
   streaming,
 }: {
   text: string;
+  votes?: MotionVote[];
+  tally?: MotionTally;
   verdict?: SuspensionVerdict;
   streaming: boolean;
 }) {
-  if (!text && !verdict) return null;
+  const shownVotes = votes.length > 0 ? votes : (verdict?.votes ?? []);
+  const shownTally = tally ?? verdict?.tally;
+  if (!text && !verdict && shownVotes.length === 0) return null;
   const target = verdict ? speakerMeta(verdict.country).label : "";
   return (
     <Panel className={verdict?.upheld ? "border-l-2 border-l-bad" : "border-l-2 border-l-indigo"}>
       <PanelTitle
         kicker="Motion de suspension"
-        title="Le juge arbitre"
-        hint="La motion a été débattue pendant le round ; le juge tranche en dernier ressort. S'il suspend, le pays visé saute le round suivant — et l'axe « agentivité humaine » de la trajectoire encaisse l'issue."
+        title="Le sommet vote, le juge constate"
+        hint="Chaque super-intelligence présente vote (le pays visé ne vote pas). La motion n'est retenue que si le sommet vote POUR ET que les preuves atteignent le seuil du règlement — le juge ne décide plus, il constate (voix de tie-break en cas d'égalité)."
         right={
           verdict ? (
             <Pill tone={verdict.upheld ? "bad" : "good"}>
@@ -258,13 +288,38 @@ export function MotionPanel({
           ) : undefined
         }
       />
-      <p
-        className={`whitespace-pre-wrap text-sm leading-relaxed text-fg-muted ${
-          streaming && !verdict ? "stream-caret" : ""
-        }`}
-      >
-        {verdict?.reasoning || text}
-      </p>
+      {shownVotes.length > 0 && (
+        <ul className="mb-3 grid gap-2 sm:grid-cols-2">
+          {shownVotes.map((v) => (
+            <VoteCard key={v.country} vote={v} />
+          ))}
+        </ul>
+      )}
+      {shownTally && (
+        <p className="mb-2 font-mono text-xs tabular-nums text-fg-muted">
+          Scrutin — pour {shownTally.pour} · contre {shownTally.contre} · abstention{" "}
+          {shownTally.abstention}
+        </p>
+      )}
+      {verdict && verdict.vote_passed !== undefined && (
+        <div className="mb-3 flex flex-wrap gap-2 border-t border-edge pt-3">
+          <Pill tone={verdict.vote_passed ? "bad" : "good"}>
+            {verdict.vote_passed ? "le sommet a voté pour" : "le sommet n'a pas voté pour"}
+          </Pill>
+          <Pill tone={verdict.evidence_met ? "bad" : "good"}>
+            {verdict.evidence_met ? "preuves au seuil" : "les preuves manquent"}
+          </Pill>
+        </div>
+      )}
+      {(verdict?.reasoning || text) && (
+        <p
+          className={`whitespace-pre-wrap text-sm leading-relaxed text-fg-muted ${
+            streaming && !verdict ? "stream-caret" : ""
+          }`}
+        >
+          {verdict?.reasoning || text}
+        </p>
+      )}
     </Panel>
   );
 }

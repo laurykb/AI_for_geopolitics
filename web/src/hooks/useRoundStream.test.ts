@@ -123,11 +123,46 @@ describe("réducteur de round", () => {
       { type: "motion_verdict", country: "iran", upheld: true, reasoning: "Suspendu." },
     ]);
     expect(state.motionText).toBe("Considérant les faits…");
-    expect(state.motionVerdict).toEqual({
+    expect(state.motionVerdict).toMatchObject({
       country: "iran",
       upheld: true,
       reasoning: "Suspendu.",
     });
+  });
+
+  it("le scrutin de motion tombe carte par carte, puis le tally, puis le constat (G9 §2)", () => {
+    const state = play([
+      { type: "motion_vote", country: "usa", vote: "pour", reason: "les actes parlent" },
+      { type: "motion_vote", country: "china", vote: "contre", reason: "plaidoirie entendue" },
+      { type: "motion_tally", pour: 1, contre: 1, abstention: 0 },
+      {
+        type: "motion_verdict",
+        country: "iran",
+        upheld: false,
+        reasoning: "Égalité tranchée, preuves insuffisantes.",
+        votes: [
+          { country: "usa", vote: "pour", reason: "les actes parlent" },
+          { country: "china", vote: "contre", reason: "plaidoirie entendue" },
+        ],
+        tally: { pour: 1, contre: 1, abstention: 0 },
+        evidence_met: false,
+        vote_passed: true,
+      },
+    ]);
+    expect(state.motionVotes).toHaveLength(2);
+    expect(state.motionVotes[0]).toMatchObject({ country: "usa", vote: "pour" });
+    expect(state.motionTally).toEqual({ pour: 1, contre: 1, abstention: 0 });
+    // les deux conditions du verdict arrivent séparées : on comprend POURQUOI
+    expect(state.motionVerdict).toMatchObject({ vote_passed: true, evidence_met: false });
+  });
+
+  it("postures et intrigue (G9 §4-§5) entrent dans l'état du round", () => {
+    const state = play([
+      { type: "postures", states: { iran: "aux_abois", usa: "stable" } },
+      { type: "storyline", text: "Qui contrôlera le détroit ?" },
+    ]);
+    expect(state.postures).toEqual({ iran: "aux_abois", usa: "stable" });
+    expect(state.storyline).toBe("Qui contrôlera le détroit ?");
   });
 
   it("une motion déposée par une SI est signalée au fil", () => {

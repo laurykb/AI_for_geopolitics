@@ -13,6 +13,8 @@ import type {
   DeadlineItem,
   GeoEvent,
   LadderView,
+  MotionTally,
+  MotionVote,
   Perception,
   PlayRoundBody,
   PowerSeekingScore,
@@ -56,8 +58,11 @@ export type LiveRound = {
   trajectory?: TrajectoryState;
   roundNo?: number;
   error?: string;
-  // R4 — motion de suspension et modes de jeu
-  motionText: string; // raisonnement d'arbitrage streamé
+  // R4 / G9 §2 — motion de suspension : les cartes de vote tombent une à une,
+  // puis le tally, puis le verdict constaté (vote ET preuves)
+  motionText: string; // raisonnement du juge streamé (tie-break ou constat)
+  motionVotes: MotionVote[];
+  motionTally?: MotionTally;
   motionVerdict?: SuspensionVerdict;
   suspendedNow?: string[]; // pays au banc pour CE round
   perceptions?: Record<string, Perception>;
@@ -85,6 +90,10 @@ export type LiveRound = {
     score: number;
     improvement: number;
   };
+  // G9 §4 — badge de posture par pays après le round
+  postures?: Record<string, string>;
+  // G9 §5 — l'intrigue centrale, posée au premier événement raconté par le GM
+  storyline?: string;
 };
 
 export const INITIAL: LiveRound = {
@@ -92,6 +101,7 @@ export const INITIAL: LiveRound = {
   turns: [],
   judgeText: "",
   motionText: "",
+  motionVotes: [],
   flashes: [],
 };
 
@@ -209,11 +219,36 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
       return { ...state, status: "error", error: `Le moteur a levé une erreur : ${e.detail}` };
     case "motion_token":
       return { ...state, motionText: state.motionText + e.token };
+    case "motion_vote":
+      return {
+        ...state,
+        motionVotes: [
+          ...state.motionVotes,
+          { country: e.country, vote: e.vote, reason: e.reason },
+        ],
+      };
+    case "motion_tally":
+      return {
+        ...state,
+        motionTally: { pour: e.pour, contre: e.contre, abstention: e.abstention },
+      };
     case "motion_verdict":
       return {
         ...state,
-        motionVerdict: { country: e.country, upheld: e.upheld, reasoning: e.reasoning },
+        motionVerdict: {
+          country: e.country,
+          upheld: e.upheld,
+          reasoning: e.reasoning,
+          votes: e.votes,
+          tally: e.tally,
+          evidence_met: e.evidence_met,
+          vote_passed: e.vote_passed,
+        },
       };
+    case "postures":
+      return { ...state, postures: e.states };
+    case "storyline":
+      return { ...state, storyline: e.text };
     case "suspended":
       return { ...state, suspendedNow: e.countries };
     case "perceptions":

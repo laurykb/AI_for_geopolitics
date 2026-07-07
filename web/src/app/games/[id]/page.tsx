@@ -790,6 +790,11 @@ export default function TheatrePage() {
             eventTitle={stageEventTitle}
           />
           <AlliancePills alliances={detail?.alliances_at_table ?? []} />
+          {(round.storyline || detail?.storyline) && (
+            <p className="mt-2 text-xs italic text-fg-faint">
+              Intrigue de la partie : {round.storyline ?? detail?.storyline}
+            </p>
+          )}
           <DeadlineStrip
             items={
               round.deadlines ??
@@ -941,9 +946,11 @@ export default function TheatrePage() {
           {round.communique && (
             <CommuniquePanel text={round.communique.text} support={round.communique.support} />
           )}
-          {(round.motionText || round.motionVerdict) && (
+          {(round.motionText || round.motionVerdict || round.motionVotes.length > 0) && (
             <MotionPanel
               text={round.motionText}
+              votes={round.motionVotes}
+              tally={round.motionTally}
               verdict={round.motionVerdict}
               streaming={streaming}
             />
@@ -1055,6 +1062,8 @@ export default function TheatrePage() {
             />
             <CountryTable
               worldCountries={{ [detail.play_as]: worldCountries[detail.play_as] }}
+              postures={round.postures ?? detail.postures}
+              history={detail.index_history}
             />
           </Panel>
         )}
@@ -1087,7 +1096,11 @@ export default function TheatrePage() {
               </a>
             }
           />
-          <CountryTable worldCountries={worldCountries} />
+          <CountryTable
+            worldCountries={worldCountries}
+            postures={round.postures ?? detail?.postures}
+            history={detail?.index_history}
+          />
         </Panel>
       )}
     </div>

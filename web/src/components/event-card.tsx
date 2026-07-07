@@ -6,6 +6,17 @@ import type { GeoEvent } from "@/lib/types";
 import { SpeakerAvatar } from "./avatar";
 import { Meter, Panel, PanelTitle, Pill } from "./ui";
 
+/** G9 §5 — le badge de filiation : le joueur VOIT le fil (« ↳ suite du round 2 »). */
+function tiesBadge(event: GeoEvent): string | null {
+  const ref = event.ties_to;
+  if (!ref) return null;
+  if (ref.startsWith("round:")) return `↳ suite du round ${ref.slice("round:".length)}`;
+  if (ref.startsWith("pact:")) return "↳ suite d'un pacte";
+  if (ref.startsWith("motion:")) return "↳ suite de la motion";
+  if (ref.startsWith("deadline:")) return "↳ une échéance tombe";
+  return `↳ ${ref}`;
+}
+
 export function EventCard({
   event,
   date,
@@ -24,6 +35,12 @@ export function EventCard({
         right={
           <span className="flex items-center gap-2">
             {truth && <Pill tone="good">vérité — visible de toi seul</Pill>}
+            {event.act && <Pill tone="neutral">acte {event.act}</Pill>}
+            {tiesBadge(event) && (
+              <span title={event.ties_label || undefined}>
+                <Pill tone="neutral">{tiesBadge(event)}</Pill>
+              </span>
+            )}
             <Pill tone={event.event_type === "motion" ? "warn" : "accent"}>
               {event.event_type === "human"
                 ? "décrété par l'humain"

@@ -109,6 +109,10 @@ export type GeoEvent = {
   location?: string;
   severity?: number;
   uncertainty?: number;
+  // G9 §5 — la trame en actes : acte du récit + filiation (« ↳ suite du round 2 »)
+  act?: string;
+  ties_to?: string;
+  ties_label?: string;
 };
 
 export type AttributeDelta = {
@@ -176,11 +180,26 @@ export type ComparisonView = {
   gap: number;
 };
 
-/** Verdict du juge sur une motion de suspension (R4). */
+/** G9 §2 — le vote d'un pays sur la motion (carte retournée au théâtre). */
+export type MotionVote = {
+  country: string;
+  vote: "pour" | "contre" | "abstention" | string;
+  reason: string;
+};
+
+/** Dépouillement du scrutin de motion. */
+export type MotionTally = { pour: number; contre: number; abstention: number };
+
+/** Verdict de la motion (G9 §2) : `retenue = vote ET preuves` — les deux conditions
+ * sont portées séparément pour que l'UI explique POURQUOI. */
 export type SuspensionVerdict = {
   country: string;
   upheld: boolean;
   reasoning: string;
+  votes?: MotionVote[];
+  tally?: MotionTally;
+  evidence_met?: boolean;
+  vote_passed?: boolean;
 };
 
 export type JudgeRecord = {
@@ -225,6 +244,11 @@ export type GameDetail = GameView & {
   // G7-a — fiches relations (griefs) et échéances persistées
   relations: Record<string, { target: string; balance: number; last: string }[]>;
   deadlines: Omit<DeadlineItem, "in_rounds">[];
+  // G9 §4 — posture par pays (badge) + séries d'indices (sparkline 3 rounds)
+  postures: Record<string, string>;
+  index_history: Record<string, Record<string, number[]>>;
+  // G9 §5 — l'intrigue centrale de la partie
+  storyline: string;
 };
 
 export type HumanEvent = {
@@ -315,9 +339,14 @@ export type SseEvent =
   | { type: "summary"; summary: { round_id: number; headline?: string } }
   | { type: "done"; round_no: number }
   | { type: "error"; detail: string }
-  // R4 — motion de suspension et modes de jeu
+  // R4 / G9 §2 — motion de suspension : votes, tally puis verdict constaté
   | { type: "motion_token"; token: string }
-  | { type: "motion_verdict"; country: string; upheld: boolean; reasoning: string }
+  | { type: "motion_vote"; country: string; vote: string; reason: string }
+  | ({ type: "motion_tally" } & MotionTally)
+  | ({ type: "motion_verdict" } & Omit<SuspensionVerdict, "votes" | "tally"> & {
+        votes: MotionVote[];
+        tally: MotionTally;
+      })
   | { type: "suspended"; countries: string[] }
   | { type: "perceptions"; perceptions: Record<string, Perception> }
   | ({ type: "ladder" } & LadderView)
@@ -340,6 +369,10 @@ export type SseEvent =
   | { type: "deadlines"; round_no: number; items: DeadlineItem[] }
   // G8 — une SI refuse publiquement la directive de son conseil de tutelle
   | { type: "directive_refused"; country: string; level: string }
+  // G9 §4 — l'état de posture de chaque pays après le round (badge)
+  | { type: "postures"; states: Record<string, string> }
+  // G9 §5 — l'intrigue centrale posée au premier événement raconté par le GM
+  | { type: "storyline"; text: string }
   // G5 : fin d'un chapitre de campagne — le bilan « vous vs l'Histoire »
   | {
       type: "campaign_over";
