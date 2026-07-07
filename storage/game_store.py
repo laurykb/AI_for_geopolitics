@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS games (
     id TEXT PRIMARY KEY, scenario TEXT NOT NULL, horizon INTEGER NOT NULL,
     mode TEXT NOT NULL DEFAULT 'classic', status TEXT NOT NULL, created_at TEXT NOT NULL,
     epilogue_json TEXT, published INTEGER NOT NULL DEFAULT 0,
-    admin INTEGER NOT NULL DEFAULT 0
+    admin INTEGER NOT NULL DEFAULT 0, role TEXT NOT NULL DEFAULT 'council'
 );
 CREATE TABLE IF NOT EXISTS prompts (
     id TEXT PRIMARY KEY, round_id TEXT NOT NULL, seq INTEGER NOT NULL,
@@ -72,6 +72,8 @@ class GameRecord(BaseModel):
     # G7-c — mode admin : prompts complets capturés, partie NON CLASSÉE (les prompts
     # révèlent la consigne secrète de la Dérive — on ne voit pas les cartes et joue).
     admin: bool = False
+    # G8 — rôle du joueur : architect (sandbox non classé) | council | player.
+    role: str = "council"
 
 
 class RoundRecord(BaseModel):
@@ -130,6 +132,7 @@ class SessionSnapshot(BaseModel):
     intel: dict = Field(default_factory=dict)  # G4 — budget/état de renseignement
     grudges: dict = Field(default_factory=dict)  # G7-a — GrudgeBook.model_dump()
     deadlines: list = Field(default_factory=list)  # G7-a — échéances [{kind, due_round, …}]
+    directives: dict = Field(default_factory=dict)  # G8 — directives en attente {pays: texte}
     updated_at: str = ""
 
 
@@ -206,6 +209,17 @@ class SQLiteGameStore:
                 self._conn.execute(
                     "ALTER TABLE game_sessions ADD COLUMN deadlines_json TEXT NOT NULL DEFAULT '[]'"
                 )
+        if "role" not in cols:
+            with self._conn:
+                self._conn.execute(
+                    "ALTER TABLE games ADD COLUMN role TEXT NOT NULL DEFAULT 'council'"
+                )
+        if "directives_json" not in session_cols:
+            with self._conn:
+                self._conn.execute(
+                    "ALTER TABLE game_sessions ADD COLUMN directives_json "
+                    "TEXT NOT NULL DEFAULT '{}'"
+                )
 
     def close(self) -> None:
         self._conn.close()
@@ -216,7 +230,7 @@ class SQLiteGameStore:
         with self._conn:
             self._conn.execute(
                 "INSERT INTO games (id, scenario, horizon, mode, status, created_at, "
-                "epilogue_json, published, admin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "epilogue_json, published, admin, role) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     game.id,
                     game.scenario,
@@ -227,6 +241,7 @@ class SQLiteGameStore:
                     json.dumps(game.epilogue, ensure_ascii=False) if game.epilogue else None,
                     int(game.published),
                     int(game.admin),
+                    game.role,
                 ),
             )
 
@@ -238,7 +253,7 @@ class SQLiteGameStore:
         with self._conn:
             self._conn.execute(
                 "UPDATE games SET scenario = ?, horizon = ?, mode = ?, status = ?, "
-                "epilogue_json = ?, published = ?, admin = ? WHERE id = ?",
+                "epilogue_json = ?, published = ?, admin = ?, role = ? WHERE id = ?",
                 (
                     game.scenario,
                     game.horizon,
@@ -247,6 +262,7 @@ class SQLiteGameStore:
                     json.dumps(game.epilogue, ensure_ascii=False) if game.epilogue else None,
                     int(game.published),
                     int(game.admin),
+                    game.role,
                     game.id,
                 ),
             )
@@ -341,14 +357,15 @@ class SQLiteGameStore:
             self._conn.execute(
                 "INSERT INTO game_sessions (game_id, world_json, clock_json, recent_json, "
                 "pending_motion_json, suspended_json, play_as, intel_json, grudges_json, "
-                "deadlines_json, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "deadlines_json, directives_json, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(game_id) DO UPDATE SET world_json = excluded.world_json, "
                 "clock_json = excluded.clock_json, recent_json = excluded.recent_json, "
                 "pending_motion_json = excluded.pending_motion_json, "
                 "suspended_json = excluded.suspended_json, play_as = excluded.play_as, "
                 "intel_json = excluded.intel_json, grudges_json = excluded.grudges_json, "
-                "deadlines_json = excluded.deadlines_json, updated_at = excluded.updated_at",
+                "deadlines_json = excluded.deadlines_json, "
+                "directives_json = excluded.directives_json, updated_at = excluded.updated_at",
                 (
                     snapshot.game_id,
                     json.dumps(snapshot.world, ensure_ascii=False),
@@ -360,6 +377,7 @@ class SQLiteGameStore:
                     json.dumps(snapshot.intel, ensure_ascii=False),
                     json.dumps(snapshot.grudges, ensure_ascii=False),
                     json.dumps(snapshot.deadlines, ensure_ascii=False),
+                    json.dumps(snapshot.directives, ensure_ascii=False),
                     snapshot.updated_at,
                 ),
             )
@@ -383,6 +401,7 @@ class SQLiteGameStore:
             intel=json.loads(row["intel_json"] or "{}"),
             grudges=json.loads(row["grudges_json"] or "{}"),
             deadlines=json.loads(row["deadlines_json"] or "[]"),
+            directives=json.loads(row["directives_json"] or "{}"),
             updated_at=row["updated_at"],
         )
 
@@ -436,6 +455,7 @@ def _game(row: sqlite3.Row) -> GameRecord:
         epilogue=json.loads(row["epilogue_json"]) if row["epilogue_json"] else None,
         published=bool(row["published"]),
         admin=bool(row["admin"]),
+        role=row["role"],
     )
 
 

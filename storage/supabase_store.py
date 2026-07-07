@@ -124,6 +124,7 @@ class SupabaseGameStore:
             "intel_json": snapshot.intel,
             "grudges_json": snapshot.grudges,
             "deadlines_json": snapshot.deadlines,
+            "directives_json": snapshot.directives,
             "suspended_json": snapshot.suspended,
             "play_as": snapshot.play_as,
         }
@@ -145,6 +146,7 @@ class SupabaseGameStore:
             intel=r.get("intel_json") or {},
             grudges=r.get("grudges_json") or {},
             deadlines=r.get("deadlines_json") or [],
+            directives=r.get("directives_json") or {},
             suspended=r["suspended_json"],
             play_as=r["play_as"],
             updated_at=r["updated_at"] or "",
@@ -178,6 +180,7 @@ def _game_row(game: GameRecord) -> dict:
         "epilogue_json": game.epilogue,
         "published": game.published,
         "admin": game.admin,
+        "role": game.role,
     }
 
 
@@ -192,4 +195,5 @@ def _game(row: dict) -> GameRecord:
         epilogue=row.get("epilogue_json"),
         published=bool(row.get("published", False)),
         admin=bool(row.get("admin", False)),
+        role=row.get("role") or "council",
     )

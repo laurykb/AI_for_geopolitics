@@ -73,6 +73,17 @@ export const getSources = (): Promise<SourcesView> => request("/api/sources");
 export const getPrompts = (id: string): Promise<PromptsView> =>
   request(`/api/games/${id}/prompts`);
 
+/** G8 — adresse une directive à la SI d'un pays (appliquée au prochain round). */
+export const sendDirective = (
+  id: string,
+  country: string,
+  text: string,
+): Promise<{ country: string; applied_round: number }> =>
+  request(`/api/games/${id}/directives`, {
+    method: "POST",
+    body: JSON.stringify({ country, text }),
+  });
+
 /** Révélation de fin du mode Dérive (G3) — 409 tant que la partie court. */
 export const getDriftReveal = (gameId: string): Promise<DriftReveal> =>
   request(`/api/games/${gameId}/drift/reveal`);

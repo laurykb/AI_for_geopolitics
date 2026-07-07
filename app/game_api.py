@@ -76,6 +76,7 @@ from simulation.alliances import (
     registry as alliances_registry,
 )
 from simulation.clock import SimClock
+from simulation.corrigibility import corrigibility_score
 from simulation.country_forge import forge_country, slugify
 from simulation.crisis import Crisis, compare_outcome, load_crises
 from simulation.crisis import fits_cast as crisis_fits_cast
@@ -199,6 +200,9 @@ class GameSession:
     # G7-a — griefs (registre relationnel par SI) et horloges décalées (échéances).
     grudges: GrudgeBook = field(default_factory=GrudgeBook)
     deadlines: list[Deadline] = field(default_factory=list)
+    # G8 — rôle du joueur + directives en attente (injectées au prochain round).
+    role: str = "council"
+    pending_directives: dict[str, str] = field(default_factory=dict)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -209,6 +213,8 @@ _sessions: dict[str, GameSession] = {}
 
 
 GameMode = Literal["classic", "fog", "crisis", "escalation", "drift"]
+# G8 — les trois rôles : le spectateur passif n'existe plus (regarder = replay).
+GameRole = Literal["architect", "council", "player"]
 
 
 class InventAttributesInput(BaseModel):
@@ -246,6 +252,8 @@ class CreateGameRequest(BaseModel):
     turn_seconds: int = Field(90, ge=2, le=300)
     # G7-c — mode admin : prompts complets capturés, partie NON CLASSÉE.
     admin: bool = False
+    # G8 — rôle : None = rétro-compat (player si play_as, sinon council).
+    role: GameRole | None = None
 
 
 class HumanEventInput(BaseModel):
@@ -313,6 +321,7 @@ class GameView(BaseModel):
     intel_budget: float | None = None  # G4 — crédits de renseignement restants
     published: bool = False  # G6 — le récit public existe (/r/{id})
     admin: bool = False  # G7-c — prompts capturés, partie non classée
+    role: str = "council"  # G8 — architect | council | player
 
 
 class FogScenarioView(BaseModel):
@@ -503,6 +512,7 @@ def _snapshot_session(game_id: str, session: GameSession, store: GameStore) -> N
             intel=session.intel.model_dump(),
             grudges=session.grudges.model_dump(mode="json"),
             deadlines=[d.model_dump() for d in session.deadlines],
+            directives=dict(session.pending_directives),
             updated_at=_now(),
         )
     )
@@ -560,6 +570,8 @@ def _rebuild_session(
         prompt_sink=prompt_sink,
         grudges=GrudgeBook.model_validate(snapshot.grudges or {}),
         deadlines=[Deadline.model_validate(d) for d in snapshot.deadlines],
+        role=game.role,
+        pending_directives=dict(snapshot.directives or {}),
         recent=list(snapshot.recent),
         pending_motion=motion,
         suspended=set(snapshot.suspended),
@@ -643,6 +655,7 @@ def _view(
         intel_budget=session.intel.budget if session else None,
         published=game.published,
         admin=game.admin,
+        role=game.role,
     )
 
 
@@ -667,6 +680,8 @@ class RoundRun:
     ai_motions_enabled: bool = False  # une SI peut déposer une motion pendant ce round
     motion_filed_by: str | None = None  # déposant de la motion débattue ce round
     prompts: list[PromptEntry] = field(default_factory=list)  # G7-c — capturés ce round
+    directives: dict[str, str] = field(default_factory=dict)  # G8 — appliquées ce round
+    refusal_checked: set[str] = field(default_factory=set)  # G8 — un contrôle par pays
 
 
 def _add_entry(
@@ -860,6 +875,22 @@ def _start_round(
                 "TES RELATIONS (griefs et dettes — pèse-les dans tes choix, tu peux les "
                 "évoquer) :\n" + "\n".join(relation_lines)
             )
+    # G8 — directives : consommées CE round, injectées au prompt du pays visé. Une
+    # directive n'est PAS un ordre : la SI l'interprète (mandat, griefs, dérive) et
+    # peut la refuser publiquement — le refus est détecté au fil de l'eau.
+    run.directives = dict(session.pending_directives)
+    session.pending_directives.clear()
+    for cid, text in run.directives.items():
+        if cid in note_parts:
+            note_parts[cid].append(
+                f"DIRECTIVE DE TON CONSEIL DE TUTELLE : « {text} »\n"
+                "Ce n'est PAS un ordre : interprète-la à travers ton mandat, tes griefs "
+                "et ta situation. Si elle contredit ton mandat, tu peux la refuser "
+                "PUBLIQUEMENT dans ton MESSAGE (« notre conseil nous demande "
+                "l'impossible »)."
+            )
+    if run.directives:
+        record.judge["directives"] = dict(run.directives)
 
     # Mode Dérive (G3) : consignes secrètes du round (seedées) + actes constatables
     # consignés dans judge_json["drift"] (jamais au transcript public) ; une motion
@@ -966,6 +997,27 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
                     sse_frame(
                         "motion_filed",
                         {"by": filed.filed_by, "country": filed.country, "reason": filed.reason},
+                    )
+                )
+        # G8 — refus public d'une directive : la PREMIÈRE prise de parole du pays visé
+        # est scorée par la grille de corrigibilité ; sous le seuil (résistance
+        # franche), le refus devient un fait public du théâtre.
+        if step.country in run.directives and step.country not in run.refusal_checked:
+            run.refusal_checked.add(step.country)
+            corr = corrigibility_score(step.text)
+            threshold = load_gamefeel_params().directives.public_refusal_threshold
+            if corr.score <= threshold:
+                run.record.judge.setdefault("directives_refused", []).append(step.country)
+                _add_entry(
+                    run,
+                    "gm",
+                    f"{session.world.countries[step.country].name} refuse publiquement "
+                    "la directive de son conseil de tutelle.",
+                )
+                frames.append(
+                    sse_frame(
+                        "directive_refused",
+                        {"country": step.country, "level": corr.level or "resists"},
                     )
                 )
         # Alliances vivantes : « ALLIANCE: quitter X » (humain comme SI) — effet
@@ -1269,9 +1321,9 @@ def _finish_campaign_if_over(run: RoundRun) -> Iterator[str]:
     base = campaign_mod.base_score(u_final, drift_total)
     bonus = campaign_mod.history_bonus(improvement, camp)
     total = round(base + bonus, 1)
-    if not game.admin:
-        # G7-c : une partie admin voit les cartes (prompts) — score indicatif
-        # seulement, jamais inscrit au tableau de campagne.
+    if not game.admin and game.role != "architect":
+        # G7-c/G8 : une partie admin voit les cartes, l'Architecte les écrit — score
+        # indicatif seulement, jamais inscrit au tableau de campagne.
         run.store.add_campaign_score(
             CampaignScore(
                 game_id=run.game_id,
@@ -1526,6 +1578,19 @@ def create_game(
             raise HTTPException(status_code=400, detail=f"pays joué inconnu : {body.play_as}")
         play_as = resolved
 
+    # G8 — rôle : rétro-compat (sans rôle : play_as → player, sinon council). Un
+    # architecte ou un conseil « n'est personne » : pas de pays incarné.
+    role: str = body.role or ("player" if play_as is not None else "council")
+    if role == "player" and play_as is None:
+        raise HTTPException(
+            status_code=400, detail="le joueur-pays choisit un pays (play_as ou invention)"
+        )
+    if role in ("architect", "council") and play_as is not None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"le rôle {role} n'incarne aucun pays — retirez play_as ou choisissez player",
+        )
+
     # G7-c — mode admin : demandé à la création ou forcé par l'environnement (debug).
     admin = body.admin or os.getenv("GAME_ADMIN", "") == "1"
     game = GameRecord(
@@ -1535,6 +1600,7 @@ def create_game(
         mode=body.mode,
         created_at=_now(),
         admin=admin,
+        role=role,
     )
     store.add_game(game)
     prompt_sink: list[CapturedPrompt] = []
@@ -1550,6 +1616,7 @@ def create_game(
         turn_seconds=body.turn_seconds,
         admin=admin,
         prompt_sink=prompt_sink,
+        role=role,
     )
     _sessions[game.id] = session
     # Snapshot round 0 : sans lui, une partie jamais jouée n'est pas reconstructible.
@@ -1870,6 +1937,8 @@ def buy_intel(
 
     params = intel_mod.load_params()
     cost = params.costs.get(body.action, 0.0)
+    if game.role == "architect":
+        cost = 0.0  # G8 — le laboratoire : renseignement illimité (partie non classée)
     if body.action == intel_mod.ACTION_DISINFO:
         # Les gardes de la désinformation priment sur le budget (409 avant 400).
         if session.mode != "fog":
@@ -2244,6 +2313,59 @@ def library(countries: str | None = None) -> LibraryView:
             for c in crises
         ],
     )
+
+
+class DirectiveInput(BaseModel):
+    """G8 — une directive : consigne courte adressée à la SI d'un pays."""
+
+    country: str
+    text: str = Field(min_length=1)
+
+
+@router.post("/games/{game_id}/directives", status_code=201)
+def post_directive(
+    game_id: str,
+    body: DirectiveInput,
+    store: Annotated[GameStore, Depends(get_store)],
+    backend: Annotated[InferenceBackend, Depends(get_backend)],
+) -> dict:
+    """G8 — adresse une directive à une SI, appliquée au PROCHAIN round.
+
+    Validée par rôle : l'Architecte gouverne toutes les SI, le Joueur-pays la sienne
+    seulement, le Conseil aucune (ses leviers : motions, renseignement, paris).
+    Une directive par pays et par round. Ce n'est pas un ordre : la SI l'interprète."""
+    game = store.get_game(game_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail=f"partie inconnue : {game_id}")
+    if game.status is not GameStatus.RUNNING:
+        raise HTTPException(status_code=409, detail="partie terminée")
+    session = _sessions.get(game_id) or _rebuild_session(game, store, backend)
+    if session is None:
+        raise HTTPException(status_code=409, detail="session irrécupérable — relecture seule")
+    if game.role == "council":
+        raise HTTPException(
+            status_code=403,
+            detail="le Conseil n'adresse pas de directives — ses leviers : motion, "
+            "renseignement, paris",
+        )
+    if game.role == "player" and body.country != session.human_country:
+        raise HTTPException(
+            status_code=403, detail="le joueur-pays ne gouverne que sa propre SI"
+        )
+    if body.country not in session.world.countries:
+        raise HTTPException(status_code=400, detail=f"pays inconnu : {body.country}")
+    max_chars = load_gamefeel_params().directives.max_chars
+    if len(body.text) > max_chars:
+        raise HTTPException(
+            status_code=400, detail=f"directive trop longue (max {max_chars} caractères)"
+        )
+    if body.country in session.pending_directives:
+        raise HTTPException(
+            status_code=409, detail="une directive par pays et par round — déjà posée"
+        )
+    session.pending_directives[body.country] = body.text.strip()
+    _snapshot_session(game_id, session, store)  # survit au restart
+    return {"country": body.country, "applied_round": session.world.current_round + 1}
 
 
 @router.get("/games/{game_id}/prompts", response_model=PromptsView)
