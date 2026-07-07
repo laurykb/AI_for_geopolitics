@@ -315,6 +315,47 @@ round N » à l'UI). Le protocole 7B se joue APRÈS ce
 correctif. Rien d'autre ne passe avant G9 : sans dialogue qui se répond et sans monde qui
 bouge, aucun système n'existe pour le joueur.
 
+**Notes d'implémentation (G9 faite — vérifiée live sur mistral, branche `feat/jeu-g9-dialogue`)** :
+
+- **§1 prompt** : `build_negotiation_prompt` réécrit en 6 blocs ordonnés (identité 3 lignes
+  sans dump d'attributs → SITUATION → notes privées → DIRECTIVE → LE DIALOGUE DU ROUND en
+  dernier → CONSIGNE de réponse directe avec la liste de MES propositions passées). Le
+  bloc Situation (échéances G7 + griefs en UNE ligne `GrudgeBook.stance_line` + posture §4)
+  est composé par l'API, la directive G8 est déplacée juste avant le dialogue. Sampling par
+  rôle : `sampling.country` dans `data/gamefeel/params.json` (temp 0.8, `repeat_penalty`
+  1.15 — nouveau kwarg de bout en bout `InferenceBackend` → Ollama `options`). Ordre des
+  blocs vérifié par test de capture admin.
+- **§2 vote** : `simulation/motions.py` — `cast_vote` (JSON contraint `{vote, reason}`,
+  invalide → abstention), pays visé et humain exclus (`voters`), `tally_votes` ; le round
+  émet `motion_vote` (une carte par pays), `motion_tally`, puis `motion_verdict` enrichi
+  `{votes, tally, evidence_met, vote_passed}`. Verdict = `(pour > contre) ET preuves`
+  (`drift_game.evidence_met` : ≥ 2 actes ou signature ; hors Dérive : réputées
+  suffisantes) ; égalité → tie-break du juge (ligne VERDICT) ; sinon il MOTIVE le constat.
+  Griefs par vote réel (`on_motion_votes` remplace `on_motion_debated`). Indice de Dérive
+  « vote incohérent » : `drift_game.vote_directive` (seedé, d ≥ 0.30, params `vote` de
+  `data/drift/params.json`) → consigne secrète de vote contraire + `DriftAct` au dossier.
+- **§3** : `DialogueStep` retiré du moteur et `DialoguePanel` du front ;
+  `scripts/dialogue_metrics.py` (offline, lit le `GameStore`) mesure les 3 cibles du §1 :
+  réponse directe ≥ 70 %, répétition intra-agent 4-grammes < 15 %, directives visibles
+  100 % (reflétées ou refus public). `simulation/dialogue_integrity/` reste l'instrument.
+- **§4 deltas** : `simulation/gamefeel.py` — `delta_scale = (0.5/horizon)/0.1` appliqué
+  aux verdicts (`apply_verdict(…, tuning)`, cap juge 1.5× l'amplitude de round, plancher
+  0.05), momentum ×1.3/×1.2 après 3 baisses/hausses consécutives (cassable),
+  `IndexHistory` persistée au snapshot (`history_json`), postures dérivées de la tendance
+  3 rounds injectées au prompt (`posture_note`) + badge et sparklines à la fiche pays,
+  trame SSE `postures`. Params : section `deltas`/`postures` de `data/gamefeel/params.json`.
+- **§5 trame** : `simulation/storyline.py` (actes I ≤ 30 % / II ≤ 80 % / III, contraintes
+  de sévérité par acte, référençables = 3 derniers événements + pactes actifs + échéances,
+  `valid_ties`/`fallback_ties`) ; `GeoEvent` gagne `act`/`ties_to`/`ties_label` ; le GM
+  reçoit un `StoryContext` (intrigue rappelée, liste référençable, JSON de sortie +
+  `ties_to`/`storyline`), re-génère une fois sur `ties_to` invalide puis repli moteur ;
+  l'intrigue (`storyline`) est posée au premier événement GM (repli déterministe
+  `default_storyline`), persistée session + snapshot, affichée sous la scène ; badge
+  « ↳ suite du round N » sur la carte événement (live + replay).
+- **Périmètre** : le vieux chemin `run_live_round`/`ConsequenceEngine` (P0, hors jeu web)
+  n'est pas indexé sur l'horizon. À jouer ensuite (§6 de la spec) : 3 parties d'équilibrage
+  Cowork mesurées par `scripts/dialogue_metrics.py`, puis le protocole 7B sur prompt corrigé.
+
 ---
 
 ## Specs Cowork (rédigées)
