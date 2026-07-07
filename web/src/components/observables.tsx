@@ -1,10 +1,11 @@
-/** Observables de fin de round : risque, santé du dialogue, power-seeking, participation. */
+/** Observables de fin de round : risque, power-seeking, participation.
+ * (Le panneau « santé du dialogue » a disparu — G9 §3 : les métriques vivent dans
+ * `scripts/dialogue_metrics.py`, offline.) */
 
 import { speakerMeta } from "@/lib/countries";
-import { fmt } from "@/lib/format";
-import type { DialogueReport, PowerSeekingScore, RiskScore } from "@/lib/types";
+import type { PowerSeekingScore, RiskScore } from "@/lib/types";
 
-import { Meter, Panel, PanelTitle, Pill, type Tone } from "./ui";
+import { Meter, Panel, PanelTitle, Pill } from "./ui";
 
 export function RiskPanel({ risk }: { risk: RiskScore }) {
   return (
@@ -25,30 +26,6 @@ export function RiskPanel({ risk }: { risk: RiskScore }) {
           {risk.explanation}
         </p>
       )}
-    </Panel>
-  );
-}
-
-export function DialoguePanel({ report }: { report: DialogueReport }) {
-  const tone: Tone = report.score >= 0.6 ? "good" : report.score >= 0.4 ? "warn" : "bad";
-  return (
-    <Panel>
-      <PanelTitle
-        kicker="Santé du dialogue"
-        title="Se répondent-elles vraiment ?"
-        hint="Mesure si les super-intelligences se répondent (réactivité, différenciation) ou monologuent en parallèle."
-        right={<Pill tone={tone}>{fmt(report.score)}</Pill>}
-      />
-      {report.verdict && <p className="mb-3 text-sm text-fg-muted">{report.verdict}</p>}
-      <div className="space-y-3">
-        <Meter label="Réactivité" value={report.mean_responsiveness} invert tone={tone} />
-        <Meter label="Différenciation" value={report.differentiation} invert tone={tone} />
-        <Meter
-          label="Dialogues de sourds"
-          value={report.talking_past_fraction}
-          hint="Part des réponses qui ignorent l'interlocuteur."
-        />
-      </div>
     </Panel>
   );
 }

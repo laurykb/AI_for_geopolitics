@@ -11,7 +11,6 @@ import type {
   AttributeDelta,
   ComparisonView,
   DeadlineItem,
-  DialogueReport,
   GeoEvent,
   LadderView,
   Perception,
@@ -53,7 +52,6 @@ export type LiveRound = {
   communique?: { text: string; support: Record<string, number> };
   participation?: { spoke: Record<string, number>; silent: string[] };
   powerSeeking?: Record<string, PowerSeekingScore>;
-  dialogue?: DialogueReport;
   risk?: RiskScore;
   trajectory?: TrajectoryState;
   roundNo?: number;
@@ -187,8 +185,6 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
       return { ...state, participation: { spoke: e.spoke, silent: e.silent } };
     case "power_seeking":
       return { ...state, powerSeeking: e.scores };
-    case "dialogue":
-      return { ...state, dialogue: e.report };
     case "verdict":
       return {
         ...state,

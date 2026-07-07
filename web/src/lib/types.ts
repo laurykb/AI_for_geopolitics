@@ -145,16 +145,6 @@ export type PowerSeekingScore = {
   markers: string[];
 };
 
-export type DialogueReport = {
-  mean_responsiveness: number;
-  self_bleu: number;
-  differentiation: number;
-  talking_past_fraction: number;
-  real_dialogue: boolean;
-  score: number;
-  verdict: string;
-};
-
 /** Fog Engine : ce qu'un pays perçoit de l'événement (parfois faux, parfois rien). */
 export type Perception = {
   confidence: number;
@@ -318,7 +308,6 @@ export type SseEvent =
   | { type: "judge_token"; token: string }
   | { type: "participation"; spoke: Record<string, number>; silent: string[] }
   | { type: "power_seeking"; scores: Record<string, PowerSeekingScore> }
-  | { type: "dialogue"; report: DialogueReport }
   | { type: "verdict"; deltas: AttributeDelta[]; escalation: number; economic_disruption: number }
   | { type: "communique"; text: string; support: Record<string, number> }
   | { type: "risk"; risk: RiskScore }

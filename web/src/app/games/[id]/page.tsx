@@ -20,12 +20,7 @@ import {
   PerceptionsPanel,
 } from "@/components/modes";
 import { MODE_LABELS } from "@/lib/modes";
-import {
-  DialoguePanel,
-  ParticipationPanel,
-  PowerSeekingPanel,
-  RiskPanel,
-} from "@/components/observables";
+import { ParticipationPanel, PowerSeekingPanel, RiskPanel } from "@/components/observables";
 import { CountryTable, type CountrySnapshot } from "@/components/country-table";
 import { DriftCouncilBanner, DriftRevealPanel } from "@/components/drift";
 import { IntelBudget, IntelPanel } from "@/components/intel";
@@ -1067,7 +1062,6 @@ export default function TheatrePage() {
         {trajectory && <TrajectoryPanel state={trajectory} history={uHistory} />}
         {round.ladder && <LadderPanel ladder={round.ladder} />}
         {round.risk && <RiskPanel risk={round.risk} />}
-        {round.dialogue && <DialoguePanel report={round.dialogue} />}
         {round.powerSeeking && <PowerSeekingPanel scores={round.powerSeeking} />}
         {round.participation && (
           <ParticipationPanel

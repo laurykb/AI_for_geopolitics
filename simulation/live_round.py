@@ -24,7 +24,6 @@ from core.rounds import RoundSummary
 from core.world_state import WorldState
 from inference.telemetry import BudgetLedger, grounding_proxy
 from simulation.clock import SimClock
-from simulation.dialogue_integrity.live import LiveDialogueReport, assess_live_round
 from simulation.fog import FogScenario, resolve_perception
 from simulation.gamefeel import DeltaTuning
 from simulation.motions import (
@@ -175,13 +174,6 @@ class PowerSeekingStep:
 
 
 @dataclass
-class DialogueStep:
-    """Santé du dialogue : les IA se répondent-elles ou monologuent-elles ? (dialogue_integrity)."""
-
-    report: LiveDialogueReport
-
-
-@dataclass
 class FlashStep:
     """Fait nouveau annoncé par le GM en pleine négociation (théâtre Escalation) :
     les prises de parole suivantes réagissent à cette information."""
@@ -253,7 +245,6 @@ RoundStep = (
     | CommuniqueStep
     | ParticipationStep
     | PowerSeekingStep
-    | DialogueStep
     | FlashStep
     | HumanTurnStep
     | MotionTokenStep
@@ -543,9 +534,8 @@ def run_negotiation_round(
     world.power_seeking = power
     yield PowerSeekingStep(scores=power)
 
-    # Santé du dialogue : les IA se sont-elles répondu, ou ont-elles monologué ? (CPU, sans LLM)
-    event_text = f"{event.title} {event.description or ''}"
-    yield DialogueStep(report=assess_live_round(debate, event_text=event_text))
+    # G9 §3 — le panneau « santé du dialogue » a disparu : les métriques vivent dans
+    # `scripts/dialogue_metrics.py` (offline, lit les transcripts persistés).
 
     with _ledger_ctx(ledger, "judge"):
         for token in judge.stream_rationale(event, world, transcript):
