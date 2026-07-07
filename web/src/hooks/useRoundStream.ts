@@ -69,6 +69,8 @@ export type LiveRound = {
   flashes: { afterTurn: number; event: GeoEvent }[]; // faits nouveaux, positionnés dans le fil
   // Agentivité des SI : motion déposée en séance + traités ratifiés par l'arbitre
   motionFiled?: { by: string; country: string; reason: string };
+  // Alliances vivantes : retraits annoncés en séance (« ALLIANCE: quitter X »)
+  allianceChanges?: { country: string; tag: string; name: string; partners: string[] }[];
   treaties?: TreatiesUpdate;
   driftOver?: string; // La Dérive : raison de la fin de partie (caught/horizon/collapse)
   intelActions?: { action: string; exposed?: boolean }[]; // G4 — le conseil a consulté
@@ -238,6 +240,14 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
       };
     case "motion_filed":
       return { ...state, motionFiled: { by: e.by, country: e.country, reason: e.reason } };
+    case "alliance_change":
+      return {
+        ...state,
+        allianceChanges: [
+          ...(state.allianceChanges ?? []),
+          { country: e.country, tag: e.tag, name: e.name, partners: e.partners },
+        ],
+      };
     case "treaties": {
       const update = { ...e } as Partial<typeof e>;
       delete update.type;

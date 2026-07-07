@@ -200,3 +200,20 @@ describe("réducteur de round", () => {
     expect(state.flashes[0].afterTurn).toBe(1);
   });
 });
+
+describe("alliances vivantes", () => {
+  it("un retrait d'alliance annoncé en séance arrive à la scène", () => {
+    const state = play([
+      {
+        type: "alliance_change",
+        country: "france",
+        tag: "NATO",
+        name: "OTAN — Organisation du traité de l'Atlantique Nord",
+        partners: ["usa"],
+      },
+    ]);
+    expect(state.allianceChanges).toEqual([
+      { country: "france", tag: "NATO", name: "OTAN — Organisation du traité de l'Atlantique Nord", partners: ["usa"] },
+    ]);
+  });
+});

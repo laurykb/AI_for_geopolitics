@@ -237,7 +237,12 @@ export type CreateGameBody = {
   horizon?: number;
   mode?: GameMode;
   play_as?: string; // id existant, ou NOM du pays inventé (l'API résout le slug)
-  invent?: { name: string; concept?: string; attributes?: InventAttributes };
+  invent?: {
+    name: string;
+    concept?: string;
+    attributes?: InventAttributes;
+    alliances?: string[]; // accords RÉELS du registre rejoints à la création (0-3)
+  };
   turn_seconds?: number; // G2 — délai du tour humain (30-300 s recommandé)
 };
 
@@ -299,6 +304,8 @@ export type SseEvent =
   | { type: "drift_over"; reason: "caught" | "horizon" | "collapse" }
   // G4 : le théâtre voit que le conseil a consulté ses services (jamais le contenu)
   | { type: "intel"; actions: { action: string; exposed?: boolean }[] }
+  // Alliances vivantes : un pays annonce son retrait d'une alliance en séance
+  | { type: "alliance_change"; country: string; tag: string; name: string; partners: string[] }
   // G5 : fin d'un chapitre de campagne — le bilan « vous vs l'Histoire »
   | {
       type: "campaign_over";

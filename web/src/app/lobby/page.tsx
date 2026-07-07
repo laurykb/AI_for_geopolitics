@@ -6,15 +6,17 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Banner, Panel, PanelTitle, Spinner } from "@/components/ui";
 import { SpeakerAvatar } from "@/components/avatar";
 import { WorldMap } from "@/components/world-map";
-import { createGame, humanizeError } from "@/lib/api";
+import { createGame, getSources, humanizeError } from "@/lib/api";
 import { DEFAULT_COUNTRIES, ROSTER, SUMMIT_MAX, SUMMIT_MIN, speakerMeta } from "@/lib/countries";
 import { MODES } from "@/lib/modes";
-import type { GameMode } from "@/lib/types";
+import type { AllianceInfo, GameMode } from "@/lib/types";
+
+const INVENT_ALLIANCES_MAX = 3;
 
 export default function LobbyPage() {
   const router = useRouter();
@@ -27,6 +29,20 @@ export default function LobbyPage() {
   const [turnSeconds, setTurnSeconds] = useState(90); // G2 — délai du tour humain
   const [inventName, setInventName] = useState("");
   const [inventConcept, setInventConcept] = useState("");
+  // Alliances vivantes : le pays inventé peut rejoindre des accords RÉELS du registre.
+  const [inventAlliances, setInventAlliances] = useState<string[]>([]);
+  const [registry, setRegistry] = useState<Record<string, AllianceInfo> | null>(null);
+  useEffect(() => {
+    if (role === "__invent__" && registry === null) {
+      getSources()
+        .then((v) => setRegistry(v.alliances))
+        .catch(() => setRegistry({}));
+    }
+  }, [role, registry]);
+  const toggleInventAlliance = (tag: string) =>
+    setInventAlliances((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
+    );
   const [inventCustom, setInventCustom] = useState(false); // choisir les attributs soi-même
   const [inventAttrs, setInventAttrs] = useState({
     growth: 2,
@@ -79,6 +95,7 @@ export default function LobbyPage() {
               name: inventName.trim(),
               concept: inventConcept.trim(),
               attributes: inventCustom ? inventAttrs : undefined,
+              alliances: inventAlliances.length > 0 ? inventAlliances : undefined,
             }
           : undefined,
       });
@@ -284,6 +301,54 @@ export default function LobbyPage() {
                   Le pays est forgé par le modèle (profil complet, mandat) et tu le joues à la
                   table. Il n&apos;a pas de tracé sur la carte du monde.
                 </p>
+                <fieldset>
+                  <legend className="mb-1 flex w-full items-baseline justify-between text-xs text-fg-muted">
+                    <span>Rejoindre des alliances réelles (optionnel)</span>
+                    <span className="font-mono tabular-nums text-fg-faint">
+                      {inventAlliances.length}/{INVENT_ALLIANCES_MAX}
+                    </span>
+                  </legend>
+                  {registry === null ? (
+                    <p className="text-xs text-fg-faint">Chargement du registre…</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {Object.entries(registry)
+                        .filter(([, info]) => !info.informal)
+                        .sort(([, a], [, b]) => a.name.localeCompare(b.name, "fr"))
+                        .map(([tag, info]) => {
+                          const checked = inventAlliances.includes(tag);
+                          const full =
+                            !checked && inventAlliances.length >= INVENT_ALLIANCES_MAX;
+                          return (
+                            <label
+                              key={tag}
+                              title={info.basis}
+                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs transition-colors ${
+                                checked
+                                  ? "border-edge-strong bg-surface-2 text-foreground"
+                                  : full
+                                    ? "cursor-not-allowed border-edge text-fg-faint opacity-50"
+                                    : "cursor-pointer border-edge text-fg-faint hover:text-fg-muted"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                disabled={full}
+                                onChange={() => toggleInventAlliance(tag)}
+                                className="sr-only"
+                              />
+                              {info.name.split(" — ")[0]}
+                            </label>
+                          );
+                        })}
+                    </div>
+                  )}
+                  <p className="mt-1 text-xs text-fg-faint">
+                    Ton pays bénéficie de la solidarité et de la cohésion de ces accords —
+                    et pourra les quitter en séance (« ALLIANCE: quitter … »).
+                  </p>
+                </fieldset>
                 <label className="flex cursor-pointer items-center gap-2 text-sm text-fg-muted">
                   <input
                     type="checkbox"

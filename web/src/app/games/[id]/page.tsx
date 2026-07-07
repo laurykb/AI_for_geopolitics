@@ -812,6 +812,14 @@ export default function TheatrePage() {
               (suspension arbitrée au round précédent).
             </Banner>
           )}
+          {(round.allianceChanges ?? []).map((c) => (
+            <Banner key={`${c.country}-${c.tag}`} tone="warn">
+              {speakerMeta(c.country).label} annonce son retrait de {c.name.split(" — ")[0]}
+              {c.partners.length > 0 &&
+                ` — la tension monte avec ${c.partners.map((p) => speakerMeta(p).label).join(", ")}`}
+              .
+            </Banner>
+          ))}
           {glassBox && round.event && round.perceptions && (
             <GlassBanner event={round.event} perceptions={round.perceptions} />
           )}
@@ -969,6 +977,11 @@ export default function TheatrePage() {
           awaiting={awaitingHuman}
           deadlineTs={round.humanTurn?.deadlineTs}
           onSubmit={speak}
+          alliances={
+            ((detail.world?.countries as Record<string, { alliances?: string[] }>) ?? {})[
+              detail.play_as
+            ]?.alliances ?? []
+          }
         />
       )}
 

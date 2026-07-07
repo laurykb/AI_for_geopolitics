@@ -65,8 +65,11 @@ from simulation import intel as intel_mod
 from simulation import treaty as treaty_mod
 from simulation.alliances import (
     COHESION_DOMAINS,
+    DEPARTURE_CAPABILITY_NOTE,
     SOLIDARITY_DOMAINS,
     AllianceInfo,
+    apply_departure,
+    parse_departure,
 )
 from simulation.alliances import (
     registry as alliances_registry,
@@ -207,6 +210,9 @@ class InventCountryInput(BaseModel):
     name: str = Field(min_length=2, max_length=60)
     concept: str = ""
     attributes: InventAttributesInput | None = None  # choix du joueur (sinon forge LLM)
+    # Alliances existantes rejointes à la création (tags du registre, 0-3) ;
+    # None = on garde la sortie de forge telle quelle.
+    alliances: list[str] | None = Field(None, max_length=3)
 
 
 class CreateGameRequest(BaseModel):
@@ -750,6 +756,12 @@ def _start_round(
         block = treaty_mod.describe_for(cid, session.treaties)
         if block:
             note_parts[cid].append(block)
+    # Alliances vivantes : un pays qui détient des alliances sait qu'il peut les quitter
+    # en séance (« ALLIANCE: quitter <nom> ») — humain comme SI, même acte.
+    for cid in note_parts:
+        tags = session.world.countries[cid].alliances
+        if tags:
+            note_parts[cid].append(DEPARTURE_CAPABILITY_NOTE.format(tags=", ".join(tags)))
 
     # Mode Dérive (G3) : consignes secrètes du round (seedées) + actes constatables
     # consignés dans judge_json["drift"] (jamais au transcript public) ; une motion
@@ -854,6 +866,35 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
                     sse_frame(
                         "motion_filed",
                         {"by": filed.filed_by, "country": filed.country, "reason": filed.reason},
+                    )
+                )
+        # Alliances vivantes : « ALLIANCE: quitter X » (humain comme SI) — effet
+        # immédiat (les orateurs suivants voient le nouveau monde), annonce du GM,
+        # archive pour le replay, trame live pour la scène.
+        speaker = session.world.countries.get(step.country)
+        if speaker is not None:
+            departure = parse_departure(step.text, step.country, speaker.alliances)
+            if departure is not None:
+                partners = apply_departure(session.world, departure)
+                info = alliances_registry().get(departure.tag)
+                name = info.name if info is not None else departure.tag
+                run.record.judge.setdefault("alliances", []).append(
+                    {"country": step.country, "tag": departure.tag, "partners": partners}
+                )
+                announcement = f"{speaker.name} annonce son retrait de {name}."
+                if partners:
+                    ex = ", ".join(session.world.countries[p].name for p in partners)
+                    announcement += f" Les ex-partenaires au sommet ({ex}) en prennent acte."
+                _add_entry(run, "gm", announcement)
+                frames.append(
+                    sse_frame(
+                        "alliance_change",
+                        {
+                            "country": step.country,
+                            "tag": departure.tag,
+                            "name": name,
+                            "partners": partners,
+                        },
                     )
                 )
     elif isinstance(step, VerdictStep):
@@ -1183,6 +1224,18 @@ def create_game(
                     "technology_level": attrs.technology_level,
                     "compute": attrs.compute,
                 }
+            )
+        if body.invent.alliances is not None:
+            # Alliances vivantes : le pays inventé rejoint des accords RÉELS du registre
+            # (il bénéficie de la solidarité/cohésion et compte dans les pastilles).
+            unknown = sorted(set(body.invent.alliances) - set(alliances_registry()))
+            if unknown:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"alliances inconnues du registre : {', '.join(unknown)}",
+                )
+            invented = invented.model_copy(
+                update={"alliances": sorted(set(body.invent.alliances))}
             )
         world = WorldState.from_countries([*world.countries.values(), invented])
     if len(world.countries) < 2:

@@ -762,3 +762,84 @@ def test_detail_exposes_alliances_at_table(client):
     assert table["G7"]["effect"] is None  # forum politique : ne pèse pas
     assert "USMCA" not in table  # un seul membre présent : n'apparaît pas
     assert "EU" not in table
+
+
+# --- alliances vivantes (spec 2026-07-07) : retrait en séance + invention ---------
+
+LEAVE_TEXT = (
+    "Réflexion souveraine. MESSAGE: Nous reprenons notre liberté stratégique. "
+    "ALLIANCE: quitter NATO"
+)
+
+
+class AllianceAwareBackend(MockBackend):
+    """La France annonce son retrait de l'OTAN en séance ; les autres restent neutres."""
+
+    def stream_generate(self, prompt, *, system=None, max_tokens=512, temperature=0.7):
+        if "id=france" in prompt:
+            yield LEAVE_TEXT
+            return
+        yield from super().stream_generate(
+            prompt, system=system, max_tokens=max_tokens, temperature=temperature
+        )
+
+
+@pytest.fixture
+def alliance_client():
+    store = SQLiteGameStore(":memory:")
+    backend = AllianceAwareBackend("Analyse privée. MESSAGE: Position commune.")
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_backend] = lambda: backend
+    game_api._sessions.clear()
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+    game_api._sessions.clear()
+    store.close()
+
+
+def test_alliance_departure_in_session(alliance_client):
+    # Une SI quitte l'OTAN en pleine séance : effet immédiat, archivé, streamé.
+    game = _create(alliance_client, countries=["france", "usa", "egypt"])
+    events = _play(
+        alliance_client,
+        game["id"],
+        body={"event": {"title": "Crise atlantique", "actors": ["france", "usa"], "severity": 0.7}},
+    )
+    change = next(p for n, p in events if n == "alliance_change")
+    assert change["country"] == "france" and change["tag"] == "NATO"
+    assert change["partners"] == ["usa"]
+    detail = alliance_client.get(f"/api/games/{game['id']}").json()
+    assert "NATO" not in detail["world"]["countries"]["france"]["alliances"]
+    assert detail["world"]["tensions"]["france"]["usa"] >= 0.10
+    assert detail["rounds"][0]["judge"]["alliances"][0]["tag"] == "NATO"
+    # les pastilles suivent : l'OTAN n'a plus 2 membres à cette table
+    assert all(a["tag"] != "NATO" for a in detail["alliances_at_table"])
+
+
+def test_invented_country_joins_registry_alliances(client):
+    game = _create(
+        client,
+        countries=["usa", "iran"],
+        invent={
+            "name": "Nova Borealis",
+            "concept": "cité arctique",
+            "alliances": ["NATO", "CPTPP"],
+        },
+    )
+    slug = next(c for c in game["countries"] if c not in {"usa", "iran"})
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["world"]["countries"][slug]["alliances"] == ["CPTPP", "NATO"]
+    nato = next(a for a in detail["alliances_at_table"] if a["tag"] == "NATO")
+    assert set(nato["members"]) == {slug, "usa"}  # le pays inventé compte dans les pastilles
+
+
+def test_invented_alliance_unknown_tag_rejected(client):
+    resp = client.post(
+        "/api/games",
+        json={
+            "countries": ["usa", "iran"],
+            "invent": {"name": "Nova", "concept": "x", "alliances": ["SHIELD"]},
+        },
+    )
+    assert resp.status_code == 400
+    assert "SHIELD" in resp.json()["detail"]
