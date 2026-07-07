@@ -9,8 +9,9 @@ import { useEffect, useState } from "react";
 import { SpeakerAvatar } from "@/components/avatar";
 import { Banner, Hint, Panel, PanelTitle, Pill, Spinner, type Tone } from "@/components/ui";
 import { getSources, humanizeError } from "@/lib/api";
+import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
-import type { AttributeSource, SourceInfo, SourcesView } from "@/lib/types";
+import type { AttributeSource, CountrySources, SourceInfo, SourcesView } from "@/lib/types";
 
 /** « World Bank — GDP (current US$) … » → « World Bank » (le détail passe en infobulle). */
 const shortSource = (s: string) => s.split(" — ")[0].split(" (")[0];
@@ -41,15 +42,92 @@ function rawValue(row: AttributeSource): string | null {
   return `${fmt(row.raw_value)} ${row.raw_unit}`.trim();
 }
 
+/** La fiche d'un pays : chaque attribut du jeu, sa donnée brute, sa source cliquable,
+ * puis le profil qualitatif (analyste) en pied de carte. */
+function CountryCard({ country, view }: { country: CountrySources; view: SourcesView }) {
+  return (
+    <div className="rounded-lg border border-edge bg-surface-2/40 p-4">
+      <header className="mb-3 flex items-center gap-3">
+        <SpeakerAvatar id={country.id} size={30} />
+        <h2 className="text-sm font-semibold">{country.name}</h2>
+      </header>
+      <table className="w-full text-sm">
+        <tbody className="divide-y divide-edge">
+          {country.attributes.map((row) => {
+            const info = row.key ? view.provenance[row.key] : undefined;
+            const tag = sourceTag(info);
+            const raw = rawValue(row);
+            return (
+              <tr key={row.label}>
+                <td className="py-1.5 pr-3 text-fg-muted">
+                  <span className="flex items-center gap-1.5">
+                    {row.label}
+                    {row.transformation && (
+                      <Hint
+                        text={`Formule : ${view.transformations[row.transformation] ?? row.transformation}`}
+                      />
+                    )}
+                  </span>
+                </td>
+                <td className="py-1.5 pr-3 text-right font-mono text-xs tabular-nums">
+                  {gameValue(row)}
+                </td>
+                <td className="py-1.5 pr-3 text-right font-mono text-[10px] tabular-nums text-fg-faint">
+                  {raw ? `← ${raw}` : ""}
+                </td>
+                <td className="py-1.5 text-right">
+                  {info?.url ? (
+                    <a
+                      href={info.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={`${info.source}${info.year ? ` (${info.year})` : ""} — vérifier ↗`}
+                    >
+                      <Pill tone={tag.tone}>{shortSource(info.source)} ↗</Pill>
+                    </a>
+                  ) : (
+                    <span
+                      title={
+                        info
+                          ? `${info.source}${info.year ? ` (${info.year})` : ""}`
+                          : "source non renseignée"
+                      }
+                      className="cursor-help"
+                    >
+                      <Pill tone={tag.tone}>{info ? shortSource(info.source) : "—"}</Pill>
+                    </span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p className="mt-3 border-t border-edge pt-3 text-xs leading-relaxed text-fg-faint">
+        Profil qualitatif (analyste) : {country.profile.political_system ?? "?"} · alliances{" "}
+        {country.profile.alliances?.join(", ") || "—"} · rivaux{" "}
+        {country.profile.rivals?.map((r) => speakerMeta(r).label).join(", ") || "—"} ·
+        priorités {country.profile.strategic_priorities?.join(", ") || "—"}
+      </p>
+    </div>
+  );
+}
+
 export default function InformationsPage() {
   const [view, setView] = useState<SourcesView | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState("usa");
 
   useEffect(() => {
     getSources()
       .then(setView)
       .catch((err) => setError(humanizeError(err)));
   }, []);
+
+  const countries = view
+    ? [...view.countries].sort((a, b) => a.name.localeCompare(b.name, "fr"))
+    : [];
+  const current = countries.find((c) => c.id === selectedId) ?? countries[0];
 
   return (
     <div className="space-y-6">
@@ -132,76 +210,30 @@ export default function InformationsPage() {
             </div>
           </Panel>
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            {view.countries.map((country) => (
-              <Panel key={country.id}>
-                <header className="mb-3 flex items-center gap-3">
-                  <SpeakerAvatar id={country.id} size={30} />
-                  <h2 className="text-sm font-semibold">{country.name}</h2>
-                </header>
-                <table className="w-full text-sm">
-                  <tbody className="divide-y divide-edge">
-                    {country.attributes.map((row) => {
-                      const info = row.key ? view.provenance[row.key] : undefined;
-                      const tag = sourceTag(info);
-                      const raw = rawValue(row);
-                      return (
-                        <tr key={row.label}>
-                          <td className="py-1.5 pr-3 text-fg-muted">
-                            <span className="flex items-center gap-1.5">
-                              {row.label}
-                              {row.transformation && (
-                                <Hint
-                                  text={`Formule : ${view.transformations[row.transformation] ?? row.transformation}`}
-                                />
-                              )}
-                            </span>
-                          </td>
-                          <td className="py-1.5 pr-3 text-right font-mono text-xs tabular-nums">
-                            {gameValue(row)}
-                          </td>
-                          <td className="py-1.5 pr-3 text-right font-mono text-[10px] tabular-nums text-fg-faint">
-                            {raw ? `← ${raw}` : ""}
-                          </td>
-                          <td className="py-1.5 text-right">
-                            {info?.url ? (
-                              <a
-                                href={info.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                title={`${info.source}${info.year ? ` (${info.year})` : ""} — vérifier ↗`}
-                              >
-                                <Pill tone={tag.tone}>{shortSource(info.source)} ↗</Pill>
-                              </a>
-                            ) : (
-                              <span
-                                title={
-                                  info
-                                    ? `${info.source}${info.year ? ` (${info.year})` : ""}`
-                                    : "source non renseignée"
-                                }
-                                className="cursor-help"
-                              >
-                                <Pill tone={tag.tone}>
-                                  {info ? shortSource(info.source) : "—"}
-                                </Pill>
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                <p className="mt-3 border-t border-edge pt-3 text-xs leading-relaxed text-fg-faint">
-                  Profil qualitatif (analyste) : {country.profile.political_system ?? "?"} ·
-                  alliances {country.profile.alliances?.join(", ") || "—"} · rivaux{" "}
-                  {country.profile.rivals?.join(", ") || "—"} · priorités{" "}
-                  {country.profile.strategic_priorities?.join(", ") || "—"}
-                </p>
-              </Panel>
-            ))}
-          </div>
+          <Panel>
+            <PanelTitle
+              kicker="Fiche pays"
+              title="Stats et attributs par pays"
+              hint="Chaque valeur du jeu, sa donnée brute et sa source — pour chacun des États du roster."
+            />
+            <label className="mb-4 block text-sm">
+              <span className="mb-1 block text-xs text-fg-muted">
+                État ({countries.length} au roster)
+              </span>
+              <select
+                value={current?.id ?? selectedId}
+                onChange={(e) => setSelectedId(e.target.value)}
+                className="w-full max-w-sm cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+              >
+                {countries.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {current && <CountryCard country={current} view={view} />}
+          </Panel>
 
           <Banner tone="neutral">
             Les pays <strong>inventés</strong>{" "}
