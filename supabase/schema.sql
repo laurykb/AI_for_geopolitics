@@ -16,7 +16,8 @@ create table if not exists games (
   status      text not null default 'running' check (status in ('running', 'finished')),
   created_at  timestamptz not null default now(),
   epilogue_json jsonb,                             -- G6 : le récit de partie (unique)
-  published   boolean not null default false       -- G6 : privé par défaut
+  published   boolean not null default false,      -- G6 : privé par défaut
+  admin       boolean not null default false       -- G7-c : prompts capturés, non classée
 );
 
 create table if not exists rounds (
@@ -73,6 +74,21 @@ create table if not exists transcripts (
   unique (round_id, seq)
 );
 create index if not exists transcripts_round_idx on transcripts (round_id, seq);
+
+-- G7-c : prompts complets capturés en mode admin (même patron que transcripts).
+-- JAMAIS de lecture anon : ils révèlent la consigne secrète de la Dérive — RLS activée
+-- sans policy select = service_role seulement.
+create table if not exists prompts (
+  id        text primary key,
+  round_id  text not null references rounds(id) on delete cascade,
+  seq       integer not null,
+  country   text not null,             -- id pays, 'gm' ou 'judge'
+  role      text not null,             -- 'country' | 'gm' | 'judge'
+  prompt    text not null,
+  ts        timestamptz not null default now(),
+  unique (round_id, seq)
+);
+create index if not exists prompts_round_idx on prompts (round_id, seq);
 
 -- ============================== marché ======================================
 
@@ -138,6 +154,7 @@ alter table games           enable row level security;
 alter table rounds          enable row level security;
 alter table transcripts     enable row level security;
 alter table game_sessions   enable row level security;  -- pas de politique select : backend seul
+alter table prompts         enable row level security;  -- G7-c : JAMAIS d'anon (Dérive visible)
 alter table market_accounts enable row level security;
 alter table markets         enable row level security;
 alter table market_outcomes enable row level security;

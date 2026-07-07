@@ -15,6 +15,7 @@ from storage.game_store import (
     CampaignScore,
     GameRecord,
     GameStatus,
+    PromptEntry,
     RoundRecord,
     SessionSnapshot,
     TranscriptEntry,
@@ -102,6 +103,15 @@ class SupabaseGameStore:
         rows = self._db.select("transcripts", {"round_id": round_id}, order="seq.asc")
         return [TranscriptEntry(**r) for r in rows]
 
+    # --- prompts capturés (G7-c, mode admin) --------------------------------------
+
+    def add_prompts(self, entries: list[PromptEntry]) -> None:
+        self._db.insert("prompts", [e.model_dump() for e in entries])
+
+    def list_prompts(self, round_id: str) -> list[PromptEntry]:
+        rows = self._db.select("prompts", {"round_id": round_id}, order="seq.asc")
+        return [PromptEntry(**r) for r in rows]
+
     # --- snapshots de session (reconstruction au restart) ------------------------
 
     def save_session_snapshot(self, snapshot: SessionSnapshot) -> None:
@@ -163,6 +173,7 @@ def _game_row(game: GameRecord) -> dict:
         "created_at": game.created_at,
         "epilogue_json": game.epilogue,
         "published": game.published,
+        "admin": game.admin,
     }
 
 
@@ -176,4 +187,5 @@ def _game(row: dict) -> GameRecord:
         created_at=row["created_at"],
         epilogue=row.get("epilogue_json"),
         published=bool(row.get("published", False)),
+        admin=bool(row.get("admin", False)),
     )

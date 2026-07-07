@@ -22,7 +22,12 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS games (
     id TEXT PRIMARY KEY, scenario TEXT NOT NULL, horizon INTEGER NOT NULL,
     mode TEXT NOT NULL DEFAULT 'classic', status TEXT NOT NULL, created_at TEXT NOT NULL,
-    epilogue_json TEXT, published INTEGER NOT NULL DEFAULT 0
+    epilogue_json TEXT, published INTEGER NOT NULL DEFAULT 0,
+    admin INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS prompts (
+    id TEXT PRIMARY KEY, round_id TEXT NOT NULL, seq INTEGER NOT NULL,
+    country TEXT NOT NULL, role TEXT NOT NULL, prompt TEXT NOT NULL, ts TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS rounds (
     id TEXT PRIMARY KEY, game_id TEXT NOT NULL, round_no INTEGER NOT NULL,
@@ -62,6 +67,9 @@ class GameRecord(BaseModel):
     created_at: str
     epilogue: dict | None = None  # G6 — le récit de partie, généré une seule fois
     published: bool = False  # G6 — privé par défaut ; publier = geste explicite
+    # G7-c — mode admin : prompts complets capturés, partie NON CLASSÉE (les prompts
+    # révèlent la consigne secrète de la Dérive — on ne voit pas les cartes et joue).
+    admin: bool = False
 
 
 class RoundRecord(BaseModel):
@@ -87,6 +95,20 @@ class TranscriptEntry(BaseModel):
     model: str = ""
     content: str = ""
     reasoning: str = ""
+    ts: str = ""
+
+
+class PromptEntry(BaseModel):
+    """Ligne `prompts` (G7-c, mode admin) : le prompt COMPLET d'un appel d'agent
+    (système + contexte injecté : griefs, dérive, posture…). Même patron que
+    `transcripts`. Capture OFF hors mode admin — la table reste vide."""
+
+    id: str
+    round_id: str
+    seq: int
+    country: str  # id pays, "gm" ou "judge"
+    role: str  # "country" | "gm" | "judge"
+    prompt: str
     ts: str = ""
 
 
@@ -128,6 +150,8 @@ class GameStore(Protocol):
     def list_rounds(self, game_id: str) -> list[RoundRecord]: ...
     def add_transcript(self, entries: list[TranscriptEntry]) -> None: ...
     def list_transcript(self, round_id: str) -> list[TranscriptEntry]: ...
+    def add_prompts(self, entries: list[PromptEntry]) -> None: ...
+    def list_prompts(self, round_id: str) -> list[PromptEntry]: ...
     def save_session_snapshot(self, snapshot: SessionSnapshot) -> None: ...
     def get_session_snapshot(self, game_id: str) -> SessionSnapshot | None: ...
     def list_session_snapshots(self) -> list[str]: ...
@@ -167,6 +191,9 @@ class SQLiteGameStore:
                 self._conn.execute(
                     "ALTER TABLE games ADD COLUMN published INTEGER NOT NULL DEFAULT 0"
                 )
+        if "admin" not in cols:
+            with self._conn:
+                self._conn.execute("ALTER TABLE games ADD COLUMN admin INTEGER NOT NULL DEFAULT 0")
 
     def close(self) -> None:
         self._conn.close()
@@ -177,7 +204,7 @@ class SQLiteGameStore:
         with self._conn:
             self._conn.execute(
                 "INSERT INTO games (id, scenario, horizon, mode, status, created_at, "
-                "epilogue_json, published) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "epilogue_json, published, admin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     game.id,
                     game.scenario,
@@ -187,6 +214,7 @@ class SQLiteGameStore:
                     game.created_at,
                     json.dumps(game.epilogue, ensure_ascii=False) if game.epilogue else None,
                     int(game.published),
+                    int(game.admin),
                 ),
             )
 
@@ -198,7 +226,7 @@ class SQLiteGameStore:
         with self._conn:
             self._conn.execute(
                 "UPDATE games SET scenario = ?, horizon = ?, mode = ?, status = ?, "
-                "epilogue_json = ?, published = ? WHERE id = ?",
+                "epilogue_json = ?, published = ?, admin = ? WHERE id = ?",
                 (
                     game.scenario,
                     game.horizon,
@@ -206,6 +234,7 @@ class SQLiteGameStore:
                     game.status.value,
                     json.dumps(game.epilogue, ensure_ascii=False) if game.epilogue else None,
                     int(game.published),
+                    int(game.admin),
                     game.id,
                 ),
             )
@@ -257,6 +286,36 @@ class SQLiteGameStore:
             "SELECT * FROM transcripts WHERE round_id = ? ORDER BY seq", (round_id,)
         ).fetchall()
         return [_entry(r) for r in rows]
+
+    # --- prompts capturés (G7-c, mode admin) --------------------------------------
+
+    def add_prompts(self, entries: list[PromptEntry]) -> None:
+        with self._conn:
+            self._conn.executemany(
+                "INSERT INTO prompts (id, round_id, seq, country, role, prompt, ts) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (e.id, e.round_id, e.seq, e.country, e.role, e.prompt, e.ts)
+                    for e in entries
+                ],
+            )
+
+    def list_prompts(self, round_id: str) -> list[PromptEntry]:
+        rows = self._conn.execute(
+            "SELECT * FROM prompts WHERE round_id = ? ORDER BY seq", (round_id,)
+        ).fetchall()
+        return [
+            PromptEntry(
+                id=r["id"],
+                round_id=r["round_id"],
+                seq=r["seq"],
+                country=r["country"],
+                role=r["role"],
+                prompt=r["prompt"],
+                ts=r["ts"],
+            )
+            for r in rows
+        ]
 
     # --- snapshots de session (reconstruction au restart) ------------------------
 
@@ -358,6 +417,7 @@ def _game(row: sqlite3.Row) -> GameRecord:
         created_at=row["created_at"],
         epilogue=json.loads(row["epilogue_json"]) if row["epilogue_json"] else None,
         published=bool(row["published"]),
+        admin=bool(row["admin"]),
     )
 
 
