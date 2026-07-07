@@ -17,6 +17,7 @@ from core.world_state import WorldState
 from simulation.alliances import COHESION_DOMAINS, shared_treaty
 from simulation.diplomacy import pact_id
 from simulation.engagement import SPEAK_THRESHOLD, engagement_score
+from simulation.gamefeel import DeltaTuning
 
 _MEMORY_MAX = 4
 
@@ -233,8 +234,15 @@ def _set(obj, path: str, value: float) -> None:
     setattr(obj, parts[-1], value)
 
 
-def apply_verdict(world: WorldState, verdict: Verdict) -> list[AttributeDelta]:
-    """Applique le verdict du juge **borné** ; renvoie les deltas effectivement appliqués."""
+def apply_verdict(
+    world: WorldState, verdict: Verdict, tuning: DeltaTuning | None = None
+) -> list[AttributeDelta]:
+    """Applique le verdict du juge **borné** ; renvoie les deltas effectivement appliqués.
+
+    `tuning` (G9 §4) : indexe l'amplitude sur l'horizon de la partie (`scale`), amplifie
+    les spirales (`momentum`, 3 baisses consécutives → ×1.3) et impose le plancher des
+    indices 0-1 (`floor` — jamais de pays à zéro absolu). Sans tuning : comportement
+    historique (caps fixes, bornes 0-1)."""
     deltas: list[AttributeDelta] = []
 
     for cid, attrs in verdict.attribute_deltas.items():
@@ -252,9 +260,13 @@ def apply_verdict(world: WorldState, verdict: Verdict) -> list[AttributeDelta]:
             cap = _CAPS[label]
             delta = max(-cap, min(cap, delta))
             before = _get(country, path)
+            if tuning is not None:
+                delta *= tuning.scale  # cap effectif = 1.5 × amplitude de round
+                delta *= tuning.momentum(cid, label, delta)
             after = before + delta
             if bounds is not None:
-                after = max(bounds[0], min(bounds[1], after))
+                lo = bounds[0] if tuning is None else max(bounds[0], min(before, tuning.floor))
+                after = max(lo, min(bounds[1], after))
             if abs(after - before) > 1e-9:
                 _set(country, path, after)
                 deltas.append(AttributeDelta(cid, label, before, after))

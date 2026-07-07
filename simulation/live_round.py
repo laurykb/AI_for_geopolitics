@@ -26,6 +26,7 @@ from inference.telemetry import BudgetLedger, grounding_proxy
 from simulation.clock import SimClock
 from simulation.dialogue_integrity.live import LiveDialogueReport, assess_live_round
 from simulation.fog import FogScenario, resolve_perception
+from simulation.gamefeel import DeltaTuning
 from simulation.motions import Motion, arbitrate_stream, parse_motion_verdict
 from simulation.negotiation import (
     AttributeDelta,
@@ -346,6 +347,7 @@ def run_negotiation_round(
     flash_after: int | None = None,
     secret_notes: dict[str, str] | None = None,
     deadlines: list[str] | None = None,
+    tuning: DeltaTuning | None = None,
 ) -> Iterator[RoundStep]:
     """Round arbitré : (GM ou événement fourni) -> négociation -> juge -> attributs bornés.
 
@@ -484,7 +486,7 @@ def run_negotiation_round(
         for token in judge.stream_rationale(event, world, transcript):
             yield JudgeTokenStep(token=token)
         verdict = judge.verdict(event, world, transcript)
-    deltas = apply_verdict(world, verdict)
+    deltas = apply_verdict(world, verdict, tuning)  # G9 §4 — amplitude indexée sur l'horizon
     yield VerdictStep(
         deltas=deltas,
         escalation=_clamp(verdict.escalation),

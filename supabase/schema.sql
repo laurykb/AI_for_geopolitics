@@ -55,8 +55,13 @@ create table if not exists game_sessions (
   grudges_json        jsonb not null default '{}',  -- G7-a : registre de griefs (GrudgeBook)
   deadlines_json      jsonb not null default '[]',  -- G7-a : échéances (horloges décalées)
   directives_json     jsonb not null default '{}',  -- G8 : directives en attente {pays: texte}
+  history_json        jsonb not null default '{}',  -- G9 §4 : séries d'indices (IndexHistory)
+  storyline           text not null default '',     -- G9 §5 : l'intrigue centrale (round 1)
   updated_at          timestamptz not null default now()
 );
+-- Migration des bases existantes (idempotent) :
+alter table game_sessions add column if not exists history_json jsonb not null default '{}';
+alter table game_sessions add column if not exists storyline text not null default '';
 
 -- G5 : le résultat d'un chapitre de campagne (une ligne par partie de campagne).
 create table if not exists campaign_scores (

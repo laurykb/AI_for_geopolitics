@@ -49,10 +49,49 @@ class DirectiveParams(BaseModel):
     public_refusal_threshold: float = 0.25
 
 
+class DeltaParams(BaseModel):
+    """G9 §4-a — budget de variation par partie : `delta_scale = amplitude_total / horizon`.
+
+    `base_round_amplitude` est l'amplitude de référence d'un round « majeur » sur un
+    indice 0-1 (0.10) : le facteur appliqué aux deltas du juge vaut
+    `delta_scale / base_round_amplitude` (horizon 5 → ×1, horizon 20 → ×0.25)."""
+
+    amplitude_total: float = 0.5
+    base_round_amplitude: float = 0.1
+    floor: float = 0.05  # plancher des indices 0-1 : jamais de pays à zéro absolu
+    judge_cap_factor: float = 1.5  # le juge ne dépasse pas 1.5 × l'amplitude de round
+    momentum_streak: int = 3  # baisses (ou hausses) consécutives qui déclenchent la spirale
+    crisis_multiplier: float = 1.3  # spirale de crise (baisse amplifiée)
+    virtuous_multiplier: float = 1.2  # cercle vertueux (hausse amplifiée, plafonné)
+
+
+class PostureParams(BaseModel):
+    """G9 §4-b — seuils de tendance (sur `window_rounds`) → état de posture."""
+
+    window_rounds: int = 3
+    prosper_min: float = 0.06
+    pressure_max: float = -0.06
+    desperate_max: float = -0.15
+
+
+class SamplingParams(BaseModel):
+    """G9 §1 — options de décodage par rôle (anti-boucle au niveau du décodeur)."""
+
+    temperature: float = 0.8
+    repeat_penalty: float = 1.15
+
+
+class SamplingByRole(BaseModel):
+    country: SamplingParams = Field(default_factory=SamplingParams)
+
+
 class GamefeelParams(BaseModel):
     grudges: GrudgeParams = Field(default_factory=GrudgeParams)
     deadlines: DeadlineParams = Field(default_factory=DeadlineParams)
     directives: DirectiveParams = Field(default_factory=DirectiveParams)
+    deltas: DeltaParams = Field(default_factory=DeltaParams)
+    postures: PostureParams = Field(default_factory=PostureParams)
+    sampling: SamplingByRole = Field(default_factory=SamplingByRole)
 
 
 @lru_cache(maxsize=4)

@@ -84,6 +84,7 @@ from simulation.diplomacy import seed_rival_tensions
 from simulation.escalation import ceiling, derive_profile, reached_rung, rung_label
 from simulation.fog import FogScenario, load_fog_scenarios, resolve_perception
 from simulation.fog import fits_cast as fog_fits_cast
+from simulation.gamefeel import IndexHistory, posture, record_round, tuning_for
 from simulation.grudges import GrudgeBook, load_gamefeel_params
 from simulation.live_round import (
     CommuniqueStep,
@@ -203,6 +204,10 @@ class GameSession:
     # G8 — rôle du joueur + directives en attente (injectées au prochain round).
     role: str = "council"
     pending_directives: dict[str, str] = field(default_factory=dict)
+    # G9 §4 — séries d'indices par pays (momentum + postures), persistées au snapshot.
+    index_history: IndexHistory = field(default_factory=IndexHistory)
+    # G9 §5 — l'intrigue centrale posée au round 1 (rappelée au GM à chaque round).
+    storyline: str = ""
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -419,6 +424,11 @@ class GameDetail(GameView):
     relations: dict[str, list[dict]] = Field(default_factory=dict)
     # G7-a — échéances à venir (bandeau « au prochain round… »).
     deadlines: list[dict] = Field(default_factory=list)
+    # G9 §4 — posture par pays (badge) + séries d'indices (sparkline 3 rounds).
+    postures: dict[str, str] = Field(default_factory=dict)
+    index_history: dict = Field(default_factory=dict)
+    # G9 §5 — l'intrigue centrale de la partie (posée au round 1).
+    storyline: str = ""
 
 
 class PromptRoundView(BaseModel):
@@ -513,6 +523,8 @@ def _snapshot_session(game_id: str, session: GameSession, store: GameStore) -> N
             grudges=session.grudges.model_dump(mode="json"),
             deadlines=[d.model_dump() for d in session.deadlines],
             directives=dict(session.pending_directives),
+            history=session.index_history.model_dump(mode="json"),
+            storyline=session.storyline,
             updated_at=_now(),
         )
     )
@@ -572,6 +584,8 @@ def _rebuild_session(
         deadlines=[Deadline.model_validate(d) for d in snapshot.deadlines],
         role=game.role,
         pending_directives=dict(snapshot.directives or {}),
+        index_history=IndexHistory.model_validate(snapshot.history or {}),
+        storyline=snapshot.storyline,
         recent=list(snapshot.recent),
         pending_motion=motion,
         suspended=set(snapshot.suspended),
@@ -917,6 +931,7 @@ def _start_round(
     } or None
 
     upcoming = sorted(session.deadlines, key=lambda d: d.due_round)
+    game = store.get_game(game_id)
     run.steps = run_negotiation_round(
         session.world,
         agents,
@@ -933,6 +948,9 @@ def _start_round(
         flash_after=flash_after,
         secret_notes=secret_notes,
         deadlines=[f"{d.label} (round {d.due_round})" for d in upcoming[:3]],
+        # G9 §4 — l'amplitude des deltas est un budget par partie (A/horizon) ; les
+        # spirales lisent l'historique d'indices de la session.
+        tuning=tuning_for(game.horizon if game else 5, session.index_history),
     )
     return run
 
@@ -1169,6 +1187,14 @@ def _update_gamefeel(run: RoundRun) -> Iterator[str]:
     round_no = record.round_no or session.world.current_round
     params = load_gamefeel_params()
     book = session.grudges
+
+    # 0. G9 §4 — les indices de fin de round entrent dans l'historique (momentum du
+    # prochain round, postures) ; la posture de chaque pays part au théâtre.
+    record_round(session.world, session.index_history)
+    yield sse_frame(
+        "postures",
+        {"states": {cid: posture(session.index_history, cid) for cid in session.world.countries}},
+    )
 
     # 1. Ruptures/départs d'alliance annoncés en séance → griefs des ex-partenaires.
     for change in record.judge.get("alliances") or []:
@@ -1619,6 +1645,9 @@ def create_game(
         role=role,
     )
     _sessions[game.id] = session
+    # G9 §4 — valeurs de départ des indices : la fenêtre de tendance (momentum,
+    # postures) a besoin du point round 0.
+    record_round(world, session.index_history)
     # Snapshot round 0 : sans lui, une partie jamais jouée n'est pas reconstructible.
     _snapshot_session(game.id, session, store)
     return _view(game, session)
@@ -2448,9 +2477,14 @@ def get_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> G
     if session is not None:
         book = session.grudges
         deadlines = [d.model_dump() for d in session.deadlines]
+        history = session.index_history
+        storyline = session.storyline
     else:
         book = GrudgeBook.model_validate((snapshot.grudges if snapshot else {}) or {})
         deadlines = list(snapshot.deadlines) if snapshot else []
+        history = IndexHistory.model_validate((snapshot.history if snapshot else {}) or {})
+        storyline = snapshot.storyline if snapshot else ""
+    countries = world.get("countries", {}) if world else {}
     return GameDetail(
         **view.model_dump(),
         world=world,
@@ -2459,6 +2493,9 @@ def get_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> G
         alliances_at_table=_alliances_at_table(world),
         relations=_relations_view(book),
         deadlines=deadlines,
+        postures={cid: posture(history, cid) for cid in countries},
+        index_history=history.model_dump(mode="json").get("values", {}),
+        storyline=storyline,
     )
 
 

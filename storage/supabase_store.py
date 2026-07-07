@@ -125,6 +125,8 @@ class SupabaseGameStore:
             "grudges_json": snapshot.grudges,
             "deadlines_json": snapshot.deadlines,
             "directives_json": snapshot.directives,
+            "history_json": snapshot.history,
+            "storyline": snapshot.storyline,
             "suspended_json": snapshot.suspended,
             "play_as": snapshot.play_as,
         }
@@ -147,6 +149,8 @@ class SupabaseGameStore:
             grudges=r.get("grudges_json") or {},
             deadlines=r.get("deadlines_json") or [],
             directives=r.get("directives_json") or {},
+            history=r.get("history_json") or {},
+            storyline=r.get("storyline") or "",
             suspended=r["suspended_json"],
             play_as=r["play_as"],
             updated_at=r["updated_at"] or "",
