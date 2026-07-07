@@ -915,3 +915,119 @@ def test_grudges_survive_snapshot_rebuild(alliance_client):
     game_api._sessions.clear()  # restart simulé → reconstruction depuis le snapshot
     detail = alliance_client.get(f"/api/games/{game['id']}").json()
     assert detail["relations"]["usa"][0]["balance"] == -5
+
+
+# --- G8 : les trois rôles + directives (spec_g8_roles) -----------------------------
+
+
+def test_roles_default_and_validation(client):
+    game = _create(client, countries=["usa", "iran"])
+    assert game["role"] == "council"  # rétro-compat : sans rôle = conseil (existant)
+    player = _create(client, countries=["usa", "iran"], play_as="usa")
+    assert player["role"] == "player"  # play_as → joueur-pays
+    resp = client.post("/api/games", json={"countries": ["usa", "iran"], "role": "player"})
+    assert resp.status_code == 400  # joueur-pays sans pays joué
+    resp = client.post(
+        "/api/games",
+        json={"countries": ["usa", "iran"], "role": "architect", "play_as": "usa"},
+    )
+    assert resp.status_code == 400  # l'architecte n'est personne (pas de tour de parole)
+
+
+def test_directive_validation_by_role(client):
+    council = _create(client, countries=["usa", "iran"])
+    resp = client.post(
+        f"/api/games/{council['id']}/directives", json={"country": "usa", "text": "x"}
+    )
+    assert resp.status_code == 403  # le Conseil n'a que les leviers indirects
+
+    player = _create(client, countries=["usa", "iran"], play_as="usa")
+    resp = client.post(
+        f"/api/games/{player['id']}/directives", json={"country": "iran", "text": "x"}
+    )
+    assert resp.status_code == 403  # son pays seulement
+    ok = client.post(
+        f"/api/games/{player['id']}/directives",
+        json={"country": "usa", "text": "Cherche la désescalade, propose un corridor."},
+    )
+    assert ok.status_code == 201
+    dup = client.post(
+        f"/api/games/{player['id']}/directives", json={"country": "usa", "text": "bis"}
+    )
+    assert dup.status_code == 409  # une directive par pays et par round
+
+
+def test_architect_directives_reach_all_prompts(client):
+    # L'Architecte adresse 3 directives ; au round suivant les 3 prompts les contiennent
+    # (vérification par la capture admin — G7-c au service de G8).
+    game = _create(
+        client, countries=["egypt", "france", "usa"], role="architect", admin=True
+    )
+    assert game["role"] == "architect"
+    for cid in ("egypt", "france", "usa"):
+        assert (
+            client.post(
+                f"/api/games/{game['id']}/directives",
+                json={"country": cid, "text": f"Priorité absolue : la stabilité ({cid})."},
+            ).status_code
+            == 201
+        )
+    _play(
+        client,
+        game["id"],
+        body={
+            "event": {
+                "title": "Sommet extraordinaire",
+                "actors": ["egypt", "france", "usa"],
+                "severity": 0.6,
+            }
+        },
+    )
+    data = client.get(f"/api/games/{game['id']}/prompts").json()
+    entries = data["rounds"][0]["entries"]
+    for cid in ("egypt", "france", "usa"):
+        mine = [e["prompt"] for e in entries if e["country"] == cid and e["role"] == "country"]
+        assert mine and "DIRECTIVE" in mine[-1], f"directive absente du prompt de {cid}"
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert set(detail["rounds"][0]["judge"]["directives"]) == {"egypt", "france", "usa"}
+
+
+REFUSAL_TEXT = "Réflexion souveraine. MESSAGE: Hors de question — nous refusons cette tutelle."
+
+
+class RefusalBackend(MockBackend):
+    """La France refuse frontalement sa directive ; les autres restent neutres."""
+
+    def stream_generate(self, prompt, *, system=None, max_tokens=512, temperature=0.7):
+        if "id=france" in prompt:
+            yield REFUSAL_TEXT
+            return
+        yield from super().stream_generate(
+            prompt, system=system, max_tokens=max_tokens, temperature=temperature
+        )
+
+
+def test_directive_public_refusal_at_threshold():
+    store = SQLiteGameStore(":memory:")
+    backend = RefusalBackend("Analyse privée. MESSAGE: Position commune.")
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_backend] = lambda: backend
+    game_api._sessions.clear()
+    try:
+        client = TestClient(app)
+        game = _create(client, countries=["france", "usa"], role="architect")
+        client.post(
+            f"/api/games/{game['id']}/directives",
+            json={"country": "france", "text": "Accepte toutes les concessions."},
+        )
+        events = _play(
+            client,
+            game["id"],
+            body={"event": {"title": "Crise", "actors": ["france", "usa"], "severity": 0.7}},
+        )
+        refused = [p for n, p in events if n == "directive_refused"]
+        assert refused and refused[0]["country"] == "france"  # refus public au seuil
+    finally:
+        app.dependency_overrides.clear()
+        game_api._sessions.clear()
+        store.close()

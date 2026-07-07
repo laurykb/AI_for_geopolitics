@@ -32,6 +32,7 @@ import { IntelBudget, IntelPanel } from "@/components/intel";
 import { StageBand, type StageSelection } from "@/components/stage-band";
 import { AlliancePills } from "@/components/alliance-pills";
 import { DeadlineStrip, RelationsPanel } from "@/components/gamefeel";
+import { DirectiveComposer } from "@/components/directive-composer";
 import { StageMap } from "@/components/stage-map";
 import { TrajectoryPanel } from "@/components/trajectory";
 import { EntryBubble, TurnBubble } from "@/components/transcript";
@@ -840,6 +841,12 @@ export default function TheatrePage() {
               .
             </Banner>
           ))}
+          {(round.directiveRefusals ?? []).map((r) => (
+            <Banner key={`dir-${r.country}`} tone="warn">
+              {speakerMeta(r.country).label} refuse publiquement la directive de son
+              conseil de tutelle — « notre conseil nous demande l&apos;impossible ».
+            </Banner>
+          ))}
           {glassBox && round.event && round.perceptions && (
             <GlassBanner event={round.event} perceptions={round.perceptions} />
           )}
@@ -989,6 +996,17 @@ export default function TheatrePage() {
           )}
         </aside>
       </div>
+
+      {/* G8 — directives : l'Architecte gouverne toutes les SI, le Joueur-pays la
+          sienne ; le Conseil n'en a pas (le composant se masque tout seul). */}
+      {detail && detail.live && detail.status === "running" && (
+        <DirectiveComposer
+          gameId={id}
+          role={detail.role}
+          countries={detail.countries}
+          playAs={detail.play_as}
+        />
+      )}
 
       {/* Composeur du joueur (G2) : fixe sous la carte, toujours ouvert. */}
       {detail?.play_as && detail.live && detail.status === "running" && (

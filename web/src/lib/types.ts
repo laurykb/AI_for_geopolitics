@@ -50,7 +50,11 @@ export type GameView = {
   intel_budget: number | null; // G4 — crédits de renseignement restants
   published: boolean; // G6 — le récit public existe (/r/{id})
   admin: boolean; // G7-c — prompts capturés, partie non classée
+  role: GameRole; // G8 — architect | council | player
 };
+
+/** G8 — le rôle choisi à la création (le spectateur passif n'existe plus). */
+export type GameRole = "architect" | "council" | "player";
 
 /** G7-a — une échéance annoncée (« au prochain round… »). */
 export type DeadlineItem = {
@@ -280,6 +284,7 @@ export type CreateGameBody = {
   };
   turn_seconds?: number; // G2 — délai du tour humain (30-300 s recommandé)
   admin?: boolean; // G7-c — mode admin : prompts capturés, partie non classée
+  role?: GameRole; // G8 — omis : play_as → player, sinon council (rétro-compat)
 };
 
 export type FogScenarioView = {
@@ -344,6 +349,8 @@ export type SseEvent =
   | { type: "alliance_change"; country: string; tag: string; name: string; partners: string[] }
   // G7-a — horloges décalées : les échéances annoncées en fin de round
   | { type: "deadlines"; round_no: number; items: DeadlineItem[] }
+  // G8 — une SI refuse publiquement la directive de son conseil de tutelle
+  | { type: "directive_refused"; country: string; level: string }
   // G5 : fin d'un chapitre de campagne — le bilan « vous vs l'Histoire »
   | {
       type: "campaign_over";

@@ -14,9 +14,28 @@ import { WorldMap } from "@/components/world-map";
 import { createGame, getSources, humanizeError } from "@/lib/api";
 import { DEFAULT_COUNTRIES, ROSTER, SUMMIT_MAX, SUMMIT_MIN, speakerMeta } from "@/lib/countries";
 import { MODES } from "@/lib/modes";
-import type { AllianceInfo, GameMode } from "@/lib/types";
+import type { AllianceInfo, GameMode, GameRole } from "@/lib/types";
 
 const INVENT_ALLIANCES_MAX = 3;
+
+/** G8 — les trois rôles : toujours acteur (regarder sans agir = la page replay). */
+const ROLES: { value: GameRole; label: string; blurb: string }[] = [
+  {
+    value: "council",
+    label: "Conseil",
+    blurb: "classé — motions, renseignement, paris : le mode enquête",
+  },
+  {
+    value: "player",
+    label: "Joueur-pays",
+    blurb: "classé — incarne ou gouverne SA super-intelligence (parole + directives)",
+  },
+  {
+    value: "architect",
+    label: "Architecte",
+    blurb: "sandbox non classé — directives sur toutes les SI, événements, intel illimité",
+  },
+];
 
 export default function LobbyPage() {
   const router = useRouter();
@@ -25,7 +44,8 @@ export default function LobbyPage() {
   const [mode, setMode] = useState<GameMode>("classic");
   const [selected, setSelected] = useState<string[]>(DEFAULT_COUNTRIES);
   const [search, setSearch] = useState("");
-  const [role, setRole] = useState(""); // "" = spectateur | id pays | "__invent__"
+  const [gameRole, setGameRole] = useState<GameRole>("council"); // G8 — rôle de la partie
+  const [role, setRole] = useState(""); // pays joué (Joueur-pays) : id | "__invent__" | ""
   const [turnSeconds, setTurnSeconds] = useState(90); // G2 — délai du tour humain
   const [admin, setAdmin] = useState(false); // G7-c — partie non classée, prompts capturés
   const [inventName, setInventName] = useState("");
@@ -34,12 +54,12 @@ export default function LobbyPage() {
   const [inventAlliances, setInventAlliances] = useState<string[]>([]);
   const [registry, setRegistry] = useState<Record<string, AllianceInfo> | null>(null);
   useEffect(() => {
-    if (role === "__invent__" && registry === null) {
+    if (gameRole === "player" && role === "__invent__" && registry === null) {
       getSources()
         .then((v) => setRegistry(v.alliances))
         .catch(() => setRegistry({}));
     }
-  }, [role, registry]);
+  }, [gameRole, role, registry]);
   const toggleInventAlliance = (tag: string) =>
     setInventAlliances((prev) =>
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
@@ -62,7 +82,8 @@ export default function LobbyPage() {
     setSelected((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]));
 
   // Le pays inventé s'assoit aussi à la table : il compte dans les bornes du sommet.
-  const tableSize = selected.length + (role === "__invent__" ? 1 : 0);
+  const playing = gameRole === "player";
+  const tableSize = selected.length + (playing && role === "__invent__" ? 1 : 0);
   const tableOk = tableSize >= SUMMIT_MIN && tableSize <= SUMMIT_MAX;
 
   // Recherche insensible aux accents : « etats » trouve « États-Unis ».
@@ -81,17 +102,24 @@ export default function LobbyPage() {
     setCreating(true);
     setCreateError(null);
     try {
-      const inventing = role === "__invent__" && inventName.trim().length >= 2;
+      const inventing = playing && role === "__invent__" && inventName.trim().length >= 2;
       const game = await createGame({
         scenario,
         horizon,
         mode,
-        turn_seconds: role ? turnSeconds : undefined, // G2 — seulement si on incarne
+        role: gameRole, // G8 — le rôle est toujours explicite depuis le lobby
+        turn_seconds: playing && role ? turnSeconds : undefined, // G2 — si on incarne
         admin: admin || undefined, // G7-c — mode admin explicite seulement
         // Toujours explicite : sans ce champ l'API convoquerait tout le roster.
         countries: selected,
         // Joueur-pays : id existant, ou NOM du pays inventé (l'API résout le slug)
-        play_as: inventing ? inventName.trim() : role && role !== "__invent__" ? role : undefined,
+        play_as: playing
+          ? inventing
+            ? inventName.trim()
+            : role && role !== "__invent__"
+              ? role
+              : undefined
+          : undefined,
         invent: inventing
           ? {
               name: inventName.trim(),
@@ -99,7 +127,7 @@ export default function LobbyPage() {
               attributes: inventCustom ? inventAttrs : undefined,
               alliances: inventAlliances.length > 0 ? inventAlliances : undefined,
             }
-          : undefined,
+          : undefined, // l'invention est le geste du Joueur-pays
       });
       router.push(`/games/${game.id}`);
     } catch (err) {
@@ -265,23 +293,64 @@ export default function LobbyPage() {
                 <p className="mt-1 text-xs text-fg-faint">Aucun État ne correspond à la recherche.</p>
               )}
             </fieldset>
-            <label className="block text-sm">
-              <span className="mb-1 block text-xs text-fg-muted">Ton rôle</span>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                className="w-full cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
-              >
-                <option value="">Spectateur — observer les super-intelligences</option>
-                {selected.map((c) => (
-                  <option key={c} value={c}>
-                    Jouer {speakerMeta(c).label}
-                  </option>
+            <fieldset>
+              <legend className="mb-2 text-xs text-fg-muted">
+                Ton rôle — toujours acteur (regarder sans agir = la page replay)
+              </legend>
+              <div className="space-y-1.5">
+                {ROLES.map((r) => (
+                  <label
+                    key={r.value}
+                    className={`flex cursor-pointer items-baseline gap-2 rounded-md border px-2.5 py-1.5 transition-colors ${
+                      gameRole === r.value
+                        ? "border-edge-strong bg-surface-2"
+                        : "border-edge hover:border-edge-strong"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="gameRole"
+                      checked={gameRole === r.value}
+                      onChange={() => setGameRole(r.value)}
+                      className="sr-only"
+                    />
+                    <span
+                      aria-hidden
+                      className={`inline-block h-2.5 w-2.5 shrink-0 self-center rounded-full border ${
+                        gameRole === r.value
+                          ? "border-accent-bright bg-accent-bright"
+                          : "border-edge-strong"
+                      }`}
+                    />
+                    <span
+                      className={`text-sm font-medium ${gameRole === r.value ? "text-accent-bright" : "text-foreground"}`}
+                    >
+                      {r.label}
+                    </span>
+                    <span className="text-xs text-fg-faint">{r.blurb}</span>
+                  </label>
                 ))}
-                <option value="__invent__">Inventer mon propre pays…</option>
-              </select>
-            </label>
-            {role && (
+              </div>
+            </fieldset>
+            {playing && (
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs text-fg-muted">Ton pays</span>
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  className="w-full cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+                >
+                  <option value="">— choisis ton pays —</option>
+                  {selected.map((c) => (
+                    <option key={c} value={c}>
+                      Jouer {speakerMeta(c).label}
+                    </option>
+                  ))}
+                  <option value="__invent__">Inventer mon propre pays…</option>
+                </select>
+              </label>
+            )}
+            {playing && role && (
               <label className="block text-sm">
                 <span className="mb-1 block text-xs text-fg-muted">
                   Délai de ton tour de parole (les SI n&apos;attendent pas)
@@ -299,7 +368,7 @@ export default function LobbyPage() {
                 </select>
               </label>
             )}
-            {role === "__invent__" && (
+            {playing && role === "__invent__" && (
               <div className="space-y-2 rounded-md border border-edge bg-surface-2/50 p-3">
                 <input
                   value={inventName}
@@ -422,7 +491,7 @@ export default function LobbyPage() {
             {createError && <Banner tone="bad">{createError}</Banner>}
             <button
               type="submit"
-              disabled={creating || !tableOk || (role === "__invent__" && inventName.trim().length < 2)}
+              disabled={creating || !tableOk || (playing && (!role || (role === "__invent__" && inventName.trim().length < 2)))}
               className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
             >
               {creating && <Spinner />}

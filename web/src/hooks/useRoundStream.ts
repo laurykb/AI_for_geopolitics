@@ -74,6 +74,8 @@ export type LiveRound = {
   allianceChanges?: { country: string; tag: string; name: string; partners: string[] }[];
   // G7-a — horloges décalées : échéances annoncées en fin de round
   deadlines?: DeadlineItem[];
+  // G8 — refus publics de directive (« notre conseil nous demande l'impossible »)
+  directiveRefusals?: { country: string; level: string }[];
   treaties?: TreatiesUpdate;
   driftOver?: string; // La Dérive : raison de la fin de partie (caught/horizon/collapse)
   intelActions?: { action: string; exposed?: boolean }[]; // G4 — le conseil a consulté
@@ -253,6 +255,14 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
       };
     case "deadlines":
       return { ...state, deadlines: e.items };
+    case "directive_refused":
+      return {
+        ...state,
+        directiveRefusals: [
+          ...(state.directiveRefusals ?? []),
+          { country: e.country, level: e.level },
+        ],
+      };
     case "treaties": {
       const update = { ...e } as Partial<typeof e>;
       delete update.type;

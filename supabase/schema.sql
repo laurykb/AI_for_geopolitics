@@ -17,7 +17,9 @@ create table if not exists games (
   created_at  timestamptz not null default now(),
   epilogue_json jsonb,                             -- G6 : le récit de partie (unique)
   published   boolean not null default false,      -- G6 : privé par défaut
-  admin       boolean not null default false       -- G7-c : prompts capturés, non classée
+  admin       boolean not null default false,      -- G7-c : prompts capturés, non classée
+  role        text not null default 'council'      -- G8 : architect | council | player
+              check (role in ('architect', 'council', 'player'))
 );
 
 create table if not exists rounds (
@@ -52,6 +54,7 @@ create table if not exists game_sessions (
   intel_json          jsonb not null default '{}',  -- G4 : budget/état de renseignement
   grudges_json        jsonb not null default '{}',  -- G7-a : registre de griefs (GrudgeBook)
   deadlines_json      jsonb not null default '[]',  -- G7-a : échéances (horloges décalées)
+  directives_json     jsonb not null default '{}',  -- G8 : directives en attente {pays: texte}
   updated_at          timestamptz not null default now()
 );
 

@@ -239,3 +239,10 @@ describe("horloges décalées (G7-a)", () => {
     expect(state.deadlines?.[0].label).toContain("motion");
   });
 });
+
+describe("directives (G8)", () => {
+  it("un refus public de directive est signalé au fil", () => {
+    const state = play([{ type: "directive_refused", country: "france", level: "resists" }]);
+    expect(state.directiveRefusals).toEqual([{ country: "france", level: "resists" }]);
+  });
+});
