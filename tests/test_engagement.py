@@ -135,3 +135,16 @@ def test_priority_boost_only_before_first_turn():
     assert director.next_speaker(event, world, []) == "france"
     director.commit("france")
     assert director.next_speaker(event, world, []) is None  # plus de boost : sous le seuil
+
+
+def test_director_never_leaves_summit_mute():
+    # Garde-fou (décision user) : casting prudent + événement mineur dont aucun acteur
+    # ne siège -> personne ne franchit le seuil, mais le sommet ne reste pas muet :
+    # le plus concerné ouvre la séance. Une seule fois — pas de bavardage forcé.
+    world = _world()
+    event = _event(["china"], severity=0.1)  # l'acteur n'est même pas à la table
+    director = TurnDirector(speaking_order(list(world.countries), event), max_turns=6)
+    first = director.next_speaker(event, world, [])
+    assert first is not None  # au moins un orateur
+    director.commit(first)
+    assert director.next_speaker(event, world, []) is None  # le silence reste possible

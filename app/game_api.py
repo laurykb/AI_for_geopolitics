@@ -66,9 +66,11 @@ from simulation import treaty as treaty_mod
 from simulation.clock import SimClock
 from simulation.country_forge import forge_country, slugify
 from simulation.crisis import Crisis, compare_outcome, load_crises
+from simulation.crisis import fits_cast as crisis_fits_cast
 from simulation.diplomacy import seed_rival_tensions
 from simulation.escalation import ceiling, derive_profile, reached_rung, rung_label
 from simulation.fog import FogScenario, load_fog_scenarios, resolve_perception
+from simulation.fog import fits_cast as fog_fits_cast
 from simulation.live_round import (
     CommuniqueStep,
     EventStep,
@@ -1224,6 +1226,11 @@ def play_round(
         if crisis is None or not crisis.events:
             raise HTTPException(status_code=400, detail=f"crise inconnue : {body.crisis_id}")
 
+    # NB : pas de blocage ici — rejouer un contenu avec un casting partiel reste permis
+    # (contrefactuel volontaire) ; la bibliothèque, elle, ne PROPOSE que ce qui colle au
+    # sommet (GET /api/library?countries=…), et le TurnDirector garantit qu'un round ne
+    # reste jamais muet même si personne n'est acteur de l'événement.
+
     if not session.lock.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="un round est déjà en cours sur cette partie")
     run = _start_round(game_id, session, store, body, fog=fog, crisis=crisis)
@@ -1817,12 +1824,20 @@ def run_market_bot(
 
 
 @router.get("/library", response_model=LibraryView)
-def library() -> LibraryView:
-    """Bibliothèque embarquée : scénarios de brouillard (Fog) et crises rejouables (Crisis)."""
+def library(countries: str | None = None) -> LibraryView:
+    """Bibliothèque embarquée : scénarios de brouillard (Fog) et crises rejouables (Crisis).
+
+    `countries` (ids séparés par des virgules) = casting du sommet : seuls les contenus
+    dont tous les acteurs siègent sont proposés — un scénario mer Rouge n'a pas de sens
+    à une table Baltique (personne n'est acteur, round quasi muet).
+    """
+    cast = {c.strip() for c in countries.split(",") if c.strip()} if countries else None
+    fogs = [s for s in _fog_library().values() if cast is None or fog_fits_cast(s, cast)]
+    crises = [c for c in _crisis_library().values() if cast is None or crisis_fits_cast(c, cast)]
     return LibraryView(
         fog=[
             FogScenarioView(id=s.id, title=s.title or s.id, description=s.description)
-            for s in _fog_library().values()
+            for s in fogs
         ],
         crises=[
             CrisisView(
@@ -1834,7 +1849,7 @@ def library() -> LibraryView:
                 historical_escalation=c.historical_outcome.escalation,
                 historical_measures=c.historical_outcome.measures,
             )
-            for c in _crisis_library().values()
+            for c in crises
         ],
     )
 

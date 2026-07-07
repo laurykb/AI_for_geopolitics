@@ -38,6 +38,16 @@ class FogScenario(BaseModel):
     uninformed: list[str] = Field(default_factory=list)  # pays « pas au courant »
 
 
+def fits_cast(scenario: FogScenario, cast: set[str]) -> bool:
+    """Le scénario est-il jouable avec ce casting ? Acteurs de la vérité, perceptions
+    et pays désinformés doivent tous siéger — sinon personne n'est concerné (round
+    quasi muet) et des croyances visent des absents."""
+    referenced = (
+        set(scenario.true_event.actors) | set(scenario.perceptions) | set(scenario.uninformed)
+    )
+    return referenced <= cast
+
+
 def perceived_from_spec(spec: dict) -> PerceivedEvent:
     """Construit une perception *authored* bornée depuis une spec brute (tolérante)."""
     try:

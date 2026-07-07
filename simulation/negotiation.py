@@ -114,7 +114,12 @@ class TurnDirector:
         return score
 
     def next_speaker(self, event: GeoEvent, world: WorldState, transcript: list) -> str | None:
-        """Pays le plus engagé au-dessus du seuil, ou None (budget épuisé / personne d'engagé)."""
+        """Pays le plus engagé au-dessus du seuil, ou None (budget épuisé / personne d'engagé).
+
+        Garde-fou : un sommet ne reste jamais muet — si PERSONNE n'a encore parlé ce
+        round et qu'aucun ne franchit le seuil (casting prudent + événement mineur),
+        le plus concerné ouvre quand même la séance.
+        """
         if self.turns_taken >= self.max_turns:
             return None
         best_cid: str | None = None
@@ -123,6 +128,10 @@ class TurnDirector:
             score = self._score(cid, event, world, transcript)
             if score > best_score:
                 best_cid, best_score = cid, score
+        if best_cid is None and self.turns_taken == 0 and self.candidates:
+            best_cid = max(
+                self.candidates, key=lambda cid: self._score(cid, event, world, transcript)
+            )
         return best_cid
 
     def commit(self, cid: str) -> None:

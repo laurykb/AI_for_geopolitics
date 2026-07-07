@@ -735,3 +735,18 @@ def test_mode_and_play_as_survive_restart(client_store):
     view = client.get(f"/api/games/{game['id']}").json()
     assert view["mode"] == "escalation"
     assert view["play_as"] == "france" and view["awaiting_human"] is False
+
+
+def test_library_filters_by_summit_cast(client):
+    # Décision user : la bibliothèque ne PROPOSE que les contenus dont tous les pays
+    # référencés siègent. Le casting mer Rouge voit tout ; un duo n'a rien d'adapté.
+    full = client.get("/api/library").json()
+    red_sea = "usa,china,iran,france,egypt,saudi_arabia"
+    assert client.get(f"/api/library?countries={red_sea}").json() == full
+    narrow = client.get("/api/library?countries=iran,usa").json()
+    assert narrow["fog"] == []  # perceptions/désinformés hors table
+    assert narrow["crises"] == []  # ormuz exige l'arabie saoudite, les autres la chine
+    # jouer un contenu avec un casting partiel reste PERMIS (contrefactuel volontaire)
+    game = _create(client, countries=["iran", "usa"], mode="crisis")
+    events = _play(client, game["id"], body={"crisis_id": "hormuz_energy_shock"})
+    assert events[-1][0] == "done"

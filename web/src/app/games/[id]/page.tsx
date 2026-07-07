@@ -130,13 +130,15 @@ export default function TheatrePage() {
   useEffect(resync, [resync]);
 
   const mode = detail?.mode ?? "classic";
+  const castKey = detail?.countries?.join(",") ?? "";
   useEffect(() => {
     if (mode === "fog" || mode === "crisis") {
-      getLibrary()
+      // Seuls les contenus jouables avec CE sommet sont proposés (acteurs à la table).
+      getLibrary(castKey ? castKey.split(",") : undefined)
         .then(setLibrary)
         .catch(() => setLibrary({ fog: [], crises: [] }));
     }
-  }, [mode]);
+  }, [mode, castKey]);
 
   const { round, start, streaming } = useRoundStream(id, resync);
   const motionPending = detail?.pending_motion ?? null;
