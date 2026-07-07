@@ -141,3 +141,25 @@ def test_seed_rival_tensions_ignores_absent_rivals_and_existing_tensions():
 
     assert "china" not in world.tensions.get("india", {})  # hors casting : ignoré
     assert world.get_tension("india", "japan") == 0.10  # jamais écrasée
+
+
+def test_grudges_weigh_on_pact_acceptance():
+    # G7-a : le solde de griefs du destinataire pèse sur l'accept/refuse déterministe.
+    from simulation.grudges import Grief, GrudgeBook
+
+    world = _world(_country("france", "France"), _country("usa", "USA"))
+    book = GrudgeBook()
+    book.add(
+        "usa", "france",
+        Grief(type="pact_broken", round_no=1, weight=-5, summary="a rompu le pacte"),
+    )
+    engine = DiplomacyEngine()
+    outcome = engine.resolve(
+        world, [_decide("france", ActionType.FORM_COALITION, "usa")], 1, grudges=book
+    )
+    assert outcome.pacts_formed == []  # solde ≤ −5 : refus quasi systématique
+    assert "griefs" in outcome.messages[1].content
+    # sans griefs, la même offre passe (tension nulle)
+    assert DiplomacyEngine().resolve(
+        world, [_decide("france", ActionType.FORM_COALITION, "usa")], 1
+    ).pacts_formed

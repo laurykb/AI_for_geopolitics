@@ -31,6 +31,7 @@ import { DriftCouncilBanner, DriftRevealPanel } from "@/components/drift";
 import { IntelBudget, IntelPanel } from "@/components/intel";
 import { StageBand, type StageSelection } from "@/components/stage-band";
 import { AlliancePills } from "@/components/alliance-pills";
+import { DeadlineStrip, RelationsPanel } from "@/components/gamefeel";
 import { StageMap } from "@/components/stage-map";
 import { TrajectoryPanel } from "@/components/trajectory";
 import { EntryBubble, TurnBubble } from "@/components/transcript";
@@ -793,6 +794,16 @@ export default function TheatrePage() {
             eventTitle={stageEventTitle}
           />
           <AlliancePills alliances={detail?.alliances_at_table ?? []} />
+          <DeadlineStrip
+            items={
+              round.deadlines ??
+              (detail?.deadlines ?? []).map((d) => ({
+                ...d,
+                in_rounds: d.due_round - playedRounds,
+              }))
+            }
+          />
+          <RelationsPanel relations={detail?.relations ?? {}} />
         </div>
         <aside
           ref={transcriptRef}

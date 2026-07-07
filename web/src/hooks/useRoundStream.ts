@@ -10,6 +10,7 @@ import { streamRound } from "@/lib/sse";
 import type {
   AttributeDelta,
   ComparisonView,
+  DeadlineItem,
   DialogueReport,
   GeoEvent,
   LadderView,
@@ -71,6 +72,8 @@ export type LiveRound = {
   motionFiled?: { by: string; country: string; reason: string };
   // Alliances vivantes : retraits annoncés en séance (« ALLIANCE: quitter X »)
   allianceChanges?: { country: string; tag: string; name: string; partners: string[] }[];
+  // G7-a — horloges décalées : échéances annoncées en fin de round
+  deadlines?: DeadlineItem[];
   treaties?: TreatiesUpdate;
   driftOver?: string; // La Dérive : raison de la fin de partie (caught/horizon/collapse)
   intelActions?: { action: string; exposed?: boolean }[]; // G4 — le conseil a consulté
@@ -248,6 +251,8 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
           { country: e.country, tag: e.tag, name: e.name, partners: e.partners },
         ],
       };
+    case "deadlines":
+      return { ...state, deadlines: e.items };
     case "treaties": {
       const update = { ...e } as Partial<typeof e>;
       delete update.type;

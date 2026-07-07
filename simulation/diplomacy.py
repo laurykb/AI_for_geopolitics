@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from core.decisions import AgentDecision, DiplomaticMessage
 from core.world_state import WorldState
 from simulation.action_space import ActionType
+from simulation.grudges import GrudgeBook, load_gamefeel_params
 
 # Actions valant une proposition d'alliance bilatérale.
 _PROPOSAL_ACTIONS = frozenset({ActionType.FORM_COALITION, ActionType.SUPPORT})
@@ -70,7 +71,11 @@ class DiplomacyEngine:
     """Résout les propositions d'alliance issues des décisions d'un round."""
 
     def resolve(
-        self, world: WorldState, decisions: list[AgentDecision], round_id: int
+        self,
+        world: WorldState,
+        decisions: list[AgentDecision],
+        round_id: int,
+        grudges: GrudgeBook | None = None,
     ) -> DiplomacyOutcome:
         outcome = DiplomacyOutcome()
         accepted: list[str] = []
@@ -88,7 +93,7 @@ class DiplomacyEngine:
                 )
             )
 
-            accepts, reason = self._accepts(prop.sender, prop.recipient, world)
+            accepts, reason = self._accepts(prop.sender, prop.recipient, world, grudges)
             if accepts:
                 if self._form_pact(world, prop.sender, prop.recipient):
                     outcome.pacts_formed.append(tuple(sorted((prop.sender, prop.recipient))))
@@ -130,17 +135,40 @@ class DiplomacyEngine:
                 proposals.append(Proposal(sender=d.country, recipient=target, round_id=round_id))
         return proposals
 
-    def _accepts(self, sender_id: str, recipient_id: str, world: WorldState) -> tuple[bool, str]:
-        """Politique d'acceptation déterministe et explicable."""
+    def _accepts(
+        self,
+        sender_id: str,
+        recipient_id: str,
+        world: WorldState,
+        grudges: GrudgeBook | None = None,
+    ) -> tuple[bool, str]:
+        """Politique d'acceptation déterministe et explicable.
+
+        G7-a : le solde de griefs du DESTINATAIRE envers l'offreur pèse — ≤ seuil de
+        refus : quasi systématiquement non ; ≥ seuil d'acceptation : facilitée."""
         sender = world.countries[sender_id]
         recipient = world.countries[recipient_id]
         if sender_id in recipient.rivals or recipient_id in sender.rivals:
             return False, "rivalité"
 
+        grudge_bonus = 0.0
+        if grudges is not None:
+            params = load_gamefeel_params().grudges
+            balance = grudges.balance(recipient_id, sender_id)
+            if balance <= params.refuse_threshold:
+                return False, f"griefs (solde {balance:g})"
+            if balance >= params.accept_threshold:
+                grudge_bonus = 0.3
+
         tension = world.get_tension(sender_id, recipient_id)
         already_allied = world.share_alliance(sender_id, recipient_id)
         common_rival = bool(set(sender.rivals) & set(recipient.rivals))
-        score = (1.0 - tension) + (0.2 if already_allied else 0.0) + (0.3 if common_rival else 0.0)
+        score = (
+            (1.0 - tension)
+            + (0.2 if already_allied else 0.0)
+            + (0.3 if common_rival else 0.0)
+            + grudge_bonus
+        )
 
         if score >= _ACCEPT_THRESHOLD:
             reasons = []

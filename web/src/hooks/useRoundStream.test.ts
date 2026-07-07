@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import type { SseEvent } from "@/lib/types";
+import type { GeoEvent, SseEvent } from "@/lib/types";
 
 import { INITIAL, reducer, type LiveRound } from "./useRoundStream";
 
@@ -15,7 +15,12 @@ function play(events: Partial<SseEvent>[], from: LiveRound = INITIAL): LiveRound
   return state;
 }
 
-const TURN_START = { type: "turn_start", country: "usa", model: "mistral", pass_no: 0 };
+const TURN_START = {
+  type: "turn_start",
+  country: "usa",
+  model: "mistral",
+  pass_no: 0,
+} satisfies Partial<SseEvent>;
 
 describe("réducteur de round", () => {
   it("start réinitialise le fil et passe en streaming", () => {
@@ -190,7 +195,7 @@ describe("réducteur de round", () => {
   });
 
   it("un flash est positionné après le tour courant", () => {
-    const flash = { id: "f1", title: "Fait nouveau" };
+    const flash: GeoEvent = { id: "f1", round_id: 1, event_type: "flash", title: "Fait nouveau" };
     const state = play([
       TURN_START,
       { type: "message_done", country: "usa", text: "…", reasoning: "" },
@@ -215,5 +220,22 @@ describe("alliances vivantes", () => {
     expect(state.allianceChanges).toEqual([
       { country: "france", tag: "NATO", name: "OTAN — Organisation du traité de l'Atlantique Nord", partners: ["usa"] },
     ]);
+  });
+});
+
+describe("horloges décalées (G7-a)", () => {
+  it("la trame deadlines alimente le bandeau", () => {
+    const state = play([
+      {
+        type: "deadlines",
+        round_no: 2,
+        items: [
+          { kind: "motion", due_round: 3, label: "verdict de la motion contre iran", ref_id: "", in_rounds: 1 },
+          { kind: "market", due_round: 5, label: "clôture du marché", ref_id: "", in_rounds: 3 },
+        ],
+      },
+    ]);
+    expect(state.deadlines).toHaveLength(2);
+    expect(state.deadlines?.[0].label).toContain("motion");
   });
 });

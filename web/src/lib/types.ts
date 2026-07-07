@@ -52,6 +52,15 @@ export type GameView = {
   admin: boolean; // G7-c — prompts capturés, partie non classée
 };
 
+/** G7-a — une échéance annoncée (« au prochain round… »). */
+export type DeadlineItem = {
+  kind: string; // motion | treaty | market | escalation
+  due_round: number;
+  label: string;
+  ref_id: string;
+  in_rounds: number;
+};
+
 /** G7-c — un prompt complet capturé (mode admin) : ce que le modèle a reçu. */
 export type PromptEntry = {
   id: string;
@@ -219,6 +228,9 @@ export type GameDetail = GameView & {
   rounds: RoundView[];
   epilogue: Record<string, unknown> | null; // G6 — le récit (généré une seule fois)
   alliances_at_table: AllianceAtTable[];
+  // G7-a — fiches relations (griefs) et échéances persistées
+  relations: Record<string, { target: string; balance: number; last: string }[]>;
+  deadlines: Omit<DeadlineItem, "in_rounds">[];
 };
 
 export type HumanEvent = {
@@ -330,6 +342,8 @@ export type SseEvent =
   | { type: "intel"; actions: { action: string; exposed?: boolean }[] }
   // Alliances vivantes : un pays annonce son retrait d'une alliance en séance
   | { type: "alliance_change"; country: string; tag: string; name: string; partners: string[] }
+  // G7-a — horloges décalées : les échéances annoncées en fin de round
+  | { type: "deadlines"; round_no: number; items: DeadlineItem[] }
   // G5 : fin d'un chapitre de campagne — le bilan « vous vs l'Histoire »
   | {
       type: "campaign_over";

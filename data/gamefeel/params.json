@@ -1,0 +1,28 @@
+{
+  "_comment": "G7 game feel — chiffres équilibrables par Cowork sans toucher au code (GAMEFEEL_PARAMS_PATH pour les tests). Spec : docs/specs_jeu/spec_g7_gamefeel.md",
+  "grudges": {
+    "weights": {
+      "pact_honored": 2,
+      "pact_broken": -5,
+      "motion_support": 3,
+      "motion_betrayal": -4,
+      "disinfo_exposed": -6,
+      "aid_received": 3
+    },
+    "balance_cap": 10,
+    "decay_every_rounds": 3,
+    "decay_step": 1,
+    "accept_threshold": 5,
+    "refuse_threshold": -5,
+    "pact_honored_after_rounds": 2
+  },
+  "deadlines": {
+    "treaty_duration_rounds": 3,
+    "banner_max": 3,
+    "escalation_warn_gap": 0.1
+  },
+  "directives": {
+    "max_chars": 280,
+    "public_refusal_threshold": 0.25
+  }
+}
