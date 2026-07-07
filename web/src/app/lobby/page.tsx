@@ -309,7 +309,11 @@ export default function LobbyPage() {
                     </span>
                   </legend>
                   {registry === null ? (
-                    <p className="text-xs text-fg-faint">Chargement du registre…</p>
+                    <div aria-hidden className="flex flex-wrap gap-1.5">
+                      {[72, 104, 60, 88, 96].map((w, i) => (
+                        <span key={i} className="skeleton h-6" style={{ width: w }} />
+                      ))}
+                    </div>
                   ) : (
                     <div className="flex flex-wrap gap-1.5">
                       {Object.entries(registry)

@@ -5,8 +5,11 @@ import type { ReactNode } from "react";
 import { fmt } from "@/lib/format";
 
 export function Panel({ children, className = "" }: { children: ReactNode; className?: string }) {
+  // Élévation unique et cohérente : liseré clair en haut (lumière) + ombre douce.
   return (
-    <section className={`rounded-xl border border-edge bg-surface p-5 ${className}`}>
+    <section
+      className={`rounded-xl border border-edge bg-surface p-5 shadow-[inset_0_1px_0_0_rgba(248,250,252,0.04),0_12px_32px_-20px_rgba(0,0,0,0.8)] ${className}`}
+    >
       {children}
     </section>
   );
@@ -48,7 +51,9 @@ export function Hint({ text }: { text: string }) {
     <span
       title={text}
       aria-label={text}
-      className="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-edge-strong text-[10px] leading-none text-fg-muted"
+      tabIndex={0}
+      role="note"
+      className="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-edge-strong text-[10px] leading-none text-fg-muted transition-colors hover:border-accent-bright hover:text-foreground"
     >
       ?
     </span>
@@ -110,7 +115,7 @@ export function Meter({
   const auto: Tone = risk < 0.34 ? "good" : risk < 0.67 ? "warn" : "bad";
   const t = tone ?? auto;
   return (
-    <div>
+    <div role="meter" aria-valuemin={0} aria-valuemax={1} aria-valuenow={v} aria-label={label}>
       <div className="mb-1 flex items-baseline justify-between gap-2">
         <span className="flex items-center gap-1.5 text-xs text-fg-muted">
           {label}
@@ -137,10 +142,14 @@ export function Banner({
 }) {
   const border =
     tone === "bad" ? "border-bad/40" : tone === "warn" ? "border-warn/40" : "border-edge-strong";
+  // Liseré gauche appuyé : la nature du message se lit d'un coup d'œil (pas
+  // seulement par la couleur — le texte porte toujours l'information).
+  const edge =
+    tone === "bad" ? "border-l-bad" : tone === "warn" ? "border-l-warn" : "border-l-indigo-soft";
   return (
     <div
       role="status"
-      className={`rounded-lg border ${border} bg-surface-2 px-4 py-3 text-sm text-fg-muted`}
+      className={`rounded-lg border border-l-[3px] ${border} ${edge} bg-surface-2 px-4 py-3 text-sm text-fg-muted`}
     >
       {children}
     </div>
@@ -150,8 +159,9 @@ export function Banner({
 export function Spinner() {
   return (
     <span
-      aria-hidden
-      className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-fg-faint border-t-accent-bright"
+      role="status"
+      aria-label="Chargement"
+      className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-fg-faint border-t-accent-bright motion-reduce:animate-none"
     />
   );
 }

@@ -9,7 +9,8 @@
   --muted: #27273b;
   --foreground: #f8fafc;
   --foreground-muted: #94a3b8;
-  --foreground-faint: #64748b;
+  /* AA 4,5:1 sur --surface (l'ancien #64748b plafonnait à ~3,9:1 en petit corps). */
+  --foreground-faint: #7b8798;
   --border: rgba(148, 163, 184, 0.14);
   --border-strong: rgba(148, 163, 184, 0.3);
   --primary: #1e1b4b;
@@ -54,10 +55,90 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-inter), system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
 }
 
 ::selection {
   background: rgba(202, 138, 4, 0.35);
+}
+
+/* ===== Polish ui-ux-pro-max (accessibilité + perception) ======================== */
+
+/* Focus clavier visible PARTOUT — anneau or, jamais supprimé (WCAG). */
+:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Interaction : curseur explicite et feedback d'appui immédiat, sans décaler la mise
+   en page (opacité seulement — pas de transform qui ferait sauter les voisins). */
+button:not(:disabled) {
+  cursor: pointer;
+}
+button:not(:disabled):active,
+a:active,
+label:has(> input:not(:disabled)):active {
+  opacity: 0.82;
+}
+a,
+button,
+select,
+textarea,
+input,
+label {
+  touch-action: manipulation;
+}
+
+/* Scrollbars du thème : Windows affiche sinon des barres claires criardes qui
+   cassent l'immersion OLED (transcript, listes, bibliothèques). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--muted) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--muted);
+  border-radius: 8px;
+  border: 2px solid var(--background);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Typographie : titres équilibrés, paragraphes sans mots orphelins. */
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+p {
+  text-wrap: pretty;
+}
+
+/* Squelette de chargement (au-delà de ~300 ms) : reflet discret, neutralisé en
+   mouvement réduit. Utiliser avec des dimensions réservées (zéro layout shift). */
+.skeleton {
+  border-radius: 6px;
+  background: linear-gradient(100deg, var(--surface-2) 40%, var(--muted) 50%, var(--surface-2) 60%);
+  background-size: 200% 100%;
+  animation: skeleton-sheen 1.4s ease-in-out infinite;
+}
+@keyframes skeleton-sheen {
+  to {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
 }
 
 /* Curseur de streaming : un trait or qui bat, discret. */
