@@ -28,5 +28,13 @@ def test_sources_values_match_committed_profiles():
     # la ligne dérivée porte sa donnée brute et sa transformation
     assert rows["Niveau technologique"]["raw_value"] is not None
     assert rows["Niveau technologique"]["transformation"] == "technology_level"
-    # le profil analyste (alliances, rivaux…) est distinct des indicateurs chiffrés
-    assert "alliances" in usa["profile"]
+    # les alliances sont un attribut à part entière, dérivé du registre sourcé
+    assert "NATO" in usa["alliances"]
+    assert "USMCA" in usa["alliances"]
+    # le registre global expose nom, fondement, source et membres de chaque accord
+    nato = view["alliances"]["NATO"]
+    assert nato["url"].startswith("https://www.nato.int")
+    assert "usa" in nato["members"] and "turkey" in nato["members"]
+    assert view["alliances"]["Western"]["informal"] is True  # bloc d'affinité, pas un traité
+    # le profil analyste (rivaux…) reste distinct des indicateurs chiffrés
+    assert "rivals" in usa["profile"]

@@ -16,9 +16,11 @@
     "energy_independence": 0.55
   },
   "alliances": [
+    "AUKUS",
+    "CPTPP",
+    "G7",
     "NATO",
-    "Western",
-    "AUKUS"
+    "Western"
   ],
   "rivals": [
     "russia"

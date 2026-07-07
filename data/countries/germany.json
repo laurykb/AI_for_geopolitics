@@ -16,8 +16,9 @@
     "energy_independence": 0.35
   },
   "alliances": [
-    "NATO",
     "EU",
+    "G7",
+    "NATO",
     "Western"
   ],
   "rivals": [

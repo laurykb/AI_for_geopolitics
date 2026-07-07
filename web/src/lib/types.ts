@@ -441,12 +441,25 @@ export type CountrySources = {
   name: string;
   attributes: AttributeSource[];
   profile: {
-    alliances?: string[];
     rivals?: string[];
     political_system?: string;
     ideology?: string[];
     strategic_priorities?: string[];
   };
+  /** Attribut à part entière, dérivé du registre sourcé (tags → SourcesView.alliances). */
+  alliances: string[];
+};
+
+/** Un accord / traité / bloc réel du registre sourcé (data/sources/alliances.json). */
+export type AllianceInfo = {
+  name: string;
+  short: string;
+  domain: "military" | "economic" | "political";
+  basis: string;
+  url: string;
+  members: string[];
+  note?: string;
+  informal?: boolean;
 };
 
 export type SourcesView = {
@@ -454,6 +467,7 @@ export type SourcesView = {
   transformations: Record<string, string>;
   build_command: string;
   countries: CountrySources[];
+  alliances: Record<string, AllianceInfo>;
 };
 
 export const AXIS_LABELS: Record<string, string> = {
