@@ -258,13 +258,53 @@ Les crises rejouables (`data/crises` + `comparison` R4) deviennent une progressi
   Limite v1 : « Revoir le théâtre » exige le backend (le replay public 100 % Supabase
   = reliquat R5) ; le bouton scrubber des moments clés renvoie au replay simple.
 
+## G7 — Game feel (leçons Civilization) + mode admin
+
+Six lots pour passer de « techniquement impressionnant » à « je relance une partie »
+(spec complète : `docs/specs_jeu/spec_g7_gamefeel.md`) :
+
+1. **Griefs et dettes persistants** — registre relationnel par SI (pactes honorés/rompus,
+   motions, désinformations), injecté dans les prompts, module la diplomatie, survit aux
+   restarts. Les agendas de Civ.
+2. **Horloges décalées** — motions, traités à durée, clôtures de marché et paliers
+   d'escalade arrivent à échéance à des rounds différents ; bandeau « au prochain round… ».
+   Le « encore un round ».
+3. **Micro-décisions en cours de round** — posture (conciliant/ferme/menaçant), intel à
+   chaud, paris à chaud. Jamais spectateur plus de ~20 s.
+4. **Capacités uniques par pays** — dérivées des données (`simulation/abilities.py`),
+   affichées au lobby. L'asymétrie de Civ.
+5. **Deltas attribuables** — chaque variation de U a une `cause` cliquable.
+6. **Mode admin** — parties non classées où les prompts complets de chaque SI (menu
+   déroulant par pays) sont capturés et diffés round par round : on VOIT le grief, la
+   dérive et la posture entrer dans le prompt. L'outil d'observation d'alignement du projet.
+
+Sessions : **G7-c** (lot 6, d'abord — confort d'équilibrage), **G7-a** (lots 1-2),
+**G7-b** (lots 3-4-5).
+- **Cowork** : la spec (faite), équilibrage des poids de griefs et des capacités.
+- **Claude Code** : les trois sessions ci-dessus.
+
+## G8 — Les trois rôles (fin du spectateur passif)
+
+Le spectateur disparaît (regarder = replay). À la création, on choisit un rôle
+(spec : `docs/specs_jeu/spec_g8_roles.md`) : **Architecte** (sandbox non classé —
+directives sur toutes les SI, événements, intel illimité : le laboratoire et l'atelier
+à replays), **Conseil** (classé — leviers indirects seulement : motions, intel, paris :
+le mode enquête), **Joueur-pays** (classé — G2 + directives sur son seul pays, inventé
+compris). Mécanique commune : la **directive**, consigne injectée au prompt que la SI
+interprète à travers mandat, griefs et dérive — jamais un ordre. La corrigibilité
+rendue jouable.
+
+- **Cowork** : la spec (faite), seuil de refus public à équilibrer.
+- **Claude Code** : rôles + directives + validation par rôle (une session).
+
 ---
 
 ## Specs Cowork (rédigées)
 
 Toutes les specs de phase sont dans `docs/specs_jeu/` : `spec_g1_scene.md`,
 `spec_g2_tour_humain.md`, `protocole_dialogue_7b.md` (avant G3), `spec_g3_derive.md`,
-`spec_g4_renseignement.md`, `spec_g5_campagne.md`, `spec_g6_recit.md`. Chaque session
+`spec_g4_renseignement.md`, `spec_g5_campagne.md`, `spec_g6_recit.md`,
+`spec_g7_gamefeel.md`. Chaque session
 Claude Code de phase commence par « Lis docs/PLAN_JEU.md et docs/specs_jeu/spec_gX_*.md ».
 Les paramètres chiffrés (G3, G4) vivent dans `data/*/params.json` : l'équilibrage Cowork
 les ajuste sans toucher au code.

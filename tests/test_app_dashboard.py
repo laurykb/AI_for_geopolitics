@@ -34,3 +34,11 @@ def test_run_red_sea_matches_scenario_length():
     for s in data.summaries:
         assert s.decisions
         assert s.diplomatic_summary
+
+
+def test_api_root_points_to_the_game():
+    # Ouvrir localhost:8000 dans un navigateur ne doit pas ressembler à une panne :
+    # la racine de l'API oriente vers le front, la doc et le health-check.
+    payload = client.get("/").json()
+    assert "3000" in payload["jeu"]
+    assert payload["docs"] == "/docs"
