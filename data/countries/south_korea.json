@@ -1,0 +1,37 @@
+{
+  "id": "south_korea",
+  "name": "Corée du Sud",
+  "economy": {
+    "gdp": 1870000000000.0,
+    "growth": 2.0,
+    "trade_dependency": 0.88
+  },
+  "military": {
+    "defense_budget": 47600000000.0,
+    "nuclear_power": false,
+    "projection": 0.45
+  },
+  "resources": {
+    "oil_dependency": 0.85,
+    "energy_independence": 0.15
+  },
+  "alliances": [
+    "Western"
+  ],
+  "rivals": [],
+  "political_system": "democracy",
+  "political_stability": 0.6,
+  "technology_level": 0.96,
+  "compute": 35.0,
+  "ideology": [
+    "liberal_democracy",
+    "export_economy"
+  ],
+  "strategic_priorities": [
+    "deterrence_north",
+    "us_alliance",
+    "semiconductor_leadership"
+  ],
+  "memory_summary": "",
+  "mandate": {}
+}

@@ -1,0 +1,39 @@
+{
+  "id": "israel",
+  "name": "Israël",
+  "economy": {
+    "gdp": 541000000000.0,
+    "growth": 0.9,
+    "trade_dependency": 0.55
+  },
+  "military": {
+    "defense_budget": 46500000000.0,
+    "nuclear_power": true,
+    "projection": 0.6
+  },
+  "resources": {
+    "oil_dependency": 0.6,
+    "energy_independence": 0.5
+  },
+  "alliances": [
+    "Western"
+  ],
+  "rivals": [
+    "iran"
+  ],
+  "political_system": "democracy",
+  "political_stability": 0.13,
+  "technology_level": 0.89,
+  "compute": 20.0,
+  "ideology": [
+    "national_security_first",
+    "tech_nation"
+  ],
+  "strategic_priorities": [
+    "security",
+    "us_alliance",
+    "tech_leadership"
+  ],
+  "memory_summary": "",
+  "mandate": {}
+}

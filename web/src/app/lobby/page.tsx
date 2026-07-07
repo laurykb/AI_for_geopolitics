@@ -70,7 +70,7 @@ export default function LobbyPage() {
         horizon,
         mode,
         turn_seconds: role ? turnSeconds : undefined, // G2 — seulement si on incarne
-        // Toujours explicite : sans ce champ l'API convoquerait les 21 pays du roster.
+        // Toujours explicite : sans ce champ l'API convoquerait tout le roster.
         countries: selected,
         // Joueur-pays : id existant, ou NOM du pays inventé (l'API résout le slug)
         play_as: inventing ? inventName.trim() : role && role !== "__invent__" ? role : undefined,

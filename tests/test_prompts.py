@@ -146,3 +146,17 @@ def test_llm_decision_schema_has_expected_fields():
         "risk_assessment",
         "reasoning",
     }
+
+
+def test_negotiation_prompt_lists_the_table():
+    # La SI sait qui siège au sommet (elle ne peut adresser que des pays présents).
+    from agents.prompts import build_negotiation_prompt
+    from simulation.perception import perceive
+
+    world, event = _world(), _event()
+    perceived = perceive(event, world.countries["usa"])
+    prompt = build_negotiation_prompt(world.countries["usa"], event, world, "(début)", perceived)
+    assert "À LA TABLE" in prompt
+    others = [cid for cid in world.countries if cid != "usa"]
+    for cid in others:
+        assert cid in prompt

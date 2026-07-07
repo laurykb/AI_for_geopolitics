@@ -1,0 +1,37 @@
+{
+  "id": "turkey",
+  "name": "Turquie",
+  "economy": {
+    "gdp": 1322000000000.0,
+    "growth": 3.2,
+    "trade_dependency": 0.58
+  },
+  "military": {
+    "defense_budget": 25000000000.0,
+    "nuclear_power": false,
+    "projection": 0.55
+  },
+  "resources": {
+    "oil_dependency": 0.65,
+    "energy_independence": 0.3
+  },
+  "alliances": [
+    "NATO"
+  ],
+  "rivals": [],
+  "political_system": "presidential_republic",
+  "political_stability": 0.1,
+  "technology_level": 0.73,
+  "compute": 10.0,
+  "ideology": [
+    "sovereignism",
+    "regional_power"
+  ],
+  "strategic_priorities": [
+    "strategic_autonomy",
+    "regional_influence",
+    "defense_industry"
+  ],
+  "memory_summary": "",
+  "mandate": {}
+}

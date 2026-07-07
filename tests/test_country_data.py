@@ -13,10 +13,11 @@ _DIR = Path("data/countries")
 _EXPECTED_IDS = {
     # noyau mer Rouge (P4)
     "usa", "china", "france", "egypt", "iran", "saudi_arabia",
-    # extension roster juillet 2026 (data_governance §2 bis)
+    # extension roster juillet 2026 (data_governance §2 bis, ajusté §2 ter :
+    # danemark retiré ; turquie, israël, corée du sud ajoutées)
     "japan", "russia", "germany", "uk", "spain", "italy", "mexico",
     "brazil", "india", "south_africa", "australia", "morocco",
-    "denmark", "ukraine", "canada",
+    "ukraine", "canada", "turkey", "israel", "south_korea",
 }
 
 

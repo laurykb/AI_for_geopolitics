@@ -66,6 +66,7 @@ from simulation import treaty as treaty_mod
 from simulation.clock import SimClock
 from simulation.country_forge import forge_country, slugify
 from simulation.crisis import Crisis, compare_outcome, load_crises
+from simulation.diplomacy import seed_rival_tensions
 from simulation.escalation import ceiling, derive_profile, reached_rung, rung_label
 from simulation.fog import FogScenario, load_fog_scenarios, resolve_perception
 from simulation.live_round import (
@@ -1127,6 +1128,9 @@ def create_game(
             status_code=400,
             detail="le mode Dérive exige au moins 3 pays (une motion doit pouvoir se débattre)",
         )
+    # Les rivalités du casting ouvrent la partie tendue (sinon toutes les paires = 0
+    # et la sélection des pays n'aurait aucun effet sur la dynamique).
+    seed_rival_tensions(world)
 
     play_as = body.play_as
     if play_as is not None and play_as not in world.countries:

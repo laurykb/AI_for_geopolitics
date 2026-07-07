@@ -28,6 +28,28 @@ def pact_id(a: str, b: str) -> str:
     return f"pact:{x}+{y}"
 
 
+# Tension d'ouverture d'une rivalité déclarée ; réciproque, la ligne de faille est plus vive.
+_RIVAL_TENSION = 0.35
+_MUTUAL_RIVAL_TENSION = 0.60
+
+
+def seed_rival_tensions(world: WorldState) -> None:
+    """Initialise les tensions d'un monde neuf depuis la matrice `rivals` du casting.
+
+    Sans cela, toutes les paires ouvrent à 0 et la sélection des pays n'a aucun effet
+    sur la dynamique (engagement, soutien au communiqué, événements du GM). Une rivalité
+    déclarée par l'un des deux ouvre la partie tendue (0,35) ; réciproque, davantage
+    (0,60 — russie↔ukraine, usa↔iran). Ne touche que les pays présents et n'écrase
+    jamais une tension déjà posée (monde restauré d'un snapshot).
+    """
+    for a, country in world.countries.items():
+        for b in country.rivals:
+            if b == a or b not in world.countries or world.get_tension(a, b) > 0.0:
+                continue
+            mutual = a in world.countries[b].rivals
+            world.adjust_tension(a, b, _MUTUAL_RIVAL_TENSION if mutual else _RIVAL_TENSION)
+
+
 class Proposal(BaseModel):
     """Offre bilatérale d'un pays vers un autre pour un round donné."""
 
