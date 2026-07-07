@@ -44,6 +44,21 @@ export const CAPITALS: Record<string, [number, number]> = {
   france: [2.35, 48.86], // Paris
   egypt: [31.24, 30.04], // Le Caire
   saudi_arabia: [46.72, 24.63], // Riyad
+  japan: [139.69, 35.68], // Tokyo
+  russia: [37.62, 55.75], // Moscou
+  germany: [13.4, 52.52], // Berlin
+  uk: [-0.13, 51.51], // Londres
+  spain: [-3.7, 40.42], // Madrid
+  italy: [12.5, 41.9], // Rome
+  mexico: [-99.13, 19.43], // Mexico
+  brazil: [-47.93, -15.78], // Brasília
+  india: [77.21, 28.61], // New Delhi
+  south_africa: [28.19, -25.75], // Pretoria
+  australia: [149.13, -35.28], // Canberra
+  morocco: [-6.85, 34.02], // Rabat
+  denmark: [12.57, 55.68], // Copenhague
+  ukraine: [30.52, 50.45], // Kyiv
+  canada: [-75.7, 45.42], // Ottawa
 };
 
 /** Centre du sommet : centroïde des capitales présentes (cible par défaut des arcs). */

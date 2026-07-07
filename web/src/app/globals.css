@@ -148,32 +148,6 @@ body {
   }
 }
 
-/* Halo doré de l'orateur + indicateur de frappe (3 points). */
-.stage-halo {
-  animation: stage-halo 1.6s ease-in-out infinite;
-}
-@keyframes stage-halo {
-  0%,
-  100% {
-    opacity: 0.9;
-  }
-  50% {
-    opacity: 0.4;
-  }
-}
-.stage-dot {
-  animation: stage-dot 0.9s ease-in-out infinite;
-}
-@keyframes stage-dot {
-  0%,
-  100% {
-    opacity: 0.25;
-  }
-  40% {
-    opacity: 1;
-  }
-}
-
 /* Voile de brouillard sur les pays désinformés. */
 .stage-veil {
   animation: stage-veil 1.2s ease-out both;
@@ -237,8 +211,6 @@ body {
   }
   .stage-pulse,
   .stage-dim,
-  .stage-halo,
-  .stage-dot,
   .stage-veil,
   .stage-breathe,
   .stage-rung-hit {

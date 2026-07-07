@@ -1,0 +1,39 @@
+{
+  "id": "italy",
+  "name": "Italie",
+  "economy": {
+    "gdp": 2376000000000.0,
+    "growth": 0.7,
+    "trade_dependency": 0.63
+  },
+  "military": {
+    "defense_budget": 30800000000.0,
+    "nuclear_power": false,
+    "projection": 0.35
+  },
+  "resources": {
+    "oil_dependency": 0.9,
+    "energy_independence": 0.25
+  },
+  "alliances": [
+    "NATO",
+    "EU",
+    "Western"
+  ],
+  "rivals": [],
+  "political_system": "democracy",
+  "political_stability": 0.58,
+  "technology_level": 0.81,
+  "compute": 18.0,
+  "ideology": [
+    "liberal_democracy",
+    "european_integration"
+  ],
+  "strategic_priorities": [
+    "mediterranean_stability",
+    "energy_diversification",
+    "export_industry"
+  ],
+  "memory_summary": "",
+  "mandate": {}
+}

@@ -2,12 +2,12 @@
   "id": "iran",
   "name": "Iran",
   "economy": {
-    "gdp": 436910000000,
+    "gdp": 436910000000.0,
     "growth": 3.5,
     "trade_dependency": 0.45
   },
   "military": {
-    "defense_budget": 7900000000,
+    "defense_budget": 7900000000.0,
     "nuclear_power": false,
     "projection": 0.5
   },
@@ -23,7 +23,7 @@
   "political_system": "theocracy",
   "political_stability": 0.12,
   "technology_level": 0.52,
-  "compute": 6,
+  "compute": 6.0,
   "ideology": [
     "revolutionary",
     "anti_western"
@@ -32,5 +32,7 @@
     "regional_influence",
     "regime_survival",
     "sanctions_relief"
-  ]
+  ],
+  "memory_summary": "",
+  "mandate": {}
 }

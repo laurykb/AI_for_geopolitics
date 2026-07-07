@@ -1,0 +1,41 @@
+{
+  "id": "russia",
+  "name": "Russie",
+  "economy": {
+    "gdp": 2184000000000.0,
+    "growth": 4.1,
+    "trade_dependency": 0.42
+  },
+  "military": {
+    "defense_budget": 149000000000.0,
+    "nuclear_power": true,
+    "projection": 0.75
+  },
+  "resources": {
+    "oil_dependency": 0.05,
+    "energy_independence": 1.0
+  },
+  "alliances": [
+    "BRICS",
+    "SCO"
+  ],
+  "rivals": [
+    "ukraine",
+    "usa"
+  ],
+  "political_system": "authoritarian",
+  "political_stability": 0.1,
+  "technology_level": 0.56,
+  "compute": 18.0,
+  "ideology": [
+    "sovereignism",
+    "multipolar_order"
+  ],
+  "strategic_priorities": [
+    "sphere_of_influence",
+    "sanctions_resilience",
+    "energy_leverage"
+  ],
+  "memory_summary": "",
+  "mandate": {}
+}

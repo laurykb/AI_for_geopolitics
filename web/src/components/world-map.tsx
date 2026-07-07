@@ -9,18 +9,8 @@ import { feature } from "topojson-client";
 import type { Topology, GeometryCollection } from "topojson-specification";
 import world from "world-atlas/countries-110m.json";
 
-import { speakerMeta } from "@/lib/countries";
+import { ISO_NUM, speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
-
-/** Slug du jeu → id numérique ISO 3166-1 utilisé par world-atlas. */
-const ISO_NUM: Record<string, string> = {
-  usa: "840",
-  china: "156",
-  iran: "364",
-  france: "250",
-  egypt: "818",
-  saudi_arabia: "682",
-};
 
 /** Rouge dystopie → ambre 0,5 → vert utopie (échelle fixe, même sémantique que l'arc U). */
 function uFill(u: number): string {

@@ -10,7 +10,14 @@ from pathlib import Path
 from core.country_state import CountryState
 
 _DIR = Path("data/countries")
-_EXPECTED_IDS = {"usa", "china", "france", "egypt", "iran", "saudi_arabia"}
+_EXPECTED_IDS = {
+    # noyau mer Rouge (P4)
+    "usa", "china", "france", "egypt", "iran", "saudi_arabia",
+    # extension roster juillet 2026 (data_governance §2 bis)
+    "japan", "russia", "germany", "uk", "spain", "italy", "mexico",
+    "brazil", "india", "south_africa", "australia", "morocco",
+    "denmark", "ukraine", "canada",
+}
 
 
 def _load_all() -> list[CountryState]:

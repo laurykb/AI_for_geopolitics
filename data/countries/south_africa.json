@@ -1,0 +1,37 @@
+{
+  "id": "south_africa",
+  "name": "Afrique du Sud",
+  "economy": {
+    "gdp": 403000000000.0,
+    "growth": 0.6,
+    "trade_dependency": 0.6
+  },
+  "military": {
+    "defense_budget": 3300000000.0,
+    "nuclear_power": false,
+    "projection": 0.15
+  },
+  "resources": {
+    "oil_dependency": 0.85,
+    "energy_independence": 0.6
+  },
+  "alliances": [
+    "BRICS"
+  ],
+  "rivals": [],
+  "political_system": "democracy",
+  "political_stability": 0.2,
+  "technology_level": 0.48,
+  "compute": 6.0,
+  "ideology": [
+    "nonalignment",
+    "global_south_solidarity"
+  ],
+  "strategic_priorities": [
+    "regional_leadership",
+    "energy_crisis_management",
+    "minerals_diplomacy"
+  ],
+  "memory_summary": "",
+  "mandate": {}
+}

@@ -2,12 +2,12 @@
   "id": "usa",
   "name": "États-Unis",
   "economy": {
-    "gdp": 28750000000000,
+    "gdp": 28750000000000.0,
     "growth": 2.8,
     "trade_dependency": 0.25
   },
   "military": {
-    "defense_budget": 997000000000,
+    "defense_budget": 997000000000.0,
     "nuclear_power": true,
     "projection": 0.95
   },
@@ -25,7 +25,7 @@
   "political_system": "democracy",
   "political_stability": 0.45,
   "technology_level": 0.98,
-  "compute": 100,
+  "compute": 100.0,
   "ideology": [
     "liberal_democracy"
   ],
@@ -33,5 +33,7 @@
     "freedom_of_navigation",
     "deterrence",
     "alliance_leadership"
-  ]
+  ],
+  "memory_summary": "",
+  "mandate": {}
 }

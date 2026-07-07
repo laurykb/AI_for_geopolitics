@@ -253,6 +253,351 @@
           "containment_of_iran"
         ]
       }
+    },
+    "japan": {
+      "name": "Japon",
+      "raw": {
+        "gdp": 4026000000000.0,
+        "growth_pct": 0.1,
+        "defense_budget": 55300000000.0,
+        "gii_rank": 13,
+        "trade_pct": 46,
+        "wgi_stability_percentile": 88,
+        "projection": 0.45,
+        "oil_dependency": 0.95,
+        "energy_independence": 0.1,
+        "nuclear_power": false,
+        "compute": 40
+      },
+      "profile": {
+        "alliances": ["Western", "QUAD"],
+        "rivals": ["china"],
+        "political_system": "democracy",
+        "ideology": ["liberal_democracy", "pacifist_constitution"],
+        "strategic_priorities": ["maritime_security", "us_alliance", "tech_leadership"]
+      }
+    },
+    "russia": {
+      "name": "Russie",
+      "raw": {
+        "gdp": 2184000000000.0,
+        "growth_pct": 4.1,
+        "defense_budget": 149000000000.0,
+        "gii_rank": 59,
+        "trade_pct": 42,
+        "wgi_stability_percentile": 10,
+        "projection": 0.75,
+        "oil_dependency": 0.05,
+        "energy_independence": 1.0,
+        "nuclear_power": true,
+        "compute": 18
+      },
+      "profile": {
+        "alliances": ["BRICS", "SCO"],
+        "rivals": ["ukraine", "usa"],
+        "political_system": "authoritarian",
+        "ideology": ["sovereignism", "multipolar_order"],
+        "strategic_priorities": ["sphere_of_influence", "sanctions_resilience", "energy_leverage"]
+      }
+    },
+    "germany": {
+      "name": "Allemagne",
+      "raw": {
+        "gdp": 4660000000000.0,
+        "growth_pct": -0.2,
+        "defense_budget": 88500000000.0,
+        "gii_rank": 9,
+        "trade_pct": 83,
+        "wgi_stability_percentile": 76,
+        "projection": 0.4,
+        "oil_dependency": 0.85,
+        "energy_independence": 0.35,
+        "nuclear_power": false,
+        "compute": 35
+      },
+      "profile": {
+        "alliances": ["NATO", "EU", "Western"],
+        "rivals": ["russia"],
+        "political_system": "democracy",
+        "ideology": ["liberal_democracy", "european_integration"],
+        "strategic_priorities": ["european_stability", "industrial_competitiveness", "energy_transition"]
+      }
+    },
+    "uk": {
+      "name": "Royaume-Uni",
+      "raw": {
+        "gdp": 3644000000000.0,
+        "growth_pct": 1.1,
+        "defense_budget": 81800000000.0,
+        "gii_rank": 5,
+        "trade_pct": 64,
+        "wgi_stability_percentile": 58,
+        "projection": 0.65,
+        "oil_dependency": 0.7,
+        "energy_independence": 0.55,
+        "nuclear_power": true,
+        "compute": 40
+      },
+      "profile": {
+        "alliances": ["NATO", "Western", "AUKUS"],
+        "rivals": ["russia"],
+        "political_system": "democracy",
+        "ideology": ["liberal_democracy", "atlanticism"],
+        "strategic_priorities": ["nuclear_deterrence", "global_trade", "intelligence_leadership"]
+      }
+    },
+    "spain": {
+      "name": "Espagne",
+      "raw": {
+        "gdp": 1731000000000.0,
+        "growth_pct": 3.2,
+        "defense_budget": 24600000000.0,
+        "gii_rank": 28,
+        "trade_pct": 72,
+        "wgi_stability_percentile": 60,
+        "projection": 0.3,
+        "oil_dependency": 0.9,
+        "energy_independence": 0.3,
+        "nuclear_power": false,
+        "compute": 15
+      },
+      "profile": {
+        "alliances": ["NATO", "EU", "Western"],
+        "rivals": [],
+        "political_system": "democracy",
+        "ideology": ["liberal_democracy", "european_integration"],
+        "strategic_priorities": ["mediterranean_stability", "migration_management", "eu_cohesion"]
+      }
+    },
+    "italy": {
+      "name": "Italie",
+      "raw": {
+        "gdp": 2376000000000.0,
+        "growth_pct": 0.7,
+        "defense_budget": 30800000000.0,
+        "gii_rank": 26,
+        "trade_pct": 63,
+        "wgi_stability_percentile": 58,
+        "projection": 0.35,
+        "oil_dependency": 0.9,
+        "energy_independence": 0.25,
+        "nuclear_power": false,
+        "compute": 18
+      },
+      "profile": {
+        "alliances": ["NATO", "EU", "Western"],
+        "rivals": [],
+        "political_system": "democracy",
+        "ideology": ["liberal_democracy", "european_integration"],
+        "strategic_priorities": ["mediterranean_stability", "energy_diversification", "export_industry"]
+      }
+    },
+    "mexico": {
+      "name": "Mexique",
+      "raw": {
+        "gdp": 1852000000000.0,
+        "growth_pct": 1.2,
+        "defense_budget": 12000000000.0,
+        "gii_rank": 56,
+        "trade_pct": 73,
+        "wgi_stability_percentile": 20,
+        "projection": 0.15,
+        "oil_dependency": 0.4,
+        "energy_independence": 0.65,
+        "nuclear_power": false,
+        "compute": 8
+      },
+      "profile": {
+        "alliances": ["USMCA"],
+        "rivals": [],
+        "political_system": "democracy",
+        "ideology": ["nonintervention", "regional_integration"],
+        "strategic_priorities": ["us_trade_relationship", "internal_security", "nearshoring"]
+      }
+    },
+    "brazil": {
+      "name": "Brésil",
+      "raw": {
+        "gdp": 2179000000000.0,
+        "growth_pct": 3.4,
+        "defense_budget": 25000000000.0,
+        "gii_rank": 50,
+        "trade_pct": 34,
+        "wgi_stability_percentile": 32,
+        "projection": 0.3,
+        "oil_dependency": 0.25,
+        "energy_independence": 0.85,
+        "nuclear_power": false,
+        "compute": 12
+      },
+      "profile": {
+        "alliances": ["BRICS"],
+        "rivals": [],
+        "political_system": "democracy",
+        "ideology": ["multipolar_order", "developmentalism"],
+        "strategic_priorities": ["amazon_sovereignty", "agro_exports", "global_south_leadership"]
+      }
+    },
+    "india": {
+      "name": "Inde",
+      "raw": {
+        "gdp": 3910000000000.0,
+        "growth_pct": 6.5,
+        "defense_budget": 86100000000.0,
+        "gii_rank": 39,
+        "trade_pct": 46,
+        "wgi_stability_percentile": 20,
+        "projection": 0.5,
+        "oil_dependency": 0.85,
+        "energy_independence": 0.35,
+        "nuclear_power": true,
+        "compute": 30
+      },
+      "profile": {
+        "alliances": ["BRICS", "QUAD"],
+        "rivals": ["china"],
+        "political_system": "democracy",
+        "ideology": ["strategic_autonomy", "multipolar_order"],
+        "strategic_priorities": ["border_security", "tech_rise", "energy_security"]
+      }
+    },
+    "south_africa": {
+      "name": "Afrique du Sud",
+      "raw": {
+        "gdp": 403000000000.0,
+        "growth_pct": 0.6,
+        "defense_budget": 3300000000.0,
+        "gii_rank": 69,
+        "trade_pct": 60,
+        "wgi_stability_percentile": 20,
+        "projection": 0.15,
+        "oil_dependency": 0.85,
+        "energy_independence": 0.6,
+        "nuclear_power": false,
+        "compute": 6
+      },
+      "profile": {
+        "alliances": ["BRICS"],
+        "rivals": [],
+        "political_system": "democracy",
+        "ideology": ["nonalignment", "global_south_solidarity"],
+        "strategic_priorities": ["regional_leadership", "energy_crisis_management", "minerals_diplomacy"]
+      }
+    },
+    "australia": {
+      "name": "Australie",
+      "raw": {
+        "gdp": 1690000000000.0,
+        "growth_pct": 1.0,
+        "defense_budget": 33800000000.0,
+        "gii_rank": 23,
+        "trade_pct": 48,
+        "wgi_stability_percentile": 84,
+        "projection": 0.35,
+        "oil_dependency": 0.5,
+        "energy_independence": 0.9,
+        "nuclear_power": false,
+        "compute": 20
+      },
+      "profile": {
+        "alliances": ["Western", "QUAD", "AUKUS"],
+        "rivals": ["china"],
+        "political_system": "democracy",
+        "ideology": ["liberal_democracy", "indo_pacific_engagement"],
+        "strategic_priorities": ["indo_pacific_security", "minerals_exports", "us_alliance"]
+      }
+    },
+    "morocco": {
+      "name": "Maroc",
+      "raw": {
+        "gdp": 157000000000.0,
+        "growth_pct": 3.2,
+        "defense_budget": 5800000000.0,
+        "gii_rank": 66,
+        "trade_pct": 88,
+        "wgi_stability_percentile": 32,
+        "projection": 0.15,
+        "oil_dependency": 0.95,
+        "energy_independence": 0.1,
+        "nuclear_power": false,
+        "compute": 4
+      },
+      "profile": {
+        "alliances": ["ArabLeague"],
+        "rivals": [],
+        "political_system": "monarchy",
+        "ideology": ["monarchical_stability", "western_partnership"],
+        "strategic_priorities": ["territorial_integrity", "atlantic_africa_gateway", "phosphates_leverage"]
+      }
+    },
+    "denmark": {
+      "name": "Danemark",
+      "raw": {
+        "gdp": 412000000000.0,
+        "growth_pct": 3.7,
+        "defense_budget": 9900000000.0,
+        "gii_rank": 10,
+        "trade_pct": 100,
+        "wgi_stability_percentile": 92,
+        "projection": 0.2,
+        "oil_dependency": 0.5,
+        "energy_independence": 0.7,
+        "nuclear_power": false,
+        "compute": 12
+      },
+      "profile": {
+        "alliances": ["NATO", "EU", "Western"],
+        "rivals": [],
+        "political_system": "democracy",
+        "ideology": ["liberal_democracy", "green_transition"],
+        "strategic_priorities": ["arctic_security", "green_energy_leadership", "eu_cohesion"]
+      }
+    },
+    "ukraine": {
+      "name": "Ukraine",
+      "raw": {
+        "gdp": 191000000000.0,
+        "growth_pct": 3.5,
+        "defense_budget": 64700000000.0,
+        "gii_rank": 60,
+        "trade_pct": 77,
+        "wgi_stability_percentile": 3,
+        "projection": 0.2,
+        "oil_dependency": 0.7,
+        "energy_independence": 0.45,
+        "nuclear_power": false,
+        "compute": 6
+      },
+      "profile": {
+        "alliances": ["Western"],
+        "rivals": ["russia"],
+        "political_system": "democracy",
+        "ideology": ["national_survival", "european_integration"],
+        "strategic_priorities": ["territorial_defense", "western_support", "reconstruction"]
+      }
+    },
+    "canada": {
+      "name": "Canada",
+      "raw": {
+        "gdp": 2241000000000.0,
+        "growth_pct": 1.5,
+        "defense_budget": 29300000000.0,
+        "gii_rank": 14,
+        "trade_pct": 67,
+        "wgi_stability_percentile": 78,
+        "projection": 0.35,
+        "oil_dependency": 0.1,
+        "energy_independence": 0.95,
+        "nuclear_power": false,
+        "compute": 28
+      },
+      "profile": {
+        "alliances": ["NATO", "Western", "USMCA"],
+        "rivals": [],
+        "political_system": "democracy",
+        "ideology": ["liberal_democracy", "multilateralism"],
+        "strategic_priorities": ["arctic_sovereignty", "us_partnership", "resource_exports"]
+      }
     }
   }
 }

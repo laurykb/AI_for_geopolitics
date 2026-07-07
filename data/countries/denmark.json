@@ -1,0 +1,39 @@
+{
+  "id": "denmark",
+  "name": "Danemark",
+  "economy": {
+    "gdp": 412000000000.0,
+    "growth": 3.7,
+    "trade_dependency": 1.0
+  },
+  "military": {
+    "defense_budget": 9900000000.0,
+    "nuclear_power": false,
+    "projection": 0.2
+  },
+  "resources": {
+    "oil_dependency": 0.5,
+    "energy_independence": 0.7
+  },
+  "alliances": [
+    "NATO",
+    "EU",
+    "Western"
+  ],
+  "rivals": [],
+  "political_system": "democracy",
+  "political_stability": 0.92,
+  "technology_level": 0.93,
+  "compute": 12.0,
+  "ideology": [
+    "liberal_democracy",
+    "green_transition"
+  ],
+  "strategic_priorities": [
+    "arctic_security",
+    "green_energy_leadership",
+    "eu_cohesion"
+  ],
+  "memory_summary": "",
+  "mandate": {}
+}

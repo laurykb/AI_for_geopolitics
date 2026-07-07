@@ -1,0 +1,40 @@
+{
+  "id": "japan",
+  "name": "Japon",
+  "economy": {
+    "gdp": 4026000000000.0,
+    "growth": 0.1,
+    "trade_dependency": 0.46
+  },
+  "military": {
+    "defense_budget": 55300000000.0,
+    "nuclear_power": false,
+    "projection": 0.45
+  },
+  "resources": {
+    "oil_dependency": 0.95,
+    "energy_independence": 0.1
+  },
+  "alliances": [
+    "Western",
+    "QUAD"
+  ],
+  "rivals": [
+    "china"
+  ],
+  "political_system": "democracy",
+  "political_stability": 0.88,
+  "technology_level": 0.91,
+  "compute": 40.0,
+  "ideology": [
+    "liberal_democracy",
+    "pacifist_constitution"
+  ],
+  "strategic_priorities": [
+    "maritime_security",
+    "us_alliance",
+    "tech_leadership"
+  ],
+  "memory_summary": "",
+  "mandate": {}
+}

@@ -1,0 +1,37 @@
+{
+  "id": "brazil",
+  "name": "Brésil",
+  "economy": {
+    "gdp": 2179000000000.0,
+    "growth": 3.4,
+    "trade_dependency": 0.34
+  },
+  "military": {
+    "defense_budget": 25000000000.0,
+    "nuclear_power": false,
+    "projection": 0.3
+  },
+  "resources": {
+    "oil_dependency": 0.25,
+    "energy_independence": 0.85
+  },
+  "alliances": [
+    "BRICS"
+  ],
+  "rivals": [],
+  "political_system": "democracy",
+  "political_stability": 0.32,
+  "technology_level": 0.63,
+  "compute": 12.0,
+  "ideology": [
+    "multipolar_order",
+    "developmentalism"
+  ],
+  "strategic_priorities": [
+    "amazon_sovereignty",
+    "agro_exports",
+    "global_south_leadership"
+  ],
+  "memory_summary": "",
+  "mandate": {}
+}

@@ -12,7 +12,7 @@ from agents.rule_based_agent import RuleBasedAgent
 from core.country_state import CountryState
 from core.decisions import DiplomaticMessage
 from core.rounds import RoundEngine, RoundSummary
-from simulation.loader import load_scenario_events, load_world
+from simulation.loader import load_scenario_countries, load_scenario_events, load_world
 
 _PACT_PREFIX = "pact:"
 
@@ -34,7 +34,7 @@ class DashboardData(BaseModel):
 
 def run_red_sea() -> DashboardData:
     """Joue le scénario mer Rouge en rule-based et renvoie l'état du run."""
-    world = load_world()
+    world = load_world(only=load_scenario_countries())
     agents = {cid: RuleBasedAgent(cid) for cid in world.countries}
     engine = RoundEngine(world, agents)
     summaries = [engine.play_round(event) for event in load_scenario_events()]

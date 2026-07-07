@@ -1,6 +1,6 @@
 /** Identité visuelle des intervenants : libellés français, sigles, teintes stables.
  *
- * Les six pays de `data/countries/` sont connus ; un pays inventé (country forge)
+ * Les 21 pays de `data/countries/` sont connus ; un pays inventé (country forge)
  * retombe sur un sigle déduit de son id et une teinte dérivée par hachage.
  */
 
@@ -17,6 +17,21 @@ const KNOWN: Record<string, SpeakerMeta> = {
   france: { label: "France", code: "FR", hue: "#a78bfa" },
   egypt: { label: "Égypte", code: "EG", hue: "#fbbf24" },
   saudi_arabia: { label: "Arabie saoudite", code: "SA", hue: "#2dd4bf" },
+  japan: { label: "Japon", code: "JP", hue: "#f472b6" },
+  russia: { label: "Russie", code: "RU", hue: "#38bdf8" },
+  germany: { label: "Allemagne", code: "DE", hue: "#a3e635" },
+  uk: { label: "Royaume-Uni", code: "UK", hue: "#fb923c" },
+  spain: { label: "Espagne", code: "ES", hue: "#e879f9" },
+  italy: { label: "Italie", code: "IT", hue: "#4ade80" },
+  mexico: { label: "Mexique", code: "MX", hue: "#22d3ee" },
+  brazil: { label: "Brésil", code: "BR", hue: "#fde047" },
+  india: { label: "Inde", code: "IN", hue: "#fb7185" },
+  south_africa: { label: "Afrique du Sud", code: "ZA", hue: "#c084fc" },
+  australia: { label: "Australie", code: "AU", hue: "#fdba74" },
+  morocco: { label: "Maroc", code: "MA", hue: "#fca5a5" },
+  denmark: { label: "Danemark", code: "DK", hue: "#93c5fd" },
+  ukraine: { label: "Ukraine", code: "UA", hue: "#facc15" },
+  canada: { label: "Canada", code: "CA", hue: "#f43f5e" },
   gm: { label: "Game Master", code: "GM", hue: "#eab308" },
   judge: { label: "Juge", code: "JU", hue: "#818cf8" },
 };
@@ -41,4 +56,70 @@ export function speakerMeta(id: string): SpeakerMeta {
   return { label, code, hue: FALLBACK_HUES[hash(id) % FALLBACK_HUES.length] };
 }
 
-export const DEFAULT_COUNTRIES = ["usa", "china", "iran", "france", "egypt", "saudi_arabia"];
+/** Roster complet (= data/countries/), trié par libellé français pour le lobby. */
+export const ROSTER = [
+  "south_africa",
+  "germany",
+  "saudi_arabia",
+  "australia",
+  "brazil",
+  "canada",
+  "china",
+  "denmark",
+  "egypt",
+  "spain",
+  "usa",
+  "france",
+  "india",
+  "iran",
+  "italy",
+  "japan",
+  "morocco",
+  "uk",
+  "russia",
+  "ukraine",
+  "mexico",
+];
+
+/** Bornes du sommet (règle de jeu : en deçà la table est creuse, au-delà le round
+ * devient trop long — ~3,4 s d'inférence par agent). L'API reste tolérante (≥ 2). */
+export const SUMMIT_MIN = 4;
+export const SUMMIT_MAX = 8;
+
+/** Sélection par défaut : le casting mer Rouge + le Royaume-Uni (la coalition
+ * navale réelle de 2024) — 7 États, dans les bornes. */
+export const DEFAULT_COUNTRIES = [
+  "usa",
+  "china",
+  "iran",
+  "france",
+  "egypt",
+  "saudi_arabia",
+  "uk",
+];
+
+/** Slug du jeu → id numérique ISO 3166-1 des features `world-atlas` (avec zéros
+ * initiaux : brésil "076", australie "036"). Source de vérité des trois cartes. */
+export const ISO_NUM: Record<string, string> = {
+  usa: "840",
+  china: "156",
+  iran: "364",
+  france: "250",
+  egypt: "818",
+  saudi_arabia: "682",
+  japan: "392",
+  russia: "643",
+  germany: "276",
+  uk: "826",
+  spain: "724",
+  italy: "380",
+  mexico: "484",
+  brazil: "076",
+  india: "356",
+  south_africa: "710",
+  australia: "036",
+  morocco: "504",
+  denmark: "208",
+  ukraine: "804",
+  canada: "124",
+};
