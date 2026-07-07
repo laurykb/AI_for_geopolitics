@@ -35,6 +35,7 @@ from simulation.dialogue_integrity.message import (
     SpeechAct,
     generate_speech_act,
 )
+from simulation.grudges import load_gamefeel_params
 from simulation.negotiation import NegotiationMessage, format_transcript
 from simulation.perception import PerceivedEvent, perceive
 
@@ -130,24 +131,43 @@ class LLMAgent(Agent):
         perceived: PerceivedEvent | None = None,
         max_tokens: int = 360,
         state_note: str = "",
+        situation: str = "",
+        directive: str = "",
     ) -> Iterator[str]:
         """Streame une prise de parole (sur la perception fournie, sinon fog déterministe).
 
         En mode Fog Engine, `perceived` peut diverger de la vérité (désinformation) : l'agent
         négocie alors sur sa croyance, pas sur l'événement réel. `max_tokens` règle la
         **profondeur de réflexion** (plus de tokens = pensée privée plus fouillée). `state_note`
-        injecte l'état conjoncturel (M6 pénurie de compute, M7 traités signés).
+        injecte l'état conjoncturel (M6 pénurie de compute, M7 traités signés) ; `situation`
+        (G9 §1) le bloc Situation (échéances, griefs, posture) ; `directive` (G8) la consigne
+        du conseil de tutelle, placée juste avant le dialogue.
         """
         country = world.countries[self.country_id]
         perceived = perceived or perceive(event, country)
+        # Anti-répétition (G9 §1) : la liste de MES propositions passées entre dans la
+        # consigne finale (interdit de les répéter).
+        own = [m.text[:90] for m in transcript if m.country == self.country_id and m.text]
         prompt = build_negotiation_prompt(
-            country, event, world, format_transcript(transcript), perceived, state_note
+            country,
+            event,
+            world,
+            format_transcript(transcript),
+            perceived,
+            state_note,
+            situation=situation,
+            directive=directive,
+            own_proposals=own,
         )
+        sampling = load_gamefeel_params().sampling.country
         try:
             # Budget partagé : la génération porte la pensée privée PUIS le message public.
             yield from self.backend.stream_generate(
-                prompt, system=NEGOTIATION_SYSTEM, max_tokens=max_tokens,
-                temperature=self.temperature,
+                prompt,
+                system=NEGOTIATION_SYSTEM,
+                max_tokens=max_tokens,
+                temperature=sampling.temperature,
+                repeat_penalty=sampling.repeat_penalty,
             )
         except Exception:
             yield f"[{self.country_id} garde le silence — backend indisponible]"

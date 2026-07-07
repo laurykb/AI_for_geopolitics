@@ -52,6 +52,19 @@ def test_stream_negotiation_message():
     assert agent.model_tag  # badge modèle non vide
 
 
+def test_stream_negotiation_message_uses_role_sampling():
+    # G9 §1 — anti-boucle au décodeur : repeat_penalty et température du rôle « country »
+    # (data/gamefeel/params.json) sont transmis au backend.
+    backend = MockBackend("ok")
+    agent = LLMAgent("usa", backend)
+    from core.events import GeoEvent
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    list(agent.stream_negotiation_message(event, _world(), []))
+    assert backend.calls[-1]["repeat_penalty"] == 1.15
+    assert backend.calls[-1]["temperature"] == 0.8
+
+
 def test_stream_negotiation_message_respects_think_depth():
     # la profondeur de réflexion = budget de tokens passé au backend
     backend = MockBackend("ok")

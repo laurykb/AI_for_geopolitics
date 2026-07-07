@@ -346,6 +346,8 @@ def run_negotiation_round(
     human_country: str | None = None,
     flash_after: int | None = None,
     secret_notes: dict[str, str] | None = None,
+    situations: dict[str, str] | None = None,
+    directives: dict[str, str] | None = None,
     deadlines: list[str] | None = None,
     tuning: DeltaTuning | None = None,
 ) -> Iterator[RoundStep]:
@@ -444,6 +446,8 @@ def run_negotiation_round(
                 transcript,
                 perceived,
                 state_note=(secret_notes or {}).get(cid, ""),
+                situation=(situations or {}).get(cid, ""),
+                directive=(directives or {}).get(cid, ""),
             ):
                 chunks.append(token)
                 yield TokenStep(country=cid, token=token)

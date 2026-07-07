@@ -53,6 +53,7 @@ class CapturingBackend(InferenceBackend):
         temperature: float = 0.7,
         schema: dict[str, Any] | None = None,
         plain: bool = False,
+        repeat_penalty: float | None = None,
     ) -> InferenceResult:
         self._sink.append(CapturedPrompt(self._country, self._role, _full_text(prompt, system)))
         return self._inner.generate(
@@ -62,6 +63,7 @@ class CapturingBackend(InferenceBackend):
             temperature=temperature,
             schema=schema,
             plain=plain,
+            repeat_penalty=repeat_penalty,
         )
 
     def stream_generate(
@@ -71,10 +73,15 @@ class CapturingBackend(InferenceBackend):
         system: str | None = None,
         max_tokens: int = 512,
         temperature: float = 0.7,
+        repeat_penalty: float | None = None,
     ) -> Iterator[str]:
         self._sink.append(CapturedPrompt(self._country, self._role, _full_text(prompt, system)))
         yield from self._inner.stream_generate(
-            prompt, system=system, max_tokens=max_tokens, temperature=temperature
+            prompt,
+            system=system,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            repeat_penalty=repeat_penalty,
         )
 
     def __getattr__(self, name: str) -> Any:

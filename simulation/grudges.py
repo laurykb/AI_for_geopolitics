@@ -226,6 +226,22 @@ class GrudgeBook(BaseModel):
 
     # --- rendu prompt ---------------------------------------------------------------
 
+    def stance_line(self, owner: str, names: dict[str, str]) -> str:
+        """G9 §1 — le solde de griefs en UNE ligne pour le bloc Situation du prompt :
+        « TES RELATIONS : méfiance envers France (a rompu le pacte (round 3)) ; … »."""
+        parts: list[str] = []
+        for target in sorted(self.grudges.get(owner, {})):
+            bal = self.balance(owner, target)
+            if bal == 0:
+                continue
+            stance = (
+                "méfiance" if bal <= _WARY_AT else "confiance" if bal >= _TRUST_AT else "prudence"
+            )
+            last = self.last_grief(owner, target)
+            reason = f" ({last.summary})" if last else ""
+            parts.append(f"{stance} envers {names.get(target, target)}{reason}")
+        return f"TES RELATIONS : {' ; '.join(parts)}." if parts else ""
+
     def prompt_lines(self, owner: str, names: dict[str, str]) -> list[str]:
         """Une ligne de posture par relation à solde non nul, citable par la SI.
 

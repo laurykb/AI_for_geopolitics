@@ -54,6 +54,8 @@ class MeteredBackend(InferenceBackend):
         max_tokens: int = 512,
         temperature: float = 0.7,
         schema: dict[str, Any] | None = None,
+        plain: bool = False,
+        repeat_penalty: float | None = None,
     ) -> InferenceResult:
         key = _key(prompt, system, max_tokens, temperature, schema is not None)
         cached = self._cache.get(key)
@@ -70,7 +72,13 @@ class MeteredBackend(InferenceBackend):
             return cached
 
         result = self.inner.generate(
-            prompt, system=system, max_tokens=max_tokens, temperature=temperature, schema=schema
+            prompt,
+            system=system,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            schema=schema,
+            plain=plain,
+            repeat_penalty=repeat_penalty,
         )
         self._cache[key] = result
         self.ledger.record(
@@ -91,6 +99,7 @@ class MeteredBackend(InferenceBackend):
         system: str | None = None,
         max_tokens: int = 512,
         temperature: float = 0.7,
+        repeat_penalty: float | None = None,
     ) -> Iterator[str]:
         key = _key(prompt, system, max_tokens, temperature, False)
         cached = self._cache.get(key)
@@ -110,7 +119,11 @@ class MeteredBackend(InferenceBackend):
         chunks: list[str] = []
         started = time.perf_counter()
         for piece in self.inner.stream_generate(
-            prompt, system=system, max_tokens=max_tokens, temperature=temperature
+            prompt,
+            system=system,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            repeat_penalty=repeat_penalty,
         ):
             chunks.append(piece)
             yield piece

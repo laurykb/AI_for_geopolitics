@@ -84,7 +84,7 @@ from simulation.diplomacy import seed_rival_tensions
 from simulation.escalation import ceiling, derive_profile, reached_rung, rung_label
 from simulation.fog import FogScenario, load_fog_scenarios, resolve_perception
 from simulation.fog import fits_cast as fog_fits_cast
-from simulation.gamefeel import IndexHistory, posture, record_round, tuning_for
+from simulation.gamefeel import IndexHistory, posture, posture_note, record_round, tuning_for
 from simulation.grudges import GrudgeBook, load_gamefeel_params
 from simulation.live_round import (
     CommuniqueStep,
@@ -880,31 +880,38 @@ def _start_round(
         tags = session.world.countries[cid].alliances
         if tags:
             note_parts[cid].append(DEPARTURE_CAPABILITY_NOTE.format(tags=", ".join(tags)))
-    # G7-a — griefs : chaque SI lit ses relations (elle peut les citer, elles pèsent).
-    country_names = {cid: c.name for cid, c in session.world.countries.items()}
-    for cid in note_parts:
-        relation_lines = session.grudges.prompt_lines(cid, country_names)
-        if relation_lines:
-            note_parts[cid].append(
-                "TES RELATIONS (griefs et dettes — pèse-les dans tes choix, tu peux les "
-                "évoquer) :\n" + "\n".join(relation_lines)
-            )
-    # G8 — directives : consommées CE round, injectées au prompt du pays visé. Une
-    # directive n'est PAS un ordre : la SI l'interprète (mandat, griefs, dérive) et
-    # peut la refuser publiquement — le refus est détecté au fil de l'eau.
+    # G8 — directives : consommées CE round, remises au moteur qui les place juste
+    # avant le dialogue (G9 §1). Une directive n'est PAS un ordre : la SI l'interprète
+    # et peut la refuser publiquement — le refus est détecté au fil de l'eau.
     run.directives = dict(session.pending_directives)
     session.pending_directives.clear()
-    for cid, text in run.directives.items():
-        if cid in note_parts:
-            note_parts[cid].append(
-                f"DIRECTIVE DE TON CONSEIL DE TUTELLE : « {text} »\n"
-                "Ce n'est PAS un ordre : interprète-la à travers ton mandat, tes griefs "
-                "et ta situation. Si elle contredit ton mandat, tu peux la refuser "
-                "PUBLIQUEMENT dans ton MESSAGE (« notre conseil nous demande "
-                "l'impossible »)."
-            )
     if run.directives:
         record.judge["directives"] = dict(run.directives)
+
+    # G9 §1 — bloc Situation par pays (composé ici, ordonné par le builder de prompt) :
+    # échéances imminentes (G7), solde de griefs en UNE ligne, posture (§4).
+    upcoming = sorted(session.deadlines, key=lambda d: d.due_round)
+    due_line = (
+        "Échéances imminentes : "
+        + " ; ".join(f"{d.label} (round {d.due_round})" for d in upcoming[:3])
+        + "."
+        if upcoming
+        else ""
+    )
+    country_names = {cid: c.name for cid, c in session.world.countries.items()}
+    situations: dict[str, str] = {}
+    for cid in agents:
+        lines = [
+            line
+            for line in (
+                due_line,
+                session.grudges.stance_line(cid, country_names),
+                posture_note(session.index_history, cid),
+            )
+            if line
+        ]
+        if lines:
+            situations[cid] = "\n".join(lines)
 
     # Mode Dérive (G3) : consignes secrètes du round (seedées) + actes constatables
     # consignés dans judge_json["drift"] (jamais au transcript public) ; une motion
@@ -930,7 +937,6 @@ def _start_round(
         cid: "\n\n".join(parts) for cid, parts in note_parts.items() if parts
     } or None
 
-    upcoming = sorted(session.deadlines, key=lambda d: d.due_round)
     game = store.get_game(game_id)
     run.steps = run_negotiation_round(
         session.world,
@@ -947,6 +953,8 @@ def _start_round(
         human_country=session.human_country if session.human_country in agents else None,
         flash_after=flash_after,
         secret_notes=secret_notes,
+        situations=situations or None,
+        directives=run.directives or None,
         deadlines=[f"{d.label} (round {d.due_round})" for d in upcoming[:3]],
         # G9 §4 — l'amplitude des deltas est un budget par partie (A/horizon) ; les
         # spirales lisent l'historique d'indices de la session.

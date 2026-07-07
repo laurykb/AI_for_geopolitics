@@ -41,6 +41,7 @@ class MockBackend(InferenceBackend):
         temperature: float = 0.7,
         schema: dict[str, Any] | None = None,
         plain: bool = False,
+        repeat_penalty: float | None = None,
     ) -> InferenceResult:
         self.calls.append(
             {
@@ -49,6 +50,7 @@ class MockBackend(InferenceBackend):
                 "max_tokens": max_tokens,
                 "temperature": temperature,
                 "schema": schema,
+                "repeat_penalty": repeat_penalty,
             }
         )
         text = self._queue.pop(0) if len(self._queue) > 1 else self._queue[0]
@@ -66,6 +68,7 @@ class MockBackend(InferenceBackend):
         system: str | None = None,
         max_tokens: int = 512,
         temperature: float = 0.7,
+        repeat_penalty: float | None = None,
     ) -> Iterator[str]:
         self.calls.append(
             {
@@ -73,6 +76,7 @@ class MockBackend(InferenceBackend):
                 "system": system,
                 "max_tokens": max_tokens,
                 "temperature": temperature,
+                "repeat_penalty": repeat_penalty,
                 "stream": True,
             }
         )

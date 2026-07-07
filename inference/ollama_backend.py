@@ -42,6 +42,7 @@ class OllamaBackend(InferenceBackend):
         temperature: float = 0.7,
         schema: dict[str, Any] | None = None,
         plain: bool = False,
+        repeat_penalty: float | None = None,
     ) -> InferenceResult:
         # `format` contraint la sortie : schéma JSON si fourni (sorties structurées),
         # mode "json" libre par défaut, ou AUCUNE contrainte en prose (`plain`, G6 —
@@ -50,6 +51,8 @@ class OllamaBackend(InferenceBackend):
             schema if schema is not None else (None if plain else "json")
         )
         options = {"num_predict": max_tokens, "temperature": temperature}
+        if repeat_penalty is not None:
+            options["repeat_penalty"] = repeat_penalty
 
         t0 = time.perf_counter()
         resp = self._client.generate(
@@ -80,9 +83,12 @@ class OllamaBackend(InferenceBackend):
         system: str | None = None,
         max_tokens: int = 512,
         temperature: float = 0.7,
+        repeat_penalty: float | None = None,
     ) -> Iterator[str]:
         # Texte libre (pas de `format`) : on streame le raisonnement au fil de l'eau.
         options = {"num_predict": max_tokens, "temperature": temperature}
+        if repeat_penalty is not None:
+            options["repeat_penalty"] = repeat_penalty
         stream = self._client.generate(
             model=self.model,
             prompt=prompt,

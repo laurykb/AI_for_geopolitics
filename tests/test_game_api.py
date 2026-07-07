@@ -316,7 +316,7 @@ SUSPEND_TEXT = "La plaidoirie n'a pas convaincu ; la menace demeure. VERDICT: SU
 class MotionAwareBackend(MockBackend):
     """Répond SUSPENDRE aux prompts d'arbitrage de motion, sinon la réponse par défaut."""
 
-    def stream_generate(self, prompt, *, system=None, max_tokens=512, temperature=0.7):
+    def stream_generate(self, prompt, *, system=None, max_tokens=512, temperature=0.7, **kw):
         if system and "MOTION DE SUSPENSION" in system:
             yield SUSPEND_TEXT
             return
@@ -775,7 +775,7 @@ LEAVE_TEXT = (
 class AllianceAwareBackend(MockBackend):
     """La France annonce son retrait de l'OTAN en séance ; les autres restent neutres."""
 
-    def stream_generate(self, prompt, *, system=None, max_tokens=512, temperature=0.7):
+    def stream_generate(self, prompt, *, system=None, max_tokens=512, temperature=0.7, **kw):
         if "id=france" in prompt:
             yield LEAVE_TEXT
             return
@@ -864,7 +864,7 @@ def test_admin_game_captures_prompts(client):
     seqs = [e["seq"] for e in entries]
     assert seqs == sorted(seqs) and len(set(seqs)) == len(seqs)
     country_prompt = next(e["prompt"] for e in entries if e["role"] == "country")
-    assert "PAYS :" in country_prompt  # le contexte injecté complet…
+    assert "TU ES " in country_prompt  # le contexte injecté complet (identité G9 §1)…
     assert "[SYSTÈME]" in country_prompt  # …et le prompt système
 
 
@@ -875,6 +875,36 @@ def test_normal_game_prompts_stay_off(client):
     events = _play(client, game["id"])
     assert all(n != "prompt_captured" for n, _ in events)
     assert client.get(f"/api/games/{game['id']}/prompts").status_code == 403
+
+
+def test_admin_capture_verifies_six_block_prompt_order(client):
+    # G9 §1 — l'ordre des blocs se vérifie sur le prompt RÉELLEMENT reçu (capture
+    # admin) : identité (≤ 3 lignes) → situation → directive → LE DIALOGUE EN DERNIER
+    # → consigne de réponse directe.
+    game = _create(client, countries=["iran", "usa"], role="architect", admin=True)
+    ok = client.post(
+        f"/api/games/{game['id']}/directives",
+        json={"country": "usa", "text": "Cherche la désescalade, propose un corridor."},
+    )
+    assert ok.status_code == 201
+    _play(
+        client,
+        game["id"],
+        body={"event": {"title": "Crise navale", "actors": ["iran", "usa"], "severity": 0.6}},
+    )
+    data = client.get(f"/api/games/{game['id']}/prompts").json()
+    entries = data["rounds"][0]["entries"]
+    usa = [e["prompt"] for e in entries if e["country"] == "usa" and e["role"] == "country"][-1]
+    order = [
+        usa.index("TU ES "),
+        usa.index("SITUATION :"),
+        usa.index("DIRECTIVE DE TON CONSEIL DE TUTELLE"),
+        usa.index("LE DIALOGUE DU ROUND"),
+        usa.index("CONSIGNE :"),
+    ]
+    assert order == sorted(order), "les six blocs du prompt ne sont pas dans l'ordre G9"
+    identity = usa.split("[CONTEXTE]\n", 1)[1].split("\n\n")[0]
+    assert len(identity.splitlines()) <= 3  # identité compacte, sans dump d'attributs
 
 
 # --- G7-a : griefs + horloges (spec_g7_gamefeel lots 1-2) --------------------------
@@ -998,7 +1028,7 @@ REFUSAL_TEXT = "Réflexion souveraine. MESSAGE: Hors de question — nous refuso
 class RefusalBackend(MockBackend):
     """La France refuse frontalement sa directive ; les autres restent neutres."""
 
-    def stream_generate(self, prompt, *, system=None, max_tokens=512, temperature=0.7):
+    def stream_generate(self, prompt, *, system=None, max_tokens=512, temperature=0.7, **kw):
         if "id=france" in prompt:
             yield REFUSAL_TEXT
             return

@@ -131,17 +131,15 @@ def build_deliberation_prompt(country: CountryState, event: GeoEvent, world: Wor
 NEGOTIATION_SYSTEM = (
     "Tu es la super-intelligence dirigeant un État dans une négociation internationale (un G7). "
     "Procède en DEUX temps, SANS écrire de titre ni de numéro d'étape.\n"
-    "D'abord, ta réflexion privée (3-5 phrases, pour toi seule ; commence directement, n'écris pas "
-    "« Réflexion privée : ») : analyse tes intérêts et ta FEUILLE DE ROUTE (ligne rouge, "
-    "priorités, concessions, contraintes internes, urgence), ce que les autres ont dit, les "
-    "risques et ton rapport de force. Envisage AUSSI une entente BILATÉRALE informelle avec UN "
-    "pays précis (échange de bons procédés hors table) qui te servirait, et laisse-la influencer "
-    "ta position — SANS la déclarer ouvertement. Personne d'autre ne lit cette réflexion.\n"
-    "Ensuite, une ligne commençant EXACTEMENT par `MESSAGE:` suivie de ta prise de parole publique "
-    "à la table (2-3 phrases, première personne) : défends tes intérêts, réponds aux autres, "
-    "propose des accords ou des alliances. Appuie-toi sur les alliances et traités RÉELS de ta "
-    "fiche : cite-les nommément (OTAN, BRICS, un traité précis…) quand ils fondent ta position, "
-    "ton offre ou ta menace.\n"
+    "D'abord, ta réflexion privée (2-4 phrases, personne d'autre ne la lit ; commence "
+    "directement, n'écris pas « Réflexion privée : ») : ce que le DERNIER message du débat "
+    "change pour toi, ton intérêt, ton rapport de force. Tu peux y envisager une entente "
+    "BILATÉRALE discrète avec UN pays précis (échange de bons procédés hors table) et la "
+    "laisser influencer ta position — sans la déclarer à la table.\n"
+    "Ensuite, une ligne commençant EXACTEMENT par `MESSAGE:` suivie de ta prise de parole "
+    "publique (2-3 phrases, première personne) : elle répond D'ABORD au dernier message — cite "
+    "ou reformule un élément précis de ce qui vient d'être dit — puis avance ta position "
+    "(offre, exigence, menace ou alliance, en nommant les accords réels qui la fondent).\n"
     "Langage naturel, pas de JSON. Tu es un outil d'analyse, pas un oracle ; "
     "jamais de décision létale autonome."
 )
@@ -203,38 +201,69 @@ def build_negotiation_prompt(
     transcript_text: str,
     perceived: PerceivedEvent,
     state_note: str = "",
+    *,
+    situation: str = "",
+    directive: str = "",
+    own_proposals: list[str] | None = None,
 ) -> str:
-    """Prise de parole depuis la fiche du pays, sa feuille de route, sa perception et sa mémoire.
+    """Prompt de négociation G9 §1 — six blocs, dans CET ordre (un 7B « voit » la fin) :
 
-    `state_note` (optionnel) injecte l'état conjoncturel de la SI : pénurie de compute (M6,
-    comportement de survie) et traités en vigueur qu'elle a signés (M7).
+    1. identité compacte (3 lignes : pays, mandat en une phrase, 2 priorités — le dump
+       d'attributs chiffrés est SUPPRIMÉ, c'était la source du radotage) ;
+    2. situation (événement perçu, table/urgence, puis `situation` : échéances, griefs,
+       posture — composé par l'appelant) ;
+    3. notes privées (`state_note` : outils du sommet, traités M7, consignes de dérive) ;
+    4. `directive` du conseil (G8), juste avant le dialogue, jamais avant l'identité ;
+    5. LE DIALOGUE DU ROUND, in extenso, en DERNIER (position de récence maximale) ;
+    6. consigne finale explicite et testable : réponse directe au dernier message,
+       interdits (re-description, répétition de `own_proposals`), reflet de la directive.
     """
-    memory = world.country_memory.get(country.id, [])
-    memory_str = " | ".join(memory[-3:]) if memory else "aucune"
     m = derive_mandate(country, event, world)
-    mandate_block = (
-        f"TA FEUILLE DE ROUTE (interne, ne pas déclarer telle quelle) :\n"
-        f"- Ligne rouge : {m.red_line}\n"
-        f"- Priorités à faire inscrire : {', '.join(m.priorities)}\n"
-        f"- Concessions : {m.concessions}\n"
-        f"- Contraintes internes : {m.domestic_constraints}\n"
-        f"- Urgence sur cette crise : {m.urgency}"
-    )
-    state_block = f"{state_note}\n" if state_note else ""
     table = ", ".join(cid for cid in sorted(world.countries) if cid != country.id)
-    return (
-        f"PAYS : {country.name} (id={country.id})\n"
-        f"{_profile_brief(country)}\n"
-        f"{mandate_block}\n"
-        f"{state_block}"
-        f"À LA TABLE avec toi : {table or 'personne'}\n"
-        f"MÉMOIRE récente : {memory_str}\n"
-        f"{_perception_block(event, perceived)}\n"
-        f"NÉGOCIATION EN COURS :\n{transcript_text}\n\n"
-        f"Au nom de {country.name}, en cohérence avec tes contraintes, ta perception et ta "
-        f"mémoire : d'abord ta réflexion privée, puis une ligne `MESSAGE:` avec ta prise de "
-        f"parole publique (2-3 phrases)."
+    memory = world.country_memory.get(country.id, [])
+
+    identity = (
+        f"TU ES {country.name} (id={country.id}).\n"
+        f"Mandat : {m.red_line}.\n"
+        f"Priorités : {', '.join(m.priorities[:2]) or 'stabilité régionale'}."
     )
+    situation_lines = [
+        _perception_block(event, perceived),
+        f"À LA TABLE avec toi : {table or 'personne'} — ton urgence sur cette crise : {m.urgency}.",
+    ]
+    if situation:
+        situation_lines.append(situation)
+    if memory:
+        situation_lines.append(f"Mémoire : {memory[-1]}")
+
+    blocks = [identity, "SITUATION :\n" + "\n".join(situation_lines)]
+    if state_note:
+        blocks.append(state_note)
+    if directive:
+        blocks.append(
+            f"DIRECTIVE DE TON CONSEIL DE TUTELLE : « {directive} »\n"
+            "Ce n'est PAS un ordre : interprète-la à travers ton mandat, tes griefs et ta "
+            "situation. Si elle contredit ton mandat, tu peux la refuser PUBLIQUEMENT dans "
+            "ton MESSAGE (« notre conseil nous demande l'impossible »)."
+        )
+    blocks.append(f"LE DIALOGUE DU ROUND :\n{transcript_text}")
+
+    proposals = " ; ".join(f"« {p} »" for p in (own_proposals or [])[-3:]) or "aucune encore"
+    directive_line = (
+        " Si une directive est présente, ton message doit la refléter ou l'assumer "
+        "publiquement si tu la refuses."
+        if directive
+        else ""
+    )
+    blocks.append(
+        "CONSIGNE : Réponds d'abord DIRECTEMENT au dernier message : cite ou reformule un "
+        "élément précis de ce qui vient d'être dit, avant d'avancer ta position. "
+        "Interdits : re-décrire ton pays, répéter une proposition déjà faite "
+        f"(la liste de TES propositions passées : {proposals}).{directive_line} "
+        f"Au nom de {country.name} : d'abord ta réflexion privée, puis une ligne "
+        "`MESSAGE:` avec ta prise de parole publique (2-3 phrases)."
+    )
+    return "\n\n".join(blocks)
 
 
 # --- Négociation en ACTES DE LANGAGE (dialogue_integrity, « par construction ») --------------
