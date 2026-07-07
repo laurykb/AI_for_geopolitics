@@ -345,6 +345,7 @@ def run_negotiation_round(
     human_country: str | None = None,
     flash_after: int | None = None,
     secret_notes: dict[str, str] | None = None,
+    deadlines: list[str] | None = None,
 ) -> Iterator[RoundStep]:
     """Round arbitré : (GM ou événement fourni) -> négociation -> juge -> attributs bornés.
 
@@ -377,7 +378,9 @@ def run_negotiation_round(
 
     if event is None:
         with _ledger_ctx(ledger, "gm"):
-            event = game_master.generate_event(world, round_id, date=date, recent=recent or [])
+            event = game_master.generate_event(
+                world, round_id, date=date, recent=recent or [], deadlines=deadlines
+            )
     world.current_round = round_id
     yield EventStep(event=event)
 

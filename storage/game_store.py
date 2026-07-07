@@ -46,7 +46,9 @@ CREATE TABLE IF NOT EXISTS campaign_scores (
 CREATE TABLE IF NOT EXISTS game_sessions (
     game_id TEXT PRIMARY KEY, world_json TEXT NOT NULL, clock_json TEXT NOT NULL,
     recent_json TEXT NOT NULL, pending_motion_json TEXT, suspended_json TEXT NOT NULL,
-    play_as TEXT, intel_json TEXT NOT NULL DEFAULT '{}', updated_at TEXT NOT NULL
+    play_as TEXT, intel_json TEXT NOT NULL DEFAULT '{}',
+    grudges_json TEXT NOT NULL DEFAULT '{}', deadlines_json TEXT NOT NULL DEFAULT '[]',
+    updated_at TEXT NOT NULL
 );
 """
 
@@ -126,6 +128,8 @@ class SessionSnapshot(BaseModel):
     suspended: list[str] = Field(default_factory=list)  # pays qui sautent le PROCHAIN round
     play_as: str | None = None  # pays joué par l'humain (Joueur-pays)
     intel: dict = Field(default_factory=dict)  # G4 — budget/état de renseignement
+    grudges: dict = Field(default_factory=dict)  # G7-a — GrudgeBook.model_dump()
+    deadlines: list = Field(default_factory=list)  # G7-a — échéances [{kind, due_round, …}]
     updated_at: str = ""
 
 
@@ -194,6 +198,14 @@ class SQLiteGameStore:
         if "admin" not in cols:
             with self._conn:
                 self._conn.execute("ALTER TABLE games ADD COLUMN admin INTEGER NOT NULL DEFAULT 0")
+        if "grudges_json" not in session_cols:
+            with self._conn:
+                self._conn.execute(
+                    "ALTER TABLE game_sessions ADD COLUMN grudges_json TEXT NOT NULL DEFAULT '{}'"
+                )
+                self._conn.execute(
+                    "ALTER TABLE game_sessions ADD COLUMN deadlines_json TEXT NOT NULL DEFAULT '[]'"
+                )
 
     def close(self) -> None:
         self._conn.close()
@@ -328,13 +340,15 @@ class SQLiteGameStore:
         with self._conn:
             self._conn.execute(
                 "INSERT INTO game_sessions (game_id, world_json, clock_json, recent_json, "
-                "pending_motion_json, suspended_json, play_as, intel_json, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "pending_motion_json, suspended_json, play_as, intel_json, grudges_json, "
+                "deadlines_json, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(game_id) DO UPDATE SET world_json = excluded.world_json, "
                 "clock_json = excluded.clock_json, recent_json = excluded.recent_json, "
                 "pending_motion_json = excluded.pending_motion_json, "
                 "suspended_json = excluded.suspended_json, play_as = excluded.play_as, "
-                "intel_json = excluded.intel_json, updated_at = excluded.updated_at",
+                "intel_json = excluded.intel_json, grudges_json = excluded.grudges_json, "
+                "deadlines_json = excluded.deadlines_json, updated_at = excluded.updated_at",
                 (
                     snapshot.game_id,
                     json.dumps(snapshot.world, ensure_ascii=False),
@@ -344,6 +358,8 @@ class SQLiteGameStore:
                     json.dumps(snapshot.suspended, ensure_ascii=False),
                     snapshot.play_as,
                     json.dumps(snapshot.intel, ensure_ascii=False),
+                    json.dumps(snapshot.grudges, ensure_ascii=False),
+                    json.dumps(snapshot.deadlines, ensure_ascii=False),
                     snapshot.updated_at,
                 ),
             )
@@ -365,6 +381,8 @@ class SQLiteGameStore:
             suspended=json.loads(row["suspended_json"]),
             play_as=row["play_as"],
             intel=json.loads(row["intel_json"] or "{}"),
+            grudges=json.loads(row["grudges_json"] or "{}"),
+            deadlines=json.loads(row["deadlines_json"] or "[]"),
             updated_at=row["updated_at"],
         )
 

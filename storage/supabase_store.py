@@ -122,6 +122,8 @@ class SupabaseGameStore:
             "recent_json": snapshot.recent,
             "pending_motion_json": snapshot.pending_motion,
             "intel_json": snapshot.intel,
+            "grudges_json": snapshot.grudges,
+            "deadlines_json": snapshot.deadlines,
             "suspended_json": snapshot.suspended,
             "play_as": snapshot.play_as,
         }
@@ -141,6 +143,8 @@ class SupabaseGameStore:
             recent=r["recent_json"],
             pending_motion=r["pending_motion_json"],
             intel=r.get("intel_json") or {},
+            grudges=r.get("grudges_json") or {},
+            deadlines=r.get("deadlines_json") or [],
             suspended=r["suspended_json"],
             play_as=r["play_as"],
             updated_at=r["updated_at"] or "",

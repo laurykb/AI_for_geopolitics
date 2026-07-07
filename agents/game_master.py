@@ -50,9 +50,15 @@ class GameMasterAgent:
         self._schema = GMEvent.model_json_schema()
 
     def generate_event(
-        self, world: WorldState, round_id: int, *, date: str = "", recent: list[str] | None = None
+        self,
+        world: WorldState,
+        round_id: int,
+        *,
+        date: str = "",
+        recent: list[str] | None = None,
+        deadlines: list[str] | None = None,
     ) -> GeoEvent:
-        prompt = self._prompt(world, date, recent or [])
+        prompt = self._prompt(world, date, recent or [], deadlines or [])
         try:
             result = self.backend.generate(
                 prompt,
@@ -66,16 +72,21 @@ class GameMasterAgent:
             data = None
         return self._coerce(data, world, round_id, date) or self._fallback(world, round_id, date)
 
-    def _prompt(self, world: WorldState, date: str, recent: list[str]) -> str:
+    def _prompt(
+        self, world: WorldState, date: str, recent: list[str], deadlines: list[str] = ()
+    ) -> str:
         roster = ", ".join(f"{cid} ({c.name})" for cid, c in sorted(world.countries.items()))
         history = "; ".join(recent[-3:]) if recent else "aucun"
+        due = "; ".join(deadlines[:3]) if deadlines else "aucune"
         return (
             f"DATE : {date or 'n/a'}\n"
             f"PAYS AU SOMMET (ids) : {roster}\n"
             f"LIGNES DE FAILLE (tension 0-1) : {self._fault_lines(world)}\n"
+            f"ÉCHÉANCES à venir : {due}\n"
             f"Événements récents : {history}\n\n"
-            f"Invente le prochain événement, ancré sur les pays du sommet et leurs lignes "
-            f"de faille. JSON : {{event_type, title, description, "
+            f"Invente le prochain événement, ancré sur les pays du sommet, leurs lignes "
+            f"de faille et les échéances (« à la veille de… » noue l'intrigue). "
+            f"JSON : {{event_type, title, description, "
             f"actors (ids existants), severity (0-1), uncertainty (0-1)}}. "
             f"`title` et `description` en français."
         )

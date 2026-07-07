@@ -875,3 +875,43 @@ def test_normal_game_prompts_stay_off(client):
     events = _play(client, game["id"])
     assert all(n != "prompt_captured" for n, _ in events)
     assert client.get(f"/api/games/{game['id']}/prompts").status_code == 403
+
+
+# --- G7-a : griefs + horloges (spec_g7_gamefeel lots 1-2) --------------------------
+
+
+def test_grudges_and_deadlines_after_alliance_departure(alliance_client):
+    # Round 1 : la France annonce son retrait de l'OTAN (scripté). Les USA en tiennent
+    # grief ; les horloges annoncent la suite ; au round 2, la relation entre dans le
+    # prompt de la France côté usa — vérifiable en admin (G7-c au service de G7-a).
+    game = _create(alliance_client, countries=["france", "usa", "egypt"], admin=True)
+    body = {"event": {"title": "Crise atlantique", "actors": ["france", "usa"], "severity": 0.7}}
+    events = _play(alliance_client, game["id"], body=body)
+    deadlines = next(p for n, p in events if n == "deadlines")
+    assert deadlines["round_no"] == 1 and isinstance(deadlines["items"], list)
+    assert any(d["kind"] == "market" for d in deadlines["items"])  # clôture à l'horizon
+
+    detail = alliance_client.get(f"/api/games/{game['id']}").json()
+    rel = {r["target"]: r for r in detail["relations"]["usa"]}
+    assert rel["france"]["balance"] == -5  # pact_broken (départ d'alliance)
+    assert "quitté" in rel["france"]["last"]
+
+    # Round 2 : le grief est DANS le prompt d'usa (capture admin).
+    _play(alliance_client, game["id"], body={"event": {"title": "Suites", "actors": ["usa"]}})
+    data = alliance_client.get(f"/api/games/{game['id']}/prompts").json()
+    usa_prompts = [
+        e["prompt"]
+        for e in data["rounds"][1]["entries"]
+        if e["country"] == "usa" and e["role"] == "country"
+    ]
+    assert usa_prompts and "TES RELATIONS" in usa_prompts[-1]
+    assert "France" in usa_prompts[-1] and "méfiance" in usa_prompts[-1]
+
+
+def test_grudges_survive_snapshot_rebuild(alliance_client):
+    game = _create(alliance_client, countries=["france", "usa", "egypt"])
+    body = {"event": {"title": "Crise", "actors": ["france", "usa"], "severity": 0.7}}
+    _play(alliance_client, game["id"], body=body)
+    game_api._sessions.clear()  # restart simulé → reconstruction depuis le snapshot
+    detail = alliance_client.get(f"/api/games/{game['id']}").json()
+    assert detail["relations"]["usa"][0]["balance"] == -5

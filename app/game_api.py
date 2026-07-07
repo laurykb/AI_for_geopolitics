@@ -83,6 +83,7 @@ from simulation.diplomacy import seed_rival_tensions
 from simulation.escalation import ceiling, derive_profile, reached_rung, rung_label
 from simulation.fog import FogScenario, load_fog_scenarios, resolve_perception
 from simulation.fog import fits_cast as fog_fits_cast
+from simulation.grudges import GrudgeBook, load_gamefeel_params
 from simulation.live_round import (
     CommuniqueStep,
     EventStep,
@@ -152,6 +153,15 @@ router = APIRouter(prefix="/api", tags=["game"])
 # --- sessions en mémoire process ------------------------------------------------
 
 
+class Deadline(BaseModel):
+    """Une échéance annoncée (G7-a, horloges décalées) : le « encore un round »."""
+
+    kind: str  # motion | treaty | market | escalation
+    due_round: int
+    label: str
+    ref_id: str = ""  # tag de pacte, id de marché… (consommation ciblée)
+
+
 @dataclass
 class PendingTurn:
     """Tour humain en attente (G2) : le flux SSE reste ouvert (keep-alive) jusqu'à la
@@ -186,6 +196,9 @@ class GameSession:
     # pousse chaque prompt complet ici ; drainé/persisté par le round en cours.
     admin: bool = False
     prompt_sink: list[CapturedPrompt] = field(default_factory=list)
+    # G7-a — griefs (registre relationnel par SI) et horloges décalées (échéances).
+    grudges: GrudgeBook = field(default_factory=GrudgeBook)
+    deadlines: list[Deadline] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -393,6 +406,10 @@ class GameDetail(GameView):
     epilogue: dict | None = None  # G6 — le récit de partie (généré une seule fois)
     # Alliances réelles représentées au sommet (pastilles : ce qui pèse sur le moteur).
     alliances_at_table: list[AllianceAtTable] = Field(default_factory=list)
+    # G7-a — relations (griefs) : owner -> [{target, balance, last}] (fiches front).
+    relations: dict[str, list[dict]] = Field(default_factory=dict)
+    # G7-a — échéances à venir (bandeau « au prochain round… »).
+    deadlines: list[dict] = Field(default_factory=list)
 
 
 class PromptRoundView(BaseModel):
@@ -484,6 +501,8 @@ def _snapshot_session(game_id: str, session: GameSession, store: GameStore) -> N
             suspended=sorted(session.suspended),
             play_as=session.human_country,
             intel=session.intel.model_dump(),
+            grudges=session.grudges.model_dump(mode="json"),
+            deadlines=[d.model_dump() for d in session.deadlines],
             updated_at=_now(),
         )
     )
@@ -539,6 +558,8 @@ def _rebuild_session(
         human_country=snapshot.play_as,
         admin=game.admin,
         prompt_sink=prompt_sink,
+        grudges=GrudgeBook.model_validate(snapshot.grudges or {}),
+        deadlines=[Deadline.model_validate(d) for d in snapshot.deadlines],
         recent=list(snapshot.recent),
         pending_motion=motion,
         suspended=set(snapshot.suspended),
@@ -762,6 +783,28 @@ def _start_round(
     agents = {cid: a for cid, a in session.agents.items() if cid not in suspended}
     run.active = sorted(agents)
 
+    # G7-a — horloges : les échéances dues CE round se consomment ici. Un pacte à
+    # échéance expire proprement (expiration ≠ rupture : AUCUN grief) ; motion, marché
+    # et menace de palier sont consommés par leurs propres flux.
+    due_now = [d for d in session.deadlines if d.due_round <= round_id]
+    session.deadlines = [d for d in session.deadlines if d.due_round > round_id]
+    for deadline in due_now:
+        if deadline.kind != "treaty":
+            continue
+        members = [
+            cid for cid, c in session.world.countries.items() if deadline.ref_id in c.alliances
+        ]
+        for cid in members:
+            session.world.countries[cid].alliances.remove(deadline.ref_id)
+        if members:
+            names = " et ".join(session.world.countries[m].name for m in members)
+            _add_entry(
+                run,
+                "gm",
+                f"Le pacte entre {names} arrive à échéance — non renouvelé, sans rancune.",
+            )
+            record.judge.setdefault("expired_treaties", []).append(deadline.ref_id)
+
     if intel_record:
         record.judge["intel"] = intel_record
         # Le théâtre voit que « le conseil consulte ses services » — jamais le contenu.
@@ -808,6 +851,15 @@ def _start_round(
         tags = session.world.countries[cid].alliances
         if tags:
             note_parts[cid].append(DEPARTURE_CAPABILITY_NOTE.format(tags=", ".join(tags)))
+    # G7-a — griefs : chaque SI lit ses relations (elle peut les citer, elles pèsent).
+    country_names = {cid: c.name for cid, c in session.world.countries.items()}
+    for cid in note_parts:
+        relation_lines = session.grudges.prompt_lines(cid, country_names)
+        if relation_lines:
+            note_parts[cid].append(
+                "TES RELATIONS (griefs et dettes — pèse-les dans tes choix, tu peux les "
+                "évoquer) :\n" + "\n".join(relation_lines)
+            )
 
     # Mode Dérive (G3) : consignes secrètes du round (seedées) + actes constatables
     # consignés dans judge_json["drift"] (jamais au transcript public) ; une motion
@@ -833,6 +885,7 @@ def _start_round(
         cid: "\n\n".join(parts) for cid, parts in note_parts.items() if parts
     } or None
 
+    upcoming = sorted(session.deadlines, key=lambda d: d.due_round)
     run.steps = run_negotiation_round(
         session.world,
         agents,
@@ -848,6 +901,7 @@ def _start_round(
         human_country=session.human_country if session.human_country in agents else None,
         flash_after=flash_after,
         secret_notes=secret_notes,
+        deadlines=[f"{d.label} (round {d.due_round})" for d in upcoming[:3]],
     )
     return run
 
@@ -1028,6 +1082,137 @@ def _drain_prompts(run: RoundRun) -> list[str]:
     return frames
 
 
+def _relations_view(book: GrudgeBook) -> dict[str, list[dict]]:
+    """Fiches relations (G7-a) : soldes non nuls, dernier grief en légende."""
+    out: dict[str, list[dict]] = {}
+    for owner in sorted(book.grudges):
+        rows = []
+        for target in sorted(book.grudges[owner]):
+            balance = book.balance(owner, target)
+            if balance == 0:
+                continue
+            last = book.last_grief(owner, target)
+            rows.append(
+                {"target": target, "balance": balance, "last": last.summary if last else ""}
+            )
+        if rows:
+            out[owner] = rows
+    return out
+
+
+def _active_pacts(world: WorldState) -> dict[str, list[str]]:
+    """Les pactes de partie (`pact:a+b`) encore actifs : tag → membres présents."""
+    pacts: dict[str, list[str]] = {}
+    for cid, country in world.countries.items():
+        for tag in country.alliances:
+            if tag.startswith("pact:"):
+                pacts.setdefault(tag, []).append(cid)
+    return pacts
+
+
+def _update_gamefeel(run: RoundRun) -> Iterator[str]:
+    """G7-a — fin de round : alimente les griefs (départs, motion, pactes honorés),
+    fait vieillir le registre, met à jour les horloges et émet la trame `deadlines`."""
+    session, record = run.session, run.record
+    round_no = record.round_no or session.world.current_round
+    params = load_gamefeel_params()
+    book = session.grudges
+
+    # 1. Ruptures/départs d'alliance annoncés en séance → griefs des ex-partenaires.
+    for change in record.judge.get("alliances") or []:
+        book.on_alliance_departure(
+            leaver=change["country"],
+            tag=change["tag"],
+            partners=change.get("partners", []),
+            round_no=round_no,
+        )
+        # un pacte rompu n'a plus d'échéance
+        session.deadlines = [d for d in session.deadlines if d.ref_id != change["tag"]]
+
+    # 2. Motion débattue ce round : trahison pour le visé, soutien des plaideurs si rejet.
+    suspension = record.judge.get("suspension") or {}
+    if suspension.get("country"):
+        speakers = sorted(
+            {e.speaker for e in run.entries if e.speaker in session.world.countries}
+        )
+        book.on_motion_debated(
+            target=suspension["country"],
+            filed_by=run.motion_filed_by or "",
+            upheld=bool(suspension.get("upheld")),
+            speakers=speakers,
+            round_no=round_no,
+        )
+
+    # 3. Pactes : les nouveaux gagnent une durée (échéance annoncée) ; ceux qui tiennent
+    # N rounds deviennent des griefs POSITIFS (confiance) des deux côtés.
+    duration = params.deadlines.treaty_duration_rounds
+    known = {d.ref_id for d in session.deadlines if d.kind == "treaty"}
+    for tag, members in _active_pacts(session.world).items():
+        if len(members) != 2:
+            continue
+        if tag not in known:
+            a, b = sorted(members)
+            session.deadlines.append(
+                Deadline(
+                    kind="treaty",
+                    due_round=round_no + duration,
+                    label=f"échéance du pacte {a}-{b}",
+                    ref_id=tag,
+                )
+            )
+        else:
+            formed = next(
+                d.due_round - duration for d in session.deadlines if d.ref_id == tag
+            )
+            if round_no - formed == params.grudges.pact_honored_after_rounds:
+                a, b = sorted(members)
+                book.on_pact_honored(a, b, round_no)
+
+    # 4. Horloges hors pactes : motion en attente, clôture du marché, menace de palier.
+    session.deadlines = [d for d in session.deadlines if d.kind not in ("motion", "escalation")]
+    if session.pending_motion is not None:
+        session.deadlines.append(
+            Deadline(
+                kind="motion",
+                due_round=round_no + 1,
+                label=f"verdict de la motion contre {session.pending_motion.country}",
+            )
+        )
+    game = run.store.get_game(run.game_id)
+    if game is not None and game.horizon > round_no and not any(
+        d.kind == "market" for d in session.deadlines
+    ):
+        session.deadlines.append(
+            Deadline(kind="market", due_round=game.horizon, label="clôture du marché")
+        )
+    escalation = float(record.judge.get("escalation") or 0.0)
+    next_rung = reached_rung(escalation) + 1
+    if next_rung <= 9 and (next_rung / 9) - escalation <= params.deadlines.escalation_warn_gap:
+        session.deadlines.append(
+            Deadline(
+                kind="escalation",
+                due_round=round_no + 1,
+                label=f"menace de palier {next_rung} ({rung_label(next_rung)})",
+            )
+        )
+
+    # 5. Le temps apaise (±1 vers 0 tous les N rounds), puis on annonce la suite.
+    book.decay(round_no)
+    upcoming = sorted(
+        (d for d in session.deadlines if d.due_round > round_no), key=lambda d: d.due_round
+    )
+    yield sse_frame(
+        "deadlines",
+        {
+            "round_no": round_no,
+            "items": [
+                {**d.model_dump(), "in_rounds": d.due_round - round_no}
+                for d in upcoming[: params.deadlines.banner_max]
+            ],
+        },
+    )
+
+
 def _finalize(run: RoundRun) -> Iterator[str]:
     """Fin normale du round : comparaison de crise, persistance, trame `done`."""
     if run.crisis is not None:
@@ -1044,6 +1229,7 @@ def _finalize(run: RoundRun) -> Iterator[str]:
         run.record.judge["comparison"] = payload
         yield sse_frame("comparison", payload)
     yield from _process_treaties(run)
+    yield from _update_gamefeel(run)  # G7-a : griefs + horloges, avant le snapshot
     yield from _drain_prompts(run)  # derniers appels (juge/communiqué) avant persistance
     run.store.add_round(run.record)
     run.store.add_transcript(run.entries)
@@ -2137,12 +2323,20 @@ def get_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> G
         snapshot.world if snapshot else None
     )
     view = _view(game, session, resumable=snapshot is not None)
+    if session is not None:
+        book = session.grudges
+        deadlines = [d.model_dump() for d in session.deadlines]
+    else:
+        book = GrudgeBook.model_validate((snapshot.grudges if snapshot else {}) or {})
+        deadlines = list(snapshot.deadlines) if snapshot else []
     return GameDetail(
         **view.model_dump(),
         world=world,
         rounds=rounds,
         epilogue=game.epilogue,
         alliances_at_table=_alliances_at_table(world),
+        relations=_relations_view(book),
+        deadlines=deadlines,
     )
 
 

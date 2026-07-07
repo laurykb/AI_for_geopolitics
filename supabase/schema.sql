@@ -50,6 +50,8 @@ create table if not exists game_sessions (
   suspended_json      jsonb not null default '[]',  -- pays qui sauteront le PROCHAIN round
   play_as             text,                         -- pays joué par l'humain (Joueur-pays)
   intel_json          jsonb not null default '{}',  -- G4 : budget/état de renseignement
+  grudges_json        jsonb not null default '{}',  -- G7-a : registre de griefs (GrudgeBook)
+  deadlines_json      jsonb not null default '[]',  -- G7-a : échéances (horloges décalées)
   updated_at          timestamptz not null default now()
 );
 
