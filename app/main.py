@@ -32,6 +32,18 @@ app.include_router(sources_router)
 app.include_router(campaign_router)
 
 
+@app.get("/")
+def root() -> dict[str, str]:
+    """Accueil de l'API : ouvrir :8000 dans un navigateur ne doit pas ressembler à
+    une panne — le jeu, lui, vit sur le front Next.js (:3000)."""
+    return {
+        "app": "AI for Geopolitics — API",
+        "jeu": "http://localhost:3000",
+        "docs": "/docs",
+        "health": "/health",
+    }
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     """Sonde de vivacité (utile pour le déploiement P6)."""

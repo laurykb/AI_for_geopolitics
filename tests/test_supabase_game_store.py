@@ -96,3 +96,16 @@ def test_snapshot_upsert_and_roundtrip(store):
     store.save_session_snapshot(snap.model_copy(update={"recent": ["Crise", "Suite"]}))
     assert store.get_session_snapshot("g1").recent == ["Crise", "Suite"]
     assert store.list_session_snapshots() == ["g1"]
+
+
+def test_prompts_roundtrip(store):
+    # G7-c : capture des prompts (mode admin) — même patron que transcripts.
+    from storage.game_store import PromptEntry
+
+    entries = [
+        PromptEntry(id="p1", round_id="r1", seq=0, country="usa", role="country", prompt="A"),
+        PromptEntry(id="p2", round_id="r1", seq=1, country="gm", role="gm", prompt="B"),
+    ]
+    store.add_prompts(entries)
+    assert store.list_prompts("r1") == entries
+    assert store.list_prompts("autre") == []

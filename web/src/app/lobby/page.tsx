@@ -27,6 +27,7 @@ export default function LobbyPage() {
   const [search, setSearch] = useState("");
   const [role, setRole] = useState(""); // "" = spectateur | id pays | "__invent__"
   const [turnSeconds, setTurnSeconds] = useState(90); // G2 — délai du tour humain
+  const [admin, setAdmin] = useState(false); // G7-c — partie non classée, prompts capturés
   const [inventName, setInventName] = useState("");
   const [inventConcept, setInventConcept] = useState("");
   // Alliances vivantes : le pays inventé peut rejoindre des accords RÉELS du registre.
@@ -86,6 +87,7 @@ export default function LobbyPage() {
         horizon,
         mode,
         turn_seconds: role ? turnSeconds : undefined, // G2 — seulement si on incarne
+        admin: admin || undefined, // G7-c — mode admin explicite seulement
         // Toujours explicite : sans ce champ l'API convoquerait tout le roster.
         countries: selected,
         // Joueur-pays : id existant, ou NOM du pays inventé (l'API résout le slug)
@@ -200,6 +202,21 @@ export default function LobbyPage() {
                 ))}
               </div>
             </fieldset>
+            <label
+              className="flex cursor-pointer items-baseline gap-2 text-sm text-fg-muted"
+              title="Les prompts complets de chaque SI sont capturés et diffés round par round (panneau Admin). Les prompts révèlent la consigne secrète de la Dérive : la partie n'est pas classée."
+            >
+              <input
+                type="checkbox"
+                checked={admin}
+                onChange={(e) => setAdmin(e.target.checked)}
+                className="accent-[var(--accent)]"
+              />
+              <span>
+                Mode admin — <span className="text-fg-faint">partie non classée, prompts
+                des SI capturés et observables en direct</span>
+              </span>
+            </label>
             <fieldset>
               <legend className="mb-2 flex w-full items-baseline justify-between text-xs text-fg-muted">
                 <span>États à la table</span>

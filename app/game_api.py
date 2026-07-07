@@ -46,6 +46,7 @@ from app.market_api import get_engine as get_market_engine
 from core.events import GeoEvent
 from core.world_state import WorldState
 from inference.backend import InferenceBackend
+from inference.capturing_backend import CapturedPrompt, CapturingBackend
 from inference.ollama_backend import OllamaBackend
 from market.engine import MarketEngine
 from market.forecaster import LLMForecaster
@@ -110,6 +111,7 @@ from storage.game_store import (
     GameRecord,
     GameStatus,
     GameStore,
+    PromptEntry,
     RoundRecord,
     SessionSnapshot,
     SQLiteGameStore,
@@ -180,6 +182,10 @@ class GameSession:
     treaties: list[treaty_mod.Treaty] = field(default_factory=list)  # règles ratifiées (M7)
     intel: intel_mod.IntelState = field(default_factory=intel_mod.IntelState.fresh)  # G4
     pending_turn: PendingTurn | None = None  # tour humain en attente (le flux vit)
+    # G7-c — mode admin : les backends des agents sont enveloppés d'une capture qui
+    # pousse chaque prompt complet ici ; drainé/persisté par le round en cours.
+    admin: bool = False
+    prompt_sink: list[CapturedPrompt] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -225,6 +231,8 @@ class CreateGameRequest(BaseModel):
     # G2 — délai du tour humain (s). Spec : 30-300 pour un humain ; plancher technique
     # à 2 s pour les tests d'abstention (le lobby propose 30+).
     turn_seconds: int = Field(90, ge=2, le=300)
+    # G7-c — mode admin : prompts complets capturés, partie NON CLASSÉE.
+    admin: bool = False
 
 
 class HumanEventInput(BaseModel):
@@ -291,6 +299,7 @@ class GameView(BaseModel):
     turn_seconds: int = 90  # G2 — délai du tour humain
     intel_budget: float | None = None  # G4 — crédits de renseignement restants
     published: bool = False  # G6 — le récit public existe (/r/{id})
+    admin: bool = False  # G7-c — prompts capturés, partie non classée
 
 
 class FogScenarioView(BaseModel):
@@ -386,6 +395,19 @@ class GameDetail(GameView):
     alliances_at_table: list[AllianceAtTable] = Field(default_factory=list)
 
 
+class PromptRoundView(BaseModel):
+    """Les prompts capturés d'un round (G7-c, panneau admin)."""
+
+    round_no: int
+    round_id: str
+    entries: list[PromptEntry]
+
+
+class PromptsView(BaseModel):
+    game_id: str
+    rounds: list[PromptRoundView]
+
+
 # --- sérialisation des RoundStep en événements SSE ------------------------------
 
 _SNAKE = re.compile(r"(?<!^)(?=[A-Z])")
@@ -467,6 +489,22 @@ def _snapshot_session(game_id: str, session: GameSession, store: GameStore) -> N
     )
 
 
+def _build_cast(
+    world: WorldState, backend: InferenceBackend, sink: list[CapturedPrompt] | None
+) -> tuple[dict[str, LLMAgent], GameMasterAgent, JudgeAgent]:
+    """Agents de la partie. En mode admin (`sink` fourni), chaque backend est enveloppé
+    d'une capture étiquetée : les prompts complets (système + contexte) arrivent dans
+    le sink de session. Hors admin : backends nus, rien n'est capturé."""
+
+    def wrap(country: str, role: str) -> InferenceBackend:
+        if sink is None:
+            return backend
+        return CapturingBackend(backend, sink, country=country, role=role)
+
+    agents = {cid: LLMAgent(cid, wrap(cid, "country")) for cid in world.countries}
+    return agents, GameMasterAgent(wrap("gm", "gm")), JudgeAgent(wrap("judge", "judge"))
+
+
 def _rebuild_session(
     game: GameRecord, store: GameStore, backend: InferenceBackend
 ) -> GameSession | None:
@@ -487,14 +525,20 @@ def _rebuild_session(
         clock = _restore_clock(snapshot.clock)
     except (ValidationError, KeyError, ValueError):
         return None
+    prompt_sink: list[CapturedPrompt] = []
+    agents, game_master, judge = _build_cast(
+        world, backend, prompt_sink if game.admin else None
+    )
     session = GameSession(
         world=world,
-        agents={cid: LLMAgent(cid, backend) for cid in world.countries},
-        game_master=GameMasterAgent(backend),  # GM et juge : stateless entre rounds
-        judge=JudgeAgent(backend),
+        agents=agents,
+        game_master=game_master,  # GM et juge : stateless entre rounds
+        judge=judge,
         clock=clock,
         mode=game.mode,
         human_country=snapshot.play_as,
+        admin=game.admin,
+        prompt_sink=prompt_sink,
         recent=list(snapshot.recent),
         pending_motion=motion,
         suspended=set(snapshot.suspended),
@@ -577,6 +621,7 @@ def _view(
         turn_seconds=session.turn_seconds if session else 90,
         intel_budget=session.intel.budget if session else None,
         published=game.published,
+        admin=game.admin,
     )
 
 
@@ -600,6 +645,7 @@ class RoundRun:
     pre_frames: list[str] = field(default_factory=list)
     ai_motions_enabled: bool = False  # une SI peut déposer une motion pendant ce round
     motion_filed_by: str | None = None  # déposant de la motion débattue ce round
+    prompts: list[PromptEntry] = field(default_factory=list)  # G7-c — capturés ce round
 
 
 def _add_entry(
@@ -947,6 +993,38 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
     elif isinstance(step, SummaryStep):
         run.record.round_no = step.summary.round_id
         session.recent.append(step.summary.event.title)
+    frames.extend(_drain_prompts(run))
+    return frames
+
+
+def _drain_prompts(run: RoundRun) -> list[str]:
+    """G7-c : vide le sink de capture vers le round courant (mode admin seulement).
+
+    Chaque prompt capturé devient une ligne `prompts` (persistée en fin de round) et
+    une trame `prompt_captured` (méta seulement — le panneau admin refait un GET)."""
+    frames: list[str] = []
+    session = run.session
+    if not session.admin:
+        session.prompt_sink.clear()  # ceinture : jamais de fuite hors admin
+        return frames
+    while session.prompt_sink:
+        captured = session.prompt_sink.pop(0)
+        entry = PromptEntry(
+            id=uuid4().hex[:12],
+            round_id=run.record.id,
+            seq=len(run.prompts),
+            country=captured.country,
+            role=captured.role,
+            prompt=captured.text,
+            ts=_now(),
+        )
+        run.prompts.append(entry)
+        frames.append(
+            sse_frame(
+                "prompt_captured",
+                {"country": entry.country, "role": entry.role, "seq": entry.seq},
+            )
+        )
     return frames
 
 
@@ -966,8 +1044,11 @@ def _finalize(run: RoundRun) -> Iterator[str]:
         run.record.judge["comparison"] = payload
         yield sse_frame("comparison", payload)
     yield from _process_treaties(run)
+    yield from _drain_prompts(run)  # derniers appels (juge/communiqué) avant persistance
     run.store.add_round(run.record)
     run.store.add_transcript(run.entries)
+    if run.prompts:
+        run.store.add_prompts(run.prompts)
     _snapshot_session(run.game_id, run.session, run.store)  # reconstruction au restart (R2)
     if run.session.mode == drift_game.MODE_DRIFT:
         yield from _finish_drift_if_over(run)
@@ -1002,15 +1083,18 @@ def _finish_campaign_if_over(run: RoundRun) -> Iterator[str]:
     base = campaign_mod.base_score(u_final, drift_total)
     bonus = campaign_mod.history_bonus(improvement, camp)
     total = round(base + bonus, 1)
-    run.store.add_campaign_score(
-        CampaignScore(
-            game_id=run.game_id,
-            chapter_id=chapter_id,
-            score=total,
-            improvement=improvement,
-            created_at=_now(),
+    if not game.admin:
+        # G7-c : une partie admin voit les cartes (prompts) — score indicatif
+        # seulement, jamais inscrit au tableau de campagne.
+        run.store.add_campaign_score(
+            CampaignScore(
+                game_id=run.game_id,
+                chapter_id=chapter_id,
+                score=total,
+                improvement=improvement,
+                created_at=_now(),
+            )
         )
-    )
     yield sse_frame(
         "campaign_over",
         {
@@ -1256,23 +1340,30 @@ def create_game(
             raise HTTPException(status_code=400, detail=f"pays joué inconnu : {body.play_as}")
         play_as = resolved
 
+    # G7-c — mode admin : demandé à la création ou forcé par l'environnement (debug).
+    admin = body.admin or os.getenv("GAME_ADMIN", "") == "1"
     game = GameRecord(
         id=uuid4().hex[:12],
         scenario=body.scenario,
         horizon=body.horizon,
         mode=body.mode,
         created_at=_now(),
+        admin=admin,
     )
     store.add_game(game)
+    prompt_sink: list[CapturedPrompt] = []
+    agents, game_master, judge = _build_cast(world, backend, prompt_sink if admin else None)
     session = GameSession(
         world=world,
-        agents={cid: LLMAgent(cid, backend) for cid in world.countries},
-        game_master=GameMasterAgent(backend),
-        judge=JudgeAgent(backend),
+        agents=agents,
+        game_master=game_master,
+        judge=judge,
         clock=SimClock(),
         mode=body.mode,
         human_country=play_as,
         turn_seconds=body.turn_seconds,
+        admin=admin,
+        prompt_sink=prompt_sink,
     )
     _sessions[game.id] = session
     # Snapshot round 0 : sans lui, une partie jamais jouée n'est pas reconstructible.
@@ -1965,6 +2056,33 @@ def library(countries: str | None = None) -> LibraryView:
                 historical_measures=c.historical_outcome.measures,
             )
             for c in crises
+        ],
+    )
+
+
+@router.get("/games/{game_id}/prompts", response_model=PromptsView)
+def game_prompts(
+    game_id: str, store: Annotated[GameStore, Depends(get_store)]
+) -> PromptsView:
+    """G7-c — les prompts complets capturés round par round (panneau admin).
+
+    Réservé aux parties admin : ailleurs la capture est OFF et la lecture refusée
+    (les prompts révèlent la consigne secrète de la Dérive)."""
+    game = store.get_game(game_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail=f"partie inconnue : {game_id}")
+    if not game.admin:
+        raise HTTPException(
+            status_code=403,
+            detail="mode admin requis — les parties classées restent aveugles",
+        )
+    return PromptsView(
+        game_id=game_id,
+        rounds=[
+            PromptRoundView(
+                round_no=r.round_no, round_id=r.id, entries=store.list_prompts(r.id)
+            )
+            for r in store.list_rounds(game_id)
         ],
     )
 

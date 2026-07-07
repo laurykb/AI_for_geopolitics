@@ -27,6 +27,7 @@ _PRIMARY_KEYS = {
     "market_outcomes": ("id",),
     "market_positions": ("account_id", "outcome_id"),
     "market_trades": ("id",),
+    "prompts": ("id",),
 }
 
 

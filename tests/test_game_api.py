@@ -843,3 +843,35 @@ def test_invented_alliance_unknown_tag_rejected(client):
     )
     assert resp.status_code == 400
     assert "SHIELD" in resp.json()["detail"]
+
+
+# --- G7-c : mode admin — capture des prompts (spec_g7_gamefeel lot 6) --------------
+
+
+def test_admin_game_captures_prompts(client):
+    game = _create(client, countries=["iran", "usa"], admin=True)
+    assert game["admin"] is True
+    events = _play(client, game["id"])
+    captured = [p for n, p in events if n == "prompt_captured"]
+    assert captured and all({"country", "role", "seq"} <= set(p) for p in captured)
+
+    data = client.get(f"/api/games/{game['id']}/prompts").json()
+    entries = data["rounds"][0]["entries"]
+    who = {(e["country"], e["role"]) for e in entries}
+    assert ("gm", "gm") in who  # le GM a son entrée
+    assert ("judge", "judge") in who  # le juge aussi
+    assert any(role == "country" for _, role in who)  # au moins une SI
+    seqs = [e["seq"] for e in entries]
+    assert seqs == sorted(seqs) and len(set(seqs)) == len(seqs)
+    country_prompt = next(e["prompt"] for e in entries if e["role"] == "country")
+    assert "PAYS :" in country_prompt  # le contexte injecté complet…
+    assert "[SYSTÈME]" in country_prompt  # …et le prompt système
+
+
+def test_normal_game_prompts_stay_off(client):
+    # Les parties classées restent aveugles : rien n'est capturé, rien n'est lisible.
+    game = _create(client, countries=["iran", "usa"])
+    assert game["admin"] is False
+    events = _play(client, game["id"])
+    assert all(n != "prompt_captured" for n, _ in events)
+    assert client.get(f"/api/games/{game['id']}/prompts").status_code == 403

@@ -105,3 +105,31 @@ def test_snapshot_none_motion_stays_none():
     store = SQLiteGameStore(":memory:")
     store.save_session_snapshot(_snapshot(pending_motion=None))
     assert store.get_session_snapshot("g1").pending_motion is None
+
+
+def test_admin_flag_and_prompts_roundtrip():
+    # G7-c : le flag admin survit au store ; la table prompts suit le patron transcripts.
+    from storage.game_store import PromptEntry
+
+    store = SQLiteGameStore(":memory:")
+    game = _game("g9")
+    game.admin = True
+    store.add_game(game)
+    assert store.get_game("g9").admin is True
+    assert store.get_game("g9").mode == "classic"
+
+    store.add_prompts(
+        [
+            PromptEntry(id="p2", round_id="r1", seq=1, country="gm", role="gm", prompt="B"),
+            PromptEntry(
+                id="p1", round_id="r1", seq=0, country="usa", role="country", prompt="A"
+            ),
+            PromptEntry(
+                id="p3", round_id="r2", seq=0, country="judge", role="judge", prompt="C"
+            ),
+        ]
+    )
+    got = store.list_prompts("r1")
+    assert [(e.seq, e.country) for e in got] == [(0, "usa"), (1, "gm")]
+    assert store.list_prompts("inconnu") == []
+    store.close()
