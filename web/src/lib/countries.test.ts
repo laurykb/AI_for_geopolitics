@@ -16,9 +16,10 @@ import {
 import { CAPITALS } from "./stage";
 
 describe("roster", () => {
-  it("compte 21 pays uniques", () => {
-    expect(ROSTER).toHaveLength(21);
-    expect(new Set(ROSTER).size).toBe(21);
+  it("compte 23 pays uniques (danemark hors roster depuis 2026-07-07)", () => {
+    expect(ROSTER).toHaveLength(23);
+    expect(new Set(ROSTER).size).toBe(23);
+    expect(ROSTER).not.toContain("denmark");
   });
 
   it("la sélection par défaut est un sommet valide", () => {

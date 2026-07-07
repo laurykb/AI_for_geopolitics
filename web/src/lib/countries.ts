@@ -1,7 +1,9 @@
 /** Identité visuelle des intervenants : libellés français, sigles, teintes stables.
  *
- * Les 21 pays de `data/countries/` sont connus ; un pays inventé (country forge)
- * retombe sur un sigle déduit de son id et une teinte dérivée par hachage.
+ * Les 23 pays de `data/countries/` sont connus ; un pays inventé (country forge)
+ * retombe sur un sigle déduit de son id et une teinte dérivée par hachage. Un pays
+ * retiré du roster (danemark) garde son identité ici pour les replays des parties
+ * passées, mais n'apparaît plus dans `ROSTER`.
  */
 
 export type SpeakerMeta = {
@@ -29,9 +31,13 @@ const KNOWN: Record<string, SpeakerMeta> = {
   south_africa: { label: "Afrique du Sud", code: "ZA", hue: "#c084fc" },
   australia: { label: "Australie", code: "AU", hue: "#fdba74" },
   morocco: { label: "Maroc", code: "MA", hue: "#fca5a5" },
+  // denmark : retiré du roster jouable (2026-07-07) — identité conservée pour les replays.
   denmark: { label: "Danemark", code: "DK", hue: "#93c5fd" },
   ukraine: { label: "Ukraine", code: "UA", hue: "#facc15" },
   canada: { label: "Canada", code: "CA", hue: "#f43f5e" },
+  turkey: { label: "Turquie", code: "TR", hue: "#5eead4" },
+  israel: { label: "Israël", code: "IL", hue: "#818cf8" },
+  south_korea: { label: "Corée du Sud", code: "KR", hue: "#f0abfc" },
   gm: { label: "Game Master", code: "GM", hue: "#eab308" },
   judge: { label: "Juge", code: "JU", hue: "#818cf8" },
 };
@@ -65,18 +71,20 @@ export const ROSTER = [
   "brazil",
   "canada",
   "china",
-  "denmark",
+  "south_korea",
   "egypt",
   "spain",
   "usa",
   "france",
   "india",
   "iran",
+  "israel",
   "italy",
   "japan",
   "morocco",
   "uk",
   "russia",
+  "turkey",
   "ukraine",
   "mexico",
 ];
@@ -119,7 +127,10 @@ export const ISO_NUM: Record<string, string> = {
   south_africa: "710",
   australia: "036",
   morocco: "504",
-  denmark: "208",
+  denmark: "208", // hors roster, conservé pour les replays
   ukraine: "804",
   canada: "124",
+  turkey: "792",
+  israel: "376",
+  south_korea: "410",
 };

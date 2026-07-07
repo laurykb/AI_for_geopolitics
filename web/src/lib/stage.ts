@@ -56,9 +56,12 @@ export const CAPITALS: Record<string, [number, number]> = {
   south_africa: [28.19, -25.75], // Pretoria
   australia: [149.13, -35.28], // Canberra
   morocco: [-6.85, 34.02], // Rabat
-  denmark: [12.57, 55.68], // Copenhague
+  denmark: [12.57, 55.68], // Copenhague (hors roster, conservé pour les replays)
   ukraine: [30.52, 50.45], // Kyiv
   canada: [-75.7, 45.42], // Ottawa
+  turkey: [32.85, 39.93], // Ankara
+  israel: [35.21, 31.78], // Jérusalem (siège du gouvernement)
+  south_korea: [126.98, 37.57], // Séoul
 };
 
 /** Centre du sommet : centroïde des capitales présentes (cible par défaut des arcs). */

@@ -3,9 +3,10 @@
 > Provenance, années de référence, méthode de normalisation, licences et limites des `data/countries/*.json`. Objectif P4 : remplacer les valeurs saisies à la main (P0) par des valeurs **sourcées depuis des datasets**, et documenter honnêtement le **statut** de chaque champ.
 
 Acteurs couverts : `usa`, `china`, `france`, `egypt`, `iran`, `saudi_arabia` (crise mer Rouge),
-et depuis juillet 2026 (extension roster, §2 bis) : `japan`, `russia`, `germany`, `uk`, `spain`,
-`italy`, `mexico`, `brazil`, `india`, `south_africa`, `australia`, `morocco`, `denmark`,
-`ukraine`, `canada` — **21 acteurs**.
+et depuis juillet 2026 (extension roster, §2 bis, ajustée §2 ter) : `japan`, `russia`,
+`germany`, `uk`, `spain`, `italy`, `mexico`, `brazil`, `india`, `south_africa`, `australia`,
+`morocco`, `ukraine`, `canada`, `turkey`, `israel`, `south_korea` — **23 acteurs**
+(`denmark` retiré du roster le 7 juillet 2026, décision produit).
 Période de référence principale : **2024** (PIB, croissance, défense), avec quelques indices 2023–2025 (détaillés ci-dessous).
 Recherche réalisée : **1ᵉʳ juillet 2026**.
 
@@ -53,7 +54,7 @@ PIB : World Bank *GDP (current US$)* 2024 [1]. Croissance : IMF *WEO* (avril 202
 | Afrique du Sud | 403 Md | 0,6 % | 3,3 Md | 69ᵉ |
 | Australie | 1 690 Md | 1,0 % | 33,8 Md | 23ᵉ |
 | Maroc | 157 Md | 3,2 % | 5,8 Md (approx.) | 66ᵉ |
-| Danemark | 412 Md | 3,7 % | 9,9 Md (approx.) | 10ᵉ |
+| Danemark *(retiré du roster, §2 ter)* | 412 Md | 3,7 % | 9,9 Md (approx.) | 10ᵉ |
 | Ukraine | 191 Md | 3,5 % | 64,7 Md | 60ᵉ |
 | Canada | 2 241 Md | 1,5 % | 29,3 Md | 14ᵉ |
 
@@ -67,6 +68,31 @@ Mêmes sources et même normalisation que §2/§3. **Limites spécifiques de cet
   que les tags existants). `rivals` reste conservateur (paires actives seulement :
   russie↔ukraine/usa, inde↔chine, japon/australie↔chine, allemagne/uk↔russie).
 - `compute` reste **illustratif** (échelle relative usa=100), comme au §1.
+
+## 2 ter. Ajustement roster — 7 juillet 2026 (−Danemark, +Turquie, Israël, Corée du Sud)
+
+Décision produit : `denmark` sort du roster jouable (fiche conservée au §2 bis pour
+traçabilité) ; trois acteurs entrent. Valeurs 2024, mêmes sources et normalisation que
+§2/§3, **compilées de mémoire par l'assistant (état des connaissances janv. 2026) — à
+figer depuis les bases World Bank/IMF/SIPRI/GII comme le reste du roster** :
+
+| Pays | PIB 2024 (USD) | Croissance 2024 | Défense 2024 (USD) | GII 2024 |
+|---|---|---|---|---|
+| Turquie | 1 322 Md (approx.) | 3,2 % | 25,0 Md (approx.) | 37ᵉ |
+| Israël | 541 Md | 0,9 % (approx.) | 46,5 Md | 15ᵉ |
+| Corée du Sud | 1 870 Md | 2,0 % | 47,6 Md | 6ᵉ |
+
+Limites spécifiques :
+- **Israël** : `nuclear_power = true` reflète le **statut assessé** (arsenal non déclaré,
+  politique d'ambiguïté — pas un fait reconnu par l'État) ; économie et stabilité 2024
+  marquées par la guerre (WGI ≈ 13, instantané).
+- **Corée du Sud** : `wgi_stability_percentile ≈ 60` est un instantané qui précède pour
+  l'essentiel la crise politique de décembre 2024 (loi martiale avortée) — à réviser.
+- **Turquie** : PIB en USD sensible à la forte inflation/dépréciation de la livre ;
+  `wgi_stability_percentile ≈ 10` (approx.).
+- **Matrice `rivals`** : ajout de la paire active `iran ↔ israel` (frappes directes
+  d'avril et octobre 2024 — critère « paires actives seulement » du §2 bis). La Turquie
+  reste sans rival déclaré (rupture diplomatique Turquie–Israël jugée sous le seuil).
 
 ## 3. Méthode de normalisation des indices 0–1
 
