@@ -110,6 +110,7 @@ from simulation.motions import (
     motion_event,
     parse_filed_motion,
 )
+from simulation.storyline import build_story_context, default_storyline
 from storage.game_store import (
     CampaignScore,
     GameRecord,
@@ -949,6 +950,26 @@ def _start_round(
     } or None
 
     game = store.get_game(game_id)
+    # G9 §5 — la trame du GM en actes : uniquement quand c'est LUI qui invente
+    # l'événement (motion/crise/événement humain/fog gardent leur vérité propre).
+    story = None
+    if event is None:
+        past = [
+            {
+                "round_no": r.round_no,
+                "title": (r.event or {}).get("title", ""),
+                "severity": (r.event or {}).get("severity", 0.5),
+            }
+            for r in store.list_rounds(game_id)
+        ]
+        story = build_story_context(
+            storyline=session.storyline,
+            round_no=round_id,
+            horizon=game.horizon if game else 5,
+            past_events=past,
+            pacts=_active_pacts(session.world),
+            deadlines=[(d.kind, d.label) for d in upcoming[:3]],
+        )
     run.steps = run_negotiation_round(
         session.world,
         agents,
@@ -971,6 +992,7 @@ def _start_round(
         # G9 §4 — l'amplitude des deltas est un budget par partie (A/horizon) ; les
         # spirales lisent l'historique d'indices de la session.
         tuning=tuning_for(game.horizon if game else 5, session.index_history),
+        story=story,
     )
     return run
 
@@ -995,6 +1017,14 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
         run.record.event = payload["event"]
         gm_model = getattr(session.game_master, "model_tag", "")
         _add_entry(run, "gm", f"{step.event.title}\n{step.event.description}".strip(), gm_model)
+        # G9 §5 — l'intrigue centrale se pose au premier événement raconté par le GM
+        # (fournie par lui, sinon repli déterministe) et persiste toute la partie.
+        if not session.storyline and step.event.act:
+            session.storyline = (
+                getattr(session.game_master, "last_storyline", "")
+                or default_storyline(session.world)
+            )
+            frames.append(sse_frame("storyline", {"text": session.storyline}))
         if run.fog is not None:
             perceptions = {
                 cid: _jsonable(

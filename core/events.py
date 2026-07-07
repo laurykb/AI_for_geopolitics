@@ -18,3 +18,8 @@ class GeoEvent(BaseModel):
     location: str = ""
     severity: float = Field(0.5, ge=0.0, le=1.0)
     uncertainty: float = Field(0.5, ge=0.0, le=1.0)
+    # G9 §5 — la trame du GM en actes : acte du récit (I/II/III, calculé par code) et
+    # filiation de l'événement (« ↳ suite du round 2 ») — vides hors partie scénarisée.
+    act: str = ""
+    ties_to: str = ""  # référence machine (round:N, pact:tag, motion:pays, deadline:kind)
+    ties_label: str = ""  # libellé humain du badge de filiation

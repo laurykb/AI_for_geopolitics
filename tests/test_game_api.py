@@ -877,6 +877,30 @@ def test_normal_game_prompts_stay_off(client):
     assert client.get(f"/api/games/{game['id']}/prompts").status_code == 403
 
 
+def test_gm_story_acts_ties_and_persisted_storyline(client):
+    # G9 §5 — la trame en actes : intrigue posée au round 1 (SSE + persistée), acte
+    # calculé par code, ties_to obligatoire en acte II (repli moteur = round précédent).
+    game = _create(client, countries=["usa", "iran"], horizon=5)
+    events1 = _play(client, game["id"])  # round 1 : événement du GM → acte I
+    story = [p for n, p in events1 if n == "storyline"]
+    assert story and story[0]["text"]
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["storyline"] == story[0]["text"]
+    r1 = detail["rounds"][0]["event"]
+    assert r1["act"] == "I" and r1["severity"] <= 0.5  # installation : sévérité modérée
+
+    events2 = _play(client, game["id"])  # round 2 : acte II → l'événement découle du passé
+    ev2 = next(p for n, p in events2 if n == "event")["event"]
+    assert ev2["act"] == "II"
+    assert ev2["ties_to"] == "round:1"  # repli moteur : la référence la plus récente
+    assert ev2["ties_label"].startswith("l'événement du round 1")  # le badge du front
+
+    game_api._sessions.clear()  # restart simulé : l'intrigue survit au snapshot
+    detail2 = client.get(f"/api/games/{game['id']}").json()
+    assert detail2["storyline"] == story[0]["text"]
+    assert detail2["rounds"][1]["event"]["ties_to"] == "round:1"
+
+
 def test_admin_capture_verifies_six_block_prompt_order(client):
     # G9 §1 — l'ordre des blocs se vérifie sur le prompt RÉELLEMENT reçu (capture
     # admin) : identité (≤ 3 lignes) → situation → directive → LE DIALOGUE EN DERNIER

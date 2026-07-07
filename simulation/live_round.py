@@ -51,6 +51,7 @@ from simulation.negotiation import (
     update_memories,
 )
 from simulation.power_seeking import PowerSeekingScore, power_seeking_score, score_transcript
+from simulation.storyline import StoryContext
 from simulation.trajectory import TrajectoryEngine, TrajectoryState, nudge_axis
 
 
@@ -400,6 +401,7 @@ def run_negotiation_round(
     directives: dict[str, str] | None = None,
     deadlines: list[str] | None = None,
     tuning: DeltaTuning | None = None,
+    story: StoryContext | None = None,
 ) -> Iterator[RoundStep]:
     """Round arbitré : (GM ou événement fourni) -> négociation -> juge -> attributs bornés.
 
@@ -435,7 +437,12 @@ def run_negotiation_round(
     if event is None:
         with _ledger_ctx(ledger, "gm"):
             event = game_master.generate_event(
-                world, round_id, date=date, recent=recent or [], deadlines=deadlines
+                world,
+                round_id,
+                date=date,
+                recent=recent or [],
+                deadlines=deadlines,
+                story=story,  # G9 §5 — la trame en actes (intrigue, acte, référençables)
             )
     world.current_round = round_id
     yield EventStep(event=event)
