@@ -92,7 +92,9 @@ export function SelectMap({
               );
             }
             const on = chosen.has(slug);
-            const isFlag = flag === slug;
+            // Le halo doré du pays joué ne se montre qu'une fois le sommet complet
+            // (sinon il persiste, incohérent, quand on redescend sous 7).
+            const isFlag = flag === slug && full;
             const label = speakerMeta(slug).label;
             return (
               <path

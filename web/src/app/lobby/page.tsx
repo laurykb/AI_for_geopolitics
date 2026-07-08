@@ -33,6 +33,7 @@ import {
   prevStep,
   ROUNDS_MAX,
   ROUNDS_MIN,
+  trimForRole,
 } from "@/lib/flow";
 import { prefersReducedMotion } from "@/lib/stage";
 import type { AllianceInfo, CountrySources, Difficulty, GameMode } from "@/lib/types";
@@ -111,7 +112,7 @@ export default function LobbyPage() {
   const capacity = mapCapacity(role);
   const setRoleTrimming = (r: FlowRole) => {
     setRole(r);
-    setSelected((prev) => prev.slice(0, mapCapacity(r))); // ne jamais dépasser la capacité
+    setSelected((prev) => trimForRole(prev, r)); // ne jamais dépasser la capacité
     setFlag(null);
   };
 
@@ -138,11 +139,15 @@ export default function LobbyPage() {
 
   // --- navigation avec transition globe ------------------------------------------
   const pendingRef = useRef<null | { t: ReturnType<typeof setTimeout>; to: FlowStep }>(null);
+  // Nettoyage : un timer en vol ne doit pas déclencher setState après démontage
+  // (retour à l'accueil / lancement de la partie pendant la transition).
+  useEffect(() => () => clearTimeout(pendingRef.current?.t), []);
   const go = (to: FlowStep) => {
     if (prefersReducedMotion()) {
       setStep(to);
       return;
     }
+    if (pendingRef.current) clearTimeout(pendingRef.current.t); // pas de timer orphelin
     setTransitioning(true);
     const t = setTimeout(() => {
       setStep(to);
@@ -361,6 +366,12 @@ function ModeStep({
             checked={settings.drift}
             onChange={(v) => setSettings({ ...settings, drift: v })}
           />
+          {settings.drift && baseMode !== "classic" && (
+            <p className="-mt-2 rounded-md border border-edge bg-surface-2/50 px-3 py-1.5 text-xs text-fg-faint">
+              La Dérive s&apos;applique au mode Classique pour l&apos;instant ; sur ce mode,
+              l&apos;intention est enregistrée mais la SI déviante n&apos;est pas encore assignée.
+            </p>
+          )}
           <label className="block">
             <span className="mb-1 flex items-baseline justify-between text-xs text-fg-muted">
               <span>Rounds</span>

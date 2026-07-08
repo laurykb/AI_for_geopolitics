@@ -14,6 +14,7 @@ import {
   resolveMode,
   SUMMIT_EXACT,
   toggleCountry,
+  trimForRole,
 } from "./flow";
 
 describe("navigation", () => {
@@ -78,6 +79,19 @@ describe("canLaunch", () => {
   it("GM : 7 pays suffisent", () => {
     expect(canLaunch("gm", seven)).toBe(true);
     expect(canLaunch("gm", seven.slice(0, 6))).toBe(false);
+  });
+});
+
+describe("trimForRole", () => {
+  const seven = ["a", "b", "c", "d", "e", "f", "g"];
+
+  it("rabote la sélection à la capacité du rôle (joueur → invention perd le 7e)", () => {
+    expect(trimForRole(seven, "invent")).toEqual(seven.slice(0, 6));
+  });
+
+  it("laisse intacte une sélection déjà dans la capacité", () => {
+    expect(trimForRole(seven, "player")).toEqual(seven);
+    expect(trimForRole(seven.slice(0, 6), "gm")).toEqual(seven.slice(0, 6));
   });
 });
 

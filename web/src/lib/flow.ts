@@ -105,6 +105,12 @@ export function mapCapacity(role: FlowRole): number {
   return role === "invent" ? SUMMIT_EXACT - 1 : SUMMIT_EXACT;
 }
 
+/** Rabote une sélection à la capacité d'un rôle (au changement de rôle : « Créer son
+ * pays » ne garde que 6 États sur la carte, le pays forgé complétant le sommet). */
+export function trimForRole(selected: string[], role: FlowRole): string[] {
+  return selected.slice(0, mapCapacity(role));
+}
+
 /** Bascule blanc↔jaune : retire si présent, ajoute si sous la capacité, sinon ignore
  * (le sommet ne dépasse jamais sa taille — le bouton reste grisé jusqu'au compte pile). */
 export function toggleCountry(selected: string[], id: string, capacity: number): string[] {
