@@ -61,7 +61,7 @@ from rag.corpus import chunk_documents, load_corpus
 from rag.embedder import HashingEmbedder
 from rag.retriever import HybridRetriever
 from simulation import campaign as campaign_mod
-from simulation import drift_game, narrative
+from simulation import drift_game, league, narrative
 from simulation import intel as intel_mod
 from simulation import treaty as treaty_mod
 from simulation.alliances import (
@@ -116,6 +116,8 @@ from storage.game_store import (
     GameRecord,
     GameStatus,
     GameStore,
+    LpHistoryEntry,
+    PlayerRecord,
     PromptEntry,
     RoundRecord,
     SessionSnapshot,
@@ -340,6 +342,7 @@ class GameView(BaseModel):
     ranked: bool = False  # G11 — classée (§3) : compte pour les points de ligue
     difficulty: str = "intermediate"  # G11 — beginner | intermediate | expert (§4)
     drift_enabled: bool = True  # G11 — la Dérive peut frapper une SI (transversal)
+    result: dict | None = None  # G11-c — bilan de fin de partie (§1 S6) si finie
 
 
 class FogScenarioView(BaseModel):
@@ -687,6 +690,7 @@ def _view(
         ranked=game.ranked,
         difficulty=game.difficulty,
         drift_enabled=game.drift_enabled,
+        result=game.result,
     )
 
 
@@ -1396,7 +1400,147 @@ def _finalize(run: RoundRun) -> Iterator[str]:
     if run.session.mode == drift_game.MODE_DRIFT:
         yield from _finish_drift_if_over(run)
     yield from _finish_campaign_if_over(run)
+    yield from _finish_game_if_over(run)  # G11-c — fin explicite + bilan + LP (transversal)
     yield sse_frame("done", {"round_no": run.record.round_no})
+
+
+# --- fin de partie transversale + points de ligue (G11-c §1 S6, §2) --------------
+
+_NEUTRAL_U = 0.5  # U de départ (neutre) : base du ΔU pour les LP (§2)
+
+# Indices LP (§2) ← séries suivies par le gamefeel (G9 §4). « énergie » ≈ projection,
+# seul indice de puissance suivi round par round ; croissance normalisée en 0-1.
+_LP_INDEX_SOURCES = (
+    ("stability", "stabilité", False),
+    ("economy", "croissance", True),
+    ("technology", "techno", False),
+    ("energy", "projection", False),
+)
+
+
+def _country_recap(session: GameSession | None) -> list[dict]:
+    """Évolution de CHAQUE pays : séries d'indices (sparklines) + delta début→fin."""
+    if session is None:
+        return []
+    hist = session.index_history.values
+    recap: list[dict] = []
+    for cid in sorted(session.world.countries):
+        indices = {
+            label: {
+                "series": [round(v, 4) for v in series],
+                "delta": round(series[-1] - series[0], 4),
+            }
+            for label, series in hist.get(cid, {}).items()
+            if series
+        }
+        recap.append({"id": cid, "indices": indices})
+    return recap
+
+
+def _player_progress(session: GameSession | None) -> float:
+    """P (§2) : moyenne des variations des 4 indices 0-1 du pays du joueur (début→fin)."""
+    if session is None or session.human_country is None:
+        return 0.0
+    hist = session.index_history.values.get(session.human_country, {})
+
+    def norm_growth(x: float) -> float:
+        return max(0.0, min(1.0, (x + 10) / 20))
+
+    before: dict[str, float] = {}
+    after: dict[str, float] = {}
+    for key, label, is_growth in _LP_INDEX_SOURCES:
+        series = hist.get(label, [])
+        if len(series) < 2:
+            continue
+        b, a = series[0], series[-1]
+        before[key], after[key] = (norm_growth(b), norm_growth(a)) if is_growth else (b, a)
+    return league.country_progress(before, after)
+
+
+def _build_result(
+    game: GameRecord, session: GameSession | None, store: GameStore, *, forfeit: bool
+) -> dict:
+    """Bilan de fin de partie (§1 S6) : courbe U, récap des pays, révélation, LP."""
+    rounds = store.list_rounds(game.id)
+    u_history = [round(float(r.trajectory.get("utopia", _NEUTRAL_U)), 4) for r in rounds]
+    u_final = u_history[-1] if u_history else _NEUTRAL_U
+    p = _player_progress(session)
+    if forfeit:
+        delta = league.load_lp_params().forfeit
+    elif game.ranked:
+        delta = league.lp_delta(_NEUTRAL_U, u_final, p, game.difficulty)
+    else:
+        delta = 0
+    verdict = "utopie" if u_final > 0.55 else "dystopie" if u_final < 0.45 else "équilibre"
+    return {
+        "u_start": _NEUTRAL_U,
+        "u_final": round(u_final, 4),
+        "u_history": u_history,
+        "verdict": verdict,
+        "countries": _country_recap(session),
+        "play_as": session.human_country if session else game_play_as(game, store),
+        "reveal": game.mode == drift_game.MODE_DRIFT,
+        "forfeit": forfeit,
+        "lp": {
+            "ranked": game.ranked,
+            "difficulty": game.difficulty,
+            "delta": delta,
+            "p": round(p, 4),
+        },
+    }
+
+
+def _award_lp(game: GameRecord, result: dict, store: GameStore) -> None:
+    """Crédite les LP au propriétaire (§2) : plancher 0, plafond Débutant, lp_history.
+    Sans partie classée / sans propriétaire / sans fiche enregistrée : aucun mouvement."""
+    lp = result["lp"]
+    if not lp["ranked"] or not game.owner_id or lp["delta"] == 0:
+        return
+    player = store.get_player(game.owner_id)
+    if player is None:  # joueur non enregistré (POST /players à la connexion)
+        return
+    new = league.apply_delta(player.lp, lp["delta"], game.difficulty)
+    store.set_player_lp(game.owner_id, new)
+    store.add_lp_history(
+        LpHistoryEntry(
+            id=uuid4().hex[:12],
+            player_id=game.owner_id,
+            game_id=game.id,
+            delta=new - player.lp,
+            ts=_now(),
+        )
+    )
+    lp["old_lp"], lp["new_lp"], lp["applied"] = player.lp, new, new - player.lp
+
+
+def _finalize_game(
+    game: GameRecord, session: GameSession | None, store: GameStore, *, forfeit: bool
+) -> dict:
+    """Fige le bilan dans games.result_json, crédite les LP, marque la partie finie."""
+    result = _build_result(game, session, store, forfeit=forfeit)
+    game.status = GameStatus.FINISHED
+    game.result = result
+    _award_lp(game, result, store)
+    store.save_game(game)
+    return result
+
+
+def game_play_as(game: GameRecord, store: GameStore) -> str | None:
+    """Pays joué, reconstruit depuis le snapshot si la session n'est plus en mémoire."""
+    snap = store.get_session_snapshot(game.id)
+    return snap.play_as if snap else None
+
+
+def _finish_game_if_over(run: RoundRun) -> Iterator[str]:
+    """Fin de partie EXPLICITE et transversale (§1 S6) : à l'horizon (ou déjà finie par
+    la Dérive/campagne), on fige le bilan et on émet `game_over`. Idempotent."""
+    game = run.store.get_game(run.game_id)
+    if game is None or game.result is not None:
+        return
+    if game.status is not GameStatus.FINISHED and run.record.round_no < game.horizon:
+        return
+    result = _finalize_game(game, run.session, run.store, forfeit=False)
+    yield sse_frame("game_over", result)
 
 
 def _finish_campaign_if_over(run: RoundRun) -> Iterator[str]:
@@ -2601,3 +2745,74 @@ def list_games(
     if owner is not None and not admin:
         games = [g for g in games if g.owner_id == owner]
     return [_view(g, _sessions.get(g.id), resumable=g.id in snapshot_ids) for g in games]
+
+
+# --- comptes de ligue + fin de partie (G11-c §1 S6-S7, §2) ----------------------
+
+
+class PlayerView(BaseModel):
+    id: str
+    pseudo: str
+    lp: int
+    rank: str  # nom du rang atteint (§2)
+    rank_floor: int  # seuil LP d'entrée du rang
+    is_admin: bool = False
+
+
+class UpsertPlayerBody(BaseModel):
+    id: str
+    pseudo: str = Field(min_length=1, max_length=40)
+
+
+def _player_view(p: PlayerRecord) -> PlayerView:
+    name, floor = league.rank_for(p.lp)
+    return PlayerView(
+        id=p.id, pseudo=p.pseudo, lp=p.lp, rank=name, rank_floor=floor, is_admin=p.is_admin
+    )
+
+
+@router.post("/players", response_model=PlayerView, status_code=201)
+def upsert_player(
+    body: UpsertPlayerBody, store: Annotated[GameStore, Depends(get_store)]
+) -> PlayerView:
+    """Enregistre / rafraîchit le compte de ligue (à la connexion). lp/is_admin ne sont
+    jamais écrasés par cet appel — le LP est crédité par la fin de partie."""
+    store.upsert_player(PlayerRecord(id=body.id, pseudo=body.pseudo, created_at=_now()))
+    player = store.get_player(body.id)
+    assert player is not None
+    return _player_view(player)
+
+
+@router.get("/players/{player_id}", response_model=PlayerView)
+def get_player(player_id: str, store: Annotated[GameStore, Depends(get_store)]) -> PlayerView:
+    player = store.get_player(player_id)
+    if player is None:
+        raise HTTPException(status_code=404, detail="joueur inconnu")
+    return _player_view(player)
+
+
+@router.get("/league", response_model=list[PlayerView])
+def league_leaderboard(
+    store: Annotated[GameStore, Depends(get_store)], limit: int = 100
+) -> list[PlayerView]:
+    """Classement global par LP (§1 S7). NB : `/api/leaderboard` est pris par le marché."""
+    return [_player_view(p) for p in store.leaderboard(limit)]
+
+
+@router.post("/games/{game_id}/forfeit", response_model=GameView)
+def forfeit_game(
+    game_id: str, store: Annotated[GameStore, Depends(get_store)]
+) -> GameView:
+    """Abandon d'une partie classée (§2) : défaite forfaitaire (−15 LP), partie finie."""
+    game = store.get_game(game_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail="partie inconnue")
+    if game.result is not None:  # déjà finie : idempotent
+        return _view(game, _sessions.get(game_id))
+    if not game.ranked:
+        raise HTTPException(
+            status_code=409, detail="seule une partie classée peut être déclarée forfait"
+        )
+    _finalize_game(game, _sessions.get(game_id), store, forfeit=True)
+    _sessions.pop(game_id, None)  # la partie est close : plus de round jouable
+    return _view(game, None)

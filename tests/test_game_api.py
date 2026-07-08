@@ -644,6 +644,47 @@ def test_list_games_scoped_to_owner(client):
     assert len(all_games) == 3
 
 
+# --- G11-c : comptes de ligue + fin de partie -----------------------------------
+
+
+def test_players_and_leaderboard(client):
+    assert client.post("/api/players", json={"id": "u1", "pseudo": "Laury"}).status_code == 201
+    client.post("/api/players", json={"id": "u2", "pseudo": "Zoe"})
+    p = client.get("/api/players/u1").json()
+    assert p["lp"] == 0 and p["rank"] == "Attaché"
+    board = client.get("/api/league").json()
+    assert {x["id"] for x in board} == {"u1", "u2"}
+    assert client.get("/api/players/absent").status_code == 404
+
+
+def test_forfeit_ranked_game(client):
+    client.post("/api/players", json={"id": "u1", "pseudo": "Laury"})
+    game = _create(client, countries=["usa", "iran"], play_as="usa", role="player", owner_id="u1")
+    assert game["ranked"] is True
+    r = client.post(f"/api/games/{game['id']}/forfeit")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "finished"
+    assert body["result"]["forfeit"] is True
+    assert body["result"]["lp"]["delta"] == -15
+    # Plancher 0 : un débutant à 0 LP ne descend pas sous zéro.
+    assert client.get("/api/players/u1").json()["lp"] == 0
+    # Une partie non classée ne peut pas être déclarée forfait.
+    free = _create(client, countries=["usa", "iran"], role="council", owner_id="u1")
+    assert client.post(f"/api/games/{free['id']}/forfeit").status_code == 409
+
+
+def test_game_over_emitted_at_horizon(client):
+    game = _create(client, countries=["usa", "iran"], horizon=1)
+    names = [n for n, _ in _play(client, game["id"])]
+    assert "game_over" in names
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["status"] == "finished"
+    assert detail["result"] is not None
+    assert detail["result"]["u_history"]  # la courbe U de la partie
+    assert len(detail["result"]["countries"]) == 2  # récap des deux pays
+
+
 def test_lock_released_after_round(client):
     game = _create(client, countries=["usa", "iran"])
     _play(client, game["id"])

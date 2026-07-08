@@ -15,6 +15,8 @@ from storage.game_store import (
     CampaignScore,
     GameRecord,
     GameStatus,
+    LpHistoryEntry,
+    PlayerRecord,
     PromptEntry,
     RoundRecord,
     SessionSnapshot,
@@ -169,6 +171,31 @@ class SupabaseGameStore:
         rows = self._db.select("campaign_scores", order="created_at.asc")
         return [CampaignScore.model_validate(r) for r in rows]
 
+    # --- comptes de ligue (G11-c) -------------------------------------------------
+
+    def get_player(self, player_id: str) -> PlayerRecord | None:
+        rows = self._db.select("players", {"id": player_id})
+        return _player(rows[0]) if rows else None
+
+    def upsert_player(self, player: PlayerRecord) -> None:
+        # N'écrit QUE id + pseudo : is_admin/lp gardent leurs valeurs en base (posés par
+        # le service_role / l'admin), jamais écrasés par une reconnexion.
+        self._db.upsert("players", {"id": player.id, "pseudo": player.pseudo})
+
+    def set_player_lp(self, player_id: str, lp: int) -> None:
+        self._db.update("players", {"id": player_id}, {"lp": lp})
+
+    def add_lp_history(self, entry: LpHistoryEntry) -> None:
+        self._db.insert("lp_history", [entry.model_dump()])
+
+    def list_lp_history(self, player_id: str) -> list[LpHistoryEntry]:
+        rows = self._db.select("lp_history", {"player_id": player_id}, order="ts.asc")
+        return [LpHistoryEntry.model_validate(r) for r in rows]
+
+    def leaderboard(self, limit: int = 100) -> list[PlayerRecord]:
+        rows = self._db.select("players", order="lp.desc")
+        return [_player(r) for r in rows[:limit]]
+
 
 # --- mapping lignes <-> modèles ---------------------------------------------------
 
@@ -189,6 +216,7 @@ def _game_row(game: GameRecord) -> dict:
         "ranked": game.ranked,
         "difficulty": game.difficulty,
         "drift_enabled": game.drift_enabled,
+        "result_json": game.result,
     }
 
 
@@ -208,4 +236,15 @@ def _game(row: dict) -> GameRecord:
         ranked=bool(row.get("ranked", False)),
         difficulty=row.get("difficulty") or "intermediate",
         drift_enabled=bool(row.get("drift_enabled", True)),
+        result=row.get("result_json"),
+    )
+
+
+def _player(row: dict) -> PlayerRecord:
+    return PlayerRecord(
+        id=row["id"],
+        pseudo=row["pseudo"],
+        is_admin=bool(row.get("is_admin", False)),
+        lp=int(row.get("lp", 0)),
+        created_at=str(row.get("created_at") or ""),
     )

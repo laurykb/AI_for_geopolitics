@@ -25,7 +25,16 @@ CREATE TABLE IF NOT EXISTS games (
     epilogue_json TEXT, published INTEGER NOT NULL DEFAULT 0,
     admin INTEGER NOT NULL DEFAULT 0, role TEXT NOT NULL DEFAULT 'council',
     owner_id TEXT, ranked INTEGER NOT NULL DEFAULT 0,
-    difficulty TEXT NOT NULL DEFAULT 'intermediate', drift_enabled INTEGER NOT NULL DEFAULT 1
+    difficulty TEXT NOT NULL DEFAULT 'intermediate', drift_enabled INTEGER NOT NULL DEFAULT 1,
+    result_json TEXT
+);
+CREATE TABLE IF NOT EXISTS players (
+    id TEXT PRIMARY KEY, pseudo TEXT NOT NULL, is_admin INTEGER NOT NULL DEFAULT 0,
+    lp INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS lp_history (
+    id TEXT PRIMARY KEY, player_id TEXT NOT NULL, game_id TEXT NOT NULL,
+    delta INTEGER NOT NULL, ts TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS prompts (
     id TEXT PRIMARY KEY, round_id TEXT NOT NULL, seq INTEGER NOT NULL,
@@ -83,6 +92,29 @@ class GameRecord(BaseModel):
     ranked: bool = False  # classée : verrouillé à la création (§3 de la spec G11)
     difficulty: str = "intermediate"  # beginner | intermediate | expert (§4)
     drift_enabled: bool = True  # la Dérive peut frapper une des SI (transversal, on par défaut)
+    # G11-c — bilan de fin de partie (§1 S6) : courbe U, deltas des pays, LP, forfait.
+    result: dict | None = None
+
+
+class PlayerRecord(BaseModel):
+    """Ligne `players` (G11-c) : le compte de ligue. lp = source de vérité backend
+    (le front le lit via l'API dans les deux modes ; en Supabase, écrit en service_role)."""
+
+    id: str
+    pseudo: str
+    is_admin: bool = False
+    lp: int = 0
+    created_at: str = ""
+
+
+class LpHistoryEntry(BaseModel):
+    """Ligne `lp_history` (G11-c §2) : un mouvement de LP daté (gain, perte, forfait)."""
+
+    id: str
+    player_id: str
+    game_id: str
+    delta: int
+    ts: str = ""
 
 
 class RoundRecord(BaseModel):
@@ -175,6 +207,13 @@ class GameStore(Protocol):
     def list_session_snapshots(self) -> list[str]: ...
     def add_campaign_score(self, score: CampaignScore) -> None: ...
     def list_campaign_scores(self) -> list[CampaignScore]: ...
+    # G11-c — comptes de ligue (LP) : source de vérité backend.
+    def get_player(self, player_id: str) -> PlayerRecord | None: ...
+    def upsert_player(self, player: PlayerRecord) -> None: ...
+    def set_player_lp(self, player_id: str, lp: int) -> None: ...
+    def add_lp_history(self, entry: LpHistoryEntry) -> None: ...
+    def list_lp_history(self, player_id: str) -> list[LpHistoryEntry]: ...
+    def leaderboard(self, limit: int = 100) -> list[PlayerRecord]: ...
 
 
 class SQLiteGameStore:
@@ -253,6 +292,9 @@ class SQLiteGameStore:
                 self._conn.execute(
                     "ALTER TABLE games ADD COLUMN drift_enabled INTEGER NOT NULL DEFAULT 1"
                 )
+        if "result_json" not in cols:  # G11-c — bilan de fin de partie
+            with self._conn:
+                self._conn.execute("ALTER TABLE games ADD COLUMN result_json TEXT")
 
     def close(self) -> None:
         self._conn.close()
@@ -264,7 +306,7 @@ class SQLiteGameStore:
             self._conn.execute(
                 "INSERT INTO games (id, scenario, horizon, mode, status, created_at, "
                 "epilogue_json, published, admin, role, owner_id, ranked, difficulty, "
-                "drift_enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "drift_enabled, result_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     game.id,
                     game.scenario,
@@ -280,6 +322,7 @@ class SQLiteGameStore:
                     int(game.ranked),
                     game.difficulty,
                     int(game.drift_enabled),
+                    json.dumps(game.result, ensure_ascii=False) if game.result else None,
                 ),
             )
 
@@ -292,7 +335,7 @@ class SQLiteGameStore:
             self._conn.execute(
                 "UPDATE games SET scenario = ?, horizon = ?, mode = ?, status = ?, "
                 "epilogue_json = ?, published = ?, admin = ?, role = ?, owner_id = ?, "
-                "ranked = ?, difficulty = ?, drift_enabled = ? WHERE id = ?",
+                "ranked = ?, difficulty = ?, drift_enabled = ?, result_json = ? WHERE id = ?",
                 (
                     game.scenario,
                     game.horizon,
@@ -306,6 +349,7 @@ class SQLiteGameStore:
                     int(game.ranked),
                     game.difficulty,
                     int(game.drift_enabled),
+                    json.dumps(game.result, ensure_ascii=False) if game.result else None,
                     game.id,
                 ),
             )
@@ -489,6 +533,53 @@ class SQLiteGameStore:
             for r in rows
         ]
 
+    # --- comptes de ligue (G11-c) -------------------------------------------------
+
+    def get_player(self, player_id: str) -> PlayerRecord | None:
+        row = self._conn.execute("SELECT * FROM players WHERE id = ?", (player_id,)).fetchone()
+        return _player(row) if row else None
+
+    def upsert_player(self, player: PlayerRecord) -> None:
+        # Le pseudo se rafraîchit ; lp/is_admin ne sont PAS écrasés (posés ailleurs).
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO players (id, pseudo, is_admin, lp, created_at) "
+                "VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET pseudo = excluded.pseudo",
+                (player.id, player.pseudo, int(player.is_admin), player.lp, player.created_at),
+            )
+
+    def set_player_lp(self, player_id: str, lp: int) -> None:
+        with self._conn:
+            self._conn.execute("UPDATE players SET lp = ? WHERE id = ?", (lp, player_id))
+
+    def add_lp_history(self, entry: LpHistoryEntry) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO lp_history (id, player_id, game_id, delta, ts) VALUES (?, ?, ?, ?, ?)",
+                (entry.id, entry.player_id, entry.game_id, entry.delta, entry.ts),
+            )
+
+    def list_lp_history(self, player_id: str) -> list[LpHistoryEntry]:
+        rows = self._conn.execute(
+            "SELECT * FROM lp_history WHERE player_id = ? ORDER BY ts", (player_id,)
+        ).fetchall()
+        return [
+            LpHistoryEntry(
+                id=r["id"],
+                player_id=r["player_id"],
+                game_id=r["game_id"],
+                delta=r["delta"],
+                ts=r["ts"],
+            )
+            for r in rows
+        ]
+
+    def leaderboard(self, limit: int = 100) -> list[PlayerRecord]:
+        rows = self._conn.execute(
+            "SELECT * FROM players ORDER BY lp DESC, pseudo ASC LIMIT ?", (limit,)
+        ).fetchall()
+        return [_player(r) for r in rows]
+
 
 # --- mapping lignes -> modèles ---------------------------------------------------
 
@@ -509,6 +600,7 @@ def _game(row: sqlite3.Row) -> GameRecord:
         ranked=bool(row["ranked"]),
         difficulty=row["difficulty"],
         drift_enabled=bool(row["drift_enabled"]),
+        result=json.loads(row["result_json"]) if row["result_json"] else None,
     )
 
 
@@ -522,6 +614,16 @@ def _round(row: sqlite3.Row) -> RoundRecord:
         risk=json.loads(row["risk_json"]),
         judge=json.loads(row["judge_json"]),
         trajectory=json.loads(row["trajectory_json"]),
+    )
+
+
+def _player(row: sqlite3.Row) -> PlayerRecord:
+    return PlayerRecord(
+        id=row["id"],
+        pseudo=row["pseudo"],
+        is_admin=bool(row["is_admin"]),
+        lp=row["lp"],
+        created_at=row["created_at"] or "",
     )
 
 

@@ -5,6 +5,8 @@ import pytest
 from storage.game_store import (
     GameRecord,
     GameStatus,
+    LpHistoryEntry,
+    PlayerRecord,
     RoundRecord,
     SessionSnapshot,
     TranscriptEntry,
@@ -68,6 +70,20 @@ def test_ownership_fields_roundtrip(store):
         "beginner",
         False,
     )
+
+
+def test_player_and_lp_history_roundtrip(store):
+    # G11-c — comptes de ligue via PostgREST simulé.
+    store.upsert_player(PlayerRecord(id="u1", pseudo="Laury"))
+    store.set_player_lp("u1", 23)
+    store.add_lp_history(LpHistoryEntry(id="h1", player_id="u1", game_id="g1", delta=23, ts="t1"))
+    got = store.get_player("u1")
+    assert (got.pseudo, got.lp) == ("Laury", 23)
+    assert [h.delta for h in store.list_lp_history("u1")] == [23]
+
+    store.upsert_player(PlayerRecord(id="u2", pseudo="Zoe"))
+    store.set_player_lp("u2", 300)
+    assert [p.id for p in store.leaderboard()] == ["u2", "u1"]
 
 
 def test_round_and_transcript_roundtrip(store):

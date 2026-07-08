@@ -25,13 +25,15 @@ create table if not exists games (
   ranked      boolean not null default false,       -- classée (§3) : compte pour les LP
   difficulty  text not null default 'intermediate'  -- §4 : beginner | intermediate | expert
               check (difficulty in ('beginner', 'intermediate', 'expert')),
-  drift_enabled boolean not null default true        -- la Dérive peut frapper une SI (transversal)
+  drift_enabled boolean not null default true,       -- la Dérive peut frapper une SI (transversal)
+  result_json jsonb                                  -- G11-c : bilan de fin de partie (§1 S6)
 );
 -- Migration des bases existantes (idempotent) :
 alter table games add column if not exists owner_id uuid references auth.users(id) on delete set null;
 alter table games add column if not exists ranked boolean not null default false;
 alter table games add column if not exists difficulty text not null default 'intermediate';
 alter table games add column if not exists drift_enabled boolean not null default true;
+alter table games add column if not exists result_json jsonb;
 create index if not exists games_owner_idx on games (owner_id);
 
 create table if not exists rounds (
@@ -129,6 +131,17 @@ create or replace function public.is_admin() returns boolean
   language sql stable security definer set search_path = public as
 $$ select coalesce((select p.is_admin from players p where p.id = auth.uid()), false) $$;
 
+-- G11-c : chaque mouvement de LP (gain, perte, forfait), daté. Écrit par le service_role
+-- (le backend crédite les LP en fin de partie) ; le joueur lit son historique.
+create table if not exists lp_history (
+  id        text primary key,
+  player_id uuid not null references players(id) on delete cascade,
+  game_id   text references games(id) on delete set null,
+  delta     integer not null,
+  ts        timestamptz not null default now()
+);
+create index if not exists lp_history_player_idx on lp_history (player_id, ts);
+
 -- ============================== marché ======================================
 
 create table if not exists market_accounts (
@@ -190,6 +203,7 @@ create index if not exists trades_market_idx on market_trades (market_id, ts);
 -- politiques du marché par des politiques par utilisateur (auth.uid()).
 
 alter table players         enable row level security;  -- G11 : chacun sa fiche, admin tout
+alter table lp_history      enable row level security;  -- G11-c : chacun son historique LP
 alter table games           enable row level security;
 alter table rounds          enable row level security;
 alter table transcripts     enable row level security;
@@ -223,6 +237,10 @@ create policy "lecture publique" on market_trades   for select using (true);
 create policy "fiche : lecture de soi"   on players for select using (auth.uid() = id or public.is_admin());
 create policy "fiche : création de soi"  on players for insert with check (auth.uid() = id);
 create policy "fiche : mise à jour de soi" on players for update using (auth.uid() = id) with check (auth.uid() = id);
+
+-- lp_history : chacun lit le sien (admin lit tout) ; écriture réservée au service_role.
+create policy "LP : lecture de soi" on lp_history for select
+  using (player_id = auth.uid() or public.is_admin());
 
 -- INVARIANT DE SÉCURITÉ : is_admin et lp ne s'écrivent JAMAIS côté client — sinon un
 -- utilisateur se promeut admin (→ lit toutes les parties) et truque le leaderboard.

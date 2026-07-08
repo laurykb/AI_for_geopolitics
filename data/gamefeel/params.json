@@ -45,5 +45,15 @@
       "temperature": 0.8,
       "repeat_penalty": 1.15
     }
+  },
+  "lp": {
+    "_comment": "G11-c §2 — points de ligue. LP = round(k × [w_world×ΔU + w_country×P] × M).",
+    "k": 100.0,
+    "w_world": 0.6,
+    "w_country": 0.4,
+    "multipliers": { "beginner": 0.5, "intermediate": 1.0, "expert": 1.5 },
+    "forfeit": -15,
+    "p_bound": 0.5,
+    "beginner_ceiling": 449
   }
 }

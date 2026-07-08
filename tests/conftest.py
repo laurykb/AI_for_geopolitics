@@ -18,6 +18,8 @@ from storage.postgrest import PostgrestClient
 # Clés primaires des tables du schéma (upsert merge-duplicates + update par filtre).
 _PRIMARY_KEYS = {
     "games": ("id",),
+    "players": ("id",),
+    "lp_history": ("id",),
     "rounds": ("id",),
     "transcripts": ("id",),
     "game_sessions": ("game_id",),

@@ -5,6 +5,8 @@ import sqlite3
 from storage.game_store import (
     GameRecord,
     GameStatus,
+    LpHistoryEntry,
+    PlayerRecord,
     SessionSnapshot,
     SQLiteGameStore,
 )
@@ -76,6 +78,48 @@ def test_ownership_defaults():
     assert got.ranked is False
     assert got.difficulty == "intermediate"
     assert got.drift_enabled is True
+
+
+def test_result_json_roundtrip():
+    # G11-c — le bilan de fin de partie survit au store.
+    store = SQLiteGameStore(":memory:")
+    game = _game("gr")
+    store.add_game(game)
+    game.result = {"u_final": 0.68, "lp": {"delta": 23}}
+    game.status = GameStatus.FINISHED
+    store.save_game(game)
+    got = store.get_game("gr")
+    assert got.status is GameStatus.FINISHED
+    assert got.result == {"u_final": 0.68, "lp": {"delta": 23}}
+
+
+def test_player_and_lp_history_roundtrip():
+    # G11-c — compte de ligue : upsert (pseudo rafraîchi, lp préservé), LP, historique.
+    store = SQLiteGameStore(":memory:")
+    store.upsert_player(PlayerRecord(id="u1", pseudo="Laury"))
+    assert store.get_player("u1").lp == 0
+
+    store.set_player_lp("u1", 23)
+    store.add_lp_history(LpHistoryEntry(id="h1", player_id="u1", game_id="g1", delta=23, ts="t1"))
+    store.upsert_player(PlayerRecord(id="u1", pseudo="Laury2", lp=999))  # ne clobbe pas lp
+
+    got = store.get_player("u1")
+    assert (got.pseudo, got.lp) == ("Laury2", 23)  # pseudo rafraîchi, lp intact
+    assert [h.delta for h in store.list_lp_history("u1")] == [23]
+    assert store.get_player("absent") is None
+
+
+def test_leaderboard_sorted_by_lp():
+    store = SQLiteGameStore(":memory:")
+    store.upsert_player(PlayerRecord(id="a", pseudo="A"))
+    store.upsert_player(PlayerRecord(id="b", pseudo="B"))
+    store.upsert_player(PlayerRecord(id="c", pseudo="C"))
+    store.set_player_lp("a", 100)
+    store.set_player_lp("b", 300)
+    store.set_player_lp("c", 50)
+    board = store.leaderboard()
+    assert [p.id for p in board] == ["b", "a", "c"]
+    assert [p.id for p in store.leaderboard(limit=2)] == ["b", "a"]
 
 
 def test_migration_adds_ownership_columns(tmp_path):
