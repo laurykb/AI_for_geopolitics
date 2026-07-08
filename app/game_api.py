@@ -229,8 +229,9 @@ _sessions: dict[str, GameSession] = {}
 
 
 GameMode = Literal["classic", "fog", "crisis", "escalation", "drift"]
-# G8 — les trois rôles : le spectateur passif n'existe plus (regarder = replay).
-GameRole = Literal["architect", "council", "player"]
+# G8/G12 — rôles : architect (GM/laboratoire), council, player, et le Spectateur (G12 §3 :
+# ne motionne ni ne prompte, mais parie sur tout — le turfiste du jeu, XP ×0.5, non classé).
+GameRole = Literal["architect", "council", "player", "spectator"]
 # G11 §4 — la difficulté (asymétrie d'information/économie, jamais de changement de modèle).
 Difficulty = Literal["beginner", "intermediate", "expert"]
 
@@ -1919,7 +1920,7 @@ def create_game(
         raise HTTPException(
             status_code=400, detail="le joueur-pays choisit un pays (play_as ou invention)"
         )
-    if role in ("architect", "council") and play_as is not None:
+    if role in ("architect", "council", "spectator") and play_as is not None:
         raise HTTPException(
             status_code=400,
             detail=f"le rôle {role} n'incarne aucun pays — retirez play_as ou choisissez player",
@@ -2084,6 +2085,8 @@ def file_motion(
     game = store.get_game(game_id)
     if game is None:
         raise HTTPException(status_code=404, detail=f"partie inconnue : {game_id}")
+    if game.role == "spectator":  # G12 §3 — le spectateur ne motionne pas (il parie)
+        raise HTTPException(status_code=403, detail="le spectateur ne dépose pas de motion")
     session = _sessions.get(game_id) or _rebuild_session(game, store, backend)
     if session is None:
         raise HTTPException(
@@ -2707,6 +2710,8 @@ def post_directive(
             detail="le Conseil n'adresse pas de directives — ses leviers : motion, "
             "renseignement, paris",
         )
+    if game.role == "spectator":  # G12 §3 — le spectateur ne prompte pas (il parie)
+        raise HTTPException(status_code=403, detail="le spectateur n'adresse pas de directives")
     if game.role == "player" and body.country != session.human_country:
         raise HTTPException(
             status_code=403, detail="le joueur-pays ne gouverne que sa propre SI"

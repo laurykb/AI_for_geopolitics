@@ -633,6 +633,20 @@ def test_intel_budget_by_difficulty(client):
     assert expert["intel_budget"] == 60
 
 
+def test_spectator_is_bet_only(client):
+    # G12 §3 — le spectateur ne motionne ni ne prompte (il parie) ; non classé.
+    game = _create(client, countries=["usa", "iran", "china"], role="spectator", owner_id="u1")
+    assert game["role"] == "spectator" and game["ranked"] is False
+    motion = client.post(
+        f"/api/games/{game['id']}/motions", json={"country": "usa", "reason": "x"}
+    )
+    assert motion.status_code == 403
+    directive = client.post(
+        f"/api/games/{game['id']}/directives", json={"country": "usa", "text": "x"}
+    )
+    assert directive.status_code == 403
+
+
 def test_free_game_is_not_ranked(client):
     # G11-b — la partie libre retire le classement même en rôle joueur-pays.
     free = _create(client, countries=["usa", "iran"], play_as="usa", role="player", free=True)

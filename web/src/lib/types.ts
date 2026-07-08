@@ -58,8 +58,8 @@ export type GameView = {
   result: GameResult | null; // G11-c — bilan de fin de partie (si finie)
 };
 
-/** G8 — le rôle choisi à la création (le spectateur passif n'existe plus). */
-export type GameRole = "architect" | "council" | "player";
+/** G8/G12 — le rôle choisi à la création (le Spectateur revient par le marché, G12 §3). */
+export type GameRole = "architect" | "council" | "player" | "spectator";
 
 /** G11 §4 — la difficulté (asymétrie d'information/économie, jamais de modèle). */
 export type Difficulty = "beginner" | "intermediate" | "expert";

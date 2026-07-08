@@ -66,13 +66,16 @@ export const FLOW_MODES: readonly FlowMode[] = [
 
 // --- rôles (S3) -----------------------------------------------------------------
 
-/** Les 3 rôles du flow (§0/S3). `invent` = « Créer son pays » (forge), `gm` = Game
- * Master (décrète les événements + consignes globales — l'ex-architecte). */
-export type FlowRole = "player" | "invent" | "gm";
+/** Les rôles du flow (§0/S3 + G12 §3). `invent` = « Créer son pays » (forge), `gm` =
+ * Game Master (événements + consignes globales), `spectator` = le turfiste (parie, ne
+ * motionne ni ne prompte). */
+export type FlowRole = "player" | "invent" | "gm" | "spectator";
 
 /** Rôle du flow → rôle d'API (l'architecte porte les pouvoirs du Game Master). */
 export function backendRole(role: FlowRole): GameRole {
-  return role === "gm" ? "architect" : "player";
+  if (role === "gm") return "architect";
+  if (role === "spectator") return "spectator";
+  return "player";
 }
 
 // --- réglages transversaux (S2) -------------------------------------------------

@@ -18,8 +18,8 @@ create table if not exists games (
   epilogue_json jsonb,                             -- G6 : le récit de partie (unique)
   published   boolean not null default false,      -- G6 : privé par défaut
   admin       boolean not null default false,      -- G7-c : prompts capturés, non classée
-  role        text not null default 'council'       -- G8 : architect | council | player
-              check (role in ('architect', 'council', 'player')),
+  role        text not null default 'council'       -- G8/G12 : architect|council|player|spectator
+              check (role in ('architect', 'council', 'player', 'spectator')),
   -- G11 : propriété + réglages transversaux (verrouillés à la création).
   owner_id    uuid references auth.users(id) on delete set null,  -- joueur propriétaire
   ranked      boolean not null default false,       -- classée (§3) : compte pour les LP

@@ -63,6 +63,11 @@ const ROLES: { value: FlowRole; label: string; blurb: string }[] = [
     label: "Game Master",
     blurb: "Décrète les événements et adresse des consignes à toutes les SI.",
   },
+  {
+    value: "spectator",
+    label: "Spectateur",
+    blurb: "Le turfiste : la partie se joue seule, tu paries sur tout — en accéléré.",
+  },
 ];
 
 export default function LobbyPage() {
@@ -464,7 +469,7 @@ function RoleStep({
   settings: FlowSettings;
 }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-3">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {ROLES.map((r) => {
         const ranked = r.value === "player" && isRanked(r.value, settings);
         return (
