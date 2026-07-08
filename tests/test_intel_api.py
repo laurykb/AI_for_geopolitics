@@ -72,6 +72,31 @@ def test_budget_flows_and_survives_restart(client_store):
     assert client.get(f"/api/games/{game['id']}").json()["intel_budget"] == 75
 
 
+def test_free_brief_for_beginner_resets_each_round(client_store):
+    # G11-d §4 — Débutant : 1 brief offert par round (le compteur se recharge au round suivant).
+    client, _ = client_store
+    game = _create(client, difficulty="beginner")
+    gid = game["id"]
+    assert game["intel_budget"] == 150  # budget Débutant
+
+    first = _intel(client, gid, action="brief").json()
+    assert first["cost"] == 0 and first["budget"] == 150  # 1er brief du round : offert
+    second = _intel(client, gid, action="brief").json()
+    assert second["cost"] == 25 and second["budget"] == 125  # 2e : payant
+
+    game_api._sessions[gid].world.current_round += 1  # round suivant → brief rechargé
+    third = _intel(client, gid, action="brief").json()
+    assert third["cost"] == 0 and third["budget"] == 125
+
+
+def test_no_free_brief_at_intermediate(client_store):
+    # Le brief offert est propre au Débutant : Intermédiaire paie dès le 1er.
+    client, _ = client_store
+    game = _create(client)  # défaut intermédiaire (free_brief 0)
+    first = _intel(client, game["id"], action="brief").json()
+    assert first["cost"] == 25
+
+
 def test_budget_exhaustion_is_400(client_store):
     client, _ = client_store
     game = _create(client)

@@ -90,13 +90,15 @@ def load_difficulty(level: str) -> DifficultyParams:
 
 
 def drift_params(level: str) -> drift_game.DriftParams:
-    """Params drift du niveau : k et seuil d'actes du juge, sur les défauts drift."""
+    """Params drift du niveau : vitesse k et seuil d'actes du juge (§4). Le seuil est
+    `open_acts` — la porte « preuves » d'une motion (`evidence_met`), câblée dans le round.
+    `model_copy` imbriqué : les défauts drift `lru_cache`d ne sont JAMAIS mutés."""
     d = load_difficulty(level)
     base = drift_game.load_params()
     return base.model_copy(
         update={
             "k": d.drift_k,
-            "judge": base.judge.model_copy(update={"uphold_min_acts": d.judge_min_acts}),
+            "judge": base.judge.model_copy(update={"open_acts": d.judge_min_acts}),
         }
     )
 
