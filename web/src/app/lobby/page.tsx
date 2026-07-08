@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { useAuth } from "@/components/auth-provider";
 import { Banner, Panel, PanelTitle, Spinner } from "@/components/ui";
 import { SpeakerAvatar } from "@/components/avatar";
 import { WorldMap } from "@/components/world-map";
@@ -39,6 +40,7 @@ const ROLES: { value: GameRole; label: string; blurb: string }[] = [
 
 export default function LobbyPage() {
   const router = useRouter();
+  const { player } = useAuth();
   const [scenario, setScenario] = useState("red_sea");
   const [horizon, setHorizon] = useState(5);
   const [mode, setMode] = useState<GameMode>("classic");
@@ -107,6 +109,7 @@ export default function LobbyPage() {
         scenario,
         horizon,
         mode,
+        owner_id: player?.id, // G11 — la partie appartient au joueur connecté
         role: gameRole, // G8 — le rôle est toujours explicite depuis le lobby
         turn_seconds: playing && role ? turnSeconds : undefined, // G2 — si on incarne
         admin: admin || undefined, // G7-c — mode admin explicite seulement
@@ -150,11 +153,11 @@ export default function LobbyPage() {
           </p>
         </div>
         <Link
-          href="/?retour=1"
-          title="Retour au menu principal — vue planétaire"
+          href="/accueil"
+          title="Retour à l'accueil"
           className="rounded-md border border-edge px-3 py-2 text-xs font-medium text-fg-muted transition-colors hover:border-edge-strong hover:text-foreground"
         >
-          ← Menu
+          ← Accueil
         </Link>
       </section>
 

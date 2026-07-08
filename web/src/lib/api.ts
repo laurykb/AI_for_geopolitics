@@ -51,7 +51,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await resp.json()) as T;
 }
 
-export const listGames = (): Promise<GameView[]> => request("/api/games");
+/** Parties connues. `owner` = seulement les siennes (accueil) ; `admin` = tout (vue admin).
+ * Sans argument : rétro-compat (toutes les parties). Le vrai verrou est la RLS Supabase. */
+export const listGames = (opts?: { owner?: string; admin?: boolean }): Promise<GameView[]> => {
+  const params = new URLSearchParams();
+  if (opts?.owner) params.set("owner", opts.owner);
+  if (opts?.admin) params.set("admin", "true");
+  const qs = params.toString();
+  return request(`/api/games${qs ? `?${qs}` : ""}`);
+};
 
 export const getGame = (id: string): Promise<GameDetail> => request(`/api/games/${id}`);
 

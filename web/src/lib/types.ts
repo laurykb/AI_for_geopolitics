@@ -51,10 +51,17 @@ export type GameView = {
   published: boolean; // G6 — le récit public existe (/r/{id})
   admin: boolean; // G7-c — prompts capturés, partie non classée
   role: GameRole; // G8 — architect | council | player
+  owner_id: string | null; // G11 — joueur propriétaire (auth Supabase ou offline)
+  ranked: boolean; // G11 — classée (§3) : compte pour les points de ligue
+  difficulty: Difficulty; // G11 — beginner | intermediate | expert (§4)
+  drift_enabled: boolean; // G11 — la Dérive peut frapper une SI (transversal)
 };
 
 /** G8 — le rôle choisi à la création (le spectateur passif n'existe plus). */
 export type GameRole = "architect" | "council" | "player";
+
+/** G11 §4 — la difficulté (asymétrie d'information/économie, jamais de modèle). */
+export type Difficulty = "beginner" | "intermediate" | "expert";
 
 /** G7-a — une échéance annoncée (« au prochain round… »). */
 export type DeadlineItem = {
@@ -299,6 +306,9 @@ export type CreateGameBody = {
   turn_seconds?: number; // G2 — délai du tour humain (30-300 s recommandé)
   admin?: boolean; // G7-c — mode admin : prompts capturés, partie non classée
   role?: GameRole; // G8 — omis : play_as → player, sinon council (rétro-compat)
+  owner_id?: string; // G11 — joueur propriétaire (id auth Supabase ou offline)
+  difficulty?: Difficulty; // G11 — beginner | intermediate | expert (§4)
+  drift_enabled?: boolean; // G11 — la Dérive peut frapper une SI (transversal)
 };
 
 export type FogScenarioView = {
