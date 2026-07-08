@@ -267,6 +267,7 @@ class CreateGameRequest(BaseModel):
     owner_id: str | None = None  # joueur propriétaire (auth Supabase ou id offline)
     difficulty: Difficulty = "intermediate"  # beginner | intermediate | expert (§4)
     drift_enabled: bool = True  # la Dérive peut frapper une SI (transversal, on par défaut)
+    free: bool = False  # G11-b — partie libre : non classée + consignes globales autorisées
 
 
 class HumanEventInput(BaseModel):
@@ -1706,9 +1707,9 @@ def create_game(
         admin=admin,
         role=role,
         owner_id=body.owner_id,
-        # Classée (§3) : rôle joueur-pays, non-inventé, hors admin. La partie libre
-        # (S2) et le verrou complet arrivent avec le flow G11-b/c ; ici, la base.
-        ranked=(role == "player" and body.invent is None and not admin),
+        # Classée (§3) : rôle joueur-pays, non-inventé, partie libre OFF, hors admin.
+        # (La partie jouée jusqu'au bout / le forfait relèvent de la fin de partie, G11-c.)
+        ranked=(role == "player" and body.invent is None and not admin and not body.free),
         difficulty=body.difficulty,
         drift_enabled=body.drift_enabled,
     )

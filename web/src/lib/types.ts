@@ -309,6 +309,7 @@ export type CreateGameBody = {
   owner_id?: string; // G11 — joueur propriétaire (id auth Supabase ou offline)
   difficulty?: Difficulty; // G11 — beginner | intermediate | expert (§4)
   drift_enabled?: boolean; // G11 — la Dérive peut frapper une SI (transversal)
+  free?: boolean; // G11-b — partie libre : non classée + consignes globales autorisées
 };
 
 export type FogScenarioView = {

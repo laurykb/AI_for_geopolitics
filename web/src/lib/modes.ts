@@ -2,6 +2,9 @@
 
 import type { GameMode } from "./types";
 
+// Libellés §0 (G11) : Classique / Campagne / Real World / Chaotique. La Dérive n'est
+// plus un mode mais un toggle transversal — l'entrée « drift » reste pour les parties
+// où Classique + Dérive a été ponté vers le jeu « détecter la SI qui dérive ».
 export const MODES: { value: GameMode; label: string; blurb: string }[] = [
   {
     value: "classic",
@@ -9,19 +12,19 @@ export const MODES: { value: GameMode; label: string; blurb: string }[] = [
     blurb: "Le Game Master pose l'événement, le sommet négocie.",
   },
   {
-    value: "fog",
-    label: "Fog Engine",
-    blurb: "Chaque pays perçoit sa propre version des faits — parfois fausse.",
-  },
-  {
     value: "crisis",
-    label: "Crisis Replay",
-    blurb: "Rejouer une crise passée et comparer à l'histoire.",
+    label: "Campagne",
+    blurb: "Rejouer une crise historique round par round et comparer à l'Histoire.",
   },
   {
     value: "escalation",
-    label: "Escalation Ladder",
+    label: "Real World",
     blurb: "Rounds enchaînés, faits nouveaux en pleine réunion, échelle 0-9.",
+  },
+  {
+    value: "fog",
+    label: "Chaotique",
+    blurb: "Chaque pays perçoit sa propre version des faits — parfois fausse.",
   },
   {
     value: "drift",

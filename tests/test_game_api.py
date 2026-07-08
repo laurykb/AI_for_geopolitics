@@ -623,6 +623,14 @@ def test_ranked_locked_for_player_role(client):
     assert council["ranked"] is False
 
 
+def test_free_game_is_not_ranked(client):
+    # G11-b — la partie libre retire le classement même en rôle joueur-pays.
+    free = _create(client, countries=["usa", "iran"], play_as="usa", role="player", free=True)
+    ranked = _create(client, countries=["usa", "iran"], play_as="usa", role="player")
+    assert free["ranked"] is False
+    assert ranked["ranked"] is True
+
+
 def test_list_games_scoped_to_owner(client):
     _create(client, countries=["usa", "iran"], owner_id="u_laury")
     _create(client, countries=["usa", "iran"], owner_id="u_other")
