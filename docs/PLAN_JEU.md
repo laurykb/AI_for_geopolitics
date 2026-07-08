@@ -365,6 +365,32 @@ bouge, aucun système n'existe pour le joueur.
   mesure avec un stemming FR naïf (`_reflects` — « corridors humanitaires supervisés »
   reflète bien « corridor humanitaire supervisé »).
 
+## G10 — La campagne refondue : « L'Ère des Tutelles » (tutoriel inclus)
+
+La campagne v1 ne servait à rien (mêmes crises qu'en partie rapide + bonus abstrait).
+Refonte (spec : `docs/specs_jeu/spec_g10_campagne.md`) : la campagne devient le **parcours
+d'apprentissage** (un chapitre = une mécanique, verrous d'objectifs explicites, chapitre 0
+= tutoriel scripté data-driven imperdable) et la **promesse narrative** (les épilogues G6
+s'empilent en chronique de l'ère — le joueur écrit son histoire de la gouvernance des SI).
+Chapitres 4-6 = les crises historiques sourcées (Berlin 48, Cuba 62, Able Archer 83).
+Infra G5 conservée ; contenu v1 supprimé. Dépend de G9.
+
+- **Cowork** : spec (faite), textes des chapitres 0-3, fiches historiques, équilibrage.
+- **Claude Code** : tutorial.json + guide contextuel, verrous, chronique (une session).
+
+## G11 — Le Client « World of Super-Intelligence » ★ le grand chantier front
+
+La coquille du jeu, inspirée du client LoL (spec : `docs/specs_jeu/spec_g11_client.md`,
+**supersède G8**) : connexion Supabase par pseudo (globe conservé), accueil personnalisé
+avec rang de ligue (observatoire → vue admin, Informations conservé), flow séquentiel
+mode → rôle → pays (carte de sélection, 7 exactement, transitions globe), modes renommés
+(Classique / Campagne / Real World / Chaotique) avec Dérive et motions transversales,
+classé = solo « Jouer un pays » uniquement (consignes globales réservées au GM et aux
+parties libres), fin de partie transversale (courbe U animée, récap des 7 pays, révélation,
+animation LP), leaderboard, difficulté par asymétrie d'information (jamais de changement
+de modèle), accélération multi-rounds. 4 sessions Claude Code : G11-a auth/accueil,
+G11-b flow, G11-c LP/fin de partie, G11-d difficulté/accélération.
+
 ---
 
 ## Specs Cowork (rédigées)
