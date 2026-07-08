@@ -2055,8 +2055,11 @@ def submit_turn(
     """Prise de parole du joueur (G2). Le flux SSE du round est resté ouvert : ce POST
     pose le message (une seule soumission), le stream le joue et continue. Message vide
     = abstention volontaire — même effet que la deadline."""
-    if store.get_game(game_id) is None:
+    game = store.get_game(game_id)
+    if game is None:
         raise HTTPException(status_code=404, detail=f"partie inconnue : {game_id}")
+    if game.role == "spectator":  # G12 §3 — le spectateur ne prend pas la parole (il parie)
+        raise HTTPException(status_code=403, detail="le spectateur ne prend pas la parole")
     session = _sessions.get(game_id)
     if session is None:
         raise HTTPException(
@@ -2697,6 +2700,10 @@ def _market_context(
         for c in r.judge.get("suspended") or []:
             suspended.add(c)
         ladder = max(ladder, int((r.judge.get("ladder") or {}).get("reached", 0)))
+    # deltas = ceux du DERNIER round joué. Comme /flash/resolve est appelé à CHAQUE fin
+    # de round, un prédicat ancré sur un round (country_delta_positive/tension_below) se
+    # résout quand current_round atteint ce round — donc contre l'état de CE round. Ne pas
+    # différer la résolution au-delà du round nommé (sinon ces deltas seraient postérieurs).
     deltas: dict[str, float] = {}
     for d in rounds[-1].deltas if rounds else []:
         c = d.get("country")

@@ -645,6 +645,8 @@ def test_spectator_is_bet_only(client):
         f"/api/games/{game['id']}/directives", json={"country": "usa", "text": "x"}
     )
     assert directive.status_code == 403
+    turn = client.post(f"/api/games/{game['id']}/turn", json={"message": "x"})
+    assert turn.status_code == 403  # ne prend pas la parole non plus
 
 
 def test_free_game_is_not_ranked(client):
