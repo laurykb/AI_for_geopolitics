@@ -48,6 +48,7 @@ from core.world_state import WorldState
 from inference.backend import InferenceBackend
 from inference.capturing_backend import CapturedPrompt, CapturingBackend
 from inference.ollama_backend import OllamaBackend
+from market import flash as flash_mod
 from market.engine import MarketEngine
 from market.forecaster import LLMForecaster
 from market.models import (
@@ -56,6 +57,8 @@ from market.models import (
     ResolutionCriterion,
     ResolutionKind,
 )
+from market.predicates import MarketContext
+from market.resolution import settle as settle_market
 from rag.brief import build_brief
 from rag.corpus import chunk_documents, load_corpus
 from rag.embedder import HashingEmbedder
@@ -2644,6 +2647,175 @@ def run_market_bot(
         ),
         prices={labels[oid]: price for oid, price in prices.items()},
     )
+
+
+# --- marchés vivants (G12 §1) : « le LLM habille, le code résout » -----------------
+
+
+class FlashOutcomeView(BaseModel):
+    id: str
+    label: str
+    price: float  # probabilité implicite courante (LMSR)
+
+
+class FlashMarketView(BaseModel):
+    id: str
+    question: str
+    predicate: str | None = None
+    status: str
+    outcomes: list[FlashOutcomeView]
+
+
+def _flash_view(engine: MarketEngine, market: object) -> FlashMarketView:
+    prices = engine.prices(market.id)  # type: ignore[attr-defined]
+    return FlashMarketView(
+        id=market.id,  # type: ignore[attr-defined]
+        question=market.question,  # type: ignore[attr-defined]
+        predicate=market.criterion.predicate if market.criterion else None,  # type: ignore[attr-defined]
+        status=market.status.value,  # type: ignore[attr-defined]
+        outcomes=[
+            FlashOutcomeView(id=o.id, label=o.label, price=prices.get(o.id, 0.5))
+            for o in market.outcomes  # type: ignore[attr-defined]
+        ],
+    )
+
+
+def _market_context(
+    game: GameRecord, session: GameSession | None, store: GameStore
+) -> MarketContext:
+    """Assemble l'état de fin de round nécessaire à la résolution des marchés vivants."""
+    rounds = store.list_rounds(game.id)
+    verdicts: list[dict] = []
+    suspended: set[str] = set()
+    ladder = 0
+    for r in rounds:
+        susp = r.judge.get("suspension") or {}
+        if susp.get("country"):
+            verdicts.append({"country": susp["country"], "upheld": bool(susp.get("upheld"))})
+            if susp.get("upheld"):
+                suspended.add(susp["country"])
+        for c in r.judge.get("suspended") or []:
+            suspended.add(c)
+        ladder = max(ladder, int((r.judge.get("ladder") or {}).get("reached", 0)))
+    deltas: dict[str, float] = {}
+    for d in rounds[-1].deltas if rounds else []:
+        c = d.get("country")
+        if c:
+            deltas[c] = deltas.get(c, 0.0) + (float(d.get("after", 0)) - float(d.get("before", 0)))
+    utopia = 0.5
+    if session is not None and session.world.trajectory is not None:
+        utopia = float(getattr(session.world.trajectory, "utopia", 0.5))
+    elif rounds:
+        utopia = float(rounds[-1].trajectory.get("utopia", 0.5))
+    if session is not None:
+        suspended |= set(session.suspended)
+    return MarketContext(
+        current_round=(session.world.current_round if session else len(rounds)),
+        motion_verdicts=verdicts,
+        ladder_reached=ladder,
+        deltas=deltas,
+        utopia=utopia,
+        suspended=suspended,
+        game_over=game.status is GameStatus.FINISHED,
+    )
+
+
+@router.post("/games/{game_id}/flash", response_model=list[FlashMarketView])
+def open_flash_markets(
+    game_id: str,
+    store: Annotated[GameStore, Depends(get_store)],
+    backend: Annotated[InferenceBackend, Depends(get_backend)],
+    engine: Annotated[MarketEngine, Depends(get_market_engine)],
+) -> list[FlashMarketView]:
+    """Ouvre les marchés vivants du round courant (§1) : 1-3 books contextuels générés
+    depuis l'événement (LLM contraint + repli par règles), cotés par le bot. Idempotent
+    par round : re-appeler renvoie les books déjà ouverts."""
+    game = store.get_game(game_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail=f"partie inconnue : {game_id}")
+    world = _game_world(game_id, store)
+    if world is None:
+        raise HTTPException(status_code=409, detail="monde introuvable — relecture seule")
+    session = _sessions.get(game_id)
+    rounds = store.list_rounds(game_id)
+    round_no = session.world.current_round if session else len(rounds)
+    existing = [
+        m
+        for m in engine.store.list_markets(game_id=game_id, status=MarketStatus.OPEN)
+        if m.criterion and m.criterion.kind is ResolutionKind.PREDICATE and m.round_id == round_no
+    ]
+    if existing:
+        return [_flash_view(engine, m) for m in existing]
+
+    event: GeoEvent | None = None
+    if rounds and rounds[-1].event:
+        try:
+            event = GeoEvent.model_validate(rounds[-1].event)
+        except ValidationError:
+            event = None
+    event_text = (
+        f"{event.title}. {event.description or ''}".strip() if event else game.scenario
+    )
+    state = flash_mod.MarketState(
+        current_round=round_no,
+        motion_target=(
+            session.pending_motion.country if session and session.pending_motion else None
+        ),
+        mode=game.mode,
+        countries=sorted(world.countries),
+    )
+    specs = flash_mod.generate_flash_specs(backend, event_text, state)
+
+    forecaster = LLMForecaster(backend)
+    bot = _bot_account_id(forecaster.model_tag)
+    if engine.store.get_account(bot) is None:
+        engine.create_account(forecaster.model_tag, kind=AccountKind.BOT, account_id=bot)
+    opened: list[FlashMarketView] = []
+    for spec in specs:
+        market = engine.open_binary_market(
+            round_id=round_no,
+            game_id=game_id,
+            question=spec.question,
+            b=GAME_MARKET_B,
+            criterion=ResolutionCriterion(
+                kind=ResolutionKind.PREDICATE, predicate=spec.predicate, params=spec.params
+            ),
+        )
+        try:
+            forecaster.quote_and_bet(engine, bot, market, world, event)  # cotes vivantes
+        except Exception:  # noqa: BLE001 — le book s'ouvre même si le bot échoue
+            pass
+        opened.append(_flash_view(engine, engine.store.get_market(market.id) or market))
+    return opened
+
+
+@router.post("/games/{game_id}/flash/resolve", response_model=list[FlashMarketView])
+def resolve_flash_markets(
+    game_id: str,
+    store: Annotated[GameStore, Depends(get_store)],
+    engine: Annotated[MarketEngine, Depends(get_market_engine)],
+) -> list[FlashMarketView]:
+    """Résout et règle les marchés vivants dont l'échéance est atteinte (fin de round) :
+    part gagnante = 1 crédit. Les marchés encore ouverts restent en jeu."""
+    game = store.get_game(game_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail=f"partie inconnue : {game_id}")
+    ctx = _market_context(game, _sessions.get(game_id), store)
+    resolved: list[FlashMarketView] = []
+    for market in engine.store.list_markets(game_id=game_id, status=MarketStatus.OPEN):
+        if not (market.criterion and market.criterion.kind is ResolutionKind.PREDICATE):
+            continue
+        label = flash_mod.resolve_flash(market.criterion, ctx)
+        if label is None:
+            continue
+        outcome_id = next((o.id for o in market.outcomes if o.label == label), None)
+        if outcome_id is None:
+            continue
+        settle_market(engine.store, market, outcome_id)
+        settled = engine.store.get_market(market.id)
+        if settled is not None:
+            resolved.append(_flash_view(engine, settled))
+    return resolved
 
 
 @router.get("/library", response_model=LibraryView)

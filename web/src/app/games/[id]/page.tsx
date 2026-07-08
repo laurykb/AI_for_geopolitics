@@ -48,7 +48,13 @@ import {
 } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
 import { isMisled } from "@/lib/fog";
-import { runMarketBot } from "@/lib/market";
+import {
+  openFlashMarkets,
+  resolveFlashMarkets,
+  runMarketBot,
+  type FlashMarket,
+} from "@/lib/market";
+import { FlashMarketsPopup } from "@/components/flash-markets";
 import { localU } from "@/lib/stage";
 import type {
   AttributeDelta,
@@ -94,6 +100,8 @@ export default function TheatrePage() {
   const [chain, setChain] = useState(true); // Escalation : enchaîner les rounds
   const [accel, setAccel] = useState({ target: 0, done: 0 }); // G11-d — accélération multi-rounds
   const accelRef = useRef(0); // anti-doublon : round déjà enchaîné par l'accélération
+  const [flashMarkets, setFlashMarkets] = useState<FlashMarket[]>([]); // G12 — marchés vivants
+  const flashRef = useRef(0); // anti-doublon : marchés vivants déjà ouverts pour ce round
   const [glassBox, setGlassBox] = useState(false); // Fog : voir la désinformation qui circule
   // Scène (G1) : cran de la timeline (« live » ou un round passé) + gel du verdict.
   const [selected, setSelected] = useState<StageSelection>("live");
@@ -182,6 +190,20 @@ export default function TheatrePage() {
       });
     }
   }, [id, round.status, round.roundNo]);
+
+  // G12 §1 — marchés vivants : à la fin d'un round, régler les books échus puis ouvrir
+  // ceux de l'événement (pop-up de paris sur la carte). Fire-and-forget, anti-doublon.
+  const refreshFlash = useCallback(() => {
+    openFlashMarkets(id).then(setFlashMarkets).catch(() => {});
+  }, [id]);
+  useEffect(() => {
+    if (round.status === "done" && round.roundNo && flashRef.current !== round.roundNo) {
+      flashRef.current = round.roundNo;
+      resolveFlashMarkets(id)
+        .catch(() => [])
+        .finally(refreshFlash);
+    }
+  }, [id, round.status, round.roundNo, refreshFlash]);
 
   // Théâtre Escalation : les rounds s'enchaînent d'un coup jusqu'à l'horizon.
   useEffect(() => {
@@ -899,7 +921,9 @@ export default function TheatrePage() {
       {/* --- La scène (G1) : pleine largeur, la carte en grand --------------------- */}
       <div className="relative left-1/2 w-screen max-w-[1600px] -translate-x-1/2 space-y-4 px-4 sm:px-6">
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]">
-        <div className="rounded-lg border border-edge bg-surface p-3">
+        <div className="relative rounded-lg border border-edge bg-surface p-3">
+          {/* G12 §1 — les paris s'ouvrent en pop-up SUR la carte. */}
+          <FlashMarketsPopup markets={flashMarkets} onBet={refreshFlash} />
           <StageMap
             countries={summit}
             uByCountry={uByCountry}

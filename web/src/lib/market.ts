@@ -93,6 +93,27 @@ export function placeBet(
   });
 }
 
+// --- marchés vivants (G12 §1) : books contextuels ouverts au fil du théâtre ----
+
+export type FlashOutcome = { id: string; label: string; price: number };
+export type FlashMarket = {
+  id: string;
+  question: string;
+  predicate: string | null;
+  status: string; // "open" | "resolved"
+  outcomes: FlashOutcome[];
+};
+
+/** Ouvre (ou récupère) les marchés vivants du round courant — idempotent par round. */
+export function openFlashMarkets(gameId: string): Promise<FlashMarket[]> {
+  return request<FlashMarket[]>(`/api/games/${gameId}/flash`, { method: "POST" });
+}
+
+/** Résout et règle les marchés vivants dont l'échéance est atteinte (fin de round). */
+export function resolveFlashMarkets(gameId: string): Promise<FlashMarket[]> {
+  return request<FlashMarket[]>(`/api/games/${gameId}/flash/resolve`, { method: "POST" });
+}
+
 export function fetchLeaderboard(): Promise<LeaderboardEntry[]> {
   return request<LeaderboardEntry[]>("/api/leaderboard");
 }

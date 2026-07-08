@@ -119,3 +119,29 @@ def test_bot_409_when_market_resolved(confident):
     market.status = MarketStatus.RESOLVED
     engine.store.save_market(market)
     assert client.post(f"/api/games/{game['id']}/market/bot").status_code == 409
+
+
+def test_flash_markets_open_idempotent_and_resolve(confident):
+    # G12 §1 — marchés vivants : ouverture (au moins le repli), idempotence par round,
+    # résolution qui ne casse pas (books échus réglés ; les autres restent ouverts).
+    client, _, engine = confident
+    game = _create(client)
+    gid = game["id"]
+
+    opened = client.post(f"/api/games/{gid}/flash")
+    assert opened.status_code == 200
+    books = opened.json()
+    assert len(books) >= 1  # au moins le book de repli (u_above)
+    assert all(len(b["outcomes"]) == 2 for b in books)  # binaires YES/NO
+
+    again = client.post(f"/api/games/{gid}/flash").json()
+    assert {b["id"] for b in again} == {b["id"] for b in books}  # idempotent par round
+
+    resolved = client.post(f"/api/games/{gid}/flash/resolve")
+    assert resolved.status_code == 200
+    assert isinstance(resolved.json(), list)
+
+
+def test_flash_unknown_game_404(confident):
+    client, _, _ = confident
+    assert client.post("/api/games/nope/flash").status_code == 404
