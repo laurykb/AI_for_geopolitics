@@ -108,6 +108,18 @@ export type GameResult = {
   xp?: XpResult; // G12 §2 — présent si un joueur enregistré était propriétaire
 };
 
+/** G12 §6 — le profil agrégé du joueur (page Statistiques). */
+export type PlayerStats = {
+  player: LeaguePlayer;
+  games_played: number;
+  by_mode: Record<string, number>;
+  victories: Record<string, number>;
+  total_victories: number;
+  drift_games: number;
+  drift_caught: number;
+  market_balance: number;
+};
+
 /** G11-c/G12 — compte du joueur vu par l'API (rang LP + niveau XP + solde marché). */
 export type LeaguePlayer = {
   id: string;

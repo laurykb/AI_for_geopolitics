@@ -60,7 +60,10 @@ export default function AccueilPage() {
             World of Super-Intelligence
           </p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-5xl">
-            Bienvenue, <span className="text-accent-bright">{player.pseudo}</span>
+            Bienvenue,{" "}
+            <Link href="/profil" className="text-accent-bright hover:underline" title="Voir mon profil">
+              {player.pseudo}
+            </Link>
           </h1>
           <p className="mt-2 text-sm text-fg-muted">
             {progress.rank.name} · {lp ?? player.lp} LP

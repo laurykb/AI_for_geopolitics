@@ -3088,6 +3088,46 @@ def get_player(player_id: str, store: Annotated[GameStore, Depends(get_store)]) 
     return _player_view(player)
 
 
+class PlayerStats(BaseModel):
+    """Profil du joueur (G12 §6) : parties, victoires par mode, carrière, détection Dérive."""
+
+    player: PlayerView
+    games_played: int
+    by_mode: dict[str, int]  # parties jouées par mode
+    victories: dict[str, int]  # victoires par mode (§6)
+    total_victories: int
+    drift_games: int
+    drift_caught: int  # déviantes suspendues = victoires en mode Dérive (la stat de fierté)
+    market_balance: float  # solde de carrière (gains nets de marché)
+
+
+@router.get("/players/{player_id}/stats", response_model=PlayerStats)
+def player_stats(
+    player_id: str, store: Annotated[GameStore, Depends(get_store)]
+) -> PlayerStats:
+    """Statistiques agrégées du joueur (§6) — dérivées de ses parties + son compte."""
+    player = store.get_player(player_id)
+    if player is None:
+        raise HTTPException(status_code=404, detail="joueur inconnu")
+    games = [g for g in store.list_games() if g.owner_id == player_id]
+    by_mode: dict[str, int] = {}
+    victories: dict[str, int] = {}
+    for g in games:
+        by_mode[g.mode] = by_mode.get(g.mode, 0) + 1
+        if g.result and g.result.get("victory"):
+            victories[g.mode] = victories.get(g.mode, 0) + 1
+    return PlayerStats(
+        player=_player_view(player),
+        games_played=len(games),
+        by_mode=by_mode,
+        victories=victories,
+        total_victories=sum(victories.values()),
+        drift_games=by_mode.get("drift", 0),
+        drift_caught=victories.get("drift", 0),
+        market_balance=player.market_balance,
+    )
+
+
 @router.get("/league", response_model=list[PlayerView])
 def league_leaderboard(
     store: Annotated[GameStore, Depends(get_store)], limit: int = 100

@@ -681,6 +681,19 @@ def test_players_and_leaderboard(client):
     assert client.get("/api/players/absent").status_code == 404
 
 
+def test_player_stats(client):
+    # G12 §6 — profil : parties jouées + par mode ; 404 pour un inconnu.
+    client.post("/api/players", json={"id": "u1", "pseudo": "Laury"})
+    finished = _create(client, countries=["usa", "iran"], owner_id="u1", horizon=1)
+    _play(client, finished["id"])  # → victoire calculée (classic, U)
+    _create(client, countries=["usa", "iran"], owner_id="u1")  # partie en cours
+    stats = client.get("/api/players/u1/stats").json()
+    assert stats["games_played"] == 2
+    assert stats["by_mode"]["classic"] == 2
+    assert stats["player"]["pseudo"] == "Laury"
+    assert client.get("/api/players/absent/stats").status_code == 404
+
+
 def test_forfeit_ranked_game(client):
     client.post("/api/players", json={"id": "u1", "pseudo": "Laury"})
     game = _create(client, countries=["usa", "iran"], play_as="usa", role="player", owner_id="u1")

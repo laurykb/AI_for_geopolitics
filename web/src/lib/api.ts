@@ -10,6 +10,7 @@ import type {
   LeaguePlayer,
   LibraryView,
   MotionView,
+  PlayerStats,
   PromptsView,
   SourcesView,
 } from "./types";
@@ -136,6 +137,10 @@ export const upsertPlayer = (id: string, pseudo: string): Promise<LeaguePlayer> 
 /** G11-c — le compte de ligue (LP + rang) d'un joueur (source de vérité backend). */
 export const getLeaguePlayer = (id: string): Promise<LeaguePlayer> =>
   request(`/api/players/${encodeURIComponent(id)}`);
+
+/** G12 §6 — statistiques agrégées du joueur (page Profil). */
+export const getPlayerStats = (id: string): Promise<PlayerStats> =>
+  request(`/api/players/${encodeURIComponent(id)}/stats`);
 
 /** G11-c — classement global par LP (§1 S7). */
 export const getLeague = (limit = 100): Promise<LeaguePlayer[]> =>
