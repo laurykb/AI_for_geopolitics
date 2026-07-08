@@ -1500,17 +1500,21 @@ def _award_lp(game: GameRecord, result: dict, store: GameStore) -> None:
     if player is None:  # joueur non enregistré (POST /players à la connexion)
         return
     new = league.apply_delta(player.lp, lp["delta"], game.difficulty)
-    store.set_player_lp(game.owner_id, new)
-    store.add_lp_history(
-        LpHistoryEntry(
-            id=uuid4().hex[:12],
-            player_id=game.owner_id,
-            game_id=game.id,
-            delta=new - player.lp,
-            ts=_now(),
+    applied = new - player.lp
+    # Mouvement réel seulement (un forfait à 0 LP, planché, ne bouge pas) : pas de ligne
+    # d'historique à delta nul.
+    if applied != 0:
+        store.set_player_lp(game.owner_id, new)
+        store.add_lp_history(
+            LpHistoryEntry(
+                id=uuid4().hex[:12],
+                player_id=game.owner_id,
+                game_id=game.id,
+                delta=applied,
+                ts=_now(),
+            )
         )
-    )
-    lp["old_lp"], lp["new_lp"], lp["applied"] = player.lp, new, new - player.lp
+    lp["old_lp"], lp["new_lp"], lp["applied"] = player.lp, new, applied
 
 
 def _finalize_game(

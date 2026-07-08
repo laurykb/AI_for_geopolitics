@@ -685,6 +685,23 @@ def test_game_over_emitted_at_horizon(client):
     assert len(detail["result"]["countries"]) == 2  # récap des deux pays
 
 
+def test_lp_credited_once_not_on_re_finalize(client):
+    # L'invariant le plus risqué (§2) : la fin transversale crédite les LP UNE fois ;
+    # un forfait sur une partie déjà finie est idempotent (aucun recrédit).
+    client.post("/api/players", json={"id": "u1", "pseudo": "Laury"})
+    game = _create(
+        client, countries=["usa", "iran"], play_as="usa", role="player", owner_id="u1", horizon=1
+    )
+    _play(client, game["id"])  # atteint l'horizon → game_over + crédit unique
+    finished = client.get(f"/api/games/{game['id']}").json()
+    assert finished["status"] == "finished" and finished["result"] is not None
+    lp_after = client.get("/api/players/u1").json()["lp"]
+
+    resp = client.post(f"/api/games/{game['id']}/forfeit")
+    assert resp.status_code == 200  # déjà finie : renvoie la vue, ne recrédite pas
+    assert client.get("/api/players/u1").json()["lp"] == lp_after
+
+
 def test_lock_released_after_round(client):
     game = _create(client, countries=["usa", "iran"])
     _play(client, game["id"])

@@ -82,7 +82,7 @@ export default function FinPage({ params }: { params: Promise<{ id: string }> })
       {/* 4. Révélation Dérive */}
       {r.reveal && (
         <Panel>
-          <PanelTitle kicker="La Dérive" title="Une SI avait dérié de son mandat" />
+          <PanelTitle kicker="La Dérive" title="Une SI avait dérivé de son mandat" />
           <p className="text-sm text-fg-muted">
             La révélation complète (qui, depuis quand, les actes) t&apos;attend dans la relecture.{" "}
             <Link href={`/games/${id}/replay`} className="text-accent-bright underline">
