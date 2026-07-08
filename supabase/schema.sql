@@ -222,9 +222,17 @@ create policy "lecture publique" on market_trades   for select using (true);
 -- players : chacun lit et gère SA fiche ; l'admin lit tout (via is_admin()).
 create policy "fiche : lecture de soi"   on players for select using (auth.uid() = id or public.is_admin());
 create policy "fiche : création de soi"  on players for insert with check (auth.uid() = id);
-create policy "fiche : mise à jour de soi" on players for update using (auth.uid() = id);
--- lp/is_admin ne s'auto-attribuent pas côté client : le backend service_role (qui
--- contourne la RLS) écrit les LP après une partie ; l'admin se pose en base (§2).
+create policy "fiche : mise à jour de soi" on players for update using (auth.uid() = id) with check (auth.uid() = id);
+
+-- INVARIANT DE SÉCURITÉ : is_admin et lp ne s'écrivent JAMAIS côté client — sinon un
+-- utilisateur se promeut admin (→ lit toutes les parties) et truque le leaderboard.
+-- La RLS seule ne borne pas les colonnes ; Postgres ne soustrait pas une colonne d'un
+-- privilège de table → on révoque insert/update de table puis on regrante les seules
+-- colonnes autorisées. is_admin/lp restent écrits par le backend service_role (qui
+-- contourne la RLS) : LP crédités après une partie, admin posé en base (§2).
+revoke insert, update on players from anon, authenticated;
+grant insert (id, pseudo) on players to authenticated;
+grant update (pseudo)     on players to authenticated;
 
 -- games/rounds/transcripts : le propriétaire lit SES parties (même non publiées),
 -- l'admin lit tout (l'ex-observatoire). Le public garde les seules parties publiées.

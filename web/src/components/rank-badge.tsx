@@ -34,6 +34,7 @@ export function RankBadge({ rank, size = "md" }: { rank: Rank; size?: "sm" | "md
           fillOpacity={0.9}
         />
       )}
+      {/* Le degré 1..7 (tier + 1) : « 1 » pour Attaché se lit mieux qu'un « 0 ». */}
       <text
         x="22"
         y={crown ? "31" : "27"}
@@ -42,7 +43,7 @@ export function RankBadge({ rank, size = "md" }: { rank: Rank; size?: "sm" | "md
         fontWeight="700"
         fill="var(--background)"
       >
-        {rank.tier}
+        {rank.tier + 1}
       </text>
     </svg>
   );

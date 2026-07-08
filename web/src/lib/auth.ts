@@ -63,6 +63,8 @@ export const IS_OFFLINE = !(SUPABASE_URL && SUPABASE_ANON);
 
 // --- backend offline (localStorage) ---------------------------------------------
 
+// Note : l'id offline est `offline_<slug>` (pas un UUID) — les parties créées en local
+// ne sont PAS portables vers Supabase (games.owner_id y est un uuid FK sur auth.users).
 type StoredAccount = Player & { hash: number };
 
 const LS_ACCOUNTS = "wosi.accounts";
@@ -218,8 +220,12 @@ class SupabaseAuth implements AuthApi {
     const user = data.user;
     if (!user) return { ok: false, error: "Compte créé — connectez-vous." };
     const player: Player = { id: user.id, pseudo: pseudo.trim(), is_admin: false, lp: 0 };
-    // La fiche de ligue : RLS insert autorise auth.uid() = id.
-    await sb.from("players").upsert(player, { onConflict: "id" });
+    // La fiche de ligue : le client n'écrit QUE id + pseudo — is_admin/lp prennent leurs
+    // défauts DB (false/0) et restent réservés au service_role (cf. supabase/schema.sql,
+    // sinon auto-promotion admin). RLS insert : auth.uid() = id.
+    await sb
+      .from("players")
+      .upsert({ id: user.id, pseudo: pseudo.trim() }, { onConflict: "id" });
     return { ok: true, player };
   }
 

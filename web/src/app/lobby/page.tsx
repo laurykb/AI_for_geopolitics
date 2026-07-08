@@ -1,8 +1,8 @@
 "use client";
 
-/** Lobby : composer le sommet et jouer. Les parties existantes vivent dans
- * l'Observatoire (bouton en haut à droite) ; le retour au menu rejoue la vue
- * planétaire (animation inverse de l'introduction). */
+/** Lobby : composer le sommet et jouer. Les parties du joueur vivent à l'accueil
+ * (`/accueil`) ; le bouton « ← Accueil » y ramène. (G11-b remplacera ce formulaire
+ * unique par le flow séquentiel mode → rôle → pays.) */
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
