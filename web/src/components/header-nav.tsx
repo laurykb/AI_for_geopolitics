@@ -12,6 +12,7 @@ import { useAuth } from "@/components/auth-provider";
 const LINKS = [
   { href: "/accueil", label: "Accueil" },
   { href: "/campagne", label: "Campagne" },
+  { href: "/leaderboard", label: "Leaderboard" },
   { href: "/informations", label: "Informations" },
 ];
 

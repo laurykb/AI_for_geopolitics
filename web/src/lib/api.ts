@@ -7,6 +7,7 @@ import type {
   GameDetail,
   GameView,
   IntelResult,
+  LeaguePlayer,
   LibraryView,
   MotionView,
   PromptsView,
@@ -127,6 +128,22 @@ export const submitTurn = (gameId: string, message: string): Promise<{ accepted:
     method: "POST",
     body: JSON.stringify({ message }),
   });
+
+/** G11-c — enregistre/rafraîchit le compte de ligue (à la connexion). */
+export const upsertPlayer = (id: string, pseudo: string): Promise<LeaguePlayer> =>
+  request("/api/players", { method: "POST", body: JSON.stringify({ id, pseudo }) });
+
+/** G11-c — le compte de ligue (LP + rang) d'un joueur (source de vérité backend). */
+export const getLeaguePlayer = (id: string): Promise<LeaguePlayer> =>
+  request(`/api/players/${encodeURIComponent(id)}`);
+
+/** G11-c — classement global par LP (§1 S7). */
+export const getLeague = (limit = 100): Promise<LeaguePlayer[]> =>
+  request(`/api/league?limit=${limit}`);
+
+/** G11-c — abandon d'une partie classée : défaite forfaitaire (−15 LP), partie finie. */
+export const forfeitGame = (gameId: string): Promise<GameView> =>
+  request(`/api/games/${gameId}/forfeit`, { method: "POST" });
 
 /** Dépose une motion de suspension (R4) — débattue puis arbitrée au prochain round. */
 export const fileMotion = (

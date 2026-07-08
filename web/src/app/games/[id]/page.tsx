@@ -4,7 +4,7 @@
  * Tolère une coupure du flux sans événement de fin : bannière + resynchronisation. */
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { SpeakerAvatar } from "@/components/avatar";
@@ -37,6 +37,7 @@ import { Banner, Dot, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
 import { useRoundStream } from "@/hooks/useRoundStream";
 import {
   fileMotion,
+  forfeitGame,
   getCampaign,
   getDriftReveal,
   getGame,
@@ -70,6 +71,7 @@ const TURN_CHOICES = [
 
 export default function TheatrePage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const [detail, setDetail] = useState<GameDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [maxTurns, setMaxTurns] = useState(0);
@@ -399,6 +401,39 @@ export default function TheatrePage() {
       </header>
 
       {loadError && <Banner tone="bad">{loadError}</Banner>}
+
+      {/* G11-c — fin de partie : accès au bilan, ou forfait d'une partie classée en cours. */}
+      {detail?.result ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent-bright/50 bg-surface-2 px-4 py-3">
+          <span className="text-sm font-medium">
+            La partie est terminée — le monde a penché vers {detail.result.verdict}.
+          </span>
+          <Link
+            href={`/games/${id}/fin`}
+            className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright"
+          >
+            Voir le bilan →
+          </Link>
+        </div>
+      ) : (
+        detail?.ranked &&
+        detail.status === "running" && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-edge px-4 py-2 text-xs text-fg-faint">
+            <span>Partie classée — abandonner = défaite forfaitaire (−15 LP).</span>
+            <button
+              onClick={() => {
+                if (!confirm("Abandonner cette partie classée ? −15 LP.")) return;
+                forfeitGame(id)
+                  .then(() => router.push(`/games/${id}/fin`))
+                  .catch((e) => setLoadError(humanizeError(e)));
+              }}
+              className="rounded-md border border-edge px-3 py-1 text-fg-muted transition-colors hover:border-dystopia hover:text-dystopia"
+            >
+              Déclarer forfait
+            </button>
+          </div>
+        )
+      )}
       {detail && !detail.live && (
         <Banner tone="warn">
           La session process est perdue (redémarrage du serveur ?) — cette partie est en

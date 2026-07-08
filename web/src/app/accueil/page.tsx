@@ -10,7 +10,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { RankBadge } from "@/components/rank-badge";
 import { Banner, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
-import { humanizeError, listGames } from "@/lib/api";
+import { getLeaguePlayer, humanizeError, listGames } from "@/lib/api";
 import { fmtDateTime } from "@/lib/format";
 import { rankFor } from "@/lib/league";
 import { MODES } from "@/lib/modes";
@@ -19,6 +19,7 @@ import type { GameView } from "@/lib/types";
 export default function AccueilPage() {
   const { player } = useAuth();
   const [games, setGames] = useState<GameView[] | null>(null);
+  const [lp, setLp] = useState<number | null>(null); // LP autoritatif (backend, G11-c)
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -29,11 +30,14 @@ export default function AccueilPage() {
         setError(null);
       })
       .catch((err) => setError(humanizeError(err)));
+    getLeaguePlayer(player.id)
+      .then((p) => setLp(p.lp))
+      .catch(() => setLp(player.lp)); // repli sur la valeur de session
   }, [player]);
 
   if (!player) return null; // la garde d'auth gère la redirection
 
-  const progress = rankFor(player.lp);
+  const progress = rankFor(lp ?? player.lp);
   const resumable = games?.find((g) => g.resumable);
   const recent = games ? [...games].reverse() : null;
 
@@ -146,6 +150,14 @@ export default function AccueilPage() {
                       Théâtre
                     </Link>
                   )}
+                  {g.result && (
+                    <Link
+                      href={`/games/${g.id}/fin`}
+                      className="rounded-md border border-edge-strong px-3 py-1.5 text-xs font-medium transition-colors hover:border-accent hover:text-accent-bright"
+                    >
+                      Bilan
+                    </Link>
+                  )}
                   <Link
                     href={`/games/${g.id}/replay`}
                     className="rounded-md border border-edge px-3 py-1.5 text-xs text-fg-muted transition-colors hover:border-edge-strong hover:text-foreground"
@@ -162,6 +174,9 @@ export default function AccueilPage() {
       <nav className="flex flex-wrap gap-4 text-sm text-fg-muted">
         <Link href="/campagne" className="transition-colors hover:text-foreground">
           Campagne
+        </Link>
+        <Link href="/leaderboard" className="transition-colors hover:text-foreground">
+          Leaderboard
         </Link>
         <Link href="/informations" className="transition-colors hover:text-foreground">
           Informations

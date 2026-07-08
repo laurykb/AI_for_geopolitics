@@ -6,6 +6,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 
+import { upsertPlayer } from "@/lib/api";
 import { getAuth, type Player } from "@/lib/auth";
 
 type AuthState = {
@@ -41,6 +42,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       unsub();
     };
   }, [auth]);
+
+  // Enregistre le compte de ligue au backend (source de vérité des LP, G11-c) dès qu'un
+  // joueur est connu. Fire-and-forget : sans backend joignable, l'auth reste utilisable.
+  useEffect(() => {
+    if (player) upsertPlayer(player.id, player.pseudo).catch(() => {});
+  }, [player]);
 
   const signOut = useCallback(async () => {
     await auth.signOut();

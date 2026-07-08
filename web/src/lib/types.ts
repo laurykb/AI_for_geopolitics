@@ -55,6 +55,7 @@ export type GameView = {
   ranked: boolean; // G11 — classée (§3) : compte pour les points de ligue
   difficulty: Difficulty; // G11 — beginner | intermediate | expert (§4)
   drift_enabled: boolean; // G11 — la Dérive peut frapper une SI (transversal)
+  result: GameResult | null; // G11-c — bilan de fin de partie (si finie)
 };
 
 /** G8 — le rôle choisi à la création (le spectateur passif n'existe plus). */
@@ -62,6 +63,40 @@ export type GameRole = "architect" | "council" | "player";
 
 /** G11 §4 — la difficulté (asymétrie d'information/économie, jamais de modèle). */
 export type Difficulty = "beginner" | "intermediate" | "expert";
+
+/** G11-c — le mouvement de LP d'une partie classée (bloc `lp` du bilan). */
+export type LpResult = {
+  ranked: boolean;
+  difficulty: Difficulty;
+  delta: number; // LP bruts gagnés/perdus (avant plancher/plafond)
+  p: number; // progression du pays du joueur
+  old_lp?: number; // LP avant (si crédité)
+  new_lp?: number; // LP après (plancher 0, plafond Débutant appliqués)
+  applied?: number; // variation réellement appliquée
+};
+
+/** G11-c — bilan de fin de partie (games.result_json, §1 S6). */
+export type GameResult = {
+  u_start: number;
+  u_final: number;
+  u_history: number[];
+  verdict: string; // "utopie" | "dystopie" | "équilibre"
+  countries: { id: string; indices: Record<string, { series: number[]; delta: number }> }[];
+  play_as: string | null;
+  reveal: boolean; // partie Dérive : insérer l'écran de révélation
+  forfeit: boolean;
+  lp: LpResult;
+};
+
+/** G11-c — compte de ligue vu par l'API (rang dérivé du LP). */
+export type LeaguePlayer = {
+  id: string;
+  pseudo: string;
+  lp: number;
+  rank: string;
+  rank_floor: number;
+  is_admin: boolean;
+};
 
 /** G7-a — une échéance annoncée (« au prochain round… »). */
 export type DeadlineItem = {
