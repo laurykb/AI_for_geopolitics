@@ -75,20 +75,40 @@ export type LpResult = {
   applied?: number; // variation réellement appliquée
 };
 
+/** G12 §2 — niveau atteint par un total d'XP + progression vers le suivant. */
+export type LevelInfo = {
+  level: number;
+  into_level: number;
+  span: number;
+  to_next: number;
+  progress: number;
+};
+
+/** G12 §2 — le mouvement d'XP (carrière) d'une fin de partie. */
+export type XpResult = {
+  delta: number;
+  old_xp: number;
+  new_xp: number;
+  old_level: LevelInfo;
+  new_level: LevelInfo;
+};
+
 /** G11-c — bilan de fin de partie (games.result_json, §1 S6). */
 export type GameResult = {
   u_start: number;
   u_final: number;
   u_history: number[];
   verdict: string; // "utopie" | "dystopie" | "équilibre"
+  victory: boolean; // G12 §6 — « victoire » du mode
   countries: { id: string; indices: Record<string, { series: number[]; delta: number }> }[];
   play_as: string | null;
   reveal: boolean; // partie Dérive : insérer l'écran de révélation
   forfeit: boolean;
   lp: LpResult;
+  xp?: XpResult; // G12 §2 — présent si un joueur enregistré était propriétaire
 };
 
-/** G11-c — compte de ligue vu par l'API (rang dérivé du LP). */
+/** G11-c/G12 — compte du joueur vu par l'API (rang LP + niveau XP + solde marché). */
 export type LeaguePlayer = {
   id: string;
   pseudo: string;
@@ -96,6 +116,12 @@ export type LeaguePlayer = {
   rank: string;
   rank_floor: number;
   is_admin: boolean;
+  xp: number;
+  level: number;
+  level_into: number;
+  level_span: number;
+  level_to_next: number;
+  market_balance: number;
 };
 
 /** G7-a — une échéance annoncée (« au prochain round… »). */

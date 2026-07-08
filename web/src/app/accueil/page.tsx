@@ -20,6 +20,7 @@ export default function AccueilPage() {
   const { player } = useAuth();
   const [games, setGames] = useState<GameView[] | null>(null);
   const [lp, setLp] = useState<number | null>(null); // LP autoritatif (backend, G11-c)
+  const [level, setLevel] = useState<number | null>(null); // niveau de carrière (G12)
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -31,7 +32,10 @@ export default function AccueilPage() {
       })
       .catch((err) => setError(humanizeError(err)));
     getLeaguePlayer(player.id)
-      .then((p) => setLp(p.lp))
+      .then((p) => {
+        setLp(p.lp);
+        setLevel(p.level);
+      })
       .catch(() => setLp(player.lp)); // repli sur la valeur de session
   }, [player]);
 
@@ -57,11 +61,16 @@ export default function AccueilPage() {
         <div className="flex flex-wrap items-center gap-4">
           <RankBadge rank={progress.rank} />
           <div className="min-w-0 flex-1">
-            <p className="flex items-baseline gap-2">
+            <p className="flex flex-wrap items-baseline gap-2">
               <span className="text-lg font-semibold">{progress.rank.name}</span>
               <span className="font-mono text-sm tabular-nums text-fg-muted">
-                {player.lp} LP
+                {lp ?? player.lp} LP
               </span>
+              {level != null && (
+                <span className="rounded-full border border-accent-bright/50 px-2 py-0.5 text-xs font-medium text-accent-bright">
+                  Niveau {level}
+                </span>
+              )}
             </p>
             <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
               <div

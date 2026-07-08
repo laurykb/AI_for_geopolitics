@@ -92,9 +92,15 @@ export default function FinPage({ params }: { params: Promise<{ id: string }> })
         </Panel>
       )}
 
-      {/* 5. Animation LP (classé) */}
+      {/* 5a. Animation XP (carrière) — se remplit AVANT les LP (grammaire LoL exacte). */}
+      {r.xp && <XpAnimation xp={r.xp} />}
+
+      {/* 5b. Animation LP (classé) — démarre après l'XP. */}
       {r.lp.ranked && r.lp.old_lp !== undefined && r.lp.new_lp !== undefined && (
-        <LpAnimation lp={r.lp as Required<GameResult["lp"]>} />
+        <LpAnimation
+          lp={r.lp as Required<GameResult["lp"]>}
+          startDelay={r.xp ? 1700 : 400}
+        />
       )}
       {r.lp.ranked && r.lp.new_lp === undefined && (
         <Banner tone="warn">
@@ -205,8 +211,54 @@ function Sparkline({ series }: { series: number[] }) {
   );
 }
 
+/** Animation XP (carrière) : compteur qui monte + barre de niveau qui se remplit. */
+function XpAnimation({ xp }: { xp: NonNullable<GameResult["xp"]> }) {
+  const [shown, setShown] = useState(xp.old_xp);
+  useEffect(() => {
+    const start = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / 1300);
+      setShown(Math.round(xp.old_xp + (xp.new_xp - xp.old_xp) * t));
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    const timer = setTimeout(() => (raf = requestAnimationFrame(tick)), 200);
+    return () => {
+      clearTimeout(timer);
+      cancelAnimationFrame(raf);
+    };
+  }, [xp]);
+
+  const lvl = xp.new_level;
+  const promoted = xp.new_level.level > xp.old_level.level;
+  return (
+    <Panel>
+      <PanelTitle kicker="Carrière" title={promoted ? `Niveau ${lvl.level} !` : "Expérience"} />
+      <div className="flex flex-wrap items-center gap-4">
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-accent-bright bg-surface-2 text-sm font-bold text-accent-bright">
+          {lvl.level}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="flex items-baseline gap-2">
+            <span className="text-lg font-semibold">Niveau {lvl.level}</span>
+            <span className="font-mono text-sm tabular-nums text-fg-muted">{shown} XP</span>
+            <span className="font-mono text-sm font-semibold text-utopia">+{xp.delta} XP</span>
+          </p>
+          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
+            <div
+              className="h-full rounded-full bg-accent-bright transition-all duration-700"
+              style={{ width: `${Math.round(lvl.progress * 100)}%` }}
+            />
+          </div>
+          <p className="mt-1 text-xs text-fg-faint">{lvl.to_next} XP avant le niveau {lvl.level + 1}</p>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
 /** Animation LP : compteur qui monte/descend + barre de rang qui se remplit. */
-function LpAnimation({ lp }: { lp: Required<GameResult["lp"]> }) {
+function LpAnimation({ lp, startDelay = 400 }: { lp: Required<GameResult["lp"]>; startDelay?: number }) {
   const [shown, setShown] = useState(lp.old_lp);
   useEffect(() => {
     const start = performance.now();
@@ -218,12 +270,12 @@ function LpAnimation({ lp }: { lp: Required<GameResult["lp"]> }) {
       setShown(Math.round(from + (to - from) * t));
       if (t < 1) raf = requestAnimationFrame(tick);
     };
-    const timer = setTimeout(() => (raf = requestAnimationFrame(tick)), 400);
+    const timer = setTimeout(() => (raf = requestAnimationFrame(tick)), startDelay);
     return () => {
       clearTimeout(timer);
       cancelAnimationFrame(raf);
     };
-  }, [lp]);
+  }, [lp, startDelay]);
 
   const progress = rankFor(shown);
   const gained = lp.applied;
