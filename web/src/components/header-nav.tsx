@@ -1,8 +1,9 @@
 "use client";
 
-/** Navigation du haut : Campagne + Informations (+ Admin si is_admin), le pseudo et
+/** Navigation du haut : Leaderboard + Informations (+ Admin si is_admin), le pseudo et
  * la déconnexion. L'observatoire public a disparu (G11) : chacun voit SES parties à
- * l'accueil, l'admin voit tout via /admin. */
+ * l'accueil, l'admin voit tout via /admin. Campagne n'est plus un lien : c'est un mode
+ * de jeu à part entière (choisi au lancement d'une partie). */
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -11,7 +12,6 @@ import { useAuth } from "@/components/auth-provider";
 
 const LINKS = [
   { href: "/accueil", label: "Accueil" },
-  { href: "/campagne", label: "Campagne" },
   { href: "/leaderboard", label: "Leaderboard" },
   { href: "/informations", label: "Informations" },
 ];

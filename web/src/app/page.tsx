@@ -10,10 +10,12 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { Globe } from "@/components/globe";
 import { Banner, Spinner } from "@/components/ui";
+import { usePlanetLaunch } from "@/hooks/usePlanetLaunch";
 import { getAuth } from "@/lib/auth";
 
 export default function ConnexionPage() {
   const router = useRouter();
+  const { launching, launch } = usePlanetLaunch();
   const { player, loading, offline } = useAuth();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [pseudo, setPseudo] = useState("");
@@ -36,16 +38,18 @@ export default function ConnexionPage() {
         ? await auth.signIn(pseudo, password)
         : await auth.signUp(pseudo, password);
     if (result.ok) {
-      router.replace("/accueil");
+      launch("/accueil"); // plongée sur la planète → accueil
     } else {
       setError(result.error);
       setBusy(false);
     }
   };
 
+  const chrome = launching ? "intro-fade-out" : undefined;
+
   return (
     <div className="relative flex min-h-[calc(100vh-9rem)] flex-col items-center justify-center gap-6 overflow-hidden py-6 text-center">
-      <div>
+      <div className={chrome}>
         <p className="text-[11px] font-medium uppercase tracking-[0.3em] text-fg-faint">
           AI for Geopolitics
         </p>
@@ -54,7 +58,9 @@ export default function ConnexionPage() {
         </h1>
       </div>
 
-      <Globe className="w-full max-w-[300px] sm:max-w-[340px]" />
+      <div className={launching ? "intro-zoom" : undefined}>
+        <Globe spinning={launching} className="w-full max-w-[300px] sm:max-w-[340px]" />
+      </div>
 
       <form
         onSubmit={submit}
@@ -119,6 +125,9 @@ export default function ConnexionPage() {
             : "Ton pseudo est ce que voient les autres joueurs ; aucun email requis."}
         </p>
       </form>
+
+      {/* Voile de plongée : couvre l'écran pendant le zoom vers l'accueil. */}
+      {launching && <div className="intro-veil absolute inset-0 z-10 bg-background" />}
     </div>
   );
 }

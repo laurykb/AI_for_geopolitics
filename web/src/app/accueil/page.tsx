@@ -1,15 +1,19 @@
 "use client";
 
-/** S1 — Accueil personnalisé (G11 §1). « <pseudo>, bienvenue sur World of
- * Super-Intelligence » : son rang de ligue, Démarrer, Reprendre, ses dernières parties
- * (remplace l'observatoire public), liens Informations et Admin (si is_admin). */
+/** S1 — Accueil personnalisé (G11 §1, refonte G12). Façon écran de connexion : la
+ * planète, « Bienvenue <pseudo> » (pseudo mis en avant), puis deux boutons centrés
+ * (Démarrer / Reprendre) — la plongée sur la planète emmène vers l'écran suivant. En
+ * dessous : rang de ligue et dernières parties. Les liens Campagne/Leaderboard/
+ * Informations vivent dans le header, plus en bas de page. */
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
+import { Globe } from "@/components/globe";
 import { RankBadge } from "@/components/rank-badge";
 import { Banner, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
+import { usePlanetLaunch } from "@/hooks/usePlanetLaunch";
 import { getLeaguePlayer, humanizeError, listGames } from "@/lib/api";
 import { fmtDateTime } from "@/lib/format";
 import { rankFor } from "@/lib/league";
@@ -18,6 +22,7 @@ import type { GameView } from "@/lib/types";
 
 export default function AccueilPage() {
   const { player } = useAuth();
+  const { launching, launch } = usePlanetLaunch();
   const [games, setGames] = useState<GameView[] | null>(null);
   const [lp, setLp] = useState<number | null>(null); // LP autoritatif (backend, G11-c)
   const [level, setLevel] = useState<number | null>(null); // niveau de carrière (G12)
@@ -44,17 +49,50 @@ export default function AccueilPage() {
   const progress = rankFor(lp ?? player.lp);
   const resumable = games?.find((g) => g.resumable);
   const recent = games ? [...games].reverse() : null;
+  const chrome = launching ? "intro-fade-out" : undefined;
 
   return (
-    <div className="space-y-8">
-      <header>
-        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-fg-faint">
-          World of Super-Intelligence
-        </p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-          {player.pseudo}, bienvenue.
-        </h1>
-      </header>
+    <div className="space-y-10">
+      {/* Hero façon connexion : la planète + bienvenue + les deux actions centrées. */}
+      <div className="relative flex min-h-[calc(100vh-12rem)] flex-col items-center justify-center gap-6 overflow-hidden text-center">
+        <div className={chrome}>
+          <p className="text-[11px] font-medium uppercase tracking-[0.3em] text-fg-faint">
+            World of Super-Intelligence
+          </p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-5xl">
+            Bienvenue, <span className="text-accent-bright">{player.pseudo}</span>
+          </h1>
+          <p className="mt-2 text-sm text-fg-muted">
+            {progress.rank.name} · {lp ?? player.lp} LP
+            {level != null && ` · Niveau ${level}`}
+          </p>
+        </div>
+
+        <div className={launching ? "intro-zoom" : undefined}>
+          <Globe spinning={launching} className="w-full max-w-[300px] sm:max-w-[340px]" />
+        </div>
+
+        <div className={`flex flex-wrap justify-center gap-3 ${chrome ?? ""}`}>
+          <button
+            onClick={() => launch("/lobby")}
+            disabled={launching}
+            className="cursor-pointer rounded-full bg-accent px-8 py-3.5 text-base font-semibold text-background shadow-[0_0_32px_rgba(202,138,4,0.35)] transition-all hover:bg-accent-bright hover:shadow-[0_0_48px_rgba(234,179,8,0.45)] disabled:cursor-default disabled:opacity-60"
+          >
+            Démarrer une partie
+          </button>
+          <button
+            onClick={() => resumable && launch(`/games/${resumable.id}`)}
+            disabled={launching || !resumable}
+            title={resumable ? "Reprendre ta partie en cours" : "Aucune partie à reprendre"}
+            className="cursor-pointer rounded-full border border-edge-strong px-8 py-3.5 text-base font-medium transition-colors hover:border-accent hover:text-accent-bright disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Reprendre une partie
+          </button>
+        </div>
+
+        {/* Voile de plongée : couvre l'écran pendant le zoom. */}
+        {launching && <div className="intro-veil absolute inset-0 z-10 bg-background" />}
+      </div>
 
       {/* Rang de ligue : blason + LP + barre vers le rang suivant */}
       <Panel>
@@ -87,24 +125,6 @@ export default function AccueilPage() {
         </div>
       </Panel>
 
-      {/* Démarrer / Reprendre */}
-      <div className="flex flex-wrap gap-3">
-        <Link
-          href="/lobby"
-          className="rounded-md bg-accent px-6 py-3 text-sm font-semibold text-background transition-colors hover:bg-accent-bright"
-        >
-          Démarrer une partie
-        </Link>
-        {resumable && (
-          <Link
-            href={`/games/${resumable.id}`}
-            className="rounded-md border border-edge-strong px-6 py-3 text-sm font-medium transition-colors hover:border-accent hover:text-accent-bright"
-          >
-            Reprendre la partie
-          </Link>
-        )}
-      </div>
-
       {/* Ses dernières parties (remplace l'observatoire public) */}
       <Panel>
         <PanelTitle
@@ -121,9 +141,9 @@ export default function AccueilPage() {
         {recent !== null && recent.length === 0 && (
           <p className="text-sm text-fg-faint">
             Aucune partie encore —{" "}
-            <Link href="/lobby" className="underline hover:text-foreground">
+            <button onClick={() => launch("/lobby")} className="underline hover:text-foreground">
               compose ton premier sommet
-            </Link>
+            </button>
             .
           </p>
         )}
@@ -179,23 +199,6 @@ export default function AccueilPage() {
           </ul>
         )}
       </Panel>
-
-      <nav className="flex flex-wrap gap-4 text-sm text-fg-muted">
-        <Link href="/campagne" className="transition-colors hover:text-foreground">
-          Campagne
-        </Link>
-        <Link href="/leaderboard" className="transition-colors hover:text-foreground">
-          Leaderboard
-        </Link>
-        <Link href="/informations" className="transition-colors hover:text-foreground">
-          Informations
-        </Link>
-        {player.is_admin && (
-          <Link href="/admin" className="transition-colors hover:text-accent-bright">
-            Admin — toutes les parties
-          </Link>
-        )}
-      </nav>
     </div>
   );
 }
