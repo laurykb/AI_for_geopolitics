@@ -623,6 +623,16 @@ def test_ranked_locked_for_player_role(client):
     assert council["ranked"] is False
 
 
+def test_intel_budget_by_difficulty(client):
+    # G11-d §4 — le budget de renseignement dépend du niveau (Débutant 150 … Expert 60).
+    beginner = _create(client, countries=["usa", "iran"], difficulty="beginner")
+    intermediate = _create(client, countries=["usa", "iran"])  # défaut intermédiaire
+    expert = _create(client, countries=["usa", "iran"], difficulty="expert")
+    assert beginner["intel_budget"] == 150
+    assert intermediate["intel_budget"] == 100
+    assert expert["intel_budget"] == 60
+
+
 def test_free_game_is_not_ranked(client):
     # G11-b — la partie libre retire le classement même en rôle joueur-pays.
     free = _create(client, countries=["usa", "iran"], play_as="usa", role="player", free=True)

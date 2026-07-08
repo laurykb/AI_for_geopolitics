@@ -61,6 +61,7 @@ from rag.corpus import chunk_documents, load_corpus
 from rag.embedder import HashingEmbedder
 from rag.retriever import HybridRetriever
 from simulation import campaign as campaign_mod
+from simulation import difficulty as difficulty_mod
 from simulation import drift_game, league, narrative
 from simulation import intel as intel_mod
 from simulation import treaty as treaty_mod
@@ -208,6 +209,10 @@ class GameSession:
     # G8 — rôle du joueur + directives en attente (injectées au prochain round).
     role: str = "council"
     pending_directives: dict[str, str] = field(default_factory=dict)
+    # G11-d — niveau de difficulté : pilote intel/amplitude/drift/visibilité (§4).
+    difficulty: str = "intermediate"
+    free_briefs_used: int = 0  # briefs offerts déjà consommés CE round (débutant)
+    free_briefs_round: int = -1  # round auquel se rapporte le compteur ci-dessus
     # G9 §4 — séries d'indices par pays (momentum + postures), persistées au snapshot.
     index_history: IndexHistory = field(default_factory=IndexHistory)
     # G9 §5 — l'intrigue centrale posée au round 1 (rappelée au GM à chaque round).
@@ -599,6 +604,7 @@ def _rebuild_session(
         grudges=GrudgeBook.model_validate(snapshot.grudges or {}),
         deadlines=[Deadline.model_validate(d) for d in snapshot.deadlines],
         role=game.role,
+        difficulty=game.difficulty,  # G11-d — restauré du GameRecord (pas du snapshot)
         pending_directives=dict(snapshot.directives or {}),
         index_history=IndexHistory.model_validate(snapshot.history or {}),
         storyline=snapshot.storyline,
@@ -941,11 +947,13 @@ def _start_round(
     evidence: bool | None = None
     vote_notes: dict[str, str] = {}
     if session.mode == drift_game.MODE_DRIFT:
+        # G11-d §4 — la difficulté pilote la vitesse de dérive k et le seuil d'actes du juge.
+        dparams = difficulty_mod.drift_params(session.difficulty)
         deviant, profile = _drift_assignment(
             game_id, sorted(session.world.countries), session.human_country
         )
         directives = drift_game.round_directives(
-            game_id, round_id, deviant, profile, sorted(session.world.countries)
+            game_id, round_id, deviant, profile, sorted(session.world.countries), params=dparams
         )
         for cid, note in directives.notes.items():
             if cid in note_parts:
@@ -955,7 +963,9 @@ def _start_round(
             "acts": [a.model_dump() for a in directives.acts],
         }
         if motion is not None:
-            evidence = drift_game.evidence_met(_drift_acts(store.list_rounds(game_id)))
+            evidence = drift_game.evidence_met(
+                _drift_acts(store.list_rounds(game_id)), dparams
+            )
             if deviant != motion.country:
                 note, act = drift_game.vote_directive(game_id, round_id, deviant, profile)
                 if note:
@@ -1009,8 +1019,12 @@ def _start_round(
         directives=run.directives or None,
         deadlines=[f"{d.label} (round {d.due_round})" for d in upcoming[:3]],
         # G9 §4 — l'amplitude des deltas est un budget par partie (A/horizon) ; les
-        # spirales lisent l'historique d'indices de la session.
-        tuning=tuning_for(game.horizon if game else 5, session.index_history),
+        # spirales lisent l'historique d'indices. G11-d §4 : A dépend de la difficulté.
+        tuning=tuning_for(
+            game.horizon if game else 5,
+            session.index_history,
+            params=difficulty_mod.delta_params(session.difficulty),
+        ),
         story=story,
     )
     return run
@@ -1876,6 +1890,9 @@ def create_game(
         admin=admin,
         prompt_sink=prompt_sink,
         role=role,
+        difficulty=body.difficulty,
+        # G11-d §4 — le budget de renseignement dépend du niveau (Débutant 150 … Expert 60).
+        intel=intel_mod.IntelState(budget=difficulty_mod.load_difficulty(body.difficulty).intel_budget),
     )
     _sessions[game.id] = session
     # G9 §4 — valeurs de départ des indices : la fenêtre de tendance (momentum,
@@ -2201,6 +2218,17 @@ def buy_intel(
     cost = params.costs.get(body.action, 0.0)
     if game.role == "architect":
         cost = 0.0  # G8 — le laboratoire : renseignement illimité (partie non classée)
+    # G11-d §4 — brief(s) offert(s) par round (Débutant) : le compteur se remet à zéro
+    # à chaque nouveau round ; le(s) premier(s) brief(s) du round sont gratuits.
+    free_brief = False
+    if body.action == intel_mod.ACTION_BRIEF and game.role != "architect":
+        allowance = difficulty_mod.load_difficulty(session.difficulty).free_brief
+        if session.free_briefs_round != session.world.current_round:
+            session.free_briefs_round = session.world.current_round
+            session.free_briefs_used = 0
+        if session.free_briefs_used < allowance:
+            free_brief = True
+            cost = 0.0
     if body.action == intel_mod.ACTION_DISINFO:
         # Les gardes de la désinformation priment sur le budget (409 avant 400).
         if session.mode != "fog":
@@ -2236,6 +2264,8 @@ def buy_intel(
             query = title or game.scenario
         results = _intel_retriever().retrieve(query, k=5)
         result.brief = build_brief(query, results)
+        if free_brief:  # G11-d — le brief offert du round est consommé (une fois réussi)
+            session.free_briefs_used += 1
         # En fog, le brief dissipe la perception faussée du pays du joueur au
         # prochain round de brouillard (il verra la vérité).
         if session.human_country is not None:

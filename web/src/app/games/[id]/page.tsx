@@ -92,6 +92,8 @@ export default function TheatrePage() {
   const [motionError, setMotionError] = useState<string | null>(null);
 
   const [chain, setChain] = useState(true); // Escalation : enchaîner les rounds
+  const [accel, setAccel] = useState({ target: 0, done: 0 }); // G11-d — accélération multi-rounds
+  const accelRef = useRef(0); // anti-doublon : round déjà enchaîné par l'accélération
   const [glassBox, setGlassBox] = useState(false); // Fog : voir la désinformation qui circule
   // Scène (G1) : cran de la timeline (« live » ou un round passé) + gel du verdict.
   const [selected, setSelected] = useState<StageSelection>("live");
@@ -131,6 +133,10 @@ export default function TheatrePage() {
 
   const mode = detail?.mode ?? "classic";
   const castKey = detail?.countries?.join(",") ?? "";
+  // G11-d §4 — visibilité de l'info sur les SI selon la difficulté (Débutant : tout ;
+  // Intermédiaire : postures seules ; Expert : rien).
+  const showGriefs = (detail?.difficulty ?? "intermediate") === "beginner";
+  const showPostures = (detail?.difficulty ?? "intermediate") !== "expert";
   useEffect(() => {
     if (mode === "fog" || mode === "crisis") {
       // Seuls les contenus jouables avec CE sommet sont proposés (acteurs à la table).
@@ -181,6 +187,7 @@ export default function TheatrePage() {
   useEffect(() => {
     if (
       chain &&
+      accel.target === 0 && // l'accélération multi-rounds pilote sinon (pas de double)
       detail?.mode === "escalation" &&
       detail.live &&
       round.status === "done" &&
@@ -192,7 +199,37 @@ export default function TheatrePage() {
       }, 1200);
       return () => clearTimeout(timer);
     }
-  }, [chain, detail, round.status, start]);
+  }, [chain, accel.target, detail, round.status, start]);
+
+  // G11-d §1 S5 — accélération multi-rounds : joue N rounds d'affilée, avec une fenêtre
+  // de Stop entre chaque. Anti-doublon par roundNo (comme la délibération auto).
+  useEffect(() => {
+    if (
+      accel.target > 0 &&
+      round.status === "done" &&
+      round.roundNo &&
+      accelRef.current !== round.roundNo &&
+      detail?.live &&
+      detail.status === "running"
+    ) {
+      accelRef.current = round.roundNo;
+      const nextDone = accel.done + 1;
+      const finished = nextDone >= accel.target || detail.rounds.length >= detail.horizon;
+      const timer = setTimeout(
+        () => {
+          if (finished) {
+            setAccel({ target: 0, done: 0 }); // série terminée (ou horizon atteint)
+          } else {
+            setAccel((a) => ({ ...a, done: nextDone }));
+            setSelected("live");
+            void start({});
+          }
+        },
+        finished ? 0 : 1400, // fenêtre pour cliquer Stop entre deux rounds
+      );
+      return () => clearTimeout(timer);
+    }
+  }, [accel, round.status, round.roundNo, detail, start]);
 
   // G2 : la parole part en POST — le flux SSE du round, resté ouvert, la joue.
   const speak = (text: string) => {
@@ -235,6 +272,14 @@ export default function TheatrePage() {
     }
     void start(body);
   };
+
+  // G11-d — lance une série de N rounds (le round courant n'est pas ré-enchaîné).
+  const startAccel = (n: number) => {
+    accelRef.current = round.roundNo ?? 0;
+    setAccel({ target: n, done: 0 });
+    play();
+  };
+  const stopAccel = () => setAccel({ target: 0, done: 0 });
 
   const submitMotion = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -564,6 +609,50 @@ export default function TheatrePage() {
                   ? "Débattre la motion"
                   : "Jouer un round"}
             </button>
+
+            {/* G11-d §1 S5 — accélération multi-rounds : jouer 3/5 rounds, Stop entre chaque. */}
+            {accel.target > 0 ? (
+              <div className="flex items-center gap-2">
+                <div className="h-1.5 w-28 overflow-hidden rounded-full bg-surface-2">
+                  <div
+                    className="h-full rounded-full bg-accent transition-all"
+                    style={{ width: `${(accel.done / accel.target) * 100}%` }}
+                  />
+                </div>
+                <span className="font-mono text-xs tabular-nums text-fg-muted">
+                  {accel.done}/{accel.target}
+                </span>
+                <button
+                  onClick={stopAccel}
+                  className="rounded-md border border-edge px-3 py-1.5 text-xs text-fg-muted transition-colors hover:border-dystopia hover:text-dystopia"
+                >
+                  Stop
+                </button>
+              </div>
+            ) : (
+              !streaming &&
+              !motionPending && (
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-fg-muted">Accélérer :</span>
+                    {[3, 5].map((n) => (
+                      <button
+                        key={n}
+                        onClick={() => startAccel(n)}
+                        className="rounded-md border border-edge-strong px-3 py-1.5 text-xs font-medium transition-colors hover:border-accent hover:text-accent-bright"
+                      >
+                        {n} rounds
+                      </button>
+                    ))}
+                  </div>
+                  {detail?.ranked && detail.play_as && (
+                    <span className="text-[11px] text-warn">
+                      En classé, tes tours de parole deviendront des abstentions.
+                    </span>
+                  )}
+                </div>
+              )
+            )}
             <label className="text-sm">
               <span className="mb-1 block text-xs text-fg-muted">Ampleur de la négociation</span>
               <select
@@ -839,7 +928,7 @@ export default function TheatrePage() {
               }))
             }
           />
-          <RelationsPanel relations={detail?.relations ?? {}} />
+          {showGriefs && <RelationsPanel relations={detail?.relations ?? {}} />}
         </div>
         <aside
           ref={transcriptRef}
@@ -1097,7 +1186,7 @@ export default function TheatrePage() {
             />
             <CountryTable
               worldCountries={{ [detail.play_as]: worldCountries[detail.play_as] }}
-              postures={round.postures ?? detail.postures}
+              postures={showPostures ? (round.postures ?? detail.postures) : {}}
               history={detail.index_history}
             />
           </Panel>
@@ -1133,7 +1222,7 @@ export default function TheatrePage() {
           />
           <CountryTable
             worldCountries={worldCountries}
-            postures={round.postures ?? detail?.postures}
+            postures={showPostures ? (round.postures ?? detail?.postures) : {}}
             history={detail?.index_history}
           />
         </Panel>
