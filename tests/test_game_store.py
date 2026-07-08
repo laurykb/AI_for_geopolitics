@@ -44,6 +44,67 @@ def test_game_mode_roundtrip():
     assert store.get_game("g1").mode == "fog"
 
 
+def test_ownership_fields_roundtrip():
+    # G11 — propriété + classement : owner_id / ranked / difficulty / drift_enabled.
+    store = SQLiteGameStore(":memory:")
+    game = _game("g5")
+    game.owner_id = "u_laury"
+    game.ranked = True
+    game.difficulty = "expert"
+    game.drift_enabled = False
+    store.add_game(game)
+
+    got = store.get_game("g5")
+    assert got is not None
+    assert (got.owner_id, got.ranked, got.difficulty, got.drift_enabled) == (
+        "u_laury",
+        True,
+        "expert",
+        False,
+    )
+
+    got.owner_id = "u_other"
+    store.save_game(got)
+    assert store.get_game("g5").owner_id == "u_other"
+
+
+def test_ownership_defaults():
+    store = SQLiteGameStore(":memory:")
+    store.add_game(_game("g6"))
+    got = store.get_game("g6")
+    assert got.owner_id is None
+    assert got.ranked is False
+    assert got.difficulty == "intermediate"
+    assert got.drift_enabled is True
+
+
+def test_migration_adds_ownership_columns(tmp_path):
+    """Une base d'avant G11 (games sans owner_id) s'ouvre, se migre, garde ses défauts."""
+    path = str(tmp_path / "pre_g11.db")
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        "CREATE TABLE games (id TEXT PRIMARY KEY, scenario TEXT NOT NULL, "
+        "horizon INTEGER NOT NULL, mode TEXT NOT NULL DEFAULT 'classic', "
+        "status TEXT NOT NULL, created_at TEXT NOT NULL, role TEXT NOT NULL "
+        "DEFAULT 'council');"
+    )
+    conn.execute(
+        "INSERT INTO games (id, scenario, horizon, status, created_at) "
+        "VALUES ('old', 'red_sea', 5, 'running', '2026-01-01T00:00:00')"
+    )
+    conn.commit()
+    conn.close()
+
+    store = SQLiteGameStore(path)
+    got = store.get_game("old")
+    assert got is not None
+    assert got.owner_id is None  # partie héritée : sans propriétaire (admin seul la voit)
+    assert got.ranked is False
+    assert got.difficulty == "intermediate"
+    assert got.drift_enabled is True
+    store.close()
+
+
 def test_migration_adds_mode_to_legacy_db(tmp_path):
     """Une base créée avant R2 (games sans colonne mode) s'ouvre et se migre."""
     path = str(tmp_path / "legacy.db")

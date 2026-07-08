@@ -185,6 +185,10 @@ def _game_row(game: GameRecord) -> dict:
         "published": game.published,
         "admin": game.admin,
         "role": game.role,
+        "owner_id": game.owner_id,
+        "ranked": game.ranked,
+        "difficulty": game.difficulty,
+        "drift_enabled": game.drift_enabled,
     }
 
 
@@ -200,4 +204,8 @@ def _game(row: dict) -> GameRecord:
         published=bool(row.get("published", False)),
         admin=bool(row.get("admin", False)),
         role=row.get("role") or "council",
+        owner_id=row.get("owner_id"),
+        ranked=bool(row.get("ranked", False)),
+        difficulty=row.get("difficulty") or "intermediate",
+        drift_enabled=bool(row.get("drift_enabled", True)),
     )

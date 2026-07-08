@@ -599,6 +599,43 @@ def test_list_games(client):
     assert len(games) == 2 and all(g["live"] for g in games)
 
 
+# --- G11 : propriété + visibilité par propriétaire ------------------------------
+
+
+def test_create_game_records_owner_and_settings(client):
+    game = _create(
+        client,
+        countries=["usa", "iran"],
+        owner_id="u_laury",
+        difficulty="expert",
+        drift_enabled=False,
+    )
+    assert game["owner_id"] == "u_laury"
+    assert game["difficulty"] == "expert"
+    assert game["drift_enabled"] is False
+
+
+def test_ranked_locked_for_player_role(client):
+    # Joueur-pays d'un pays réel, hors admin → classée ; conseil → non classée.
+    player = _create(client, countries=["usa", "iran"], play_as="usa", role="player")
+    council = _create(client, countries=["usa", "iran"], role="council")
+    assert player["ranked"] is True
+    assert council["ranked"] is False
+
+
+def test_list_games_scoped_to_owner(client):
+    _create(client, countries=["usa", "iran"], owner_id="u_laury")
+    _create(client, countries=["usa", "iran"], owner_id="u_other")
+    _create(client, countries=["usa", "iran"])  # héritée : sans propriétaire
+
+    mine = client.get("/api/games", params={"owner": "u_laury"}).json()
+    assert [g["owner_id"] for g in mine] == ["u_laury"]
+
+    # L'admin voit tout, y compris les parties sans propriétaire.
+    all_games = client.get("/api/games", params={"owner": "u_laury", "admin": True}).json()
+    assert len(all_games) == 3
+
+
 def test_lock_released_after_round(client):
     game = _create(client, countries=["usa", "iran"])
     _play(client, game["id"])

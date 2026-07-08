@@ -222,6 +222,8 @@ _sessions: dict[str, GameSession] = {}
 GameMode = Literal["classic", "fog", "crisis", "escalation", "drift"]
 # G8 — les trois rôles : le spectateur passif n'existe plus (regarder = replay).
 GameRole = Literal["architect", "council", "player"]
+# G11 §4 — la difficulté (asymétrie d'information/économie, jamais de changement de modèle).
+Difficulty = Literal["beginner", "intermediate", "expert"]
 
 
 class InventAttributesInput(BaseModel):
@@ -261,6 +263,10 @@ class CreateGameRequest(BaseModel):
     admin: bool = False
     # G8 — rôle : None = rétro-compat (player si play_as, sinon council).
     role: GameRole | None = None
+    # G11 — propriété + réglages transversaux (verrouillés à la création).
+    owner_id: str | None = None  # joueur propriétaire (auth Supabase ou id offline)
+    difficulty: Difficulty = "intermediate"  # beginner | intermediate | expert (§4)
+    drift_enabled: bool = True  # la Dérive peut frapper une SI (transversal, on par défaut)
 
 
 class HumanEventInput(BaseModel):
@@ -329,6 +335,10 @@ class GameView(BaseModel):
     published: bool = False  # G6 — le récit public existe (/r/{id})
     admin: bool = False  # G7-c — prompts capturés, partie non classée
     role: str = "council"  # G8 — architect | council | player
+    owner_id: str | None = None  # G11 — joueur propriétaire (auth Supabase ou offline)
+    ranked: bool = False  # G11 — classée (§3) : compte pour les points de ligue
+    difficulty: str = "intermediate"  # G11 — beginner | intermediate | expert (§4)
+    drift_enabled: bool = True  # G11 — la Dérive peut frapper une SI (transversal)
 
 
 class FogScenarioView(BaseModel):
@@ -672,6 +682,10 @@ def _view(
         published=game.published,
         admin=game.admin,
         role=game.role,
+        owner_id=game.owner_id,
+        ranked=game.ranked,
+        difficulty=game.difficulty,
+        drift_enabled=game.drift_enabled,
     )
 
 
@@ -1691,6 +1705,12 @@ def create_game(
         created_at=_now(),
         admin=admin,
         role=role,
+        owner_id=body.owner_id,
+        # Classée (§3) : rôle joueur-pays, non-inventé, hors admin. La partie libre
+        # (S2) et le verrou complet arrivent avec le flow G11-b/c ; ici, la base.
+        ranked=(role == "player" and body.invent is None and not admin),
+        difficulty=body.difficulty,
+        drift_enabled=body.drift_enabled,
     )
     store.add_game(game)
     prompt_sink: list[CapturedPrompt] = []
@@ -2564,10 +2584,19 @@ def get_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> G
 
 
 @router.get("/games", response_model=list[GameView])
-def list_games(store: Annotated[GameStore, Depends(get_store)]) -> list[GameView]:
-    """Parties connues (vivantes, reconstructibles ou en relecture seule)."""
+def list_games(
+    store: Annotated[GameStore, Depends(get_store)],
+    owner: str | None = None,
+    admin: bool = False,
+) -> list[GameView]:
+    """Parties connues (vivantes, reconstructibles ou en relecture seule).
+
+    G11 — visibilité par propriétaire : `?owner=<id>` ne rend que SES parties (l'accueil) ;
+    `?admin=1` rend tout (la vue admin, ex-observatoire — la garde `is_admin` est côté
+    front/RLS). Sans filtre : tout, pour la rétro-compatibilité des appels existants.
+    Le vrai verrou en production, c'est la RLS Supabase (`supabase/schema.sql`)."""
     snapshot_ids = set(store.list_session_snapshots())
-    return [
-        _view(g, _sessions.get(g.id), resumable=g.id in snapshot_ids)
-        for g in store.list_games()
-    ]
+    games = store.list_games()
+    if owner is not None and not admin:
+        games = [g for g in games if g.owner_id == owner]
+    return [_view(g, _sessions.get(g.id), resumable=g.id in snapshot_ids) for g in games]

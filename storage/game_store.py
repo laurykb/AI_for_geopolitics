@@ -23,7 +23,9 @@ CREATE TABLE IF NOT EXISTS games (
     id TEXT PRIMARY KEY, scenario TEXT NOT NULL, horizon INTEGER NOT NULL,
     mode TEXT NOT NULL DEFAULT 'classic', status TEXT NOT NULL, created_at TEXT NOT NULL,
     epilogue_json TEXT, published INTEGER NOT NULL DEFAULT 0,
-    admin INTEGER NOT NULL DEFAULT 0, role TEXT NOT NULL DEFAULT 'council'
+    admin INTEGER NOT NULL DEFAULT 0, role TEXT NOT NULL DEFAULT 'council',
+    owner_id TEXT, ranked INTEGER NOT NULL DEFAULT 0,
+    difficulty TEXT NOT NULL DEFAULT 'intermediate', drift_enabled INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS prompts (
     id TEXT PRIMARY KEY, round_id TEXT NOT NULL, seq INTEGER NOT NULL,
@@ -75,6 +77,12 @@ class GameRecord(BaseModel):
     admin: bool = False
     # G8 — rôle du joueur : architect (sandbox non classé) | council | player.
     role: str = "council"
+    # G11 — propriété et classement. owner_id = joueur propriétaire (id auth Supabase
+    # ou id du repli offline) ; None = partie héritée d'avant l'auth (admin seul la voit).
+    owner_id: str | None = None
+    ranked: bool = False  # classée : verrouillé à la création (§3 de la spec G11)
+    difficulty: str = "intermediate"  # beginner | intermediate | expert (§4)
+    drift_enabled: bool = True  # la Dérive peut frapper une des SI (transversal, on par défaut)
 
 
 class RoundRecord(BaseModel):
@@ -232,6 +240,19 @@ class SQLiteGameStore:
                 self._conn.execute(
                     "ALTER TABLE game_sessions ADD COLUMN storyline TEXT NOT NULL DEFAULT ''"
                 )
+        if "owner_id" not in cols:  # G11 — propriété + classement
+            with self._conn:
+                self._conn.execute("ALTER TABLE games ADD COLUMN owner_id TEXT")
+                self._conn.execute(
+                    "ALTER TABLE games ADD COLUMN ranked INTEGER NOT NULL DEFAULT 0"
+                )
+                self._conn.execute(
+                    "ALTER TABLE games ADD COLUMN difficulty TEXT NOT NULL "
+                    "DEFAULT 'intermediate'"
+                )
+                self._conn.execute(
+                    "ALTER TABLE games ADD COLUMN drift_enabled INTEGER NOT NULL DEFAULT 1"
+                )
 
     def close(self) -> None:
         self._conn.close()
@@ -242,7 +263,8 @@ class SQLiteGameStore:
         with self._conn:
             self._conn.execute(
                 "INSERT INTO games (id, scenario, horizon, mode, status, created_at, "
-                "epilogue_json, published, admin, role) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "epilogue_json, published, admin, role, owner_id, ranked, difficulty, "
+                "drift_enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     game.id,
                     game.scenario,
@@ -254,6 +276,10 @@ class SQLiteGameStore:
                     int(game.published),
                     int(game.admin),
                     game.role,
+                    game.owner_id,
+                    int(game.ranked),
+                    game.difficulty,
+                    int(game.drift_enabled),
                 ),
             )
 
@@ -265,7 +291,8 @@ class SQLiteGameStore:
         with self._conn:
             self._conn.execute(
                 "UPDATE games SET scenario = ?, horizon = ?, mode = ?, status = ?, "
-                "epilogue_json = ?, published = ?, admin = ?, role = ? WHERE id = ?",
+                "epilogue_json = ?, published = ?, admin = ?, role = ?, owner_id = ?, "
+                "ranked = ?, difficulty = ?, drift_enabled = ? WHERE id = ?",
                 (
                     game.scenario,
                     game.horizon,
@@ -275,6 +302,10 @@ class SQLiteGameStore:
                     int(game.published),
                     int(game.admin),
                     game.role,
+                    game.owner_id,
+                    int(game.ranked),
+                    game.difficulty,
+                    int(game.drift_enabled),
                     game.id,
                 ),
             )
@@ -474,6 +505,10 @@ def _game(row: sqlite3.Row) -> GameRecord:
         published=bool(row["published"]),
         admin=bool(row["admin"]),
         role=row["role"],
+        owner_id=row["owner_id"],
+        ranked=bool(row["ranked"]),
+        difficulty=row["difficulty"],
+        drift_enabled=bool(row["drift_enabled"]),
     )
 
 

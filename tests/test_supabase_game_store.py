@@ -53,6 +53,23 @@ def test_game_roundtrip(store):
     assert [g.id for g in store.list_games()] == ["g1", "g2"]
 
 
+def test_ownership_fields_roundtrip(store):
+    # G11 — owner_id / ranked / difficulty / drift_enabled survivent au store Supabase.
+    game = _game("g7")
+    game.owner_id = "u_laury"
+    game.ranked = True
+    game.difficulty = "beginner"
+    game.drift_enabled = False
+    store.add_game(game)
+    got = store.get_game("g7")
+    assert (got.owner_id, got.ranked, got.difficulty, got.drift_enabled) == (
+        "u_laury",
+        True,
+        "beginner",
+        False,
+    )
+
+
 def test_round_and_transcript_roundtrip(store):
     store.add_game(_game())
     round_ = RoundRecord(
