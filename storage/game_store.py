@@ -30,11 +30,16 @@ CREATE TABLE IF NOT EXISTS games (
 );
 CREATE TABLE IF NOT EXISTS players (
     id TEXT PRIMARY KEY, pseudo TEXT NOT NULL, is_admin INTEGER NOT NULL DEFAULT 0,
-    lp INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT ''
+    lp INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT '',
+    xp INTEGER NOT NULL DEFAULT 0, market_balance REAL NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS lp_history (
     id TEXT PRIMARY KEY, player_id TEXT NOT NULL, game_id TEXT NOT NULL,
     delta INTEGER NOT NULL, ts TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS xp_history (
+    id TEXT PRIMARY KEY, player_id TEXT NOT NULL, game_id TEXT NOT NULL,
+    delta INTEGER NOT NULL, reason TEXT NOT NULL DEFAULT '', ts TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS prompts (
     id TEXT PRIMARY KEY, round_id TEXT NOT NULL, seq INTEGER NOT NULL,
@@ -97,14 +102,16 @@ class GameRecord(BaseModel):
 
 
 class PlayerRecord(BaseModel):
-    """Ligne `players` (G11-c) : le compte de ligue. lp = source de vérité backend
-    (le front le lit via l'API dans les deux modes ; en Supabase, écrit en service_role)."""
+    """Ligne `players` : le compte du joueur. lp (compétence, classé) et xp (carrière,
+    tous modes) = source de vérité backend ; market_balance = solde de carrière (G12 §1)."""
 
     id: str
     pseudo: str
     is_admin: bool = False
     lp: int = 0
     created_at: str = ""
+    xp: int = 0  # G12 §2 — carrière (ne baisse jamais)
+    market_balance: float = 0.0  # G12 §1 — gains nets de marché cumulés (carrière)
 
 
 class LpHistoryEntry(BaseModel):
@@ -114,6 +121,17 @@ class LpHistoryEntry(BaseModel):
     player_id: str
     game_id: str
     delta: int
+    ts: str = ""
+
+
+class XpHistoryEntry(BaseModel):
+    """Ligne `xp_history` (G12 §2) : un gain d'XP daté, avec sa raison (mode, partie)."""
+
+    id: str
+    player_id: str
+    game_id: str
+    delta: int
+    reason: str = ""
     ts: str = ""
 
 
@@ -214,6 +232,11 @@ class GameStore(Protocol):
     def add_lp_history(self, entry: LpHistoryEntry) -> None: ...
     def list_lp_history(self, player_id: str) -> list[LpHistoryEntry]: ...
     def leaderboard(self, limit: int = 100) -> list[PlayerRecord]: ...
+    # G12 — carrière : XP (tous modes) + solde de marché.
+    def set_player_xp(self, player_id: str, xp: int) -> None: ...
+    def add_market_balance(self, player_id: str, delta: float) -> None: ...
+    def add_xp_history(self, entry: XpHistoryEntry) -> None: ...
+    def list_xp_history(self, player_id: str) -> list[XpHistoryEntry]: ...
 
 
 class SQLiteGameStore:
@@ -295,6 +318,13 @@ class SQLiteGameStore:
         if "result_json" not in cols:  # G11-c — bilan de fin de partie
             with self._conn:
                 self._conn.execute("ALTER TABLE games ADD COLUMN result_json TEXT")
+        player_cols = {row[1] for row in self._conn.execute("PRAGMA table_info(players)")}
+        if player_cols and "xp" not in player_cols:  # G12 — carrière (XP + solde marché)
+            with self._conn:
+                self._conn.execute("ALTER TABLE players ADD COLUMN xp INTEGER NOT NULL DEFAULT 0")
+                self._conn.execute(
+                    "ALTER TABLE players ADD COLUMN market_balance REAL NOT NULL DEFAULT 0"
+                )
 
     def close(self) -> None:
         self._conn.close()
@@ -552,6 +582,41 @@ class SQLiteGameStore:
         with self._conn:
             self._conn.execute("UPDATE players SET lp = ? WHERE id = ?", (lp, player_id))
 
+    def set_player_xp(self, player_id: str, xp: int) -> None:
+        with self._conn:
+            self._conn.execute("UPDATE players SET xp = ? WHERE id = ?", (xp, player_id))
+
+    def add_market_balance(self, player_id: str, delta: float) -> None:
+        with self._conn:
+            self._conn.execute(
+                "UPDATE players SET market_balance = market_balance + ? WHERE id = ?",
+                (delta, player_id),
+            )
+
+    def add_xp_history(self, entry: XpHistoryEntry) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO xp_history (id, player_id, game_id, delta, reason, ts) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (entry.id, entry.player_id, entry.game_id, entry.delta, entry.reason, entry.ts),
+            )
+
+    def list_xp_history(self, player_id: str) -> list[XpHistoryEntry]:
+        rows = self._conn.execute(
+            "SELECT * FROM xp_history WHERE player_id = ? ORDER BY ts", (player_id,)
+        ).fetchall()
+        return [
+            XpHistoryEntry(
+                id=r["id"],
+                player_id=r["player_id"],
+                game_id=r["game_id"],
+                delta=r["delta"],
+                reason=r["reason"],
+                ts=r["ts"],
+            )
+            for r in rows
+        ]
+
     def add_lp_history(self, entry: LpHistoryEntry) -> None:
         with self._conn:
             self._conn.execute(
@@ -624,6 +689,8 @@ def _player(row: sqlite3.Row) -> PlayerRecord:
         is_admin=bool(row["is_admin"]),
         lp=row["lp"],
         created_at=row["created_at"] or "",
+        xp=row["xp"],
+        market_balance=row["market_balance"],
     )
 
 

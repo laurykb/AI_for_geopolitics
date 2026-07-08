@@ -21,6 +21,7 @@ from storage.game_store import (
     RoundRecord,
     SessionSnapshot,
     TranscriptEntry,
+    XpHistoryEntry,
 )
 from storage.postgrest import PostgrestClient
 
@@ -185,8 +186,27 @@ class SupabaseGameStore:
     def set_player_lp(self, player_id: str, lp: int) -> None:
         self._db.update("players", {"id": player_id}, {"lp": lp})
 
+    def set_player_xp(self, player_id: str, xp: int) -> None:
+        self._db.update("players", {"id": player_id}, {"xp": xp})
+
+    def add_market_balance(self, player_id: str, delta: float) -> None:
+        # PostgREST n'incrémente pas en place : lecture-modification-écriture (service_role).
+        player = self.get_player(player_id)
+        if player is None:
+            return
+        self._db.update(
+            "players", {"id": player_id}, {"market_balance": player.market_balance + delta}
+        )
+
     def add_lp_history(self, entry: LpHistoryEntry) -> None:
         self._db.insert("lp_history", [entry.model_dump()])
+
+    def add_xp_history(self, entry: XpHistoryEntry) -> None:
+        self._db.insert("xp_history", [entry.model_dump()])
+
+    def list_xp_history(self, player_id: str) -> list[XpHistoryEntry]:
+        rows = self._db.select("xp_history", {"player_id": player_id}, order="ts.asc")
+        return [XpHistoryEntry.model_validate(r) for r in rows]
 
     def list_lp_history(self, player_id: str) -> list[LpHistoryEntry]:
         rows = self._db.select("lp_history", {"player_id": player_id}, order="ts.asc")
@@ -247,4 +267,6 @@ def _player(row: dict) -> PlayerRecord:
         is_admin=bool(row.get("is_admin", False)),
         lp=int(row.get("lp", 0)),
         created_at=str(row.get("created_at") or ""),
+        xp=int(row.get("xp", 0)),
+        market_balance=float(row.get("market_balance", 0.0)),
     )

@@ -695,6 +695,20 @@ def test_game_over_emitted_at_horizon(client):
     assert len(detail["result"]["countries"]) == 2  # récap des deux pays
 
 
+def test_xp_awarded_on_finish_all_modes(client):
+    # G12 §2 — l'XP (carrière) est créditée en fin de partie, même non classée.
+    client.post("/api/players", json={"id": "u1", "pseudo": "Laury"})
+    game = _create(client, countries=["usa", "iran"], owner_id="u1", horizon=1)
+    assert game["ranked"] is False  # conseil, non classé → pas de LP, mais de l'XP
+    _play(client, game["id"])
+    result = client.get(f"/api/games/{game['id']}").json()["result"]
+    assert "victory" in result
+    assert result["xp"]["delta"] > 0  # au moins rounds + terminée + 1re du jour
+    player = client.get("/api/players/u1").json()
+    assert player["xp"] == result["xp"]["new_xp"]
+    assert player["level"] >= 1
+
+
 def test_lp_credited_once_not_on_re_finalize(client):
     # L'invariant le plus risqué (§2) : la fin transversale crédite les LP UNE fois ;
     # un forfait sur une partie déjà finie est idempotent (aucun recrédit).

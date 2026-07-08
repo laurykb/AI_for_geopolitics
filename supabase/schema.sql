@@ -122,8 +122,24 @@ create table if not exists players (
   pseudo     text not null unique,
   is_admin   boolean not null default false,
   lp         integer not null default 0,          -- points de ligue (§2, plancher 0)
+  xp         integer not null default 0,          -- G12 §2 : carrière (ne baisse jamais)
+  market_balance double precision not null default 0,  -- G12 §1 : solde de marché (carrière)
   created_at timestamptz not null default now()
 );
+-- Migration des bases existantes (idempotent) :
+alter table players add column if not exists xp integer not null default 0;
+alter table players add column if not exists market_balance double precision not null default 0;
+
+-- G12 §2 : chaque gain d'XP daté (carrière). Écrit par le service_role ; le joueur lit le sien.
+create table if not exists xp_history (
+  id        text primary key,
+  player_id uuid not null references players(id) on delete cascade,
+  game_id   text references games(id) on delete set null,
+  delta     integer not null,
+  reason    text not null default '',
+  ts        timestamptz not null default now()
+);
+create index if not exists xp_history_player_idx on xp_history (player_id, ts);
 
 -- « admin » sans récursion RLS : SECURITY DEFINER lit players en contournant sa propre
 -- politique (sinon la policy admin de players s'auto-référencerait à l'infini).
@@ -204,6 +220,7 @@ create index if not exists trades_market_idx on market_trades (market_id, ts);
 
 alter table players         enable row level security;  -- G11 : chacun sa fiche, admin tout
 alter table lp_history      enable row level security;  -- G11-c : chacun son historique LP
+alter table xp_history      enable row level security;  -- G12 : chacun son historique XP
 alter table games           enable row level security;
 alter table rounds          enable row level security;
 alter table transcripts     enable row level security;
@@ -238,8 +255,10 @@ create policy "fiche : lecture de soi"   on players for select using (auth.uid()
 create policy "fiche : création de soi"  on players for insert with check (auth.uid() = id);
 create policy "fiche : mise à jour de soi" on players for update using (auth.uid() = id) with check (auth.uid() = id);
 
--- lp_history : chacun lit le sien (admin lit tout) ; écriture réservée au service_role.
+-- lp_history / xp_history : chacun lit le sien (admin tout) ; écriture réservée au service_role.
 create policy "LP : lecture de soi" on lp_history for select
+  using (player_id = auth.uid() or public.is_admin());
+create policy "XP : lecture de soi" on xp_history for select
   using (player_id = auth.uid() or public.is_admin());
 
 -- INVARIANT DE SÉCURITÉ : is_admin et lp ne s'écrivent JAMAIS côté client — sinon un

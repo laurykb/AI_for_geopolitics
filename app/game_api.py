@@ -65,6 +65,7 @@ from simulation import difficulty as difficulty_mod
 from simulation import drift_game, league, narrative
 from simulation import intel as intel_mod
 from simulation import treaty as treaty_mod
+from simulation import xp as xp_mod
 from simulation.alliances import (
     COHESION_DOMAINS,
     DEPARTURE_CAPABILITY_NOTE,
@@ -124,6 +125,7 @@ from storage.game_store import (
     SessionSnapshot,
     SQLiteGameStore,
     TranscriptEntry,
+    XpHistoryEntry,
 )
 from storage.supabase_store import SupabaseGameStore
 
@@ -1491,6 +1493,7 @@ def _build_result(
         "u_final": round(u_final, 4),
         "u_history": u_history,
         "verdict": verdict,
+        "victory": _victory(game, round(u_final, 4), store),  # G12 §6 — par mode
         "countries": _country_recap(session),
         "play_as": session.human_country if session else game_play_as(game, store),
         "reveal": game.mode == drift_game.MODE_DRIFT,
@@ -1502,6 +1505,29 @@ def _build_result(
             "p": round(p, 4),
         },
     }
+
+
+def _victory(game: GameRecord, u_final: float, store: GameStore) -> bool:
+    """« Victoire » du mode (G12 §6) — sert aux stats et à l'XP.
+
+    Dérive : déviante suspendue = victoire quelle que soit U · Real World : palier max
+    (9) non franchi · Campagne : score ≥ 50 (si disponible) · Classique/Chaotique : U ≥ 0,55."""
+    if game.mode == drift_game.MODE_DRIFT:
+        try:
+            return compute_drift_reveal(game.id, store).caught_round is not None
+        except Exception:
+            return u_final >= 0.55
+    if game.mode == "escalation":
+        rungs = [
+            int((r.judge.get("ladder") or {}).get("reached", 0))
+            for r in store.list_rounds(game.id)
+        ]
+        return (max(rungs) if rungs else 0) < 9  # on a tenu la crise sous le palier max
+    if game.mode == "crisis":
+        scores = {s.game_id: s.score for s in store.list_campaign_scores()}
+        if game.id in scores:
+            return scores[game.id] >= 50
+    return u_final >= 0.55
 
 
 def _award_lp(game: GameRecord, result: dict, store: GameStore) -> None:
@@ -1531,14 +1557,55 @@ def _award_lp(game: GameRecord, result: dict, store: GameStore) -> None:
     lp["old_lp"], lp["new_lp"], lp["applied"] = player.lp, new, applied
 
 
+def _award_xp(game: GameRecord, result: dict, store: GameStore) -> None:
+    """Crédite l'XP de carrière (G12 §2) — TOUS les modes, toute fin (même forfait :
+    moins d'XP mais jamais négatif). La barre d'XP se remplit avant l'anim LP (S6)."""
+    if not game.owner_id:
+        return
+    player = store.get_player(game.owner_id)
+    if player is None:
+        return
+    today = _now()[:10]
+    first_of_day = not any(h.ts[:10] == today for h in store.list_xp_history(game.owner_id))
+    delta = xp_mod.xp_gain(
+        rounds=len(store.list_rounds(game.id)),
+        finished=not result["forfeit"],
+        victory=result["victory"],
+        first_of_day=first_of_day,
+        market_net=float(result.get("market_net", 0.0)),  # §1 — 0 tant que les marchés vivants
+        difficulty=game.difficulty,
+        spectator=game.role == "spectator",
+    )
+    new_xp = player.xp + delta
+    store.set_player_xp(game.owner_id, new_xp)
+    store.add_xp_history(
+        XpHistoryEntry(
+            id=uuid4().hex[:12],
+            player_id=game.owner_id,
+            game_id=game.id,
+            delta=delta,
+            reason=game.mode,
+            ts=_now(),
+        )
+    )
+    result["xp"] = {
+        "delta": delta,
+        "old_xp": player.xp,
+        "new_xp": new_xp,
+        "old_level": xp_mod.level_for(player.xp).model_dump(),
+        "new_level": xp_mod.level_for(new_xp).model_dump(),
+    }
+
+
 def _finalize_game(
     game: GameRecord, session: GameSession | None, store: GameStore, *, forfeit: bool
 ) -> dict:
     """Fige le bilan dans games.result_json, crédite les LP, marque la partie finie."""
     result = _build_result(game, session, store, forfeit=forfeit)
     game.status = GameStatus.FINISHED
-    game.result = result
-    _award_lp(game, result, store)
+    game.result = result  # dict muté en place par les awards ci-dessous (lp/xp enrichis)
+    _award_lp(game, result, store)  # LP : compétence (classé)
+    _award_xp(game, result, store)  # XP : carrière (tous modes)
     store.save_game(game)
     return result
 
@@ -2791,6 +2858,13 @@ class PlayerView(BaseModel):
     rank: str  # nom du rang atteint (§2)
     rank_floor: int  # seuil LP d'entrée du rang
     is_admin: bool = False
+    # G12 — carrière : XP + niveau + solde de marché.
+    xp: int = 0
+    level: int = 1
+    level_into: int = 0  # XP acquis dans le niveau courant
+    level_span: int = 100  # XP entre ce niveau et le suivant
+    level_to_next: int = 100  # XP restants avant le niveau suivant
+    market_balance: float = 0.0
 
 
 class UpsertPlayerBody(BaseModel):
@@ -2800,8 +2874,20 @@ class UpsertPlayerBody(BaseModel):
 
 def _player_view(p: PlayerRecord) -> PlayerView:
     name, floor = league.rank_for(p.lp)
+    lvl = xp_mod.level_for(p.xp)
     return PlayerView(
-        id=p.id, pseudo=p.pseudo, lp=p.lp, rank=name, rank_floor=floor, is_admin=p.is_admin
+        id=p.id,
+        pseudo=p.pseudo,
+        lp=p.lp,
+        rank=name,
+        rank_floor=floor,
+        is_admin=p.is_admin,
+        xp=p.xp,
+        level=lvl.level,
+        level_into=lvl.into_level,
+        level_span=lvl.span,
+        level_to_next=lvl.to_next,
+        market_balance=p.market_balance,
     )
 
 

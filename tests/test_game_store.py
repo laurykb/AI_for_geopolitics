@@ -9,6 +9,7 @@ from storage.game_store import (
     PlayerRecord,
     SessionSnapshot,
     SQLiteGameStore,
+    XpHistoryEntry,
 )
 
 
@@ -107,6 +108,27 @@ def test_player_and_lp_history_roundtrip():
     assert (got.pseudo, got.lp) == ("Laury2", 23)  # pseudo rafraîchi, lp intact
     assert [h.delta for h in store.list_lp_history("u1")] == [23]
     assert store.get_player("absent") is None
+
+
+def test_xp_and_market_balance_roundtrip():
+    # G12 — carrière : xp (ne baisse jamais), solde de marché (incrément), xp_history.
+    store = SQLiteGameStore(":memory:")
+    store.upsert_player(PlayerRecord(id="u1", pseudo="Laury"))
+    assert store.get_player("u1").xp == 0 and store.get_player("u1").market_balance == 0.0
+
+    store.set_player_xp("u1", 84)
+    store.add_market_balance("u1", 12.5)
+    store.add_market_balance("u1", -4.0)
+    store.add_xp_history(
+        XpHistoryEntry(id="x1", player_id="u1", game_id="g1", delta=84, reason="classic", ts="t1")
+    )
+    got = store.get_player("u1")
+    assert got.xp == 84
+    assert got.market_balance == 8.5
+    assert [h.delta for h in store.list_xp_history("u1")] == [84]
+    # upsert ne clobbe ni xp ni le solde.
+    store.upsert_player(PlayerRecord(id="u1", pseudo="Laury2", xp=999))
+    assert store.get_player("u1").xp == 84
 
 
 def test_leaderboard_sorted_by_lp():

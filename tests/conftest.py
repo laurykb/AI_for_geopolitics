@@ -20,6 +20,7 @@ _PRIMARY_KEYS = {
     "games": ("id",),
     "players": ("id",),
     "lp_history": ("id",),
+    "xp_history": ("id",),
     "rounds": ("id",),
     "transcripts": ("id",),
     "game_sessions": ("game_id",),
