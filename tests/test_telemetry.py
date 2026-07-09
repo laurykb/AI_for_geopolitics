@@ -56,6 +56,19 @@ def test_metered_cache_hit_avoids_second_call():
     assert ledger.records[1].cache_hit is True
 
 
+def test_metered_cache_key_distinguishes_plain_and_repeat_penalty():
+    # Deux appels ne différant que par `plain` (JSON vs prose) ou `repeat_penalty` ne
+    # partagent PAS d'entrée de cache — sinon un résultat prose serait servi pour du JSON.
+    ledger = BudgetLedger()
+    inner = MockBackend("{}")
+    backend = MeteredBackend(inner, ledger)
+    with ledger.context("gm"):
+        backend.generate("meme prompt", plain=False)
+        backend.generate("meme prompt", plain=True)
+        backend.generate("meme prompt", plain=True, repeat_penalty=1.2)
+    assert len(inner.calls) == 3  # trois clés distinctes, aucun cache croisé
+
+
 def test_metered_stream_records_and_estimates_tokens():
     ledger = BudgetLedger()
     backend = MeteredBackend(MockBackend("un deux trois quatre cinq"), ledger)

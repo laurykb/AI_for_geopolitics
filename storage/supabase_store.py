@@ -61,7 +61,9 @@ class SupabaseGameStore:
         self._db.update("games", {"id": game.id}, row)
 
     def list_games(self) -> list[GameRecord]:
-        return [_game(r) for r in self._db.select("games", order="created_at.asc")]
+        # Tie-break déterministe (id) : deux parties créées à la même microseconde
+        # gardent un ordre stable, comme le rowid côté SQLite.
+        return [_game(r) for r in self._db.select("games", order="created_at.asc,id.asc")]
 
     # --- rounds ----------------------------------------------------------------
 

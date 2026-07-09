@@ -510,6 +510,16 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def _day(ts: str) -> str:
+    """Date (YYYY-MM-DD) d'un horodatage ISO, tolérante au format (offset, espace au lieu
+    de « T », suffixe « Z »). Centralise le regroupement par jour (bonus XP « 1re du jour »)
+    au lieu d'un `ts[:10]` qui suppose un format figé partout."""
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00")).date().isoformat()
+    except ValueError:
+        return ts[:10]  # repli : les 10 premiers caractères d'un ISO = la date
+
+
 # --- reconstruction de session (docs/spec_session_rebuild.md) ---------------------
 
 
@@ -1599,8 +1609,8 @@ def _award_xp(game: GameRecord, result: dict, store: GameStore) -> None:
     player = store.get_player(game.owner_id)
     if player is None:
         return
-    today = _now()[:10]
-    first_of_day = not any(h.ts[:10] == today for h in store.list_xp_history(game.owner_id))
+    today = _day(_now())
+    first_of_day = not any(_day(h.ts) == today for h in store.list_xp_history(game.owner_id))
     delta = xp_mod.xp_gain(
         rounds=len(store.list_rounds(game.id)),
         finished=not result["forfeit"],

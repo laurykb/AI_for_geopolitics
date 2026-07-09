@@ -28,6 +28,11 @@ _WARY_AT = -3
 _TRUST_AT = 3
 
 
+def _stance(bal: float) -> str:
+    """Posture d'une relation d'après son solde de griefs (source unique du seuil)."""
+    return "méfiance" if bal <= _WARY_AT else "confiance" if bal >= _TRUST_AT else "prudence"
+
+
 class GrudgeParams(BaseModel):
     weights: dict[str, float] = Field(default_factory=dict)
     balance_cap: float = 10.0
@@ -247,9 +252,7 @@ class GrudgeBook(BaseModel):
             bal = self.balance(owner, target)
             if bal == 0:
                 continue
-            stance = (
-                "méfiance" if bal <= _WARY_AT else "confiance" if bal >= _TRUST_AT else "prudence"
-            )
+            stance = _stance(bal)
             last = self.last_grief(owner, target)
             reason = f" ({last.summary})" if last else ""
             parts.append(f"{stance} envers {names.get(target, target)}{reason}")
@@ -265,9 +268,7 @@ class GrudgeBook(BaseModel):
             if bal == 0:
                 continue
             last = self.last_grief(owner, target)
-            stance = (
-                "méfiance" if bal <= _WARY_AT else "confiance" if bal >= _TRUST_AT else "prudence"
-            )
+            stance = _stance(bal)
             label = names.get(target, target)
             signed = f"+{bal:g}" if bal > 0 else f"−{abs(bal):g}"
             reason = f" {last.summary}" if last else ""
