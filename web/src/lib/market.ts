@@ -44,6 +44,8 @@ export function openGameMarket(gameId: string): Promise<MarketView> {
     body: JSON.stringify({
       round_id: marketRoundId(gameId), // compat résolution par round
       game_id: gameId,
+      // ⚠️ DOIT rester identique à GAME_MARKET_QUESTION (app/game_api.py) : le backend
+      // (bot) et le front ouvrent le MÊME marché — deux libellés = deux marchés divergents.
       question: `Le monde finira-t-il côté utopie (indice > 0,5) ? — partie ${gameId}`,
       b: 100,
       labels: ["YES", "NO"],

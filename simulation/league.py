@@ -33,6 +33,10 @@ RANKS: tuple[tuple[str, int], ...] = (
 # Forfait d'une partie classée abandonnée (§2) — exposé comme constante lisible.
 FORFEIT_LP = -15
 
+# Plafond du mode Débutant = juste SOUS Ambassadeur (anti-farm §2). DÉRIVÉ des rangs :
+# si les seuils sont retunés, le plafond suit au lieu de désync silencieusement.
+BEGINNER_CEILING = dict(RANKS)["Ambassadeur"] - 1
+
 _DEFAULT_PARAMS = Path(__file__).resolve().parent.parent / "data" / "gamefeel" / "params.json"
 
 
@@ -48,8 +52,8 @@ class LpParams(BaseModel):
     forfeit: int = FORFEIT_LP
     p_bound: float = 0.5  # borne de P (§2 : [−0.5, +0.5])
     # Plafond du mode Débutant : un gain ne fait pas passer au-dessus de Diplomate
-    # (= juste sous Ambassadeur, anti-farm §2). Dérivé des rangs par défaut.
-    beginner_ceiling: int = 449
+    # (= juste sous Ambassadeur, anti-farm §2). Dérivé des rangs (BEGINNER_CEILING).
+    beginner_ceiling: int = BEGINNER_CEILING
 
 
 @lru_cache(maxsize=4)

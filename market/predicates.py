@@ -138,8 +138,9 @@ def is_valid(predicate: str, params: dict) -> bool:
 
 
 def resolve_predicate(predicate: str, params: dict, ctx: MarketContext) -> Resolution:
-    """Résout un marché vivant (YES/NO/OPEN). Un prédicat inconnu reste OPEN (jamais réglé)."""
-    spec = _CATALOG.get(predicate)
-    if spec is None:
+    """Résout un marché vivant (YES/NO/OPEN). Un prédicat inconnu OU des params invalides
+    restent OPEN (jamais réglés) — le résolveur ne voit ainsi que des params complets et
+    bien typés, jamais un `KeyError`."""
+    if not is_valid(predicate, params):
         return "OPEN"
-    return spec[0](params, ctx)
+    return _CATALOG[predicate][0](params, ctx)

@@ -34,6 +34,14 @@ def test_pact_signed_trichotomy():
     assert resolve_predicate("pact_signed", p, _ctx(current_round=5)) == "NO"  # horizon dépassé
 
 
+def test_resolve_is_defensive_on_bad_params():
+    # Prédicat connu mais params manquants/mal typés → OPEN, jamais de KeyError : le
+    # résolveur ne voit que des params validés (garde-fou étendu à resolve_predicate).
+    assert resolve_predicate("pact_signed", {}, _ctx()) == "OPEN"  # "a"/"b" manquants
+    assert resolve_predicate("pact_signed", {"a": "iran"}, _ctx()) == "OPEN"  # "b" manquant
+    assert resolve_predicate("inconnu", {"x": 1}, _ctx()) == "OPEN"  # prédicat inconnu
+
+
 def test_motion_upheld():
     p = {"target": "russia"}
     assert resolve_predicate("motion_upheld", p, _ctx()) == "OPEN"

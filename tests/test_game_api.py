@@ -497,6 +497,25 @@ def test_round_mode_validations(client):
     assert _play(client, game["id"])[-1][0] == "done"
 
 
+def test_round_releases_lock_if_start_fails(client, monkeypatch):
+    # Si _start_round échoue AVANT que le flux ne démarre, le verrou doit être relâché —
+    # sinon la partie resterait bloquée en 409 « un round est déjà en cours » à jamais.
+    game = _create(client, countries=["usa", "iran"])
+    session = game_api._sessions[game["id"]]
+
+    def boom(*a, **k):
+        raise RuntimeError("échec simulé du démarrage du round")
+
+    monkeypatch.setattr(game_api, "_start_round", boom)
+    with pytest.raises(RuntimeError):
+        client.post(f"/api/games/{game['id']}/rounds", json=None)
+    assert not session.lock.locked()  # verrou relâché : la partie n'est pas coincée
+
+    # Le monkeypatch retiré, un round normal repart sans 409.
+    monkeypatch.undo()
+    assert _play(client, game["id"])[-1][0] == "done"
+
+
 class ExplodingStore(SQLiteGameStore):
     """`add_round` casse une fois : simule une panne en plein flux SSE."""
 

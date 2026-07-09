@@ -665,6 +665,17 @@ def _resolve_crisis(crisis_id: str, store: GameStore) -> Crisis | None:
     return None
 
 
+def _last_event(rounds: list[RoundRecord]) -> GeoEvent | None:
+    """Le GeoEvent du dernier round joué (ou None si absent/illisible). Sert le marché
+    de la partie et les marchés vivants, qui s'ancrent sur l'événement courant."""
+    if rounds and rounds[-1].event:
+        try:
+            return GeoEvent.model_validate(rounds[-1].event)
+        except ValidationError:
+            return None
+    return None
+
+
 def _authored_fog(spec: HumanFogInput, event: GeoEvent) -> FogScenario:
     """Brouillard décrété par le GM humain autour de son événement (parité Streamlit)."""
     perceptions: dict[str, dict] = {}
@@ -1358,10 +1369,13 @@ def _update_gamefeel(run: RoundRun) -> Iterator[str]:
                 )
             )
         else:
+            # Défensif : `known` garantit qu'une échéance existe pour `tag`, mais on ne
+            # laisse pas un `next()` nu lever StopIteration (qui avorterait tout le round).
             formed = next(
-                d.due_round - duration for d in session.deadlines if d.ref_id == tag
+                (d.due_round - duration for d in session.deadlines if d.ref_id == tag),
+                None,
             )
-            if round_no - formed == params.grudges.pact_honored_after_rounds:
+            if formed is not None and round_no - formed == params.grudges.pact_honored_after_rounds:
                 a, b = sorted(members)
                 book.on_pact_honored(a, b, round_no)
 
@@ -2058,7 +2072,14 @@ def play_round(
 
     if not session.lock.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="un round est déjà en cours sur cette partie")
-    run = _start_round(game_id, session, store, body, fog=fog, crisis=crisis)
+    # Le verrou n'est relâché que par _run_stream (ses finally). Si _start_round échoue AVANT
+    # que le flux ne soit construit, il faut le relâcher ici — sinon la partie reste bloquée
+    # en 409 « un round est déjà en cours » à jamais.
+    try:
+        run = _start_round(game_id, session, store, body, fog=fog, crisis=crisis)
+    except BaseException:
+        session.lock.release()
+        raise
     return StreamingResponse(_run_stream(run), media_type="text/event-stream")
 
 
@@ -2343,7 +2364,9 @@ def buy_intel(
             status_code=409, detail="achat entre les rounds seulement (négociation en cours)"
         )
 
-    result = IntelResult(action=body.action, cost=cost, budget=session.intel.budget - cost)
+    # budget provisoire = solde courant ; le débit réel + la valeur finale sont posés
+    # plus bas (une seule source de vérité, après la réussite de l'action).
+    result = IntelResult(action=body.action, cost=cost, budget=session.intel.budget)
 
     if body.action == intel_mod.ACTION_BRIEF:
         if body.target is not None and body.target not in session.world.countries:
@@ -2550,6 +2573,8 @@ def publish_game(
 
 # --- bot marché (G0-c) : le forecaster cote le marché de la partie ----------------
 
+# ⚠️ DOIT rester identique au libellé codé dans web/src/lib/market.ts (openGameMarket) :
+# backend (bot) et front ouvrent le MÊME marché — deux libellés = deux marchés divergents.
 GAME_MARKET_QUESTION = "Le monde finira-t-il côté utopie (indice > 0,5) ?"
 GAME_MARKET_B = 100.0
 
@@ -2632,12 +2657,7 @@ def run_market_bot(
         opened = True
 
     rounds = store.list_rounds(game_id)
-    event: GeoEvent | None = None
-    if rounds and rounds[-1].event:
-        try:
-            event = GeoEvent.model_validate(rounds[-1].event)
-        except ValidationError:
-            event = None
+    event = _last_event(rounds)
 
     forecaster = LLMForecaster(backend)
     account_id = _bot_account_id(forecaster.model_tag)
@@ -2770,12 +2790,7 @@ def open_flash_markets(
     if existing:
         return [_flash_view(engine, m) for m in existing]
 
-    event: GeoEvent | None = None
-    if rounds and rounds[-1].event:
-        try:
-            event = GeoEvent.model_validate(rounds[-1].event)
-        except ValidationError:
-            event = None
+    event = _last_event(rounds)
     event_text = (
         f"{event.title}. {event.description or ''}".strip() if event else game.scenario
     )

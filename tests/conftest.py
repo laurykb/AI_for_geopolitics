@@ -77,12 +77,14 @@ class FakePostgrest:
         if request.method == "GET":
             found = [r for r in rows if _matches(r, params)]
             if order := params.get("order"):
-                col, _, direction = order.partition(".")
-                # NULL-safe comme Postgres (NULLs en fin en asc) : jamais None < None.
-                found.sort(
-                    key=lambda r: (True,) if r.get(col) is None else (False, r[col]),
-                    reverse=direction == "desc",
-                )
+                # Tri multi-clé (« col.dir,col2.dir2 ») : tri stable en appliquant la
+                # dernière clé d'abord. NULL-safe comme Postgres (NULLs en fin en asc).
+                for spec in reversed(order.split(",")):
+                    col, _, direction = spec.partition(".")
+                    found.sort(
+                        key=lambda r, c=col: (True,) if r.get(c) is None else (False, r[c]),
+                        reverse=direction == "desc",
+                    )
             columns = params.get("select", "*")
             if columns != "*":
                 wanted = columns.split(",")
