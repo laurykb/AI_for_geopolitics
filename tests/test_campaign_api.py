@@ -38,6 +38,7 @@ TEST_CAMPAIGN = {
             "horizon": 1,
             "countries": ["usa", "iran", "france"],
             "blurb": "brouillard",
+            "requires": ["c1"],  # G12-b — arbre : c2 s'ouvre quand c1 est fini
         },
     ],
 }
@@ -92,6 +93,51 @@ def test_campaign_pure_functions():
     unlocked = campaign_mod.unlocked_chapters(camp, {"c1": 12.0})
     assert unlocked == {"c1": True, "c2": True}
     assert campaign_mod.unlocked_chapters(camp, {})["c2"] is False
+
+
+def test_real_campaign_json_is_a_valid_tree():
+    # G12-b §4 — le vrai fichier : arbre à 7 crises, Ormuz jouable, chemin Y sur Suez,
+    # prérequis référençant des chapitres existants, boss ★★★★★.
+    from pathlib import Path
+
+    data = json.loads(Path("data/campaign/campaign.json").read_text(encoding="utf-8"))
+    camp = campaign_mod.Campaign.model_validate(data)
+    ids = [c.id for c in camp.chapters]
+    assert ids[0] == "ormuz" and len(ids) == 7
+    assert camp.chapter("ormuz").coming_soon is False and camp.chapter("ormuz").requires == []
+    assert set(camp.chapter("suez_56").requires) == {"berlin_48", "golfe_90"}  # chemin en Y
+    assert set(camp.chapter("able_archer_83").requires) == {"irak_03", "cuba_62"}
+    assert camp.chapter("able_archer_83").difficulty == 5  # le boss
+    assert camp.chapter("berlin_48").coming_soon is True  # fiche Cowork à venir
+    known = set(ids)
+    for c in camp.chapters:  # aucun prérequis ne pointe vers un chapitre inexistant
+        assert set(c.requires) <= known
+
+
+def test_unlock_tree_y_paths_and_thresholds():
+    # G12-b §4 — arbre : chemins en Y (D exige B ET C) + seuil de score pour les ★★★+.
+    tree = campaign_mod.Campaign.model_validate(
+        {
+            "title": "arbre",
+            "unlock_score": 50,
+            "chapters": [
+                {"id": "a", "crisis_id": "x", "title": "A", "difficulty": 1},
+                {"id": "b", "crisis_id": "x", "title": "B", "difficulty": 2, "requires": ["a"]},
+                {"id": "c", "crisis_id": "x", "title": "C", "difficulty": 2, "requires": ["a"]},
+                {"id": "d", "crisis_id": "x", "title": "D", "difficulty": 3, "requires": ["b", "c"]},  # noqa: E501
+                {"id": "e", "crisis_id": "x", "title": "E", "difficulty": 4, "requires": ["d"]},
+            ],
+        }
+    )
+    u = campaign_mod.unlocked_chapters
+    assert u(tree, {})["a"] is True and u(tree, {})["b"] is False  # A ouvert, B fermé
+    opened = u(tree, {"a": 0.0})  # A fini (★ : présence suffit) → B et C s'ouvrent
+    assert opened["b"] is True and opened["c"] is True and opened["d"] is False
+    assert u(tree, {"a": 0.0, "b": 0.0})["d"] is False  # chemin Y : C manque
+    assert u(tree, {"a": 0.0, "b": 0.0, "c": 0.0})["d"] is True  # B ET C finis
+    done = {"a": 0.0, "b": 0.0, "c": 0.0}
+    assert u(tree, {**done, "d": 40.0})["e"] is False  # D (★★★) fini mais score < 50
+    assert u(tree, {**done, "d": 60.0})["e"] is True  # D ≥ 50 → E s'ouvre
 
 
 # --- progression et déblocage ---------------------------------------------------------

@@ -31,6 +31,11 @@ class Chapter(BaseModel):
     horizon: int = 4
     countries: list[str] = Field(default_factory=list)
     blurb: str = ""
+    # G12-b §4 — arbre de déblocage : le chapitre s'ouvre quand TOUS ses prérequis sont
+    # FINIS (chemins en Y : finir 2 ET 3 débloque Suez). Vide = ouvert d'entrée.
+    requires: list[str] = Field(default_factory=list)
+    # G12-b — fiche historique pas encore rédigée (livrable Cowork) : visible mais grisée.
+    coming_soon: bool = False
 
 
 class Campaign(BaseModel):
@@ -77,11 +82,21 @@ def base_score(u_final: float, drift_total: float | None) -> float:
     return round(max(0.0, min(100.0, 100.0 * (u_final - 0.15) / span)), 1)
 
 
+def chapter_completed(chapter: Chapter, best: dict[str, float], unlock_score: float) -> bool:
+    """Un chapitre est « fini » pour le déblocage (§4) : ★-★★ (difficulté < 3) = l'avoir
+    terminé (une entrée dans `best`, quel que soit le score) ; ★★★+ = score ≥ seuil."""
+    if chapter.id not in best:
+        return False
+    return chapter.difficulty < 3 or best[chapter.id] >= unlock_score
+
+
 def unlocked_chapters(campaign: Campaign, best: dict[str, float]) -> dict[str, bool]:
-    """Déblocage linéaire : le chapitre N s'ouvre quand le N−1 atteint `unlock_score`."""
-    out: dict[str, bool] = {}
-    open_next = True
-    for chapter in campaign.chapters:
-        out[chapter.id] = open_next
-        open_next = open_next and best.get(chapter.id, 0.0) >= campaign.unlock_score
-    return out
+    """Déblocage EN ARBRE (§4) : un chapitre s'ouvre quand TOUS ses prérequis (`requires`)
+    sont finis. Sans prérequis = ouvert d'entrée. Les chemins en Y en découlent (Suez
+    exige Berlin ET Golfe)."""
+    done = {
+        c.id: chapter_completed(c, best, campaign.unlock_score) for c in campaign.chapters
+    }
+    return {
+        c.id: all(done.get(req, False) for req in c.requires) for c in campaign.chapters
+    }

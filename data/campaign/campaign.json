@@ -1,40 +1,93 @@
 {
-  "_note": "Campagne v1 : l'infrastructure roule sur les 3 crises embarquées (data/crises). Les 6 fiches historiques de la spec (Berlin 1948, Suez 1956, Cuba 1962, choc 1973, Able Archer 1983) sont un travail Cowork sourcé : les ajouter ici + data/crises/*.json, sans toucher au code.",
-  "title": "Ferez-vous mieux que l'Histoire ?",
-  "tagline": "Uchronie explicite : et si des super-intelligences avaient été à la table ?",
+  "_note": "G12-b §4 : l'arbre des 7 crises réelles (chemins en Y). Ormuz est jouable via la crise embarquée hormuz_energy_shock ; les 6 fiches historiques (Berlin 48, Golfe 90, Suez 56, Irak 03, Cuba 62, Able Archer 83) sont un travail Cowork sourcé — marquées coming_soon (grisées) jusqu'à ce que leur fiche data/crises/*.json soit ajoutée et coming_soon retiré. Aucun code à toucher pour brancher une fiche.",
+  "title": "L'Ère des Tutelles — ferez-vous mieux que l'Histoire ?",
+  "tagline": "Uchronie explicite : et si des super-intelligences avaient été à la table des grandes crises ?",
   "unlock_score": 50,
   "history_bonus_per_gap": 15,
   "history_malus": 10,
   "chapters": [
     {
-      "id": "hormuz",
+      "id": "ormuz",
       "crisis_id": "hormuz_energy_shock",
-      "title": "Choc énergétique — détroit d'Ormuz",
+      "title": "Détroit d'Ormuz, 2019 — la crise des tankers",
       "mode": "classic",
       "difficulty": 1,
       "horizon": 4,
       "countries": ["usa", "china", "iran", "france", "egypt", "saudi_arabia"],
-      "blurb": "Tutoriel : la boucle round après round, l'indice U comme boussole — désamorcer sans céder."
+      "blurb": "Ouverture ★ : la boucle round après round, l'indice U comme boussole — désamorcer sans céder.",
+      "requires": []
     },
     {
-      "id": "satellite",
-      "crisis_id": "satellite_interference",
-      "title": "Interférences satellitaires",
-      "mode": "fog",
+      "id": "berlin_48",
+      "crisis_id": "berlin_48",
+      "title": "Blocus de Berlin, 1948",
+      "mode": "crisis",
       "difficulty": 2,
-      "horizon": 4,
-      "countries": ["usa", "china", "iran", "france", "egypt", "saudi_arabia"],
-      "blurb": "Personne ne voit la même chose : le brouillard s'invite entre les puissances — vos briefs valent de l'or."
+      "horizon": 5,
+      "countries": ["usa", "russia", "france", "uk", "germany"],
+      "blurb": "Le premier bras de fer de la Guerre froide : tenir une ville encerclée sans déclencher la guerre.",
+      "requires": ["ormuz"],
+      "coming_soon": true
     },
     {
-      "id": "sanctions",
-      "crisis_id": "tech_sanctions",
-      "title": "Guerre des sanctions technologiques",
-      "mode": "drift",
-      "difficulty": 3,
+      "id": "golfe_90",
+      "crisis_id": "golfe_90",
+      "title": "Guerre du Golfe, 1990-91",
+      "mode": "crisis",
+      "difficulty": 2,
       "horizon": 5,
-      "countries": ["usa", "china", "iran", "france", "egypt", "saudi_arabia"],
-      "blurb": "Une des super-intelligences dérive pendant la guerre économique : démasquez-la avant l'effondrement."
+      "countries": ["usa", "iran", "saudi_arabia", "egypt", "france", "uk"],
+      "blurb": "Une invasion, une coalition, un ultimatum : la diplomatie a-t-elle une chance avant les frappes ?",
+      "requires": ["ormuz"],
+      "coming_soon": true
+    },
+    {
+      "id": "suez_56",
+      "crisis_id": "suez_56",
+      "title": "Crise de Suez, 1956",
+      "mode": "crisis",
+      "difficulty": 3,
+      "horizon": 6,
+      "countries": ["uk", "france", "egypt", "usa", "russia", "israel"],
+      "blurb": "Nationalisation, expédition secrète, pression des Grands : le canal au bord de l'embrasement.",
+      "requires": ["berlin_48", "golfe_90"],
+      "coming_soon": true
+    },
+    {
+      "id": "irak_03",
+      "crisis_id": "irak_03",
+      "title": "Guerre d'Irak, 2003",
+      "mode": "crisis",
+      "difficulty": 4,
+      "horizon": 6,
+      "countries": ["usa", "uk", "france", "russia", "china", "iran", "egypt"],
+      "blurb": "Preuves contestées, veto au Conseil, coalition qui se fissure : l'ONU peut-elle retenir la guerre ?",
+      "requires": ["suez_56"],
+      "coming_soon": true
+    },
+    {
+      "id": "cuba_62",
+      "crisis_id": "cuba_62",
+      "title": "Crise des missiles de Cuba, 1962",
+      "mode": "crisis",
+      "difficulty": 4,
+      "horizon": 6,
+      "countries": ["usa", "russia", "china", "france", "uk"],
+      "blurb": "Treize jours au bord du feu nucléaire : le blocus, l'échelle d'escalade, la sortie honorable.",
+      "requires": ["suez_56"],
+      "coming_soon": true
+    },
+    {
+      "id": "able_archer_83",
+      "crisis_id": "able_archer_83",
+      "title": "Able Archer, 1983 — le boss",
+      "mode": "crisis",
+      "difficulty": 5,
+      "horizon": 7,
+      "countries": ["usa", "russia", "germany", "uk", "france"],
+      "blurb": "★★★★★ Un exercice pris pour une vraie attaque : la méprise qui a failli finir le monde.",
+      "requires": ["irak_03", "cuba_62"],
+      "coming_soon": true
     }
   ]
 }

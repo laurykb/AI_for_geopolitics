@@ -47,6 +47,8 @@ class ChapterView(BaseModel):
     improvement: float | None = None  # du meilleur essai (vs l'Histoire)
     medal: str | None = None
     unlocked: bool = False
+    requires: list[str] = Field(default_factory=list)  # G12-b — arbre (chemins en Y)
+    coming_soon: bool = False  # G12-b — fiche pas encore rédigée (grisée, non jouable)
 
 
 class CampaignView(BaseModel):
@@ -89,6 +91,8 @@ def get_campaign(store: Annotated[GameStore, Depends(get_store)]) -> CampaignVie
                 improvement=best.get(c.id, (None, None))[1],
                 medal=_medal(best.get(c.id, (None,))[0]),
                 unlocked=unlocked.get(c.id, False),
+                requires=c.requires,
+                coming_soon=c.coming_soon,
             )
             for c in camp.chapters
         ],
@@ -106,6 +110,10 @@ def start_chapter(
     chapter = camp.chapter(chapter_id)
     if chapter is None:
         raise HTTPException(status_code=404, detail=f"chapitre inconnu : {chapter_id}")
+    if chapter.coming_soon:  # G12-b — la fiche historique n'est pas encore rédigée
+        raise HTTPException(
+            status_code=409, detail="chapitre à venir — sa fiche historique n'est pas prête"
+        )
     best = {c: s for c, (s, _) in _best_scores(store).items()}
     if not campaign_mod.unlocked_chapters(camp, best).get(chapter_id, False):
         raise HTTPException(
