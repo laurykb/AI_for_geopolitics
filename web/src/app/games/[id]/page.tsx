@@ -120,6 +120,12 @@ export default function TheatrePage() {
     }
   }, [detail?.scenario, chapter]);
 
+  // G12-b §5 — partie de TEST d'une crise maison : le scenario "crise:<id>" impose la
+  // crise (comme un chapitre), sans effet ni état — dérivé au moment de jouer le round.
+  const testCrisisId = detail?.scenario.startsWith("crise:")
+    ? detail.scenario.slice("crise:".length)
+    : null;
+
   // La Dérive (G3) : la révélation se charge quand la partie est finie.
   const [reveal, setReveal] = useState<DriftReveal | null>(null);
   useEffect(() => {
@@ -288,8 +294,8 @@ export default function TheatrePage() {
         }
       } else if (mode === "fog" && fogId) {
         body.fog_id = fogId;
-      } else if (mode === "crisis" && crisisId) {
-        body.crisis_id = crisisId;
+      } else if (mode === "crisis" && (testCrisisId || crisisId)) {
+        body.crisis_id = testCrisisId ?? crisisId;
       }
     }
     void start(body);
@@ -719,7 +725,13 @@ export default function TheatrePage() {
                 </select>
               </label>
             )}
-            {mode === "crisis" && !motionPending && (
+            {mode === "crisis" && !motionPending && testCrisisId && (
+              <p className="rounded-md border border-edge bg-surface-2/50 px-3 py-2 text-xs text-fg-muted">
+                Crise maison imposée :{" "}
+                <span className="font-mono text-fg-faint">{testCrisisId}</span> — partie de test.
+              </p>
+            )}
+            {mode === "crisis" && !motionPending && !testCrisisId && (
               <label className="text-sm">
                 <span className="mb-1 block text-xs text-fg-muted">Crise à rejouer</span>
                 <select

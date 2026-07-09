@@ -391,6 +391,19 @@ animation LP), leaderboard, difficulté par asymétrie d'information (jamais de 
 de modèle), accélération multi-rounds. 4 sessions Claude Code : G11-a auth/accueil,
 G11-b flow, G11-c LP/fin de partie, G11-d difficulté/accélération.
 
+## G12 — Progression et intégration
+
+La méta-progression, ce qui fait revenir entre les parties (spec :
+`docs/specs_jeu/spec_g12_progression.md`) : **XP tous modes** (jamais négatif, niveaux —
+distinct des LP qui restent la compétence classée), **marché intégré au théâtre** (cotes
+au bandeau, marchés éclair sur motions/paliers/suspension, pari inline, solde de carrière),
+**retour du Spectateur** (4ᵉ rôle : il parie — le turfiste du jeu, XP ×0.5), **campagne à
+crises réelles** (Ormuz 2019 → Able Archer 1983, arbre de déblocage visible, fiches
+sourcées = livrable Cowork), **éditeur de campagne admin dans l'UI** (custom_crises,
+prévisualisation, test), **page Profil/Statistiques** (parties, victoires par mode —
+définitions actées, niveau, argent des marchés, taux de détection de la Dérive).
+2 sessions : G12-a progression/marché/stats, G12-b campagne/éditeur.
+
 ---
 
 ## Specs Cowork (rédigées)

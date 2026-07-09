@@ -21,6 +21,7 @@ _PRIMARY_KEYS = {
     "players": ("id",),
     "lp_history": ("id",),
     "xp_history": ("id",),
+    "custom_crises": ("id",),
     "rounds": ("id",),
     "transcripts": ("id",),
     "game_sessions": ("game_id",),
@@ -69,11 +70,19 @@ class FakePostgrest:
                     row.update(values)
             return httpx.Response(204)
 
+        if request.method == "DELETE":
+            rows[:] = [r for r in rows if not _matches(r, params)]
+            return httpx.Response(204)
+
         if request.method == "GET":
             found = [r for r in rows if _matches(r, params)]
             if order := params.get("order"):
                 col, _, direction = order.partition(".")
-                found.sort(key=lambda r: r[col], reverse=direction == "desc")
+                # NULL-safe comme Postgres (NULLs en fin en asc) : jamais None < None.
+                found.sort(
+                    key=lambda r: (True,) if r.get(col) is None else (False, r[col]),
+                    reverse=direction == "desc",
+                )
             columns = params.get("select", "*")
             if columns != "*":
                 wanted = columns.split(",")

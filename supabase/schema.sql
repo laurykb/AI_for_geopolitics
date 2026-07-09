@@ -141,6 +141,15 @@ create table if not exists xp_history (
 );
 create index if not exists xp_history_player_idx on xp_history (player_id, ts);
 
+-- G12-b §5 : crises créées depuis l'UI admin (JSON validé par le schéma Pydantic Crisis,
+-- JAMAIS d'écriture de fichier). Jouables par tous ; éditables/supprimables par leur auteur.
+create table if not exists custom_crises (
+  id         text primary key,
+  owner_id   uuid not null references auth.users(id) on delete cascade,
+  crisis_json jsonb not null,
+  created_at timestamptz not null default now()
+);
+
 -- « admin » sans récursion RLS : SECURITY DEFINER lit players en contournant sa propre
 -- politique (sinon la policy admin de players s'auto-référencerait à l'infini).
 create or replace function public.is_admin() returns boolean
@@ -260,6 +269,12 @@ create policy "LP : lecture de soi" on lp_history for select
   using (player_id = auth.uid() or public.is_admin());
 create policy "XP : lecture de soi" on xp_history for select
   using (player_id = auth.uid() or public.is_admin());
+
+-- custom_crises : jouables par tous (contenu de campagne), gérées par leur auteur.
+alter table custom_crises enable row level security;
+create policy "crise maison : lecture publique" on custom_crises for select using (true);
+create policy "crise maison : gestion de soi" on custom_crises for all
+  using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 
 -- INVARIANT DE SÉCURITÉ : is_admin et lp ne s'écrivent JAMAIS côté client — sinon un
 -- utilisateur se promeut admin (→ lit toutes les parties) et truque le leaderboard.

@@ -54,6 +54,12 @@ export default function AdminPage() {
           <h1 className="text-xl font-semibold tracking-tight">Toutes les parties</h1>
         </div>
         <Link
+          href="/admin/crises"
+          className="rounded-md border border-edge-strong px-4 py-2 text-sm font-medium transition-colors hover:border-accent hover:text-accent-bright"
+        >
+          + Composer une crise
+        </Link>
+        <Link
           href="/accueil"
           className="rounded-md border border-edge px-4 py-2 text-sm text-fg-muted transition-colors hover:border-edge-strong hover:text-foreground"
         >

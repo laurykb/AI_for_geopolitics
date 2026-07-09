@@ -68,6 +68,9 @@ class PostgrestClient:
             )
         )
 
+    def delete(self, table: str, match: dict[str, object]) -> None:
+        self._check(self._http.request("DELETE", f"/{table}", params=_filters(match)))
+
     def select(
         self,
         table: str,

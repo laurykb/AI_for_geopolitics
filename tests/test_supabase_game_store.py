@@ -3,6 +3,7 @@
 import pytest
 
 from storage.game_store import (
+    CustomCrisisRecord,
     GameRecord,
     GameStatus,
     LpHistoryEntry,
@@ -84,6 +85,26 @@ def test_player_and_lp_history_roundtrip(store):
     store.upsert_player(PlayerRecord(id="u2", pseudo="Zoe"))
     store.set_player_lp("u2", 300)
     assert [p.id for p in store.leaderboard()] == ["u2", "u1"]
+
+
+def test_custom_crises_roundtrip(store):
+    # G12-b §5 — crises maison via PostgREST simulé (upsert merge, delete filtré owner_id).
+    store.upsert_custom_crisis(
+        CustomCrisisRecord(id="c1", owner_id="alice", crisis={"id": "c1", "title": "V1"})
+    )
+    store.upsert_custom_crisis(
+        CustomCrisisRecord(id="c1", owner_id="alice", crisis={"id": "c1", "title": "V2"})
+    )
+    store.upsert_custom_crisis(
+        CustomCrisisRecord(id="c2", owner_id="bob", crisis={"id": "c2", "title": "B"})
+    )
+    got = {c.id: c for c in store.list_custom_crises()}
+    assert set(got) == {"c1", "c2"}  # upsert a remplacé, pas dupliqué
+    assert got["c1"].crisis["title"] == "V2"
+
+    assert store.delete_custom_crisis("c1", "bob") is False  # pas propriétaire
+    assert store.delete_custom_crisis("c1", "alice") is True
+    assert {c.id for c in store.list_custom_crises()} == {"c2"}
 
 
 def test_round_and_transcript_roundtrip(store):

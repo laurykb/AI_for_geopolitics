@@ -3,6 +3,8 @@
 import type {
   CampaignView,
   CreateGameBody,
+  CrisisDoc,
+  CustomCrisisView,
   DriftReveal,
   GameDetail,
   GameView,
@@ -51,6 +53,24 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(resp.status, detail);
   }
   return (await resp.json()) as T;
+}
+
+/** Variante pour les réponses 204 sans corps (DELETE) : on ne parse aucun JSON. */
+async function requestVoid(path: string, init?: RequestInit): Promise<void> {
+  const resp = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...init?.headers },
+  });
+  if (!resp.ok) {
+    let detail = `${resp.status} ${resp.statusText}`;
+    try {
+      const body = (await resp.json()) as { detail?: string };
+      if (body.detail) detail = body.detail;
+    } catch {
+      // corps non JSON : on garde le statut HTTP
+    }
+    throw new ApiError(resp.status, detail);
+  }
 }
 
 /** Parties connues. `owner` = seulement les siennes (accueil) ; `admin` = tout (vue admin).
@@ -149,6 +169,33 @@ export const getLeague = (limit = 100): Promise<LeaguePlayer[]> =>
 /** G11-c — abandon d'une partie classée : défaite forfaitaire (−15 LP), partie finie. */
 export const forfeitGame = (gameId: string): Promise<GameView> =>
   request(`/api/games/${gameId}/forfeit`, { method: "POST" });
+
+/** G12-b §5 — crises MAISON (éditeur admin). Le backend valide le JSON par le même
+ * schéma Pydantic que `data/crises/*.json` ; le verrou de propriété est la RLS Supabase. */
+export const listCustomCrises = (owner?: string): Promise<CustomCrisisView[]> =>
+  request(`/api/admin/crises${owner ? `?owner=${encodeURIComponent(owner)}` : ""}`);
+
+export const saveCustomCrisis = (
+  ownerId: string,
+  crisis: CrisisDoc,
+): Promise<CustomCrisisView> =>
+  request("/api/admin/crises", {
+    method: "POST",
+    body: JSON.stringify({ owner_id: ownerId, crisis }),
+  });
+
+export const deleteCustomCrisis = (id: string, owner: string): Promise<void> =>
+  requestVoid(
+    `/api/admin/crises/${encodeURIComponent(id)}?owner=${encodeURIComponent(owner)}`,
+    { method: "DELETE" },
+  );
+
+/** Lance une partie de test (non classée) sur une crise maison, avec son casting. */
+export const testCustomCrisis = (id: string, owner: string): Promise<GameView> =>
+  request(
+    `/api/admin/crises/${encodeURIComponent(id)}/test?owner=${encodeURIComponent(owner)}`,
+    { method: "POST" },
+  );
 
 /** Dépose une motion de suspension (R4) — débattue puis arbitrée au prochain round. */
 export const fileMotion = (

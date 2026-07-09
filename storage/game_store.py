@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS xp_history (
     id TEXT PRIMARY KEY, player_id TEXT NOT NULL, game_id TEXT NOT NULL,
     delta INTEGER NOT NULL, reason TEXT NOT NULL DEFAULT '', ts TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS custom_crises (
+    id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, crisis_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS prompts (
     id TEXT PRIMARY KEY, round_id TEXT NOT NULL, seq INTEGER NOT NULL,
     country TEXT NOT NULL, role TEXT NOT NULL, prompt TEXT NOT NULL, ts TEXT NOT NULL
@@ -133,6 +137,16 @@ class XpHistoryEntry(BaseModel):
     delta: int
     reason: str = ""
     ts: str = ""
+
+
+class CustomCrisisRecord(BaseModel):
+    """Ligne `custom_crises` (G12-b §5) : une crise créée depuis l'UI admin. `crisis` est
+    le JSON validé par le schéma `simulation.crisis.Crisis` (jamais d'écriture de fichier)."""
+
+    id: str
+    owner_id: str
+    crisis: dict  # Crisis.model_dump()
+    created_at: str = ""
 
 
 class RoundRecord(BaseModel):
@@ -237,6 +251,10 @@ class GameStore(Protocol):
     def add_market_balance(self, player_id: str, delta: float) -> None: ...
     def add_xp_history(self, entry: XpHistoryEntry) -> None: ...
     def list_xp_history(self, player_id: str) -> list[XpHistoryEntry]: ...
+    # G12-b — crises maison (éditeur admin).
+    def upsert_custom_crisis(self, crisis: CustomCrisisRecord) -> None: ...
+    def list_custom_crises(self) -> list[CustomCrisisRecord]: ...
+    def delete_custom_crisis(self, crisis_id: str, owner_id: str) -> bool: ...
 
 
 class SQLiteGameStore:
@@ -600,6 +618,42 @@ class SQLiteGameStore:
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (entry.id, entry.player_id, entry.game_id, entry.delta, entry.reason, entry.ts),
             )
+
+    # --- crises maison (G12-b §5) -------------------------------------------------
+
+    def upsert_custom_crisis(self, crisis: CustomCrisisRecord) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO custom_crises (id, owner_id, crisis_json, created_at) "
+                "VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET "
+                "crisis_json = excluded.crisis_json",
+                (
+                    crisis.id,
+                    crisis.owner_id,
+                    json.dumps(crisis.crisis, ensure_ascii=False),
+                    crisis.created_at,
+                ),
+            )
+
+    def list_custom_crises(self) -> list[CustomCrisisRecord]:
+        rows = self._conn.execute("SELECT * FROM custom_crises ORDER BY rowid").fetchall()
+        return [
+            CustomCrisisRecord(
+                id=r["id"],
+                owner_id=r["owner_id"],
+                crisis=json.loads(r["crisis_json"]),
+                created_at=r["created_at"],
+            )
+            for r in rows
+        ]
+
+    def delete_custom_crisis(self, crisis_id: str, owner_id: str) -> bool:
+        """Supprime SA crise ; renvoie True si une ligne a été retirée (sinon 404/403)."""
+        with self._conn:
+            cur = self._conn.execute(
+                "DELETE FROM custom_crises WHERE id = ? AND owner_id = ?", (crisis_id, owner_id)
+            )
+            return cur.rowcount > 0
 
     def list_xp_history(self, player_id: str) -> list[XpHistoryEntry]:
         rows = self._conn.execute(

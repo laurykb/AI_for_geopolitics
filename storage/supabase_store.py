@@ -13,6 +13,7 @@ import os
 
 from storage.game_store import (
     CampaignScore,
+    CustomCrisisRecord,
     GameRecord,
     GameStatus,
     LpHistoryEntry,
@@ -207,6 +208,38 @@ class SupabaseGameStore:
     def list_xp_history(self, player_id: str) -> list[XpHistoryEntry]:
         rows = self._db.select("xp_history", {"player_id": player_id}, order="ts.asc")
         return [XpHistoryEntry.model_validate(r) for r in rows]
+
+    # --- crises maison (G12-b §5) -------------------------------------------------
+
+    def upsert_custom_crisis(self, crisis: CustomCrisisRecord) -> None:
+        self._db.upsert(
+            "custom_crises",
+            {
+                "id": crisis.id,
+                "owner_id": crisis.owner_id,
+                "crisis_json": crisis.crisis,
+                "created_at": crisis.created_at or None,
+            },
+        )
+
+    def list_custom_crises(self) -> list[CustomCrisisRecord]:
+        rows = self._db.select("custom_crises", order="created_at.asc")
+        return [
+            CustomCrisisRecord(
+                id=r["id"],
+                owner_id=r["owner_id"],
+                crisis=r["crisis_json"],
+                created_at=str(r.get("created_at") or ""),
+            )
+            for r in rows
+        ]
+
+    def delete_custom_crisis(self, crisis_id: str, owner_id: str) -> bool:
+        rows = self._db.select("custom_crises", {"id": crisis_id})
+        if not any(r.get("owner_id") == owner_id for r in rows):
+            return False
+        self._db.delete("custom_crises", {"id": crisis_id, "owner_id": owner_id})
+        return True
 
     def list_lp_history(self, player_id: str) -> list[LpHistoryEntry]:
         rows = self._db.select("lp_history", {"player_id": player_id}, order="ts.asc")

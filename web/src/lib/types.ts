@@ -406,6 +406,37 @@ export type LibraryView = {
   crises: CrisisLibraryView[];
 };
 
+/** G12-b §5 — un round de crise (schéma backend `simulation.crisis.GeoEvent`). */
+export type CrisisEvent = {
+  id: string;
+  round_id: number;
+  event_type: string;
+  title: string;
+  description: string;
+  actors: string[];
+  location: string;
+  severity: number;
+  uncertainty: number;
+};
+
+/** Le document crise complet, validé côté backend par `simulation.crisis.Crisis`. */
+export type CrisisDoc = {
+  id: string;
+  title: string;
+  description: string;
+  date: string;
+  events: CrisisEvent[];
+  historical_outcome: { summary: string; escalation: number; measures: string[] };
+};
+
+/** Une crise MAISON stockée (table `custom_crises`), telle que rendue à l'éditeur admin. */
+export type CustomCrisisView = {
+  id: string;
+  owner_id: string;
+  crisis: CrisisDoc;
+  created_at: string;
+};
+
 /** Événements SSE du round (un par `RoundStep`, plus `done`). */
 export type SseEvent =
   | { type: "date"; date: string }

@@ -3,6 +3,7 @@
 import sqlite3
 
 from storage.game_store import (
+    CustomCrisisRecord,
     GameRecord,
     GameStatus,
     LpHistoryEntry,
@@ -129,6 +130,32 @@ def test_xp_and_market_balance_roundtrip():
     # upsert ne clobbe ni xp ni le solde.
     store.upsert_player(PlayerRecord(id="u1", pseudo="Laury2", xp=999))
     assert store.get_player("u1").xp == 84
+
+
+def test_custom_crises_roundtrip():
+    # G12-b §5 — crises maison : upsert (remplace même id), listing, delete propriétaire.
+    store = SQLiteGameStore(":memory:")
+    assert store.list_custom_crises() == []
+
+    store.upsert_custom_crisis(
+        CustomCrisisRecord(id="c1", owner_id="alice", crisis={"id": "c1", "title": "V1"})
+    )
+    store.upsert_custom_crisis(
+        CustomCrisisRecord(id="c2", owner_id="bob", crisis={"id": "c2", "title": "B"})
+    )
+    # upsert sur le même id remplace (pas de doublon).
+    store.upsert_custom_crisis(
+        CustomCrisisRecord(id="c1", owner_id="alice", crisis={"id": "c1", "title": "V2"})
+    )
+    got = {c.id: c for c in store.list_custom_crises()}
+    assert set(got) == {"c1", "c2"}
+    assert got["c1"].crisis["title"] == "V2" and got["c1"].owner_id == "alice"
+
+    # delete propriétaire uniquement : bob ne supprime pas la crise d'alice.
+    assert store.delete_custom_crisis("c1", "bob") is False
+    assert store.delete_custom_crisis("c1", "alice") is True
+    assert {c.id for c in store.list_custom_crises()} == {"c2"}
+    assert store.delete_custom_crisis("absent", "alice") is False
 
 
 def test_leaderboard_sorted_by_lp():

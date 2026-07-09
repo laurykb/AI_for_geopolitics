@@ -118,6 +118,7 @@ from simulation.motions import (
 from simulation.storyline import build_story_context, default_storyline
 from storage.game_store import (
     CampaignScore,
+    CustomCrisisRecord,
     GameRecord,
     GameStatus,
     GameStore,
@@ -647,6 +648,21 @@ def _fog_library() -> dict[str, FogScenario]:
 def _crisis_library() -> dict[str, Crisis]:
     """Crises rejouables embarquées (`data/crises/*.json`), chargées une fois."""
     return {c.id: c for c in load_crises()}
+
+
+def _resolve_crisis(crisis_id: str, store: GameStore) -> Crisis | None:
+    """G12-b §5 — résout une crise par id : d'abord les embarquées, puis les crises
+    MAISON (table custom_crises, éditeur admin). Le loader fusionne les deux sources."""
+    embedded = _crisis_library().get(crisis_id)
+    if embedded is not None:
+        return embedded
+    for cc in store.list_custom_crises():
+        if cc.id == crisis_id:
+            try:
+                return Crisis.model_validate(cc.crisis)
+            except ValidationError:
+                return None
+    return None
 
 
 def _authored_fog(spec: HumanFogInput, event: GeoEvent) -> FogScenario:
@@ -2031,7 +2047,7 @@ def play_round(
             )
     crisis: Crisis | None = None
     if body.crisis_id:
-        crisis = _crisis_library().get(body.crisis_id)
+        crisis = _resolve_crisis(body.crisis_id, store)  # G12-b — embarquée OU crise maison
         if crisis is None or not crisis.events:
             raise HTTPException(status_code=400, detail=f"crise inconnue : {body.crisis_id}")
 
@@ -2853,6 +2869,113 @@ def library(countries: str | None = None) -> LibraryView:
             )
             for c in crises
         ],
+    )
+
+
+# --- éditeur de crises maison (G12-b §5) --------------------------------------
+
+
+class CustomCrisisView(BaseModel):
+    """Une crise MAISON stockée (table `custom_crises`), rendue à l'éditeur admin."""
+
+    id: str
+    owner_id: str
+    crisis: dict
+    created_at: str = ""
+
+
+class CustomCrisisInput(BaseModel):
+    """Payload de l'éditeur : propriétaire + JSON de crise (schéma `simulation.crisis.Crisis`)."""
+
+    owner_id: str = Field(min_length=1)
+    crisis: dict
+
+
+@router.get("/admin/crises", response_model=list[CustomCrisisView])
+def list_admin_crises(
+    store: Annotated[GameStore, Depends(get_store)],
+    owner: str | None = None,
+) -> list[CustomCrisisView]:
+    """Liste les crises maison (toutes, ou celles d'un propriétaire via `?owner=`)."""
+    records = store.list_custom_crises()
+    if owner is not None:
+        records = [r for r in records if r.owner_id == owner]
+    return [
+        CustomCrisisView(id=r.id, owner_id=r.owner_id, crisis=r.crisis, created_at=r.created_at)
+        for r in records
+    ]
+
+
+@router.post("/admin/crises", response_model=CustomCrisisView, status_code=201)
+def create_admin_crisis(
+    body: CustomCrisisInput,
+    store: Annotated[GameStore, Depends(get_store)],
+) -> CustomCrisisView:
+    """Crée/remplace une crise maison. Le JSON est validé par le MÊME schéma Pydantic que
+    `data/crises/*.json` (`simulation.crisis.Crisis`) — aucun fichier n'est écrit. Collision
+    refusée avec les crises embarquées (une crise maison ne peut pas en masquer une)."""
+    try:
+        crisis = Crisis.model_validate(body.crisis)
+    except ValidationError as exc:
+        first = exc.errors()[0] if exc.errors() else {}
+        loc = ".".join(str(p) for p in first.get("loc", ())) or "?"
+        raise HTTPException(
+            status_code=400, detail=f"crise invalide ({loc}) : {first.get('msg', exc)}"
+        ) from exc
+    if not crisis.id:
+        raise HTTPException(status_code=400, detail="une crise a besoin d'un identifiant")
+    if not crisis.events:
+        raise HTTPException(status_code=400, detail="une crise a besoin d'au moins un round")
+    if crisis.id in _crisis_library():
+        raise HTTPException(
+            status_code=409,
+            detail=f"l'identifiant « {crisis.id} » est déjà celui d'une crise embarquée",
+        )
+    record = CustomCrisisRecord(
+        id=crisis.id, owner_id=body.owner_id, crisis=crisis.model_dump(), created_at=_now()
+    )
+    store.upsert_custom_crisis(record)
+    return CustomCrisisView(
+        id=record.id, owner_id=record.owner_id, crisis=record.crisis, created_at=record.created_at
+    )
+
+
+@router.delete("/admin/crises/{crisis_id}", status_code=204)
+def delete_admin_crisis(
+    crisis_id: str,
+    owner: str,
+    store: Annotated[GameStore, Depends(get_store)],
+) -> None:
+    """Supprime une crise maison — seul son propriétaire le peut (parité RLS Supabase)."""
+    if not store.delete_custom_crisis(crisis_id, owner):
+        raise HTTPException(status_code=404, detail="crise maison introuvable (ou pas la tienne)")
+
+
+@router.post("/admin/crises/{crisis_id}/test", response_model=GameView, status_code=201)
+def test_admin_crisis(
+    crisis_id: str,
+    owner: str,
+    backend: Annotated[InferenceBackend, Depends(get_backend)],
+    store: Annotated[GameStore, Depends(get_store)],
+) -> GameView:
+    """Lance une partie de test (NON classée) sur une crise maison, avec son casting.
+    Sert le bouton « Tester » de l'éditeur : jouable tout de suite, sans polluer la ligue."""
+    crisis = _resolve_crisis(crisis_id, store)
+    if crisis is None:
+        raise HTTPException(status_code=404, detail=f"crise inconnue : {crisis_id}")
+    world = load_world()
+    actors = sorted({a for ev in crisis.events for a in ev.actors if a in world.countries})
+    countries = actors if len(actors) >= 2 else None
+    return create_game(
+        CreateGameRequest(
+            scenario=f"crise:{crisis_id}",
+            countries=countries,
+            mode="crisis",
+            admin=True,  # partie de test => non classée
+            owner_id=owner,
+        ),
+        backend,
+        store,
     )
 
 
