@@ -31,6 +31,13 @@ export default function RootLayout({
   return (
     <html lang="fr" className={`${inter.variable} ${jetbrains.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col">
+        {/* Décor spatial (lune + étoiles filantes) — derrière tout le contenu. */}
+        <div className="space-backdrop" aria-hidden="true">
+          <span className="moon" />
+          <span className="shooting-star ss1" />
+          <span className="shooting-star ss2" />
+          <span className="shooting-star ss3" />
+        </div>
         <AuthProvider>
           <a
             href="#contenu"

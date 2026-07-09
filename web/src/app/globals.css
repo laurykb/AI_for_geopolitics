@@ -26,19 +26,19 @@
   --utopia: #34d399;
   --dystopia: #f87171;
 
-  /* --- Palette Terre & espace (globe + cartes) ------------------------------- */
+  /* --- Palette Terre & espace (globe + cartes) — « Blue Marble » vif ---------- */
   --space: #050710;
   --space-deep: #020308;
-  --ocean-lit: #2f83c4; /* océan côté soleil */
-  --ocean: #1a5a97;
-  --ocean-deep: #0a2c52; /* grands fonds / côté nuit */
-  --ocean-night: #06182f;
-  --land: #4d6b40; /* végétation */
-  --land-lit: #728f4c; /* prairies éclairées */
-  --land-warm: #b0925f; /* sable / désert */
-  --land-dark: #2f4a30; /* forêts / relief à l'ombre */
-  --ice: #eaf2fa; /* calottes glaciaires */
-  --atmosphere: #5cb2ee; /* halo de limbe (bord de l'atmosphère) */
+  --ocean-lit: #3f9ce6; /* océan côté soleil (bleu vif) */
+  --ocean: #1c6ec2;
+  --ocean-deep: #0b3a72; /* grands fonds / côté nuit */
+  --ocean-night: #071d3a;
+  --land: #4f7a37; /* végétation (vert vif) */
+  --land-lit: #83ad4d; /* prairies éclairées */
+  --land-warm: #c99e5c; /* sable / désert (Sahara lumineux) */
+  --land-dark: #34592d; /* forêts / relief à l'ombre */
+  --ice: #eef5fc; /* calottes glaciaires */
+  --atmosphere: #63b8f2; /* halo de limbe (bord de l'atmosphère) */
 }
 
 @theme inline {
@@ -70,8 +70,9 @@ body {
   /* Espace profond + nébuleuse très discrète (indigo/bleu, fixe au scroll). */
   background-color: var(--background);
   background-image:
-    radial-gradient(ellipse 80% 60% at 74% 10%, rgba(58, 78, 150, 0.20), transparent 60%),
-    radial-gradient(ellipse 70% 55% at 16% 92%, rgba(24, 70, 112, 0.16), transparent 58%);
+    radial-gradient(ellipse 78% 58% at 76% 8%, rgba(72, 92, 178, 0.30), transparent 60%),
+    radial-gradient(ellipse 64% 52% at 14% 94%, rgba(26, 84, 132, 0.24), transparent 58%),
+    radial-gradient(ellipse 52% 44% at 42% 52%, rgba(60, 40, 120, 0.14), transparent 62%);
   background-attachment: fixed;
   color: var(--foreground);
   font-family: var(--font-inter), system-ui, sans-serif;
@@ -105,6 +106,67 @@ body::before {
 }
 @media (prefers-reduced-motion: reduce) {
   body::before { animation: none; }
+}
+
+/* Décor spatial : une lune lointaine + des étoiles filantes occasionnelles. Nappe fixe
+   derrière l'app (au-dessus du champ d'étoiles, sous le contenu). Aucune image, aucun JS. */
+.space-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+.space-backdrop .moon {
+  position: absolute;
+  top: 7%;
+  right: 6%;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  /* Disque gris lunaire éclairé haut-gauche + quelques cratères + halo froid. */
+  background:
+    radial-gradient(circle at 68% 72%, rgba(120, 130, 150, 0.5) 0 5%, transparent 6%),
+    radial-gradient(circle at 40% 55%, rgba(120, 130, 150, 0.45) 0 4%, transparent 5%),
+    radial-gradient(circle at 58% 34%, rgba(120, 130, 150, 0.4) 0 3%, transparent 4%),
+    radial-gradient(circle at 34% 30%, #e9edf6, #c3cad9 45%, #7f8aa2 78%, #5a6580 100%);
+  box-shadow:
+    0 0 22px 6px rgba(150, 180, 230, 0.18),
+    inset -6px -6px 12px rgba(10, 14, 30, 0.55);
+  opacity: 0.9;
+}
+.space-backdrop .shooting-star {
+  position: absolute;
+  width: 130px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(210, 232, 255, 0.95));
+  opacity: 0;
+  transform: rotate(-32deg);
+  animation: shoot 12s ease-in infinite;
+}
+.space-backdrop .shooting-star::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: -1.5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #eaf4ff;
+  box-shadow: 0 0 10px 3px rgba(180, 215, 255, 0.9);
+}
+.space-backdrop .ss1 { top: 12%; left: 6%; animation-duration: 11s; animation-delay: 3s; }
+.space-backdrop .ss2 { top: 26%; left: 52%; animation-duration: 15s; animation-delay: 8s; }
+.space-backdrop .ss3 { top: 9%; left: 72%; animation-duration: 19s; animation-delay: 14s; }
+@keyframes shoot {
+  0% { opacity: 0; transform: rotate(-32deg) translateX(0); }
+  2% { opacity: 1; }
+  9% { opacity: 1; }
+  14%, 100% { opacity: 0; transform: rotate(-32deg) translateX(560px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .space-backdrop .shooting-star { animation: none; opacity: 0; }
 }
 
 ::selection {

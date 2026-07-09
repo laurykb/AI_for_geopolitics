@@ -42,10 +42,11 @@ export function Globe({
 
   useEffect(() => {
     if (prefersReducedMotion()) return;
-    let velocity = spinning ? 0.4 : arriving ? 6 : 0.12; // degrés par tique
+    // Au repos, la Terre tourne LENTEMENT mais visiblement (~0,28°/tique ≈ un tour/50 s).
+    let velocity = spinning ? 0.5 : arriving ? 6 : 0.28; // degrés par tique
     const timer = setInterval(() => {
       if (spinning) velocity = Math.min(velocity * 1.06, 7); // accélération douce
-      else if (arriving) velocity = Math.max(velocity * 0.94, 0.12); // décélération
+      else if (arriving) velocity = Math.max(velocity * 0.94, 0.28); // décélération
       setLambda((l) => (l + velocity) % 360);
     }, 40);
     return () => clearInterval(timer);

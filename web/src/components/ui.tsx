@@ -5,10 +5,11 @@ import type { ReactNode } from "react";
 import { fmt } from "@/lib/format";
 
 export function Panel({ children, className = "" }: { children: ReactNode; className?: string }) {
-  // Élévation unique et cohérente : liseré clair en haut (lumière) + ombre douce.
+  // Verre spatial : surface translucide + flou d'arrière-plan (le ciel étoilé transparaît),
+  // liseré clair en haut (lumière rasante) + ombre douce pour l'élévation.
   return (
     <section
-      className={`rounded-xl border border-edge bg-surface p-5 shadow-[inset_0_1px_0_0_rgba(248,250,252,0.04),0_12px_32px_-20px_rgba(0,0,0,0.8)] ${className}`}
+      className={`rounded-xl border border-edge bg-surface/70 p-5 shadow-[inset_0_1px_0_0_rgba(248,250,252,0.06),0_12px_36px_-20px_rgba(0,0,0,0.85)] backdrop-blur-md ${className}`}
     >
       {children}
     </section>
