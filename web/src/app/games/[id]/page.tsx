@@ -275,6 +275,14 @@ export default function TheatrePage() {
       void start(body);
       return;
     }
+    // G12-b §5 : partie de test d'une crise maison — la crise est imposée (elle prime sur
+    // un éventuel événement décrété), comme un chapitre.
+    if (testCrisisId && !motionPending) {
+      body.crisis_id = testCrisisId;
+      if (maxTurns > 0) body.max_turns = maxTurns;
+      void start(body);
+      return;
+    }
     if (maxTurns > 0) body.max_turns = maxTurns;
     if (!motionPending) {
       if (decree && title.trim()) {
@@ -294,8 +302,8 @@ export default function TheatrePage() {
         }
       } else if (mode === "fog" && fogId) {
         body.fog_id = fogId;
-      } else if (mode === "crisis" && (testCrisisId || crisisId)) {
-        body.crisis_id = testCrisisId ?? crisisId;
+      } else if (mode === "crisis" && crisisId) {
+        body.crisis_id = crisisId;
       }
     }
     void start(body);
@@ -749,7 +757,7 @@ export default function TheatrePage() {
                 </select>
               </label>
             )}
-            {!motionPending && (
+            {!motionPending && !testCrisisId && (
               <label className="flex cursor-pointer items-center gap-2 pb-2.5 text-sm text-fg-muted">
                 <input
                   type="checkbox"

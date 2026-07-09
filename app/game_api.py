@@ -2931,6 +2931,15 @@ def create_admin_crisis(
             status_code=409,
             detail=f"l'identifiant « {crisis.id} » est déjà celui d'une crise embarquée",
         )
+    # Garde de propriété : un upsert ne doit jamais écraser la crise d'un AUTRE joueur.
+    # (Sur Supabase la RLS l'interdit déjà ; ici on l'aligne pour le backend dev sans auth
+    # et pour que les deux stores se comportent identiquement.)
+    existing = next((c for c in store.list_custom_crises() if c.id == crisis.id), None)
+    if existing is not None and existing.owner_id != body.owner_id:
+        raise HTTPException(
+            status_code=409,
+            detail=f"l'identifiant « {crisis.id} » appartient déjà à un autre joueur",
+        )
     record = CustomCrisisRecord(
         id=crisis.id, owner_id=body.owner_id, crisis=crisis.model_dump(), created_at=_now()
     )

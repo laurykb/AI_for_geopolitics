@@ -127,6 +127,17 @@ def test_upsert_replaces_same_id(client):
     assert len(got) == 1 and got[0]["crisis"]["title"] == "Titre révisé"
 
 
+def test_cannot_overwrite_another_owners_crisis(client):
+    # Garde de propriété : bob ne peut pas écraser (ni s'approprier) la crise d'alice —
+    # même invariant que la RLS Supabase, pour que les deux stores concordent.
+    _post(client, _crisis(cid="partagee"), owner="alice")
+    resp = _post(client, _crisis(cid="partagee"), owner="bob")
+    assert resp.status_code == 409
+    got = client.get("/api/admin/crises").json()
+    owners = {c["id"]: c["owner_id"] for c in got}
+    assert owners["partagee"] == "alice"  # inchangé, pas de fuite entre joueurs
+
+
 # --- suppression -------------------------------------------------------------
 
 

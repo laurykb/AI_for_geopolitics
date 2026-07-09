@@ -22,6 +22,7 @@ import {
   testCustomCrisis,
 } from "@/lib/api";
 import { ROSTER, speakerMeta } from "@/lib/countries";
+import { slugify } from "@/lib/crisis-editor";
 import type { CrisisDoc, CustomCrisisView } from "@/lib/types";
 
 type EventDraft = {
@@ -43,17 +44,6 @@ const EMPTY_EVENT: EventDraft = {
 const ACTORS = [...ROSTER].sort((a, b) =>
   speakerMeta(a).label.localeCompare(speakerMeta(b).label, "fr"),
 );
-
-/** id stable et jouable, déduit du titre (a-z0-9 + underscore). */
-function slugify(text: string): string {
-  return text
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .slice(0, 48);
-}
 
 export default function CrisisEditorPage() {
   const { player, loading } = useAuth();
