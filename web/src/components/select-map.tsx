@@ -13,6 +13,8 @@ import world from "world-atlas/countries-110m.json";
 
 import { ISO_NUM, ROSTER, speakerMeta } from "@/lib/countries";
 
+import { EarthMapDefs } from "./earth-defs";
+
 const WIDTH = 940;
 const HEIGHT = 480;
 
@@ -72,27 +74,10 @@ export function SelectMap({
           role="group"
           aria-label="Carte du monde — choisis les 7 États du sommet"
         >
-          <defs>
-            <radialGradient id="sel-ocean" cx="50%" cy="38%" r="72%">
-              <stop offset="0%" stopColor="var(--ocean)" />
-              <stop offset="100%" stopColor="var(--ocean-deep)" />
-            </radialGradient>
-            <linearGradient
-              id="sel-land"
-              gradientUnits="userSpaceOnUse"
-              x1="0"
-              y1="0"
-              x2="0"
-              y2={HEIGHT}
-            >
-              <stop offset="0%" stopColor="var(--land)" />
-              <stop offset="50%" stopColor="var(--land-warm)" />
-              <stop offset="100%" stopColor="var(--land)" />
-            </linearGradient>
-          </defs>
+          <EarthMapDefs height={HEIGHT} />
           <path
             d={path({ type: "Sphere" }) ?? undefined}
-            fill="url(#sel-ocean)"
+            fill="url(#map-ocean)"
             stroke="var(--border)"
           />
           {features.map((f, i) => {
@@ -102,7 +87,7 @@ export function SelectMap({
                 <path
                   key={`bg-${i}`}
                   d={path(f) ?? undefined}
-                  fill="url(#sel-land)"
+                  fill="url(#map-land)"
                   stroke="var(--ocean-night)"
                   strokeWidth="0.5"
                   opacity={0.78}

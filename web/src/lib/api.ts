@@ -52,25 +52,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new ApiError(resp.status, detail);
   }
+  // 204 No Content (ex. DELETE) : aucun corps à parser — renvoyer undefined.
+  if (resp.status === 204) return undefined as T;
   return (await resp.json()) as T;
-}
-
-/** Variante pour les réponses 204 sans corps (DELETE) : on ne parse aucun JSON. */
-async function requestVoid(path: string, init?: RequestInit): Promise<void> {
-  const resp = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
-  });
-  if (!resp.ok) {
-    let detail = `${resp.status} ${resp.statusText}`;
-    try {
-      const body = (await resp.json()) as { detail?: string };
-      if (body.detail) detail = body.detail;
-    } catch {
-      // corps non JSON : on garde le statut HTTP
-    }
-    throw new ApiError(resp.status, detail);
-  }
 }
 
 /** Parties connues. `owner` = seulement les siennes (accueil) ; `admin` = tout (vue admin).
@@ -185,7 +169,7 @@ export const saveCustomCrisis = (
   });
 
 export const deleteCustomCrisis = (id: string, owner: string): Promise<void> =>
-  requestVoid(
+  request<void>(
     `/api/admin/crises/${encodeURIComponent(id)}?owner=${encodeURIComponent(owner)}`,
     { method: "DELETE" },
   );
