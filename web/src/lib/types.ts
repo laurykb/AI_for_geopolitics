@@ -480,6 +480,8 @@ export type ChapterView = {
   improvement: number | null;
   medal: "or" | "argent" | "bronze" | null;
   unlocked: boolean;
+  requires: string[]; // G12-b — prérequis (arbre, chemins en Y)
+  coming_soon: boolean; // G12-b — fiche pas encore rédigée (grisée)
 };
 
 export type CampaignView = {
