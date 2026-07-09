@@ -92,10 +92,28 @@ export function StageMap({
         aria-label={`Scène du sommet — pays teintés par leur trajectoire (U global ${fmt(utopia)})`}
         className={`w-full ${frozen ? "stage-frozen" : ""}`}
       >
+        <defs>
+          <radialGradient id="stage-ocean" cx="50%" cy="38%" r="72%">
+            <stop offset="0%" stopColor="var(--ocean)" />
+            <stop offset="100%" stopColor="var(--ocean-deep)" />
+          </radialGradient>
+          <linearGradient
+            id="stage-land"
+            gradientUnits="userSpaceOnUse"
+            x1="0"
+            y1="0"
+            x2="0"
+            y2={HEIGHT}
+          >
+            <stop offset="0%" stopColor="var(--land)" />
+            <stop offset="50%" stopColor="var(--land-warm)" />
+            <stop offset="100%" stopColor="var(--land)" />
+          </linearGradient>
+        </defs>
         <g key={`breathe-${breatheKey}`} className={breatheKey ? "stage-breathe" : undefined}>
           <path
             d={path({ type: "Sphere" }) ?? undefined}
-            fill="var(--surface)"
+            fill="url(#stage-ocean)"
             stroke="var(--border)"
           />
           {features.map((f, i) => {
@@ -108,15 +126,15 @@ export function StageMap({
                 : isSuspended
                   ? SUSPENDED_FILL
                   : uTint(uByCountry[slug] ?? utopia)
-              : "var(--muted)";
+              : "url(#stage-land)";
             return (
               <path
                 key={`${String(f.id)}-${i}`} // certains territoires n'ont pas d'id ISO unique
                 d={path(f) ?? undefined}
                 fill={fill}
-                stroke={isSpeaking ? "var(--accent-bright)" : "var(--background)"}
+                stroke={isSpeaking ? "var(--accent-bright)" : "var(--ocean-night)"}
                 strokeWidth={isSpeaking ? 1.2 : 0.5}
-                opacity={slug ? (isSuspended ? 0.7 : 0.95) : 0.55}
+                opacity={slug ? (isSuspended ? 0.7 : 0.95) : 0.7}
                 className={
                   slug
                     ? isSpeaking

@@ -47,9 +47,27 @@ export function WorldMap({ countries, utopia }: { countries: string[]; utopia: n
         aria-label={`Carte du monde — pays du sommet colorés par l'indice Utopie ${fmt(utopia)}`}
         className="w-full"
       >
+        <defs>
+          <radialGradient id="wm-ocean" cx="50%" cy="38%" r="72%">
+            <stop offset="0%" stopColor="var(--ocean)" />
+            <stop offset="100%" stopColor="var(--ocean-deep)" />
+          </radialGradient>
+          <linearGradient
+            id="wm-land"
+            gradientUnits="userSpaceOnUse"
+            x1="0"
+            y1="0"
+            x2="0"
+            y2={HEIGHT}
+          >
+            <stop offset="0%" stopColor="var(--land)" />
+            <stop offset="50%" stopColor="var(--land-warm)" />
+            <stop offset="100%" stopColor="var(--land)" />
+          </linearGradient>
+        </defs>
         <path
           d={path({ type: "Sphere" }) ?? undefined}
-          fill="var(--surface)"
+          fill="url(#wm-ocean)"
           stroke="var(--border)"
         />
         {features.map((f, i) => {
@@ -58,10 +76,10 @@ export function WorldMap({ countries, utopia }: { countries: string[]; utopia: n
             <path
               key={`${String(f.id)}-${i}`} // certains territoires n'ont pas d'id ISO unique
               d={path(f) ?? undefined}
-              fill={slug ? fill : "var(--muted)"}
-              stroke="var(--background)"
+              fill={slug ? fill : "url(#wm-land)"}
+              stroke="var(--ocean-night)"
               strokeWidth="0.5"
-              opacity={slug ? 0.95 : 0.55}
+              opacity={slug ? 0.95 : 0.7}
             >
               <title>
                 {slug

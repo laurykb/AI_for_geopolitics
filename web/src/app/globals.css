@@ -1,18 +1,19 @@
 @import "tailwindcss";
 
-/* Direction artistique (ui-ux-pro-max « SI Theatre ») : dark OLED cinématique,
-   fond minuit, accent or « spotlight », statuts vert/ambre/rouge, motion sobre. */
+/* Direction artistique « La Terre dans le ciel étoilé » : espace profond noir semé
+   d'étoiles, planète Terre réaliste (océans, terres, glace, halo atmosphérique) ;
+   accent or = lumière solaire, cyan = atmosphère. Motion sobre. */
 :root {
-  --background: #0f0f23;
-  --surface: #16162d;
-  --surface-2: #1d1d38;
-  --muted: #27273b;
+  --background: #050710; /* espace profond, presque noir */
+  --surface: #0d1226; /* panneau « nuit spatiale » */
+  --surface-2: #141a33;
+  --muted: #212a47;
   --foreground: #f8fafc;
-  --foreground-muted: #94a3b8;
-  /* AA 4,5:1 sur --surface (l'ancien #64748b plafonnait à ~3,9:1 en petit corps). */
-  --foreground-faint: #7b8798;
-  --border: rgba(148, 163, 184, 0.14);
-  --border-strong: rgba(148, 163, 184, 0.3);
+  --foreground-muted: #9fb0c6;
+  /* AA 4,5:1 sur --surface (fond assombri → contraste préservé/amélioré). */
+  --foreground-faint: #8494a8;
+  --border: rgba(148, 178, 214, 0.16);
+  --border-strong: rgba(148, 178, 214, 0.32);
   --primary: #1e1b4b;
   --secondary: #312e81;
   --accent: #ca8a04;
@@ -24,6 +25,20 @@
   --bad: #f87171;
   --utopia: #34d399;
   --dystopia: #f87171;
+
+  /* --- Palette Terre & espace (globe + cartes) ------------------------------- */
+  --space: #050710;
+  --space-deep: #020308;
+  --ocean-lit: #2f83c4; /* océan côté soleil */
+  --ocean: #1a5a97;
+  --ocean-deep: #0a2c52; /* grands fonds / côté nuit */
+  --ocean-night: #06182f;
+  --land: #4d6b40; /* végétation */
+  --land-lit: #728f4c; /* prairies éclairées */
+  --land-warm: #b0925f; /* sable / désert */
+  --land-dark: #2f4a30; /* forêts / relief à l'ombre */
+  --ice: #eaf2fa; /* calottes glaciaires */
+  --atmosphere: #5cb2ee; /* halo de limbe (bord de l'atmosphère) */
 }
 
 @theme inline {
@@ -52,10 +67,44 @@
 }
 
 body {
-  background: var(--background);
+  /* Espace profond + nébuleuse très discrète (indigo/bleu, fixe au scroll). */
+  background-color: var(--background);
+  background-image:
+    radial-gradient(ellipse 80% 60% at 74% 10%, rgba(58, 78, 150, 0.20), transparent 60%),
+    radial-gradient(ellipse 70% 55% at 16% 92%, rgba(24, 70, 112, 0.16), transparent 58%);
+  background-attachment: fixed;
   color: var(--foreground);
   font-family: var(--font-inter), system-ui, sans-serif;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* Ciel étoilé : nappe fixe derrière toute l'app. Étoiles de tailles/éclats variés,
+   semées par des dégradés radiaux répétés (crisp, sans image ni JS). */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-repeat: repeat;
+  background-image:
+    radial-gradient(1.4px 1.4px at 12% 22%, rgba(255, 255, 255, 0.95), transparent 60%),
+    radial-gradient(1.2px 1.2px at 47% 63%, rgba(255, 255, 255, 0.82), transparent 60%),
+    radial-gradient(1px 1px at 78% 33%, rgba(214, 232, 255, 0.72), transparent 60%),
+    radial-gradient(1.7px 1.7px at 88% 78%, rgba(255, 255, 255, 0.92), transparent 60%),
+    radial-gradient(1px 1px at 32% 87%, rgba(255, 255, 255, 0.6), transparent 60%),
+    radial-gradient(1.1px 1.1px at 62% 12%, rgba(255, 246, 224, 0.85), transparent 60%),
+    radial-gradient(0.9px 0.9px at 8% 58%, rgba(255, 255, 255, 0.5), transparent 60%);
+  background-size:
+    320px 320px, 250px 250px, 180px 180px, 400px 400px, 300px 300px, 220px 220px, 160px 160px;
+  animation: star-twinkle 7s ease-in-out infinite;
+}
+@keyframes star-twinkle {
+  0%, 100% { opacity: 0.72; }
+  50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body::before { animation: none; }
 }
 
 ::selection {
