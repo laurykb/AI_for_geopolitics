@@ -14,9 +14,11 @@ const STAKE = 5; // parts par pari (argent fictif)
 export function FlashMarketsPopup({
   markets,
   onBet,
+  dismissible = true,
 }: {
   markets: FlashMarket[];
   onBet: () => void;
+  dismissible?: boolean; // le Spectateur ne peut pas masquer sa seule interface de jeu
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -44,13 +46,15 @@ export function FlashMarketsPopup({
     <div className="absolute right-3 top-3 z-20 w-72 max-w-[85%] rounded-lg border border-accent-bright/50 bg-surface/95 p-3 shadow-[0_12px_32px_-12px_rgba(0,0,0,0.7)] backdrop-blur">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-xs font-semibold text-accent-bright">📈 Les books ouvrent</span>
-        <button
-          onClick={() => setDismissed(true)}
-          aria-label="Masquer les paris"
-          className="text-xs text-fg-faint transition-colors hover:text-foreground"
-        >
-          ✕
-        </button>
+        {dismissible && (
+          <button
+            onClick={() => setDismissed(true)}
+            aria-label="Masquer les paris"
+            className="text-xs text-fg-faint transition-colors hover:text-foreground"
+          >
+            ✕
+          </button>
+        )}
       </div>
       <div className="space-y-2">
         {open.map((m) => (

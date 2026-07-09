@@ -178,4 +178,19 @@ describe("buildCreateBody", () => {
     expect(body.invent?.name).toBe("Néo-Atlantis");
     expect(body.mode).toBe("escalation");
   });
+
+  it("spectateur : la Dérive est forcée OFF (sa boucle exige une motion interdite)", () => {
+    // Même avec drift=true à S2, un spectateur ne part JAMAIS en mode drift.
+    const body = buildCreateBody({
+      scenario: "red_sea",
+      baseMode: "classic",
+      settings, // drift: true
+      role: "spectator",
+      selected: seven,
+    });
+    expect(body.role).toBe("spectator");
+    expect(body.play_as).toBeUndefined();
+    expect(body.drift_enabled).toBe(false);
+    expect(body.mode).toBe("classic"); // pas "drift"
+  });
 });

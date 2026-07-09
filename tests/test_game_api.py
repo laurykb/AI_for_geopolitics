@@ -649,6 +649,19 @@ def test_spectator_is_bet_only(client):
     assert turn.status_code == 403  # ne prend pas la parole non plus
 
 
+def test_spectator_can_play_and_bet(client):
+    # G12 §3 — le spectateur ne COMPOSE pas mais REGARDE : un round se déroule jusqu'au
+    # bout et les marchés vivants s'ouvrent (sa seule interface de jeu).
+    game = _create(client, countries=["usa", "iran", "china"], role="spectator", owner_id="u1")
+    names = [n for n, _ in _play(client, game["id"])]
+    assert names[-1] == "done"  # le round va jusqu'au verdict
+    markets = client.post(f"/api/games/{game['id']}/flash").json()
+    assert isinstance(markets, list) and len(markets) >= 1
+    assert all(m["status"] == "open" for m in markets)
+    # règlement des books échus (idempotent) : ne casse pas pour un spectateur.
+    assert client.post(f"/api/games/{game['id']}/flash/resolve").status_code == 200
+
+
 def test_free_game_is_not_ranked(client):
     # G11-b — la partie libre retire le classement même en rôle joueur-pays.
     free = _create(client, countries=["usa", "iran"], play_as="usa", role="player", free=True)

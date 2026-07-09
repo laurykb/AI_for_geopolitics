@@ -49,6 +49,7 @@ import {
 import { speakerMeta } from "@/lib/countries";
 import { isMisled } from "@/lib/fog";
 import {
+  ensureAccount,
   openFlashMarkets,
   resolveFlashMarkets,
   runMarketBot,
@@ -57,6 +58,7 @@ import {
 import { FlashMarketsPopup } from "@/components/flash-markets";
 import { localU } from "@/lib/stage";
 import type {
+  AccountView,
   AttributeDelta,
   ChapterView,
   DriftReveal,
@@ -102,6 +104,7 @@ export default function TheatrePage() {
   const accelRef = useRef(0); // anti-doublon : round déjà enchaîné par l'accélération
   const [flashMarkets, setFlashMarkets] = useState<FlashMarket[]>([]); // G12 — marchés vivants
   const flashRef = useRef(0); // anti-doublon : marchés vivants déjà ouverts pour ce round
+  const [account, setAccount] = useState<AccountView | null>(null); // G12 §3 — bourse du Spectateur
   const [glassBox, setGlassBox] = useState(false); // Fog : voir la désinformation qui circule
   // Scène (G1) : cran de la timeline (« live » ou un round passé) + gel du verdict.
   const [selected, setSelected] = useState<StageSelection>("live");
@@ -151,6 +154,9 @@ export default function TheatrePage() {
   // Intermédiaire : postures seules ; Expert : rien).
   const showGriefs = (detail?.difficulty ?? "intermediate") === "beginner";
   const showPostures = (detail?.difficulty ?? "intermediate") !== "expert";
+  // G12 §3 — le Spectateur : pas de composition (décret/motion/directive), il parie et
+  // regarde en accéléré. Le théâtre lui présente une interface dédiée.
+  const isSpectator = detail?.role === "spectator";
   useEffect(() => {
     if (mode === "fog" || mode === "crisis") {
       // Seuls les contenus jouables avec CE sommet sont proposés (acteurs à la table).
@@ -202,6 +208,16 @@ export default function TheatrePage() {
   const refreshFlash = useCallback(() => {
     openFlashMarkets(id).then(setFlashMarkets).catch(() => {});
   }, [id]);
+  // G12 §3 — la bourse du Spectateur (compteur d'argent) : chargée/rafraîchie après
+  // chaque pari et chaque round. Crée le compte marché du navigateur au besoin.
+  const refreshAccount = useCallback(() => {
+    if (!isSpectator) return;
+    ensureAccount().then(setAccount).catch(() => {});
+  }, [isSpectator]);
+  const onFlashBet = useCallback(() => {
+    refreshFlash();
+    refreshAccount();
+  }, [refreshFlash, refreshAccount]);
   useEffect(() => {
     if (round.status === "done" && round.roundNo && flashRef.current !== round.roundNo) {
       flashRef.current = round.roundNo;
@@ -210,6 +226,9 @@ export default function TheatrePage() {
         .finally(refreshFlash);
     }
   }, [id, round.status, round.roundNo, refreshFlash]);
+  useEffect(() => {
+    if (isSpectator) refreshAccount();
+  }, [isSpectator, round.status, refreshAccount]);
 
   // Théâtre Escalation : les rounds s'enchaînent d'un coup jusqu'à l'horizon.
   useEffect(() => {
@@ -632,18 +651,46 @@ export default function TheatrePage() {
 
       {detail?.live && detail.status === "running" && (
         <Panel>
+          {isSpectator && (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-accent-bright/40 bg-surface-2/60 px-3 py-2">
+              <p className="text-xs text-fg-muted">
+                <span className="font-semibold text-accent-bright">Spectateur</span> — lance la
+                partie et parie sur les marchés éclair qui s&apos;ouvrent à chaque round.
+              </p>
+              {account && (
+                <p className="font-mono text-xs tabular-nums text-fg-muted">
+                  Argent&nbsp;: {Math.round(account.balance)}{" "}
+                  <span className={account.pnl >= 0 ? "text-utopia" : "text-dystopia"}>
+                    ({account.pnl >= 0 ? "+" : ""}
+                    {Math.round(account.pnl)})
+                  </span>
+                </p>
+              )}
+            </div>
+          )}
           <div className="flex flex-wrap items-end gap-4">
             <button
-              onClick={play}
-              disabled={streaming}
+              onClick={
+                isSpectator
+                  ? () =>
+                      startAccel(Math.max(1, (detail?.horizon ?? playedRounds + 1) - playedRounds))
+                  : play
+              }
+              disabled={streaming || (isSpectator && accel.target > 0)}
               className="flex cursor-pointer items-center gap-2 rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {streaming && <Spinner />}
-              {streaming
-                ? "Négociation en cours…"
-                : motionPending
-                  ? "Débattre la motion"
-                  : "Jouer un round"}
+              {(streaming || (isSpectator && accel.target > 0)) && <Spinner />}
+              {isSpectator
+                ? accel.target > 0
+                  ? "La partie se joue…"
+                  : playedRounds > 0
+                    ? "Reprendre en accéléré"
+                    : "Lancer la partie en accéléré"
+                : streaming
+                  ? "Négociation en cours…"
+                  : motionPending
+                    ? "Débattre la motion"
+                    : "Jouer un round"}
             </button>
 
             {/* G11-d §1 S5 — accélération multi-rounds : jouer 3/5 rounds, Stop entre chaque. */}
@@ -667,7 +714,8 @@ export default function TheatrePage() {
               </div>
             ) : (
               !streaming &&
-              !motionPending && (
+              !motionPending &&
+              !isSpectator && (
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs text-fg-muted">Accélérer :</span>
@@ -704,7 +752,7 @@ export default function TheatrePage() {
                 ))}
               </select>
             </label>
-            {mode === "escalation" && (
+            {mode === "escalation" && !isSpectator && (
               <label className="flex cursor-pointer items-center gap-2 pb-2.5 text-sm text-fg-muted">
                 <input
                   type="checkbox"
@@ -715,7 +763,7 @@ export default function TheatrePage() {
                 Enchaîner les rounds jusqu&apos;à l&apos;horizon
               </label>
             )}
-            {mode === "fog" && !motionPending && (
+            {mode === "fog" && !motionPending && !isSpectator && (
               <label className="text-sm">
                 <span className="mb-1 block text-xs text-fg-muted">Scénario de brouillard</span>
                 <select
@@ -739,7 +787,7 @@ export default function TheatrePage() {
                 <span className="font-mono text-fg-faint">{testCrisisId}</span> — partie de test.
               </p>
             )}
-            {mode === "crisis" && !motionPending && !testCrisisId && (
+            {mode === "crisis" && !motionPending && !testCrisisId && !isSpectator && (
               <label className="text-sm">
                 <span className="mb-1 block text-xs text-fg-muted">Crise à rejouer</span>
                 <select
@@ -757,7 +805,7 @@ export default function TheatrePage() {
                 </select>
               </label>
             )}
-            {!motionPending && !testCrisisId && (
+            {!motionPending && !testCrisisId && !isSpectator && (
               <label className="flex cursor-pointer items-center gap-2 pb-2.5 text-sm text-fg-muted">
                 <input
                   type="checkbox"
@@ -769,7 +817,7 @@ export default function TheatrePage() {
                 Décréter l&apos;événement (GM humain)
               </label>
             )}
-            {detail.countries.length >= 3 && !motionPending && (
+            {detail.countries.length >= 3 && !motionPending && !isSpectator && (
               <button
                 onClick={() => setMotionOpen((v) => !v)}
                 disabled={streaming}
@@ -942,8 +990,14 @@ export default function TheatrePage() {
       <div className="relative left-1/2 w-screen max-w-[1600px] -translate-x-1/2 space-y-4 px-4 sm:px-6">
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]">
         <div className="relative rounded-lg border border-edge bg-surface p-3">
-          {/* G12 §1 — les paris s'ouvrent en pop-up SUR la carte. */}
-          <FlashMarketsPopup markets={flashMarkets} onBet={refreshFlash} />
+          {/* G12 §1 — les paris s'ouvrent en pop-up SUR la carte. Re-montée par round
+              (clé) pour ré-afficher à chaque vague ; non masquable pour le Spectateur. */}
+          <FlashMarketsPopup
+            key={round.roundNo ?? 0}
+            markets={flashMarkets}
+            onBet={onFlashBet}
+            dismissible={!isSpectator}
+          />
           <StageMap
             countries={summit}
             uByCountry={uByCountry}

@@ -166,14 +166,17 @@ export function buildCreateBody(args: {
   invent?: CreateGameBody["invent"];
 }): CreateGameBody {
   const { scenario, baseMode, settings, role, selected, flag, ownerId, invent } = args;
+  // Le Spectateur ne motionne pas ; or la boucle de la Dérive SE GAGNE par une motion.
+  // On la désactive pour lui, sinon sa partie n'a aucune boucle de jeu (il ne fait que parier).
+  const driftOn = settings.drift && role !== "spectator";
   return {
     scenario,
     countries: selected,
     horizon: settings.rounds,
-    mode: resolveMode(baseMode, settings.drift),
+    mode: resolveMode(baseMode, driftOn),
     role: backendRole(role),
     difficulty: settings.difficulty,
-    drift_enabled: settings.drift,
+    drift_enabled: driftOn,
     free: settings.free,
     owner_id: ownerId,
     play_as: role === "player" ? (flag ?? undefined) : role === "invent" ? invent?.name : undefined,

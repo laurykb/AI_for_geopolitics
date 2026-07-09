@@ -31,7 +31,8 @@ export function DirectiveComposer({
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  if (role === "council" || targets.length === 0) return null;
+  // Ni le Conseil ni le Spectateur n'adressent de directives (le backend renvoie 403).
+  if (role === "council" || role === "spectator" || targets.length === 0) return null;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
