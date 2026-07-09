@@ -8,11 +8,9 @@
 
 import { geoOrthographic, geoPath } from "d3-geo";
 import { useEffect, useMemo, useState } from "react";
-import { feature } from "topojson-client";
-import type { Topology, GeometryCollection } from "topojson-specification";
-import world from "world-atlas/countries-110m.json";
 
 import { prefersReducedMotion } from "@/lib/stage";
+import { WORLD_FEATURES } from "@/lib/world";
 
 /** Slug du jeu → id numérique ISO 3166-1 (les six pays connus luisent). */
 const SUMMIT_ISO = new Set(["840", "156", "364", "250", "818", "682"]);
@@ -34,11 +32,6 @@ export function Globe({
   arriving?: boolean;
 }) {
   const [lambda, setLambda] = useState(-12);
-
-  const features = useMemo(() => {
-    const topo = world as unknown as Topology<{ countries: GeometryCollection }>;
-    return feature(topo, topo.objects.countries).features;
-  }, []);
 
   useEffect(() => {
     if (prefersReducedMotion()) return;
@@ -130,7 +123,7 @@ export function Globe({
 
       <g clipPath="url(#earth-clip)">
         {/* Terres. */}
-        {features.map((f, i) => (
+        {WORLD_FEATURES.map((f, i) => (
           <path
             key={`land-${String(f.id)}-${i}`}
             d={path(f) ?? undefined}
@@ -141,7 +134,7 @@ export function Globe({
         ))}
 
         {/* Les pays du sommet luisent en or par-dessus les terres. */}
-        {features
+        {WORLD_FEATURES
           .filter((f) => SUMMIT_ISO.has(String(f.id)))
           .map((f, i) => (
             <path

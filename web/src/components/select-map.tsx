@@ -7,11 +7,9 @@
 
 import { geoNaturalEarth1, geoPath } from "d3-geo";
 import { useMemo, useState } from "react";
-import { feature } from "topojson-client";
-import type { Topology, GeometryCollection } from "topojson-specification";
-import world from "world-atlas/countries-110m.json";
 
 import { ISO_NUM, ROSTER, speakerMeta } from "@/lib/countries";
+import { WORLD_FEATURES } from "@/lib/world";
 
 import { EarthMapDefs } from "./earth-defs";
 
@@ -45,10 +43,6 @@ export function SelectMap({
 }) {
   const [hovered, setHovered] = useState<string | null>(null);
 
-  const features = useMemo(() => {
-    const topo = world as unknown as Topology<{ countries: GeometryCollection }>;
-    return feature(topo, topo.objects.countries).features;
-  }, []);
   const path = useMemo(() => {
     const projection = geoNaturalEarth1().fitSize([WIDTH, HEIGHT], { type: "Sphere" });
     return geoPath(projection);
@@ -80,7 +74,7 @@ export function SelectMap({
             fill="url(#map-ocean)"
             stroke="var(--border)"
           />
-          {features.map((f, i) => {
+          {WORLD_FEATURES.map((f, i) => {
             const slug = ISO_TO_SLUG.get(String(f.id));
             if (!slug) {
               return (

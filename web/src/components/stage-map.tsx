@@ -9,13 +9,11 @@
 
 import { geoNaturalEarth1, geoPath } from "d3-geo";
 import { useMemo } from "react";
-import { feature } from "topojson-client";
-import type { Topology, GeometryCollection } from "topojson-specification";
-import world from "world-atlas/countries-110m.json";
 
 import { ISO_NUM, speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
 import { CAPITALS, uTint } from "@/lib/stage";
+import { WORLD_FEATURES } from "@/lib/world";
 
 import { EarthMapDefs } from "./earth-defs";
 
@@ -59,10 +57,6 @@ export function StageMap({
   breatheKey = 0,
   eventTitle,
 }: StageMapProps) {
-  const features = useMemo(() => {
-    const topo = world as unknown as Topology<{ countries: GeometryCollection }>;
-    return feature(topo, topo.objects.countries).features;
-  }, []);
   const { path, project } = useMemo(() => {
     const projection = geoNaturalEarth1().fitSize([WIDTH, HEIGHT], { type: "Sphere" });
     return {
@@ -101,7 +95,7 @@ export function StageMap({
             fill="url(#map-ocean)"
             stroke="var(--border)"
           />
-          {features.map((f, i) => {
+          {WORLD_FEATURES.map((f, i) => {
             const slug = active.get(String(f.id));
             const isSuspended = slug ? suspendedSet.has(slug) : false;
             const isSpeaking = slug != null && slug === speaking;
@@ -144,7 +138,7 @@ export function StageMap({
           {/* Voile de brouillard : les pays désinformés voient un autre monde. */}
           {Object.keys(misled).map((slug) => {
             const iso = ISO_NUM[slug];
-            const f = features.find((x) => String(x.id) === iso);
+            const f = WORLD_FEATURES.find((x) => String(x.id) === iso);
             if (!f) return null;
             return (
               <path
