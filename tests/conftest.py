@@ -89,6 +89,8 @@ class FakePostgrest:
             if columns != "*":
                 wanted = columns.split(",")
                 found = [{k: r[k] for k in wanted} for r in found]
+            if limit := params.get("limit"):
+                found = found[: int(limit)]  # borne serveur, comme PostgREST
             return httpx.Response(200, json=found)
 
         return httpx.Response(405)
@@ -96,7 +98,7 @@ class FakePostgrest:
 
 def _matches(row: dict, params: dict[str, str]) -> bool:
     for col, expr in params.items():
-        if col in ("select", "order"):
+        if col in ("select", "order", "limit"):
             continue
         assert expr.startswith("eq."), f"opérateur non simulé : {expr}"
         if str(row.get(col)) != expr.removeprefix("eq."):

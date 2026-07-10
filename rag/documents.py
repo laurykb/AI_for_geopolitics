@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
+import re
+
 from pydantic import BaseModel
+
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
+
+
+def tokenize(text: str) -> list[str]:
+    """Tokenisation PARTAGÉE entre l'index lexical (BM25) et les embeddings de hachage :
+    une seule définition, sinon les deux index segmentent différemment et la fusion dérive."""
+    return _TOKEN_RE.findall(text.lower())
 
 
 class SourceDoc(BaseModel):

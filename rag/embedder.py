@@ -7,16 +7,11 @@ permet de tester tout le pipeline RAG offline, sans télécharger de modèle ni 
 from __future__ import annotations
 
 import hashlib
-import re
 from abc import ABC, abstractmethod
 
 import numpy as np
 
-_TOKEN_RE = re.compile(r"[a-z0-9]+")
-
-
-def _tokenize(text: str) -> list[str]:
-    return _TOKEN_RE.findall(text.lower())
+from rag.documents import tokenize
 
 
 def _l2_normalize(matrix: np.ndarray) -> np.ndarray:
@@ -55,8 +50,8 @@ class HashingEmbedder(Embedder):
     def embed(self, texts: list[str]) -> np.ndarray:
         vecs = np.zeros((len(texts), self._dim), dtype=np.float32)
         for i, text in enumerate(texts):
-            for token in _tokenize(text):
-                digest = hashlib.md5(token.encode("utf-8")).digest()
+            for token in tokenize(text):
+                digest = hashlib.md5(token.encode("utf-8"), usedforsecurity=False).digest()
                 bucket = int.from_bytes(digest[:4], "little") % self._dim
                 vecs[i, bucket] += 1.0
         return _l2_normalize(vecs)

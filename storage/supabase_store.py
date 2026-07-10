@@ -248,10 +248,10 @@ class SupabaseGameStore:
         return [LpHistoryEntry.model_validate(r) for r in rows]
 
     def leaderboard(self, limit: int = 100) -> list[PlayerRecord]:
-        # Même tri que SQLite : LP décroissant, pseudo croissant en cas d'égalité
-        # (sinon l'ordre des ex æquo diverge entre les deux backends).
-        rows = self._db.select("players", order="lp.desc,pseudo.asc")
-        return [_player(r) for r in rows[:limit]]
+        # Même tri que SQLite : LP décroissant, pseudo croissant en cas d'égalité (sinon
+        # l'ordre des ex æquo diverge entre les backends). LIMIT poussé côté serveur.
+        rows = self._db.select("players", order="lp.desc,pseudo.asc", limit=limit)
+        return [_player(r) for r in rows]
 
 
 # --- mapping lignes <-> modèles ---------------------------------------------------

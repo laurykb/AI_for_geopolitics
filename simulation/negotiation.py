@@ -213,7 +213,9 @@ def format_transcript(transcript: list[NegotiationMessage], *, limit: int = 14) 
 
 # Attribut -> (chemin, bornes de la valeur | None) et plafond du delta par round.
 _ATTRS: dict[str, tuple[str, tuple[float, float] | None]] = {
-    "croissance": ("economy.growth", None),
+    # Bornes larges (jamais atteintes en jeu normal, croissance réelle ≈ ±5) : elles
+    # empêchent seulement une dérive absurde cumulée sur une longue partie/spirale.
+    "croissance": ("economy.growth", (-15.0, 15.0)),
     "stabilité": ("political_stability", (0.0, 1.0)),
     "techno": ("technology_level", (0.0, 1.0)),
     "projection": ("military.projection", (0.0, 1.0)),
