@@ -172,7 +172,7 @@ export default function InformationsPage() {
 
   return (
     <div className="space-y-6">
-      <section className="max-w-3xl">
+      <section className="max-w-3xl" data-tour="provenance">
         <h1 className="text-2xl font-semibold tracking-tight">D&apos;où viennent les chiffres</h1>
         <p className="mt-2 text-sm leading-relaxed text-fg-muted">
           Les attributs de chaque pays ne sont pas inventés : ils sont construits depuis des

@@ -55,7 +55,7 @@ export default function AccueilPage() {
     <div className="space-y-10">
       {/* Hero façon connexion : la planète + bienvenue + les deux actions centrées. */}
       <div className="relative flex min-h-[calc(100vh-12rem)] flex-col items-center justify-center gap-6 overflow-hidden text-center">
-        <div className={chrome}>
+        <div className={chrome} data-tour="hero">
           <p className="text-[11px] font-medium uppercase tracking-[0.3em] text-fg-faint">
             World of Super-Intelligence
           </p>
@@ -79,6 +79,7 @@ export default function AccueilPage() {
           <button
             onClick={() => launch("/lobby")}
             disabled={launching}
+            data-tour="demarrer"
             className="cursor-pointer rounded-full bg-accent px-8 py-3.5 text-base font-semibold text-background shadow-[0_0_32px_rgba(202,138,4,0.35)] transition-all hover:bg-accent-bright hover:shadow-[0_0_48px_rgba(234,179,8,0.45)] disabled:cursor-default disabled:opacity-60"
           >
             Démarrer une partie
@@ -98,6 +99,7 @@ export default function AccueilPage() {
       </div>
 
       {/* Rang de ligue : blason + LP + barre vers le rang suivant */}
+      <div data-tour="rang">
       <Panel>
         <div className="flex flex-wrap items-center gap-4">
           <RankBadge rank={progress.rank} />
@@ -127,6 +129,7 @@ export default function AccueilPage() {
           </div>
         </div>
       </Panel>
+      </div>
 
       {/* Ses dernières parties (remplace l'observatoire public) */}
       <Panel>

@@ -5,6 +5,7 @@ import "./globals.css";
 import { AuthGate } from "@/components/auth-gate";
 import { AuthProvider } from "@/components/auth-provider";
 import { SiteHeader } from "@/components/site-header";
+import { TourProvider } from "@/components/tour";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -39,22 +40,24 @@ export default function RootLayout({
           <span className="shooting-star ss3" />
         </div>
         <AuthProvider>
-          <a
-            href="#contenu"
-            className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:z-50 focus:rounded-md focus:bg-surface-2 focus:px-3 focus:py-2 focus:text-sm"
-          >
-            Aller au contenu
-          </a>
-          <SiteHeader />
-          <main id="contenu" className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
-            <AuthGate>{children}</AuthGate>
-          </main>
-          <footer className="border-t border-edge py-4">
-            <p className="mx-auto max-w-6xl px-6 text-xs text-fg-faint">
-              Simulation observable — les indices mesurent, ils n&apos;influencent pas les
-              super-intelligences.
-            </p>
-          </footer>
+          <TourProvider>
+            <a
+              href="#contenu"
+              className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:z-50 focus:rounded-md focus:bg-surface-2 focus:px-3 focus:py-2 focus:text-sm"
+            >
+              Aller au contenu
+            </a>
+            <SiteHeader />
+            <main id="contenu" className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
+              <AuthGate>{children}</AuthGate>
+            </main>
+            <footer className="border-t border-edge py-4">
+              <p className="mx-auto max-w-6xl px-6 text-xs text-fg-faint">
+                Simulation observable — les indices mesurent, ils n&apos;influencent pas les
+                super-intelligences.
+              </p>
+            </footer>
+          </TourProvider>
         </AuthProvider>
       </body>
     </html>

@@ -9,6 +9,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 import { useAuth } from "@/components/auth-provider";
+import { useTour } from "@/components/tour";
 
 const LINKS = [
   { href: "/accueil", label: "Accueil" },
@@ -20,6 +21,7 @@ export function HeaderNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { player, signOut } = useAuth();
+  const { restart } = useTour();
 
   const links = player?.is_admin ? [...LINKS, { href: "/admin", label: "Admin" }] : LINKS;
 
@@ -46,6 +48,14 @@ export function HeaderNav() {
       ))}
       {player && (
         <span className="flex items-center gap-3 border-l border-edge pl-5">
+          <button
+            onClick={restart}
+            title="Visite guidée"
+            aria-label="Relancer la visite guidée"
+            className="grid h-6 w-6 cursor-pointer place-items-center rounded-full border border-edge text-xs text-fg-muted transition-colors hover:border-accent hover:text-accent-bright"
+          >
+            ?
+          </button>
           <span className="hidden text-xs text-fg-faint sm:inline">{player.pseudo}</span>
           <button
             onClick={onSignOut}

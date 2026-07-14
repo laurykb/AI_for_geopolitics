@@ -783,6 +783,7 @@ export default function TheatrePage() {
           )}
           <div className="flex flex-wrap items-end gap-4">
             <button
+              data-tour="jouer"
               onClick={
                 isSpectator
                   ? () =>
@@ -1102,7 +1103,7 @@ export default function TheatrePage() {
       {/* --- La scène (G1) : pleine largeur, la carte en grand --------------------- */}
       <div className="relative left-1/2 w-screen max-w-[1600px] -translate-x-1/2 space-y-4 px-4 sm:px-6">
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)] xl:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]">
-        <div className="relative rounded-lg border border-edge bg-surface p-3">
+        <div className="relative rounded-lg border border-edge bg-surface p-3" data-tour="scene">
           {/* G12 §1 — les paris s'ouvrent en pop-up SUR la carte. Re-montée par round
               (clé) pour ré-afficher à chaque vague ; non masquable pour le Spectateur. */}
           <FlashMarketsPopup
@@ -1400,6 +1401,7 @@ export default function TheatrePage() {
       )}
 
       {/* Bandeau bas : timeline scrubber · courbe U (fil rouge) · jauges · escalade. */}
+      <div data-tour="bandeau">
       <StageBand
         uHistory={persistedU}
         liveU={bandLiveU}
@@ -1410,6 +1412,7 @@ export default function TheatrePage() {
         ladder={bandLadder}
         prevRung={prevRung}
       />
+      </div>
       </div>
 
       {/* Salle des observables : le détail, sous la scène. */}

@@ -8,8 +8,8 @@
  * (page /campagne). Les réglages transversaux vivent sous les cartes de mode. */
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
 import { SpeakerAvatar } from "@/components/avatar";
@@ -24,6 +24,7 @@ import {
   canLaunch,
   DEFAULT_SETTINGS,
   FLOW_MODES,
+  FLOW_STEPS,
   type FlowRole,
   type FlowSettings,
   type FlowStep,
@@ -82,7 +83,16 @@ const ROLES: { value: FlowRole; label: string; blurb: string }[] = [
   },
 ];
 
+/** `useSearchParams` exige une frontière Suspense sur une page prérendue. */
 export default function LobbyPage() {
+  return (
+    <Suspense fallback={null}>
+      <LobbyFlow />
+    </Suspense>
+  );
+}
+
+function LobbyFlow() {
   const router = useRouter();
   const { player } = useAuth();
 
@@ -104,6 +114,21 @@ export default function LobbyPage() {
   const [creating, setCreating] = useState(false);
   const [sourcesError, setSourcesError] = useState(false); // fiches pays indisponibles
   const [error, setError] = useState<string | null>(null);
+
+  // Étape adressable par l'URL (?etape=mode|role|pays) — deep-link utilisé par la
+  // visite guidée (G13) : la page n'a aucune logique de tour, elle honore le param.
+  // Le ref évite de ré-imposer un param déjà appliqué quand l'utilisateur revient
+  // en arrière avec les boutons internes.
+  const search = useSearchParams();
+  const appliedEtape = useRef<string | null>(null);
+  useEffect(() => {
+    const etape = search.get("etape");
+    if (!etape || appliedEtape.current === etape) return;
+    appliedEtape.current = etape;
+    if (!(FLOW_STEPS as readonly string[]).includes(etape)) return;
+    const t = setTimeout(() => setStep(etape as FlowStep), 0); // jamais de setState sync en effet
+    return () => clearTimeout(t);
+  }, [search]);
 
   // Données pour les mini-fiches (indices clés) et les alliances d'invention.
   useEffect(() => {
@@ -385,7 +410,7 @@ function ModeStep({
 }) {
   return (
     <div className="space-y-6">
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2" data-tour="modes">
         {FLOW_MODES.map((m) => (
           <button
             key={m.value}
@@ -525,7 +550,7 @@ function RoleStep({
   settings: FlowSettings;
 }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" data-tour="roles">
       {ROLES.map((r) => {
         const ranked = r.value === "player" && isRanked(r.value, settings);
         return (
@@ -599,7 +624,7 @@ function PaysStep(props: {
   const pickingFlag = role === "player" && full;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-tour="carte">
       <p className="text-sm text-fg-muted">
         {role === "invent"
           ? "Choisis 6 États sur la carte — ton pays inventé complétera le sommet à 7."

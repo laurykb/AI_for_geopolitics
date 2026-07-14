@@ -102,7 +102,7 @@ export default function MarchePage() {
 
       {detail && (
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,3fr)]">
-          <div className="space-y-4">
+          <div className="space-y-4" data-tour="cotes">
             <Panel className="border-l-2 border-l-accent">
               <PanelTitle
                 kicker="Marché de la partie"
