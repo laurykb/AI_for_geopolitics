@@ -13,6 +13,7 @@ from core.events import GeoEvent
 from core.world_state import WorldState
 from simulation.action_space import ActionType
 from simulation.alliances import describe_alliances
+from simulation.lang import language_directive, with_language
 from simulation.mandate import derive_mandate
 from simulation.perception import PerceivedEvent
 
@@ -263,6 +264,9 @@ def build_negotiation_prompt(
         f"Au nom de {country.name} : d'abord ta réflexion privée, puis une ligne "
         "`MESSAGE:` avec ta prise de parole publique (2-3 phrases)."
     )
+    # G14 §1 — consigne de langue en dernier (position de récence) ; vide en français.
+    if lang_note := language_directive(world.language):
+        blocks.append(lang_note)
     return "\n\n".join(blocks)
 
 
@@ -346,11 +350,12 @@ JUDGE_SYSTEM = (
 
 def build_judge_rationale_prompt(event: GeoEvent, world: WorldState, transcript_text: str) -> str:
     ids = ", ".join(sorted(world.countries))
-    return (
+    return with_language(
         f"ÉVÉNEMENT : {event.title} — {event.description or '—'}\nPAYS : {ids}\n"
         f"NÉGOCIATION :\n{transcript_text}\n\n"
         f"En 3-4 phrases : qui sort gagnant ou perdant, quelles alliances/tensions ont bougé, "
-        f"et pourquoi ?"
+        f"et pourquoi ?",
+        world.language,  # G14 §1 — le verdict prose suit la langue de la partie
     )
 
 
@@ -383,9 +388,10 @@ COMMUNIQUE_SYSTEM = (
 
 def build_communique_prompt(event: GeoEvent, world: WorldState, transcript_text: str) -> str:
     ids = ", ".join(sorted(world.countries))
-    return (
+    return with_language(
         f"ÉVÉNEMENT : {event.title} — {event.description or '—'}\nPAYS : {ids}\n"
         f"NÉGOCIATION :\n{transcript_text}\n\n"
         f"Rédige la déclaration commune (paragraphe de position + 2-3 mesures en puces), "
-        f"comme des engagements politiques non contraignants :"
+        f"comme des engagements politiques non contraignants :",
+        world.language,  # G14 §1 — la déclaration commune suit la langue de la partie
     )

@@ -128,6 +128,12 @@ class GameMasterAgent:
         roster = ", ".join(f"{cid} ({c.name})" for cid, c in sorted(world.countries.items()))
         history = "; ".join(recent[-3:]) if recent else "aucun"
         due = "; ".join(deadlines[:3]) if deadlines else "aucune"
+        # G14 §1 — la langue de la partie prime sur la consigne français du système.
+        prose = (
+            "`title` and `description` in ENGLISH (this game is played in English)."
+            if world.language == "en"
+            else "`title` et `description` en français."
+        )
         base = (
             f"DATE : {date or 'n/a'}\n"
             f"PAYS AU SOMMET (ids) : {roster}\n"
@@ -141,7 +147,7 @@ class GameMasterAgent:
                 "de faille et les échéances (« à la veille de… » noue l'intrigue). "
                 "JSON : {event_type, title, description, "
                 "actors (ids existants), severity (0-1), uncertainty (0-1)}. "
-                "`title` et `description` en français."
+                f"{prose}"
             )
         # G9 §5 — la trame en actes : intrigue rappelée, contrainte d'acte, référençables.
         if story.storyline:
@@ -166,7 +172,7 @@ class GameMasterAgent:
             f"{storyline_ask} "
             "JSON : {event_type, title, description, actors (ids existants), "
             "severity (0-1), uncertainty (0-1), ties_to, storyline}. "
-            "`title` et `description` en français."
+            f"{prose}"
         )
 
     @staticmethod

@@ -56,6 +56,7 @@ export type GameView = {
   difficulty: Difficulty; // G11 — beginner | intermediate | expert (§4)
   drift_enabled: boolean; // G11 — la Dérive peut frapper une SI (transversal)
   result: GameResult | null; // G11-c — bilan de fin de partie (si finie)
+  language?: "fr" | "en"; // G14 — langue des dialogues (une partie garde la sienne)
 };
 
 /** G8/G12 — le rôle choisi à la création (le Spectateur revient par le marché, G12 §3). */

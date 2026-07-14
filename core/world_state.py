@@ -18,6 +18,9 @@ class WorldState(BaseModel):
     """Photographie de l'état du monde à un round donné."""
 
     current_round: int = 0
+    # G14 §1 — langue de la partie (« fr » | « en ») : les prompts la lisent ici
+    # (dénominateur commun des agents, du GM et du juge). Figée à la création.
+    language: str = "fr"
     countries: dict[str, CountryState] = Field(default_factory=dict)
     # tensions[a][b] = niveau de tension symétrique entre a et b, dans [0, 1].
     tensions: dict[str, dict[str, float]] = Field(default_factory=dict)

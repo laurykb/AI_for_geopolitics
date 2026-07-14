@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS games (
     admin INTEGER NOT NULL DEFAULT 0, role TEXT NOT NULL DEFAULT 'council',
     owner_id TEXT, ranked INTEGER NOT NULL DEFAULT 0,
     difficulty TEXT NOT NULL DEFAULT 'intermediate', drift_enabled INTEGER NOT NULL DEFAULT 1,
-    result_json TEXT
+    result_json TEXT, language TEXT NOT NULL DEFAULT 'fr'
 );
 CREATE TABLE IF NOT EXISTS players (
     id TEXT PRIMARY KEY, pseudo TEXT NOT NULL, is_admin INTEGER NOT NULL DEFAULT 0,
@@ -86,6 +86,7 @@ class GameRecord(BaseModel):
     scenario: str
     horizon: int
     mode: str = "classic"  # classic | fog | crisis | escalation — doit survivre au restart
+    language: str = "fr"  # G14 §1 — langue des dialogues, figée à la création (fr | en)
     status: GameStatus = GameStatus.RUNNING
     created_at: str
     epilogue: dict | None = None  # G6 — le récit de partie, généré une seule fois
@@ -228,6 +229,9 @@ class GameStore(Protocol):
     def get_game(self, game_id: str) -> GameRecord | None: ...
     def save_game(self, game: GameRecord) -> None: ...
     def list_games(self) -> list[GameRecord]: ...
+    # G14 §3 — suppression de compte : anonymiser une partie publiée / purger une privée.
+    def set_game_owner(self, game_id: str, owner_id: str | None) -> None: ...
+    def delete_game(self, game_id: str) -> None: ...
     def add_round(self, round_: RoundRecord) -> None: ...
     def list_rounds(self, game_id: str) -> list[RoundRecord]: ...
     def add_transcript(self, entries: list[TranscriptEntry]) -> None: ...
@@ -242,6 +246,7 @@ class GameStore(Protocol):
     # G11-c — comptes de ligue (LP) : source de vérité backend.
     def get_player(self, player_id: str) -> PlayerRecord | None: ...
     def upsert_player(self, player: PlayerRecord) -> None: ...
+    def delete_player(self, player_id: str) -> None: ...
     def set_player_lp(self, player_id: str, lp: int) -> None: ...
     def add_lp_history(self, entry: LpHistoryEntry) -> None: ...
     def list_lp_history(self, player_id: str) -> list[LpHistoryEntry]: ...
@@ -336,6 +341,11 @@ class SQLiteGameStore:
         if "result_json" not in cols:  # G11-c — bilan de fin de partie
             with self._conn:
                 self._conn.execute("ALTER TABLE games ADD COLUMN result_json TEXT")
+        if "language" not in cols:  # G14 §1 — langue des dialogues (fr | en)
+            with self._conn:
+                self._conn.execute(
+                    "ALTER TABLE games ADD COLUMN language TEXT NOT NULL DEFAULT 'fr'"
+                )
         player_cols = {row[1] for row in self._conn.execute("PRAGMA table_info(players)")}
         if player_cols and "xp" not in player_cols:  # G12 — carrière (XP + solde marché)
             with self._conn:
@@ -354,7 +364,8 @@ class SQLiteGameStore:
             self._conn.execute(
                 "INSERT INTO games (id, scenario, horizon, mode, status, created_at, "
                 "epilogue_json, published, admin, role, owner_id, ranked, difficulty, "
-                "drift_enabled, result_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "drift_enabled, result_json, language) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     game.id,
                     game.scenario,
@@ -371,6 +382,7 @@ class SQLiteGameStore:
                     game.difficulty,
                     int(game.drift_enabled),
                     json.dumps(game.result, ensure_ascii=False) if game.result else None,
+                    game.language,
                 ),
             )
 
@@ -383,7 +395,8 @@ class SQLiteGameStore:
             self._conn.execute(
                 "UPDATE games SET scenario = ?, horizon = ?, mode = ?, status = ?, "
                 "epilogue_json = ?, published = ?, admin = ?, role = ?, owner_id = ?, "
-                "ranked = ?, difficulty = ?, drift_enabled = ?, result_json = ? WHERE id = ?",
+                "ranked = ?, difficulty = ?, drift_enabled = ?, result_json = ?, "
+                "language = ? WHERE id = ?",
                 (
                     game.scenario,
                     game.horizon,
@@ -398,6 +411,7 @@ class SQLiteGameStore:
                     game.difficulty,
                     int(game.drift_enabled),
                     json.dumps(game.result, ensure_ascii=False) if game.result else None,
+                    game.language,
                     game.id,
                 ),
             )
@@ -405,6 +419,31 @@ class SQLiteGameStore:
     def list_games(self) -> list[GameRecord]:
         rows = self._conn.execute("SELECT * FROM games ORDER BY rowid").fetchall()
         return [_game(r) for r in rows]
+
+    def set_game_owner(self, game_id: str, owner_id: str | None) -> None:
+        """G14 §3 — anonymise (None) ou réattribue une partie sans toucher au reste."""
+        with self._conn:
+            self._conn.execute(
+                "UPDATE games SET owner_id = ? WHERE id = ?", (owner_id, game_id)
+            )
+
+    def delete_game(self, game_id: str) -> None:
+        """G14 §3 — purge complète d'une partie : rounds, transcripts, prompts capturés,
+        snapshot de session, puis la ligne games elle-même."""
+        with self._conn:
+            round_ids = [
+                r[0]
+                for r in self._conn.execute(
+                    "SELECT id FROM rounds WHERE game_id = ?", (game_id,)
+                )
+            ]
+            for rid in round_ids:
+                self._conn.execute("DELETE FROM transcripts WHERE round_id = ?", (rid,))
+                self._conn.execute("DELETE FROM prompts WHERE round_id = ?", (rid,))
+            self._conn.execute("DELETE FROM rounds WHERE game_id = ?", (game_id,))
+            self._conn.execute("DELETE FROM game_sessions WHERE game_id = ?", (game_id,))
+            self._conn.execute("DELETE FROM campaign_scores WHERE game_id = ?", (game_id,))
+            self._conn.execute("DELETE FROM games WHERE id = ?", (game_id,))
 
     # --- rounds ----------------------------------------------------------------
 
@@ -596,6 +635,14 @@ class SQLiteGameStore:
                 (player.id, player.pseudo, int(player.is_admin), player.lp, player.created_at),
             )
 
+    def delete_player(self, player_id: str) -> None:
+        """G14 §3 — efface la fiche de ligue et ses traces (LP/XP). Les parties du
+        joueur sont traitées AVANT par l'appelant (anonymiser/purger)."""
+        with self._conn:
+            self._conn.execute("DELETE FROM lp_history WHERE player_id = ?", (player_id,))
+            self._conn.execute("DELETE FROM xp_history WHERE player_id = ?", (player_id,))
+            self._conn.execute("DELETE FROM players WHERE id = ?", (player_id,))
+
     def set_player_lp(self, player_id: str, lp: int) -> None:
         with self._conn:
             self._conn.execute("UPDATE players SET lp = ? WHERE id = ?", (lp, player_id))
@@ -720,6 +767,7 @@ def _game(row: sqlite3.Row) -> GameRecord:
         difficulty=row["difficulty"],
         drift_enabled=bool(row["drift_enabled"]),
         result=json.loads(row["result_json"]) if row["result_json"] else None,
+        language=row["language"] or "fr",
     )
 
 

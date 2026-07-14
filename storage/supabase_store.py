@@ -65,6 +65,21 @@ class SupabaseGameStore:
         # gardent un ordre stable, comme le rowid côté SQLite.
         return [_game(r) for r in self._db.select("games", order="created_at.asc,id.asc")]
 
+    def set_game_owner(self, game_id: str, owner_id: str | None) -> None:
+        """G14 §3 — anonymise (None) ou réattribue une partie sans toucher au reste."""
+        self._db.update("games", {"id": game_id}, {"owner_id": owner_id})
+
+    def delete_game(self, game_id: str) -> None:
+        """G14 §3 — purge complète d'une partie (rounds, transcripts, prompts, snapshot)."""
+        rounds = self._db.select("rounds", {"game_id": game_id}, columns="id")
+        for r in rounds:
+            self._db.delete("transcripts", {"round_id": r["id"]})
+            self._db.delete("prompts", {"round_id": r["id"]})
+        self._db.delete("rounds", {"game_id": game_id})
+        self._db.delete("game_sessions", {"game_id": game_id})
+        self._db.delete("campaign_scores", {"game_id": game_id})
+        self._db.delete("games", {"id": game_id})
+
     # --- rounds ----------------------------------------------------------------
 
     def add_round(self, round_: RoundRecord) -> None:
@@ -186,6 +201,14 @@ class SupabaseGameStore:
         # le service_role / l'admin), jamais écrasés par une reconnexion.
         self._db.upsert("players", {"id": player.id, "pseudo": player.pseudo})
 
+    def delete_player(self, player_id: str) -> None:
+        """G14 §3 — efface la fiche de ligue et ses traces (LP/XP). NB : l'utilisateur
+        auth.users de Supabase n'est PAS supprimé ici (API admin GoTrue, hors du
+        périmètre PostgREST) — une reconnexion recréerait une fiche vierge."""
+        self._db.delete("lp_history", {"player_id": player_id})
+        self._db.delete("xp_history", {"player_id": player_id})
+        self._db.delete("players", {"id": player_id})
+
     def set_player_lp(self, player_id: str, lp: int) -> None:
         self._db.update("players", {"id": player_id}, {"lp": lp})
 
@@ -274,6 +297,7 @@ def _game_row(game: GameRecord) -> dict:
         "difficulty": game.difficulty,
         "drift_enabled": game.drift_enabled,
         "result_json": game.result,
+        "language": game.language,
     }
 
 
@@ -294,6 +318,7 @@ def _game(row: dict) -> GameRecord:
         difficulty=row.get("difficulty") or "intermediate",
         drift_enabled=bool(row.get("drift_enabled", True)),
         result=row.get("result_json"),
+        language=row.get("language") or "fr",
     )
 
 

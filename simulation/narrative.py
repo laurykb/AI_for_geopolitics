@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from simulation.lang import with_language
+
 NARRATOR_SYSTEM = (
     "Tu es le chroniqueur diplomatique d'un sommet de super-intelligences. Tu écris en "
     "FRANÇAIS, ton sobre, précis, passé composé. INTERDITS : « historique », "
@@ -98,6 +100,7 @@ def build_epilogue_prompt(
     pivots: list[Pivot],
     reveal: dict | None,
     grade: str | None,
+    language: str = "fr",  # G14 §1 — le récit suit la langue de la partie
 ) -> str:
     """Le contexte du narrateur : tout est pré-extrait, il ne reste qu'à raconter."""
     lines = [
@@ -133,7 +136,7 @@ def build_epilogue_prompt(
         ]
     else:
         lines += ["", "ÉPILOGUE : conclus en 2 phrases — ton verdict de chroniqueur sur ce sommet."]
-    return "\n".join(lines)
+    return with_language("\n".join(lines), language)
 
 
 def parse_epilogue(text: str) -> tuple[str, str]:

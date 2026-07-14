@@ -67,6 +67,7 @@ from simulation import campaign as campaign_mod
 from simulation import difficulty as difficulty_mod
 from simulation import drift_game, league, narrative
 from simulation import intel as intel_mod
+from simulation import lang as lang_mod
 from simulation import treaty as treaty_mod
 from simulation import xp as xp_mod
 from simulation.alliances import (
@@ -268,6 +269,7 @@ class CreateGameRequest(BaseModel):
     countries: list[str] | None = None  # None -> tous les pays de data/countries
     horizon: int = Field(5, ge=1)
     mode: GameMode = "classic"  # R4 — mode de jeu de la partie
+    language: Literal["fr", "en"] = "fr"  # G14 §1 — langue des dialogues, figée à la création
     play_as: str | None = None  # Joueur-pays : id (ou nom inventé) du pays joué par l'humain
     invent: InventCountryInput | None = None  # pays inventé, ajouté à la table
     # G2 — délai du tour humain (s). Spec : 30-300 pour un humain ; plancher technique
@@ -355,6 +357,7 @@ class GameView(BaseModel):
     difficulty: str = "intermediate"  # G11 — beginner | intermediate | expert (§4)
     drift_enabled: bool = True  # G11 — la Dérive peut frapper une SI (transversal)
     result: dict | None = None  # G11-c — bilan de fin de partie (§1 S6) si finie
+    language: str = "fr"  # G14 §1 — langue des dialogues (une partie garde la sienne)
 
 
 class FogScenarioView(BaseModel):
@@ -604,6 +607,9 @@ def _rebuild_session(
         clock = _restore_clock(snapshot.clock)
     except (ValidationError, KeyError, ValueError):
         return None
+    # G14 §1 — le GameRecord est la source de vérité de la langue (couvre aussi les
+    # snapshots d'avant le champ, qui retombent sur le défaut « fr »).
+    world.language = game.language
     prompt_sink: list[CapturedPrompt] = []
     agents, game_master, judge = _build_cast(
         world, backend, prompt_sink if game.admin else None
@@ -740,6 +746,7 @@ def _view(
         difficulty=game.difficulty,
         drift_enabled=game.drift_enabled,
         result=game.result,
+        language=game.language,
     )
 
 
@@ -1948,6 +1955,8 @@ def create_game(
     # Les rivalités du casting ouvrent la partie tendue (sinon toutes les paires = 0
     # et la sélection des pays n'aurait aucun effet sur la dynamique).
     seed_rival_tensions(world)
+    # G14 §1 — la langue voyage avec le monde : agents, GM et juge la lisent là.
+    world.language = body.language
 
     play_as = body.play_as
     if play_as is not None and play_as not in world.countries:
@@ -1985,6 +1994,7 @@ def create_game(
         ranked=(role == "player" and body.invent is None and not admin and not body.free),
         difficulty=body.difficulty,
         drift_enabled=body.drift_enabled,
+        language=body.language,
     )
     store.add_game(game)
     prompt_sink: list[CapturedPrompt] = []
@@ -2507,11 +2517,12 @@ def _ensure_epilogue(
         pivots=pivots,
         reveal=reveal_data,
         grade=grade,
+        language=game.language,  # G14 §1 — le récit suit la langue de la partie
     )
     try:
         text = backend.generate(
             prompt,
-            system=narrative.NARRATOR_SYSTEM,
+            system=lang_mod.with_language(narrative.NARRATOR_SYSTEM, game.language),
             max_tokens=800,
             temperature=0.6,
             plain=True,  # prose libre (G6) — le narrateur n'écrit pas du JSON
@@ -3250,6 +3261,30 @@ def get_player(player_id: str, store: Annotated[GameStore, Depends(get_store)]) 
     if player is None:
         raise HTTPException(status_code=404, detail="joueur inconnu")
     return _player_view(player)
+
+
+@router.delete("/players/{player_id}", status_code=204)
+def delete_player(player_id: str, store: Annotated[GameStore, Depends(get_store)]) -> None:
+    """G14 §3 — suppression du compte. Les parties PUBLIÉES survivent ANONYMES
+    (owner_id effacé : le récit /r/{id} reste lisible) ; tout le reste est purgé —
+    parties privées (rounds, transcripts, prompts capturés, snapshots), crises
+    maison, fiche de ligue et historiques LP/XP. La session côté client est fermée
+    par le front (signOut) ; côté Supabase, l'utilisateur auth relève de l'API admin
+    GoTrue (hors périmètre : une reconnexion recréerait une fiche vierge)."""
+    if store.get_player(player_id) is None:
+        raise HTTPException(status_code=404, detail="joueur inconnu")
+    for game in store.list_games():
+        if game.owner_id != player_id:
+            continue
+        if game.published:
+            store.set_game_owner(game.id, None)
+        else:
+            store.delete_game(game.id)
+            _sessions.pop(game.id, None)  # la session process meurt avec la partie
+    for crisis in store.list_custom_crises():
+        if crisis.owner_id == player_id:
+            store.delete_custom_crisis(crisis.id, player_id)
+    store.delete_player(player_id)
 
 
 class PlayerStats(BaseModel):

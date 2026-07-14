@@ -26,7 +26,9 @@ create table if not exists games (
   difficulty  text not null default 'intermediate'  -- §4 : beginner | intermediate | expert
               check (difficulty in ('beginner', 'intermediate', 'expert')),
   drift_enabled boolean not null default true,       -- la Dérive peut frapper une SI (transversal)
-  result_json jsonb                                  -- G11-c : bilan de fin de partie (§1 S6)
+  result_json jsonb,                                 -- G11-c : bilan de fin de partie (§1 S6)
+  language    text not null default 'fr'             -- G14 §1 : langue des dialogues (fr | en)
+              check (language in ('fr', 'en'))
 );
 -- Migration des bases existantes (idempotent) :
 alter table games add column if not exists owner_id uuid references auth.users(id) on delete set null;
@@ -34,6 +36,7 @@ alter table games add column if not exists ranked boolean not null default false
 alter table games add column if not exists difficulty text not null default 'intermediate';
 alter table games add column if not exists drift_enabled boolean not null default true;
 alter table games add column if not exists result_json jsonb;
+alter table games add column if not exists language text not null default 'fr';
 create index if not exists games_owner_idx on games (owner_id);
 
 create table if not exists rounds (
