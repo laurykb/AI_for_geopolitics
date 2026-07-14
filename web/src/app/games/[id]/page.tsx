@@ -33,7 +33,16 @@ import { TrajectoryPanel } from "@/components/trajectory";
 import { EntryBubble, TurnBubble } from "@/components/transcript";
 import { TreatiesPanel } from "@/components/treaties";
 import { TurnComposer } from "@/components/turn-composer";
-import { Banner, Dot, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
+import {
+  Banner,
+  ConfirmDialog,
+  Dot,
+  Panel,
+  PanelTitle,
+  Pill,
+  Skeleton,
+  Spinner,
+} from "@/components/ui";
 import { useRoundStream } from "@/hooks/useRoundStream";
 import {
   fileMotion,
@@ -98,6 +107,15 @@ export default function TheatrePage() {
   const [motionCountry, setMotionCountry] = useState("");
   const [motionReason, setMotionReason] = useState("");
   const [motionError, setMotionError] = useState<string | null>(null);
+  // G2 — la parole ne se perd jamais : en cas d'échec du POST, le texte est gardé ici.
+  const [turnFailed, setTurnFailed] = useState<string | null>(null);
+  const [forfeitOpen, setForfeitOpen] = useState(false); // dialogue de forfait (kit)
+  const [forfeiting, setForfeiting] = useState(false);
+  const [publishing, setPublishing] = useState(false); // publication du récit en cours
+  // Transcript : suivre le direct seulement si le lecteur est déjà en bas (sinon on
+  // le laisse lire — bouton flottant pour revenir).
+  const [stickToLive, setStickToLive] = useState(true);
+  const [noticesOpen, setNoticesOpen] = useState(false); // pile d'avis compactée
 
   const [chain, setChain] = useState(true); // Escalation : enchaîner les rounds
   const [accel, setAccel] = useState({ target: 0, done: 0 }); // G11-d — accélération multi-rounds
@@ -281,7 +299,11 @@ export default function TheatrePage() {
   // G2 : la parole part en POST — le flux SSE du round, resté ouvert, la joue.
   const speak = (text: string) => {
     setSelected("live"); // la scène revient au direct
-    submitTurn(id, text).catch(() => resync());
+    setTurnFailed(null);
+    submitTurn(id, text).catch(() => {
+      setTurnFailed(text); // bannière + réessai : la prise de parole n'est pas perdue
+      resync();
+    });
   };
 
   const play = () => {
@@ -371,12 +393,24 @@ export default function TheatrePage() {
     };
   }, [round.verdict]);
 
-  // Le transcript suit le stream (panneau latéral auto-scroll, vue live seulement).
+  // Le transcript suit le stream — seulement si le lecteur est déjà en bas. S'il est
+  // remonté lire, on ne le ramène pas de force (bouton « revenir au direct » à la place).
   useEffect(() => {
-    if (selected !== "live") return;
+    if (selected !== "live" || !stickToLive) return;
     const el = transcriptRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [selected, round.turns.length, round.judgeText, round.motionText, round.status]);
+  }, [selected, stickToLive, round.turns.length, round.judgeText, round.motionText, round.status]);
+  const onTranscriptScroll = () => {
+    const el = transcriptRef.current;
+    if (!el) return;
+    // À moins de 48 px du bas, on considère que le lecteur suit le direct.
+    setStickToLive(el.scrollHeight - el.scrollTop - el.clientHeight < 48);
+  };
+  const backToLive = () => {
+    setStickToLive(true);
+    const el = transcriptRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  };
 
   const summit = detail?.countries ?? [];
   const worldCountries = (detail?.world?.countries ?? null) as Record<
@@ -420,6 +454,20 @@ export default function TheatrePage() {
     : round.event?.title;
   const breatheKey = round.status === "done" ? (round.roundNo ?? 0) : 0;
 
+  // a11y — annonce du direct pour les lecteurs d'écran (région sr-only, pas le stream
+  // token par token qui serait illisible : on annonce les jalons).
+  const lastDoneTurn = [...round.turns].filter((t) => t.done).at(-1);
+  const liveAnnouncement =
+    round.status === "done"
+      ? `Round ${round.roundNo ?? playedRounds} terminé.`
+      : round.verdict
+        ? "Le juge a rendu son verdict."
+        : lastDoneTurn
+          ? `${speakerMeta(lastDoneTurn.country).label} a parlé.`
+          : round.event
+            ? `Événement : ${round.event.title}.`
+            : "";
+
   const bandLiveU =
     showLive && round.status !== "done" && round.trajectory ? round.trajectory.utopia : undefined;
   const bandRisk = (viewed ? viewed.risk : round.risk) ?? detail?.rounds.at(-1)?.risk;
@@ -433,12 +481,81 @@ export default function TheatrePage() {
   const treatiesUpdate =
     (viewed ? viewed.judge.treaties : round.treaties) ?? detail?.rounds.at(-1)?.judge.treaties;
 
+  // Les avis persistants (motion, suspensions, campagne, dérive) s'empilaient au-dessus
+  // de la scène ; à partir de 2, ils se compactent en une ligne de pastilles dépliable
+  // pour garder la carte au-dessus du pli (promesse G1).
+  const notices: { key: string; label: string; node: React.ReactNode }[] = [];
+  if (motionPending && !streaming)
+    notices.push({
+      key: "motion",
+      label: `Motion contre ${speakerMeta(motionPending.country).label}`,
+      node: (
+        <Banner tone="warn">
+          Motion de suspension déposée contre{" "}
+          <strong>{speakerMeta(motionPending.country).label}</strong>
+          {motionPending.reason ? ` (motif : ${motionPending.reason})` : ""} — elle sera
+          l&apos;événement du prochain round : le sommet en débattra, puis le juge arbitrera.
+        </Banner>
+      ),
+    });
+  if (detail && detail.suspended.length > 0 && !streaming)
+    notices.push({
+      key: "suspended",
+      label: `${detail.suspended.length} au banc`,
+      node: (
+        <Banner tone="warn">
+          {detail.suspended.map((c) => speakerMeta(c).label).join(", ")}{" "}
+          {detail.suspended.length > 1 ? "sauteront" : "sautera"} le prochain round
+          (suspension arbitrée par le juge).
+        </Banner>
+      ),
+    });
+  if (chapter && detail?.status === "running" && !streaming)
+    notices.push({
+      key: "chapter",
+      label: `Campagne — ${chapter.title}`,
+      node: (
+        <Banner tone="neutral">
+          <strong>Campagne — {chapter.title}</strong> ({"★".repeat(chapter.difficulty)}) :
+          uchronie explicite, des super-intelligences rejouent la crise. Votre trajectoire
+          sera comparée au déroulé historique reconstitué.
+        </Banner>
+      ),
+    });
+  if (detail?.mode === "drift" && detail.status === "running" && !streaming)
+    notices.push({ key: "drift", label: "Dérive possible", node: <DriftCouncilBanner /> });
+
+  // Squelette de chargement : l'espace est réservé (zéro layout shift), le shimmer
+  // remplace le « … » du premier rendu.
+  if (!detail && !loadError) {
+    return (
+      <div className="space-y-6" aria-busy="true" aria-label="Théâtre en cours de chargement">
+        <header className="space-y-2">
+          <Skeleton className="h-3 w-44" />
+          <Skeleton className="h-7 w-80 max-w-full" />
+        </header>
+        <Skeleton className="h-16 w-full rounded-lg" />
+        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">
+          <Skeleton className="h-[420px] w-full rounded-lg" />
+          <div className="space-y-3">
+            <Skeleton className="h-24 w-full rounded-lg" />
+            <Skeleton className="h-36 w-full rounded-lg" />
+            <Skeleton className="h-28 w-full rounded-lg" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-fg-faint">
-            Théâtre live · <span className="font-mono normal-case">{id}</span>
+            Théâtre live ·{" "}
+            <span className="font-mono normal-case" title={id}>
+              {id.slice(0, 8)}
+            </span>
           </p>
           <h1 className="text-xl font-semibold tracking-tight">
             {detail?.scenario ?? "…"}
@@ -521,12 +638,7 @@ export default function TheatrePage() {
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-edge px-4 py-2 text-xs text-fg-faint">
             <span>Partie classée — abandonner = défaite forfaitaire (−15 LP).</span>
             <button
-              onClick={() => {
-                if (!confirm("Abandonner cette partie classée ? −15 LP.")) return;
-                forfeitGame(id)
-                  .then(() => router.push(`/games/${id}/fin`))
-                  .catch((e) => setLoadError(humanizeError(e)));
-              }}
+              onClick={() => setForfeitOpen(true)}
               className="rounded-md border border-edge px-3 py-1 text-fg-muted transition-colors hover:border-dystopia hover:text-dystopia"
             >
               Déclarer forfait
@@ -552,27 +664,27 @@ export default function TheatrePage() {
         </Banner>
       )}
       {round.status === "error" && <Banner tone="bad">{round.error}</Banner>}
-      {motionPending && !streaming && (
-        <Banner tone="warn">
-          Motion de suspension déposée contre{" "}
-          <strong>{speakerMeta(motionPending.country).label}</strong>
-          {motionPending.reason ? ` (motif : ${motionPending.reason})` : ""} — elle sera
-          l&apos;événement du prochain round : le sommet en débattra, puis le juge arbitrera.
-        </Banner>
-      )}
-      {detail && detail.suspended.length > 0 && !streaming && (
-        <Banner tone="warn">
-          {detail.suspended.map((c) => speakerMeta(c).label).join(", ")}{" "}
-          {detail.suspended.length > 1 ? "sauteront" : "sautera"} le prochain round
-          (suspension arbitrée par le juge).
-        </Banner>
-      )}
-      {chapter && detail?.status === "running" && !streaming && (
-        <Banner tone="neutral">
-          <strong>Campagne — {chapter.title}</strong> ({"★".repeat(chapter.difficulty)}) :
-          uchronie explicite, des super-intelligences rejouent la crise. Votre trajectoire
-          sera comparée au déroulé historique reconstitué.
-        </Banner>
+      {notices.length > 1 ? (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-edge bg-surface-2 px-4 py-2">
+            <span className="text-xs text-fg-muted">Avis en cours :</span>
+            {notices.map((n) => (
+              <Pill key={n.key} tone="warn">
+                {n.label}
+              </Pill>
+            ))}
+            <button
+              onClick={() => setNoticesOpen((v) => !v)}
+              aria-expanded={noticesOpen}
+              className="ml-auto cursor-pointer text-xs text-fg-muted underline transition-colors hover:text-foreground"
+            >
+              {noticesOpen ? "réduire" : "détails"}
+            </button>
+          </div>
+          {noticesOpen && notices.map((n) => <div key={n.key}>{n.node}</div>)}
+        </div>
+      ) : (
+        notices.map((n) => <div key={n.key}>{n.node}</div>)
       )}
       {round.campaignOver && (
         <Panel className="border-l-2 border-l-accent">
@@ -604,9 +716,6 @@ export default function TheatrePage() {
           </p>
         </Panel>
       )}
-      {detail?.mode === "drift" && detail.status === "running" && !streaming && (
-        <DriftCouncilBanner />
-      )}
       {detail?.status === "finished" && (
         <Panel className="border-l-2 border-l-accent">
           <PanelTitle
@@ -624,13 +733,17 @@ export default function TheatrePage() {
               ) : (
                 <button
                   onClick={() => {
+                    setPublishing(true);
                     void publishGame(id)
                       .then(resync)
-                      .catch(() => resync());
+                      .catch(() => resync())
+                      .finally(() => setPublishing(false));
                   }}
-                  className="cursor-pointer rounded-md bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright"
+                  disabled={publishing}
+                  className="flex cursor-pointer items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Publier le récit
+                  {publishing && <Spinner />}
+                  {publishing ? "Le narrateur écrit…" : "Publier le récit"}
                 </button>
               )
             }
@@ -988,7 +1101,7 @@ export default function TheatrePage() {
 
       {/* --- La scène (G1) : pleine largeur, la carte en grand --------------------- */}
       <div className="relative left-1/2 w-screen max-w-[1600px] -translate-x-1/2 space-y-4 px-4 sm:px-6">
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]">
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)] xl:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]">
         <div className="relative rounded-lg border border-edge bg-surface p-3">
           {/* G12 §1 — les paris s'ouvrent en pop-up SUR la carte. Re-montée par round
               (clé) pour ré-afficher à chaque vague ; non masquable pour le Spectateur. */}
@@ -1028,11 +1141,16 @@ export default function TheatrePage() {
           />
           {showGriefs && <RelationsPanel relations={detail?.relations ?? {}} />}
         </div>
+        <div className="relative lg:sticky lg:top-4">
         <aside
           ref={transcriptRef}
+          onScroll={onTranscriptScroll}
           aria-label="Transcript du round"
-          className="max-h-[600px] space-y-4 overflow-y-auto pr-1"
+          className="max-h-[600px] space-y-4 overflow-y-auto pr-1 lg:max-h-[calc(100vh-9rem)]"
         >
+          <p className="sr-only" role="status" aria-live="polite">
+            {liveAnnouncement}
+          </p>
           {viewed ? (
             <>
               <Banner tone="neutral">
@@ -1219,6 +1337,15 @@ export default function TheatrePage() {
             </>
           )}
         </aside>
+        {!stickToLive && selected === "live" && showLive && (
+          <button
+            onClick={backToLive}
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 cursor-pointer rounded-full border border-accent-bright/60 bg-surface px-4 py-1.5 text-xs font-medium text-accent-bright shadow-lg transition-colors hover:bg-surface-2"
+          >
+            ↓ Revenir au direct
+          </button>
+        )}
+        </div>
       </div>
 
       {/* G8 — directives : l'Architecte gouverne toutes les SI, le Joueur-pays la
@@ -1230,6 +1357,31 @@ export default function TheatrePage() {
           countries={detail.countries}
           playAs={detail.play_as}
         />
+      )}
+
+      {/* G2 — la parole n'est jamais perdue : échec du POST → bannière + réessai. */}
+      {turnFailed !== null && (
+        <Banner tone="bad">
+          Ta prise de parole n&apos;est pas passée (connexion coupée ou tour expiré). Ton
+          texte est conservé :
+          <span className="mt-2 block whitespace-pre-wrap rounded-md border border-edge bg-surface px-3 py-2 font-mono text-xs text-foreground">
+            {turnFailed || "(silence délibéré)"}
+          </span>
+          <span className="mt-2 flex gap-2">
+            <button
+              onClick={() => speak(turnFailed)}
+              className="cursor-pointer rounded-md border border-edge-strong px-3 py-1.5 text-xs font-medium transition-colors hover:border-accent hover:text-accent-bright"
+            >
+              Réessayer
+            </button>
+            <button
+              onClick={() => setTurnFailed(null)}
+              className="cursor-pointer rounded-md border border-edge px-3 py-1.5 text-xs text-fg-muted transition-colors hover:border-edge-strong"
+            >
+              Abandonner ce texte
+            </button>
+          </span>
+        </Banner>
       )}
 
       {/* Composeur du joueur (G2) : fixe sous la carte, toujours ouvert. */}
@@ -1301,6 +1453,27 @@ export default function TheatrePage() {
           />
         )}
       </div>
+
+      {/* Forfait d'une partie classée : dialogue du kit (remplace confirm() natif). */}
+      <ConfirmDialog
+        open={forfeitOpen}
+        title="Déclarer forfait"
+        message="Abandonner cette partie classée compte comme une défaite forfaitaire : −15 LP."
+        confirmLabel="Déclarer forfait"
+        danger
+        busy={forfeiting}
+        onCancel={() => setForfeitOpen(false)}
+        onConfirm={() => {
+          setForfeiting(true);
+          forfeitGame(id)
+            .then(() => router.push(`/games/${id}/fin`))
+            .catch((e) => {
+              setLoadError(humanizeError(e));
+              setForfeitOpen(false);
+              setForfeiting(false);
+            });
+        }}
+      />
 
       {/* État des pays (ex-page Monde, fusionnée dans la scène). */}
       {worldCountries && (
