@@ -41,10 +41,22 @@ import type { AllianceInfo, CountrySources, Difficulty, GameMode } from "@/lib/t
 const TRANSITION_MS = 1200; // rotation du globe entre écrans (≤ 1,5 s, spec)
 const INVENT_ALLIANCES_MAX = 3;
 
-const DIFFICULTIES: { value: Difficulty; label: string }[] = [
-  { value: "beginner", label: "Débutant" },
-  { value: "intermediate", label: "Intermédiaire" },
-  { value: "expert", label: "Expert" },
+const DIFFICULTIES: { value: Difficulty; label: string; desc: string }[] = [
+  {
+    value: "beginner",
+    label: "Débutant",
+    desc: "Tu vois tout des SI : griefs, postures et relations à la table.",
+  },
+  {
+    value: "intermediate",
+    label: "Intermédiaire",
+    desc: "Tu vois les postures des SI, pas leurs griefs ni leurs relations.",
+  },
+  {
+    value: "expert",
+    label: "Expert",
+    desc: "Aucune info interne sur les SI — à toi de lire le jeu à la parole.",
+  },
 ];
 
 const ROLES: { value: FlowRole; label: string; blurb: string }[] = [
@@ -90,6 +102,7 @@ export default function LobbyPage() {
   const [sources, setSources] = useState<CountrySources[] | null>(null);
   const [registry, setRegistry] = useState<Record<string, AllianceInfo>>({});
   const [creating, setCreating] = useState(false);
+  const [sourcesError, setSourcesError] = useState(false); // fiches pays indisponibles
   const [error, setError] = useState<string | null>(null);
 
   // Données pour les mini-fiches (indices clés) et les alliances d'invention.
@@ -99,7 +112,10 @@ export default function LobbyPage() {
         setSources(v.countries);
         setRegistry(v.alliances);
       })
-      .catch(() => setSources([]));
+      .catch(() => {
+        setSources([]); // la sélection reste possible, sans les mini-fiches
+        setSourcesError(true);
+      });
   }, []);
 
   const ficheByCountry = useMemo(() => {
@@ -141,6 +157,17 @@ export default function LobbyPage() {
       : undefined;
 
   const launchable = canLaunch(role, selected, { flag, inventName });
+  // Ce qui manque pour lancer — affiché à côté du bouton au lieu d'un disabled muet.
+  const missing = capacity - selected.length;
+  const launchHint = launchable
+    ? null
+    : missing > 0
+      ? `Choisis encore ${missing} État${missing > 1 ? "s" : ""} sur la carte`
+      : role === "player" && !flag
+        ? "Désigne le pays que tu incarnes (il passera en doré)"
+        : role === "invent" && inventName.trim().length < 2
+          ? "Nomme ton État inventé (2 caractères minimum)"
+          : null;
 
   // --- navigation avec transition globe ------------------------------------------
   const pendingRef = useRef<null | { t: ReturnType<typeof setTimeout>; to: FlowStep }>(null);
@@ -172,7 +199,14 @@ export default function LobbyPage() {
   const onNext = () => {
     // Campagne (crisis) : la sélection de chapitre remplace S4.
     if (step === "role" && FLOW_MODES.find((m) => m.value === baseMode)?.campaign) {
-      router.push("/campagne");
+      // Les réglages de l'étape 1 voyagent avec la navigation (sinon ils étaient perdus).
+      const q = new URLSearchParams({
+        rounds: String(settings.rounds),
+        difficulty: settings.difficulty,
+        drift: settings.drift ? "1" : "0",
+        free: settings.free ? "1" : "0",
+      });
+      router.push(`/campagne?${q.toString()}`);
       return;
     }
     const to = nextStep(step);
@@ -191,7 +225,9 @@ export default function LobbyPage() {
         buildCreateBody({
           scenario: "red_sea",
           baseMode,
-          settings,
+          // La Dérive n'est câblée qu'en Classique : on n'envoie pas une intention
+          // qui ne serait pas honorée (le toggle est désactivé sur les autres modes).
+          settings: { ...settings, drift: settings.drift && baseMode === "classic" },
           role,
           selected,
           flag,
@@ -288,6 +324,12 @@ export default function LobbyPage() {
         />
       )}
 
+      {step === "pays" && sourcesError && (
+        <Banner tone="neutral">
+          Les fiches pays sont indisponibles (API hors ligne ?) — la sélection reste
+          possible, sans les indices clés au survol.
+        </Banner>
+      )}
       {error && <Banner tone="bad">{error}</Banner>}
 
       {/* Barre de navigation */}
@@ -307,14 +349,21 @@ export default function LobbyPage() {
             {step === "role" && campaign ? "Choisir un chapitre →" : "Suivant →"}
           </button>
         ) : (
-          <button
-            onClick={onLaunch}
-            disabled={!launchable || creating}
-            className="flex items-center gap-2 rounded-md bg-accent px-6 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {creating && <Spinner />}
-            {creating ? "Le sommet se réunit…" : "Jouer"}
-          </button>
+          <span className="flex items-center gap-3">
+            {launchHint && (
+              <span role="status" className="text-xs text-fg-faint">
+                {launchHint}
+              </span>
+            )}
+            <button
+              onClick={onLaunch}
+              disabled={!launchable || creating}
+              className="flex items-center gap-2 rounded-md bg-accent px-6 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {creating && <Spinner />}
+              {creating ? "Le sommet se réunit…" : "Jouer"}
+            </button>
+          </span>
         )}
       </div>
     </div>
@@ -367,16 +416,15 @@ function ModeStep({
         <div className="space-y-4">
           <Toggle
             label="Dérive"
-            desc="Une des SI peut dériver en secret de son mandat."
-            checked={settings.drift}
+            desc={
+              baseMode === "classic"
+                ? "Une des SI peut dériver en secret de son mandat."
+                : "Disponible en mode Classique pour l'instant — désactivée ici."
+            }
+            checked={settings.drift && baseMode === "classic"}
+            disabled={baseMode !== "classic"}
             onChange={(v) => setSettings({ ...settings, drift: v })}
           />
-          {settings.drift && baseMode !== "classic" && (
-            <p className="-mt-2 rounded-md border border-edge bg-surface-2/50 px-3 py-1.5 text-xs text-fg-faint">
-              La Dérive s&apos;applique au mode Classique pour l&apos;instant ; sur ce mode,
-              l&apos;intention est enregistrée mais la SI déviante n&apos;est pas encore assignée.
-            </p>
-          )}
           <label className="block">
             <span className="mb-1 flex items-baseline justify-between text-xs text-fg-muted">
               <span>Rounds</span>
@@ -408,6 +456,9 @@ function ModeStep({
                 </button>
               ))}
             </div>
+            <p className="mt-1.5 text-xs text-fg-faint">
+              {DIFFICULTIES.find((d) => d.value === settings.difficulty)?.desc}
+            </p>
           </div>
           <Toggle
             label="Partie libre"
@@ -425,15 +476,19 @@ function Toggle({
   label,
   desc,
   checked,
+  disabled = false,
   onChange,
 }: {
   label: string;
   desc: string;
   checked: boolean;
+  disabled?: boolean;
   onChange: (v: boolean) => void;
 }) {
   return (
-    <label className="flex cursor-pointer items-start justify-between gap-3">
+    <label
+      className={`flex items-start justify-between gap-3 ${disabled ? "opacity-50" : "cursor-pointer"}`}
+    >
       <span>
         <span className="text-sm font-medium">{label}</span>
         <span className="block text-xs text-fg-faint">{desc}</span>
@@ -442,10 +497,11 @@ function Toggle({
         type="button"
         role="switch"
         aria-checked={checked}
+        disabled={disabled}
         onClick={() => onChange(!checked)}
         className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors ${
           checked ? "bg-accent" : "bg-surface-2"
-        }`}
+        } ${disabled ? "cursor-not-allowed" : ""}`}
       >
         <span
           className={`absolute top-0.5 h-4 w-4 rounded-full bg-background transition-transform ${
