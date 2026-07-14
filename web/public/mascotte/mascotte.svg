@@ -1,0 +1,150 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 640" width="512" height="640">
+  <!-- Petit Kairos — mascotte originale du jeu (palette or/cyan/nuit). Source maître. -->
+  <defs>
+    <radialGradient id="irisGrad" cx="0.4" cy="0.35" r="0.9">
+      <stop offset="0" stop-color="#7dd3fc"/>
+      <stop offset="0.55" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#1a6fae"/>
+    </radialGradient>
+    <radialGradient id="globeGrad" cx="0.38" cy="0.3" r="1">
+      <stop offset="0" stop-color="#7dd3fc"/>
+      <stop offset="0.6" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#175f96"/>
+    </radialGradient>
+    <radialGradient id="globeGlow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0.55" stop-color="#38bdf8" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#38bdf8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="hairGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#faf7ee"/>
+      <stop offset="1" stop-color="#ddd6c2"/>
+    </linearGradient>
+    <linearGradient id="jacketGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b2342"/>
+      <stop offset="1" stop-color="#10162e"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ombre au sol -->
+  <ellipse cx="262" cy="612" rx="118" ry="16" fill="#000000" opacity="0.30"/>
+
+  <!-- ===== bras gauche du personnage (à droite pour nous) : poing sur la hanche ===== -->
+  <path d="M 322 392 Q 356 400 362 440 Q 366 466 346 480 L 322 462 Z" fill="#141a33"/>
+  <circle cx="336" cy="478" r="17" fill="#8a5a3b"/>
+  <circle cx="336" cy="474" r="17" fill="#9c6a47" opacity="0.5"/>
+
+  <!-- ===== jambes / bottes ===== -->
+  <path d="M 216 500 L 216 566 L 250 566 L 252 500 Z" fill="#212a47"/>
+  <path d="M 272 500 L 274 566 L 308 566 L 308 500 Z" fill="#212a47"/>
+  <path d="M 206 560 Q 206 546 222 546 L 246 546 Q 256 546 256 560 L 256 588 Q 256 600 244 600 L 218 600 Q 206 600 206 588 Z" fill="#1a2138"/>
+  <path d="M 268 560 Q 268 546 284 546 L 306 546 Q 318 546 318 560 L 318 588 Q 318 600 306 600 L 280 600 Q 268 600 268 588 Z" fill="#1a2138"/>
+  <path d="M 206 588 L 256 588 L 256 596 Q 256 600 244 600 L 218 600 Q 206 600 206 592 Z" fill="#ca8a04"/>
+  <path d="M 268 588 L 318 588 L 318 596 Q 318 600 306 600 L 280 600 Q 268 600 268 592 Z" fill="#ca8a04"/>
+
+  <!-- ===== torse : veste de nuit à liseré d'or ===== -->
+  <path d="M 200 372 Q 262 350 324 372 Q 342 424 334 508 Q 262 526 190 508 Q 182 424 200 372 Z" fill="url(#jacketGrad)"/>
+  <!-- fermeture d'or -->
+  <path d="M 260 386 L 258 508" stroke="#ca8a04" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <!-- liseré bas -->
+  <path d="M 192 500 Q 262 518 332 500 L 332 510 Q 262 528 192 510 Z" fill="#ca8a04" opacity="0.85"/>
+  <!-- pli d'ombre -->
+  <path d="M 208 380 Q 220 460 206 500 L 196 498 Q 188 428 202 378 Z" fill="#0b1022" opacity="0.5"/>
+
+  <!-- ===== bras droit du personnage (à gauche) : il élève le petit monde ===== -->
+  <path d="M 206 386 Q 168 388 150 420 Q 136 444 142 470 L 176 466 Q 178 434 196 416 Z" fill="#141a33"/>
+  <!-- halo du globe -->
+  <circle cx="128" cy="404" r="86" fill="url(#globeGlow)"/>
+  <!-- main ouverte sous le globe -->
+  <ellipse cx="140" cy="452" rx="24" ry="16" fill="#8a5a3b"/>
+  <ellipse cx="94" cy="438" rx="10" ry="13" fill="#8a5a3b"/>
+  <ellipse cx="164" cy="440" rx="10" ry="13" fill="#8a5a3b"/>
+  <!-- le petit monde -->
+  <circle cx="128" cy="404" r="40" fill="url(#globeGrad)"/>
+  <path d="M 104 388 Q 116 378 130 384 Q 142 390 138 400 Q 128 406 116 402 Q 104 398 104 388 Z" fill="#eab308" opacity="0.9"/>
+  <path d="M 134 418 Q 148 412 158 420 Q 156 432 142 434 Q 132 430 134 418 Z" fill="#eab308" opacity="0.9"/>
+  <path d="M 112 424 Q 120 420 124 426 Q 120 434 112 432 Z" fill="#eab308" opacity="0.75"/>
+  <circle cx="128" cy="404" r="40" fill="none" stroke="#bfe7ff" stroke-width="2.5" opacity="0.65"/>
+  <ellipse cx="118" cy="390" rx="14" ry="8" fill="#ffffff" opacity="0.35"/>
+  <ellipse cx="140" cy="436" rx="11" ry="9" fill="#9c6a47"/>
+
+  <!-- ===== écharpe cyan ===== -->
+  <path d="M 196 356 Q 262 332 328 356 Q 334 376 324 388 Q 262 366 200 388 Q 190 376 196 356 Z" fill="#38bdf8"/>
+  <path d="M 200 388 Q 262 366 324 388 L 320 398 Q 262 378 204 398 Z" fill="#2494d1"/>
+  <!-- pan au vent -->
+  <path d="M 306 380 Q 348 396 360 436 Q 364 452 352 462 Q 348 444 332 430 Q 316 416 300 396 Z" fill="#2494d1"/>
+
+  <!-- ===== tête ===== -->
+  <!-- oreilles -->
+  <ellipse cx="124" cy="252" rx="16" ry="22" fill="#8a5a3b"/>
+  <ellipse cx="388" cy="252" rx="16" ry="22" fill="#8a5a3b"/>
+  <!-- visage -->
+  <path d="M 128 226 Q 128 108 256 108 Q 384 108 384 226 Q 384 300 344 330 Q 300 360 256 360 Q 212 360 168 330 Q 128 300 128 226 Z" fill="#8a5a3b"/>
+  <!-- ombre sous la frange -->
+  <path d="M 140 196 Q 256 168 372 196 Q 372 214 368 222 Q 256 196 144 222 Q 140 214 140 196 Z" fill="#74492e" opacity="0.55"/>
+
+  <!-- ===== lunettes d'inventeur sur le front ===== -->
+  <rect x="140" y="158" width="232" height="26" rx="13" fill="#141a33"/>
+  <circle cx="204" cy="172" r="27" fill="#0d1226" stroke="#ca8a04" stroke-width="6"/>
+  <circle cx="204" cy="172" r="16" fill="#38bdf8" opacity="0.85"/>
+  <circle cx="199" cy="166" r="6" fill="#bfe7ff" opacity="0.9"/>
+  <circle cx="308" cy="172" r="27" fill="#0d1226" stroke="#ca8a04" stroke-width="6"/>
+  <circle cx="308" cy="172" r="16" fill="#38bdf8" opacity="0.85"/>
+  <circle cx="303" cy="166" r="6" fill="#bfe7ff" opacity="0.9"/>
+
+  <!-- ===== crête blanche ===== -->
+  <path d="M 132 208
+           Q 118 170 130 128
+           Q 136 148 150 152
+           Q 142 96 168 64
+           Q 170 92 186 100
+           Q 186 44 226 24
+           Q 222 56 236 68
+           Q 250 12 300 8
+           Q 286 40 296 58
+           Q 330 28 366 44
+           Q 344 60 344 82
+           Q 380 74 396 104
+           Q 372 108 366 126
+           Q 392 140 390 176
+           Q 374 164 360 168
+           Q 372 186 368 206
+           Q 340 178 300 170
+           Q 256 162 212 170
+           Q 168 178 132 208 Z" fill="url(#hairGrad)"/>
+  <!-- ombres internes de la crête -->
+  <path d="M 168 64 Q 170 92 186 100 Q 178 128 184 150 Q 166 138 158 118 Q 152 92 168 64 Z" fill="#ddd6c2" opacity="0.7"/>
+  <path d="M 300 8 Q 286 40 296 58 Q 282 92 288 122 Q 268 104 268 76 Q 272 34 300 8 Z" fill="#ddd6c2" opacity="0.7"/>
+  <path d="M 366 44 Q 344 60 344 82 Q 330 106 336 128 Q 320 116 320 96 Q 330 62 366 44 Z" fill="#ddd6c2" opacity="0.6"/>
+  <!-- frange : trois pointes qui retombent sur les lunettes -->
+  <path d="M 150 180 Q 168 148 196 150 L 208 176 Q 180 172 150 180 Z" fill="url(#hairGrad)"/>
+  <path d="M 214 152 Q 244 136 276 150 L 268 178 Q 240 168 216 176 Z" fill="url(#hairGrad)"/>
+  <path d="M 296 150 Q 330 142 356 162 L 348 186 Q 322 172 292 176 Z" fill="url(#hairGrad)"/>
+
+  <!-- ===== sourcils ===== -->
+  <path d="M 176 232 Q 204 218 234 226" stroke="#2a1c12" stroke-width="11" fill="none" stroke-linecap="round"/>
+  <path d="M 278 226 Q 308 218 336 232" stroke="#2a1c12" stroke-width="11" fill="none" stroke-linecap="round"/>
+
+  <!-- ===== yeux ===== -->
+  <ellipse cx="208" cy="276" rx="31" ry="36" fill="#f8fafc"/>
+  <ellipse cx="304" cy="276" rx="31" ry="36" fill="#f8fafc"/>
+  <circle cx="212" cy="280" r="21" fill="url(#irisGrad)"/>
+  <circle cx="300" cy="280" r="21" fill="url(#irisGrad)"/>
+  <circle cx="212" cy="280" r="10" fill="#0c1020"/>
+  <circle cx="300" cy="280" r="10" fill="#0c1020"/>
+  <circle cx="205" cy="270" r="6.5" fill="#ffffff"/>
+  <circle cx="293" cy="270" r="6.5" fill="#ffffff"/>
+  <circle cx="220" cy="290" r="3" fill="#ffffff" opacity="0.85"/>
+  <circle cx="308" cy="290" r="3" fill="#ffffff" opacity="0.85"/>
+  <!-- paupières -->
+  <path d="M 177 262 Q 208 236 239 262" stroke="#5d3a25" stroke-width="7" fill="none" stroke-linecap="round"/>
+  <path d="M 273 262 Q 304 236 335 262" stroke="#5d3a25" stroke-width="7" fill="none" stroke-linecap="round"/>
+
+  <!-- ===== nez et bouche ===== -->
+  <path d="M 252 308 Q 258 314 252 318" stroke="#74492e" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <path d="M 226 330 Q 252 342 282 328 Q 288 326 290 320" stroke="#4a2c1c" stroke-width="6" fill="none" stroke-linecap="round"/>
+
+  <!-- joues + étincelle d'or -->
+  <ellipse cx="172" cy="308" rx="16" ry="9" fill="#a86a48" opacity="0.55"/>
+  <ellipse cx="340" cy="308" rx="16" ry="9" fill="#a86a48" opacity="0.55"/>
+  <path d="M 352 288 L 356 297 L 365 300 L 356 303 L 352 312 L 348 303 L 339 300 L 348 297 Z" fill="#eab308"/>
+</svg>

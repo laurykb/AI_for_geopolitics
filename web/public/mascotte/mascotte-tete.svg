@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Petit Kairos — tête-logo (médaillon orbital). Source maître. -->
+  <defs>
+    <radialGradient id="irisGradL" cx="0.4" cy="0.35" r="0.9">
+      <stop offset="0" stop-color="#7dd3fc"/>
+      <stop offset="0.55" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#1a6fae"/>
+    </radialGradient>
+    <linearGradient id="hairGradL" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#faf7ee"/>
+      <stop offset="1" stop-color="#ddd6c2"/>
+    </linearGradient>
+  </defs>
+
+  <!-- médaillon -->
+  <circle cx="128" cy="128" r="122" fill="#0d1226"/>
+  <circle cx="128" cy="128" r="122" fill="none" stroke="#ca8a04" stroke-width="4"/>
+
+  <!-- orbite (moitié arrière, derrière la tête) -->
+  <g transform="rotate(-16 128 152)">
+    <path d="M 20 152 A 108 40 0 0 1 236 152" fill="none" stroke="#38bdf8" stroke-width="3" opacity="0.45"/>
+  </g>
+
+  <!-- ===== tête (mêmes formes que la mascotte, recentrées) ===== -->
+  <g transform="translate(0 26) scale(0.50)">
+    <!-- oreilles -->
+    <ellipse cx="124" cy="252" rx="16" ry="22" fill="#8a5a3b"/>
+    <ellipse cx="388" cy="252" rx="16" ry="22" fill="#8a5a3b"/>
+    <!-- visage -->
+    <path d="M 128 226 Q 128 108 256 108 Q 384 108 384 226 Q 384 300 344 330 Q 300 360 256 360 Q 212 360 168 330 Q 128 300 128 226 Z" fill="#8a5a3b"/>
+    <path d="M 140 196 Q 256 168 372 196 Q 372 214 368 222 Q 256 196 144 222 Q 140 214 140 196 Z" fill="#74492e" opacity="0.55"/>
+    <!-- lunettes -->
+    <rect x="140" y="158" width="232" height="26" rx="13" fill="#141a33"/>
+    <circle cx="204" cy="172" r="27" fill="#0d1226" stroke="#ca8a04" stroke-width="6"/>
+    <circle cx="204" cy="172" r="16" fill="#38bdf8" opacity="0.85"/>
+    <circle cx="199" cy="166" r="6" fill="#bfe7ff" opacity="0.9"/>
+    <circle cx="308" cy="172" r="27" fill="#0d1226" stroke="#ca8a04" stroke-width="6"/>
+    <circle cx="308" cy="172" r="16" fill="#38bdf8" opacity="0.85"/>
+    <circle cx="303" cy="166" r="6" fill="#bfe7ff" opacity="0.9"/>
+    <!-- crête -->
+    <path d="M 132 208 Q 118 170 130 128 Q 136 148 150 152 Q 142 96 168 64 Q 170 92 186 100
+             Q 186 44 226 24 Q 222 56 236 68 Q 250 12 300 8 Q 286 40 296 58 Q 330 28 366 44
+             Q 344 60 344 82 Q 380 74 396 104 Q 372 108 366 126 Q 392 140 390 176 Q 374 164 360 168
+             Q 372 186 368 206 Q 340 178 300 170 Q 256 162 212 170 Q 168 178 132 208 Z" fill="url(#hairGradL)"/>
+    <path d="M 168 64 Q 170 92 186 100 Q 178 128 184 150 Q 166 138 158 118 Q 152 92 168 64 Z" fill="#ddd6c2" opacity="0.7"/>
+    <path d="M 300 8 Q 286 40 296 58 Q 282 92 288 122 Q 268 104 268 76 Q 272 34 300 8 Z" fill="#ddd6c2" opacity="0.7"/>
+    <path d="M 366 44 Q 344 60 344 82 Q 330 106 336 128 Q 320 116 320 96 Q 330 62 366 44 Z" fill="#ddd6c2" opacity="0.6"/>
+    <path d="M 150 180 Q 168 148 196 150 L 208 176 Q 180 172 150 180 Z" fill="url(#hairGradL)"/>
+    <path d="M 214 152 Q 244 136 276 150 L 268 178 Q 240 168 216 176 Z" fill="url(#hairGradL)"/>
+    <path d="M 296 150 Q 330 142 356 162 L 348 186 Q 322 172 292 176 Z" fill="url(#hairGradL)"/>
+    <!-- sourcils -->
+    <path d="M 176 232 Q 204 218 234 226" stroke="#2a1c12" stroke-width="11" fill="none" stroke-linecap="round"/>
+    <path d="M 278 226 Q 308 218 336 232" stroke="#2a1c12" stroke-width="11" fill="none" stroke-linecap="round"/>
+    <!-- yeux -->
+    <ellipse cx="208" cy="276" rx="31" ry="36" fill="#f8fafc"/>
+    <ellipse cx="304" cy="276" rx="31" ry="36" fill="#f8fafc"/>
+    <circle cx="212" cy="280" r="21" fill="url(#irisGradL)"/>
+    <circle cx="300" cy="280" r="21" fill="url(#irisGradL)"/>
+    <circle cx="212" cy="280" r="10" fill="#0c1020"/>
+    <circle cx="300" cy="280" r="10" fill="#0c1020"/>
+    <circle cx="205" cy="270" r="6.5" fill="#ffffff"/>
+    <circle cx="293" cy="270" r="6.5" fill="#ffffff"/>
+    <circle cx="220" cy="290" r="3" fill="#ffffff" opacity="0.85"/>
+    <circle cx="308" cy="290" r="3" fill="#ffffff" opacity="0.85"/>
+    <path d="M 177 262 Q 208 236 239 262" stroke="#5d3a25" stroke-width="7" fill="none" stroke-linecap="round"/>
+    <path d="M 273 262 Q 304 236 335 262" stroke="#5d3a25" stroke-width="7" fill="none" stroke-linecap="round"/>
+    <!-- nez, bouche, joues -->
+    <path d="M 252 308 Q 258 314 252 318" stroke="#74492e" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <path d="M 226 330 Q 252 342 282 328 Q 288 326 290 320" stroke="#4a2c1c" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <ellipse cx="172" cy="308" rx="16" ry="9" fill="#a86a48" opacity="0.55"/>
+    <ellipse cx="340" cy="308" rx="16" ry="9" fill="#a86a48" opacity="0.55"/>
+    <path d="M 352 288 L 356 297 L 365 300 L 356 303 L 352 312 L 348 303 L 339 300 L 348 297 Z" fill="#eab308"/>
+  </g>
+
+  <!-- orbite (moitié avant, devant le menton) + satellite d'or -->
+  <g transform="rotate(-16 128 152)">
+    <path d="M 20 152 A 108 40 0 0 0 236 152" fill="none" stroke="#38bdf8" stroke-width="3" opacity="0.9"/>
+    <circle cx="43" cy="176" r="7" fill="#eab308"/>
+  </g>
+</svg>
