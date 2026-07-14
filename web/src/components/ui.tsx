@@ -166,3 +166,77 @@ export function Spinner() {
     />
   );
 }
+
+/** Bloc de chargement : réserve l'espace (zéro layout shift) avec le shimmer .skeleton. */
+export function Skeleton({ className = "" }: { className?: string }) {
+  return <div aria-hidden className={`skeleton rounded-md ${className}`} />;
+}
+
+/** Dialogue de confirmation du kit — remplace confirm() natif (cohérence + clavier).
+ * Fond cliquable et Échap = annuler ; le bouton Annuler prend le focus par défaut. */
+export function ConfirmDialog({
+  open,
+  title,
+  message,
+  confirmLabel = "Confirmer",
+  cancelLabel = "Annuler",
+  danger = false,
+  busy = false,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  title: string;
+  message: ReactNode;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  danger?: boolean; // action destructrice : bouton rouge
+  busy?: boolean; // action en cours : confirme désactivé + spinner
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onCancel();
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+    >
+      <button
+        aria-label={cancelLabel}
+        onClick={onCancel}
+        className="absolute inset-0 cursor-default bg-background/80 backdrop-blur-sm"
+        tabIndex={-1}
+      />
+      <div className="relative w-full max-w-sm rounded-xl border border-edge bg-surface p-5 shadow-[inset_0_1px_0_0_rgba(248,250,252,0.06),0_24px_64px_-24px_rgba(0,0,0,0.9)]">
+        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+        <div className="mt-2 text-sm text-fg-muted">{message}</div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            autoFocus
+            onClick={onCancel}
+            className="cursor-pointer rounded-md border border-edge px-4 py-2 text-sm text-fg-muted transition-colors hover:border-edge-strong hover:text-foreground"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={busy}
+            className={`flex cursor-pointer items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+              danger
+                ? "border border-bad/60 text-bad hover:bg-bad/10"
+                : "bg-accent text-background hover:bg-accent-bright"
+            }`}
+          >
+            {busy && <Spinner />}
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
