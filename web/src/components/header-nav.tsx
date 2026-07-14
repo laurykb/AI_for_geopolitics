@@ -1,20 +1,21 @@
 "use client";
 
-/** Navigation du haut : Leaderboard + Informations (+ Admin si is_admin), le pseudo et
- * la déconnexion. L'observatoire public a disparu (G11) : chacun voit SES parties à
- * l'accueil, l'admin voit tout via /admin. Campagne n'est plus un lien : c'est un mode
- * de jeu à part entière (choisi au lancement d'une partie). */
+/** Navigation du haut : Leaderboard + Informations (+ Admin si is_admin), le pseudo
+ * (→ Réglages, G14) et la déconnexion. L'observatoire public a disparu (G11) : chacun
+ * voit SES parties à l'accueil, l'admin voit tout via /admin. Campagne n'est plus un
+ * lien : c'est un mode de jeu à part entière (choisi au lancement d'une partie). */
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 import { useAuth } from "@/components/auth-provider";
+import { useT } from "@/components/settings-provider";
 import { useTour } from "@/components/tour";
 
 const LINKS = [
-  { href: "/accueil", label: "Accueil" },
-  { href: "/leaderboard", label: "Leaderboard" },
-  { href: "/informations", label: "Informations" },
+  { href: "/accueil", key: "header.accueil" },
+  { href: "/leaderboard", key: "header.leaderboard" },
+  { href: "/informations", key: "header.informations" },
 ];
 
 export function HeaderNav() {
@@ -22,8 +23,9 @@ export function HeaderNav() {
   const router = useRouter();
   const { player, signOut } = useAuth();
   const { restart } = useTour();
+  const t = useT();
 
-  const links = player?.is_admin ? [...LINKS, { href: "/admin", label: "Admin" }] : LINKS;
+  const links = player?.is_admin ? [...LINKS, { href: "/admin", key: "header.admin" }] : LINKS;
 
   const onSignOut = async () => {
     await signOut();
@@ -43,25 +45,34 @@ export function HeaderNav() {
               : ""
           }`}
         >
-          {l.label}
+          {t(l.key)}
         </Link>
       ))}
       {player && (
         <span className="flex items-center gap-3 border-l border-edge pl-5">
           <button
             onClick={restart}
-            title="Visite guidée"
-            aria-label="Relancer la visite guidée"
+            title={t("header.visite")}
+            aria-label={t("header.visite")}
             className="grid h-6 w-6 cursor-pointer place-items-center rounded-full border border-edge text-xs text-fg-muted transition-colors hover:border-accent hover:text-accent-bright"
           >
             ?
           </button>
-          <span className="hidden text-xs text-fg-faint sm:inline">{player.pseudo}</span>
+          <Link
+            href="/reglages"
+            title={t("header.reglages")}
+            aria-current={pathname === "/reglages" ? "page" : undefined}
+            className={`hidden text-xs transition-colors hover:text-foreground sm:inline ${
+              pathname === "/reglages" ? "text-accent-bright" : "text-fg-faint"
+            }`}
+          >
+            {player.pseudo}
+          </Link>
           <button
             onClick={onSignOut}
             className="cursor-pointer rounded-md border border-edge px-2.5 py-1 text-xs text-fg-muted transition-colors hover:border-edge-strong hover:text-foreground"
           >
-            Se déconnecter
+            {t("header.deconnexion")}
           </button>
         </span>
       )}

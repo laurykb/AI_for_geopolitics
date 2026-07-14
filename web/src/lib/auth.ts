@@ -26,6 +26,11 @@ export interface AuthApi {
   signIn(pseudo: string, password: string): Promise<AuthResult>;
   signUp(pseudo: string, password: string): Promise<AuthResult>;
   signOut(): Promise<void>;
+  /** G14 §3 — l'ancien mot de passe est vérifié avant de poser le nouveau. */
+  changePassword(oldPassword: string, newPassword: string): Promise<AuthResult>;
+  /** G14 §3 — oubli du compte côté client après la suppression backend
+   * (retire le compte local en offline ; simple signOut côté Supabase). */
+  forgetAccount(): Promise<void>;
   /** Abonnement aux changements de session ; renvoie une fonction de désabonnement. */
   onChange(cb: (player: Player | null) => void): () => void;
 }
@@ -158,6 +163,34 @@ class OfflineAuth implements AuthApi {
     this.emit(null);
   }
 
+  async changePassword(oldPassword: string, newPassword: string): Promise<AuthResult> {
+    if (newPassword.length < 6) {
+      return { ok: false, error: "Le mot de passe fait au moins 6 caractères." };
+    }
+    const id = localStorage.getItem(LS_SESSION);
+    const accounts = readAccounts();
+    const key = Object.keys(accounts).find((k) => accounts[k].id === id);
+    if (!key) return { ok: false, error: "Session expirée — reconnecte-toi." };
+    if (accounts[key].hash !== cheapHash(oldPassword)) {
+      return { ok: false, error: "Mot de passe actuel incorrect." };
+    }
+    accounts[key] = { ...accounts[key], hash: cheapHash(newPassword) };
+    writeAccounts(accounts);
+    return { ok: true, player: stripHash(accounts[key]) };
+  }
+
+  async forgetAccount(): Promise<void> {
+    const id = localStorage.getItem(LS_SESSION);
+    const accounts = readAccounts();
+    const key = Object.keys(accounts).find((k) => accounts[k].id === id);
+    if (key) {
+      delete accounts[key];
+      writeAccounts(accounts);
+    }
+    localStorage.removeItem(LS_SESSION);
+    this.emit(null);
+  }
+
   onChange(cb: (player: Player | null) => void): () => void {
     this.listeners.add(cb);
     return () => this.listeners.delete(cb);
@@ -245,6 +278,31 @@ class SupabaseAuth implements AuthApi {
   async signOut(): Promise<void> {
     const sb = await this.client();
     await sb.auth.signOut();
+  }
+
+  async changePassword(oldPassword: string, newPassword: string): Promise<AuthResult> {
+    if (newPassword.length < 6) {
+      return { ok: false, error: "Le mot de passe fait au moins 6 caractères." };
+    }
+    const sb = await this.client();
+    const player = await this.playerFromSession(sb);
+    if (!player) return { ok: false, error: "Session expirée — reconnecte-toi." };
+    // Vérifie l'ancien mot de passe par une reconnexion silencieuse (Supabase ne
+    // propose pas de « verify password » dédié côté client).
+    const { error: signErr } = await sb.auth.signInWithPassword({
+      email: emailForPseudo(player.pseudo),
+      password: oldPassword,
+    });
+    if (signErr) return { ok: false, error: "Mot de passe actuel incorrect." };
+    const { error } = await sb.auth.updateUser({ password: newPassword });
+    if (error) return { ok: false, error: friendly(error.message) };
+    return { ok: true, player };
+  }
+
+  async forgetAccount(): Promise<void> {
+    // La suppression de l'utilisateur auth se fait côté backend (service_role) ;
+    // ici on ferme simplement la session locale.
+    await this.signOut();
   }
 
   onChange(cb: (player: Player | null) => void): () => void {

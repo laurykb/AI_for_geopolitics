@@ -144,10 +144,13 @@ export function emitStageEvent(name: StageEventName): void {
   stageListener?.(name);
 }
 
-/** `prefers-reduced-motion` : tout devient transitions d'opacité simples. */
+/** `prefers-reduced-motion` : tout devient transitions d'opacité simples. La classe
+ * `noanim` (Réglages G14 « désactiver toutes les animations ») force le même
+ * comportement pour les animations pilotées en JS. */
 export function prefersReducedMotion(): boolean {
   return (
     typeof window !== "undefined" &&
-    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true
+    (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true ||
+      document.documentElement.classList.contains("noanim"))
   );
 }

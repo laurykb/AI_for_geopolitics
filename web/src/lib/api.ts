@@ -142,6 +142,12 @@ export const upsertPlayer = (id: string, pseudo: string): Promise<LeaguePlayer> 
 export const getLeaguePlayer = (id: string): Promise<LeaguePlayer> =>
   request(`/api/players/${encodeURIComponent(id)}`);
 
+/** G14 §3 — suppression du compte : le backend anonymise l'owner des parties
+ * publiées, purge le reste et efface la fiche de ligue (endpoint livré en CC-3 —
+ * d'ici là l'API répond 405 et le front montre l'erreur sans purger la session). */
+export const deletePlayer = (id: string): Promise<void> =>
+  request<void>(`/api/players/${encodeURIComponent(id)}`, { method: "DELETE" });
+
 /** G12 §6 — statistiques agrégées du joueur (page Profil). */
 export const getPlayerStats = (id: string): Promise<PlayerStats> =>
   request(`/api/players/${encodeURIComponent(id)}/stats`);

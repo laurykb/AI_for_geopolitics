@@ -8,6 +8,7 @@ import Link from "next/link";
 import { use, useEffect, useState } from "react";
 
 import { RankBadge } from "@/components/rank-badge";
+import { useT } from "@/components/settings-provider";
 import { Banner, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
 import { getGame, humanizeError } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
@@ -17,6 +18,7 @@ import type { GameDetail, GameResult } from "@/lib/types";
 
 export default function FinPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const t = useT();
   const [game, setGame] = useState<GameDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,9 +39,9 @@ export default function FinPage({ params }: { params: Promise<{ id: string }> })
     return (
       <Panel>
         <p className="text-sm text-fg-muted">
-          Cette partie n&apos;est pas terminée —{" "}
+          {t("fin.pas-finie")}{" "}
           <Link href={`/games/${id}`} className="underline hover:text-foreground">
-            retourne au théâtre
+            {t("fin.retour-theatre")}
           </Link>
           .
         </p>
@@ -55,23 +57,33 @@ export default function FinPage({ params }: { params: Promise<{ id: string }> })
       {/* 1. Bandeau résultat */}
       <header className="text-center">
         <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-fg-faint">
-          Fin de partie {r.forfeit && "— forfait"}
+          {t("fin.kicker")} {r.forfeit && t("fin.forfait")}
         </p>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
-          Le monde penche vers <span className={tone}>{r.verdict}</span>
+          {t("fin.penche")} <span className={tone}>{r.verdict}</span>
         </h1>
-        <p className="mt-1 font-mono text-sm text-fg-muted">U final {fmt(r.u_final)}</p>
+        <p className="mt-1 font-mono text-sm text-fg-muted">
+          {t("fin.u-final")} {fmt(r.u_final)}
+        </p>
       </header>
 
       {/* 2. Courbe U animée */}
       <Panel>
-        <PanelTitle kicker="Trajectoire" title="La courbe du monde" hint="L'indice Utopie–Dystopie round après round : au-dessus de 0,5, le monde s'améliore." />
+        <PanelTitle
+          kicker={t("fin.trajectoire-kicker")}
+          title={t("fin.trajectoire-titre")}
+          hint="L'indice Utopie–Dystopie round après round : au-dessus de 0,5, le monde s'améliore."
+        />
         <UCurve history={[r.u_start, ...r.u_history]} />
       </Panel>
 
       {/* 3. Récap des pays */}
       <Panel>
-        <PanelTitle kicker="Les États" title="Où chaque pays a fini" hint="Variation de chaque indice clé du début à la fin (vert = mieux, rouge = pire)." />
+        <PanelTitle
+          kicker={t("fin.etats-kicker")}
+          title={t("fin.etats-titre")}
+          hint="Variation de chaque indice clé du début à la fin (vert = mieux, rouge = pire)."
+        />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {r.countries.map((c) => (
             <CountryCard key={c.id} country={c} isPlayer={c.id === r.play_as} />

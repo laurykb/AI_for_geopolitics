@@ -4,6 +4,7 @@ import "./globals.css";
 
 import { AuthGate } from "@/components/auth-gate";
 import { AuthProvider } from "@/components/auth-provider";
+import { SettingsProvider } from "@/components/settings-provider";
 import { SiteHeader } from "@/components/site-header";
 import { TourProvider } from "@/components/tour";
 
@@ -40,6 +41,7 @@ export default function RootLayout({
           <span className="shooting-star ss3" />
         </div>
         <AuthProvider>
+          <SettingsProvider>
           <TourProvider>
             <a
               href="#contenu"
@@ -58,6 +60,7 @@ export default function RootLayout({
               </p>
             </footer>
           </TourProvider>
+          </SettingsProvider>
         </AuthProvider>
       </body>
     </html>

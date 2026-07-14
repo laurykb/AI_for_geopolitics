@@ -541,3 +541,72 @@ p {
     animation: none;
   }
 }
+
+/* --- G14 §2 : paliers de performance (classe posée sur <html> par les Réglages) ---
+   Les composants n'en savent rien : tout passe par ces variantes. */
+
+/* Confort : décor statique (plus de scintillement ni d'étoiles filantes), pas de
+   plongée intro, animations one-shot de scène deux fois plus courtes. */
+.perf-confort body::before {
+  animation: none;
+}
+.perf-confort .space-backdrop .shooting-star {
+  animation: none;
+  opacity: 0;
+}
+.perf-confort .intro-zoom,
+.perf-confort .intro-veil,
+.perf-confort .intro-unzoom,
+.perf-confort .intro-veil-out {
+  animation: none;
+}
+.perf-confort .stage-pulse,
+.perf-confort .stage-pulse-2 {
+  animation-duration: 0.6s;
+}
+.perf-confort .stage-breathe {
+  animation-duration: 0.2s;
+}
+.perf-confort .tour-companion {
+  animation: none;
+}
+
+/* Léger : fond uni (plus de ciel étoilé ni de décor), aucune animation décorative ou
+   de scène, et surtout AUCUN flou de verre — le backdrop-filter est le poste GPU n°1
+   des petites machines. */
+.perf-leger body::before,
+.perf-leger .space-backdrop {
+  display: none;
+}
+.perf-leger .intro-zoom,
+.perf-leger .intro-veil,
+.perf-leger .intro-unzoom,
+.perf-leger .intro-veil-out,
+.perf-leger .intro-fade-in,
+.perf-leger .intro-fade-out,
+.perf-leger .stage-pulse,
+.perf-leger .stage-pulse-2,
+.perf-leger .stage-breathe,
+.perf-leger .stage-country-speaking,
+.perf-leger .skeleton,
+.perf-leger .tour-companion {
+  animation: none;
+}
+.perf-leger .stage-country {
+  transition: none;
+}
+.perf-leger * {
+  /* Propriété standard seule : LightningCSS génère lui-même le préfixe -webkit-
+     (écrire les deux à la main lui fait jeter la version standard). */
+  backdrop-filter: none !important;
+}
+
+/* Coupe-circuit des Réglages (« désactiver toutes les animations ») : le comportement
+   reduced-motion forcé par classe, quel que soit le palier. Les animations JS lisent
+   la même classe via prefersReducedMotion() (lib/stage). */
+.noanim *,
+.noanim *::before,
+.noanim *::after {
+  animation: none !important;
+  transition: none !important;
+}

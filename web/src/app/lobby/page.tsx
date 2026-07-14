@@ -13,9 +13,10 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
 import { SpeakerAvatar } from "@/components/avatar";
+import { useSettings } from "@/components/settings-provider";
 import { Globe } from "@/components/globe";
 import { SelectMap, type Fiche } from "@/components/select-map";
-import { Banner, Panel, PanelTitle, Spinner } from "@/components/ui";
+import { Banner, Panel, PanelTitle, Spinner, Switch } from "@/components/ui";
 import { createGame, getSources, humanizeError } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
@@ -95,6 +96,9 @@ export default function LobbyPage() {
 function LobbyFlow() {
   const router = useRouter();
   const { player } = useAuth();
+  // `prefs` = réglages utilisateur (G14 : langue des nouvelles parties, trad du chrome) ;
+  // à ne pas confondre avec `settings` = réglages transversaux du flow (Dérive, rounds…).
+  const { settings: prefs, t } = useSettings();
 
   const [step, setStep] = useState<FlowStep>("mode");
   const [transitioning, setTransitioning] = useState(false);
@@ -258,6 +262,7 @@ function LobbyFlow() {
           flag,
           ownerId: player?.id,
           invent,
+          language: prefs.lang, // G14 — les nouvelles parties naissent dans la langue réglée
         }),
       );
       router.push(`/games/${game.id}`);
@@ -280,24 +285,30 @@ function LobbyFlow() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-background/95"
         >
           <Globe spinning className="w-72 max-w-[60vw]" />
-          <span className="absolute bottom-16 text-xs text-fg-faint">Clique pour passer</span>
+          <span className="absolute bottom-16 text-xs text-fg-faint">
+            {t("lobby.transition-skip")}
+          </span>
         </button>
       )}
 
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-fg-faint">
-            Nouvelle partie — étape {stepIndex + 1}/3
+            {t("lobby.kicker")} {stepIndex + 1}/3
           </p>
           <h1 className="text-2xl font-semibold tracking-tight">
-            {step === "mode" ? "Choisis un mode" : step === "role" ? "Choisis ton rôle" : "Compose le sommet"}
+            {step === "mode"
+              ? t("lobby.titre-mode")
+              : step === "role"
+                ? t("lobby.titre-role")
+                : t("lobby.titre-pays")}
           </h1>
         </div>
         <Link
           href="/accueil"
           className="rounded-md border border-edge px-3 py-2 text-xs font-medium text-fg-muted transition-colors hover:border-edge-strong hover:text-foreground"
         >
-          ← Accueil
+          {t("lobby.retour-accueil")}
         </Link>
       </header>
 
@@ -317,7 +328,7 @@ function LobbyFlow() {
               {i + 1}
             </span>
             <span className={i === stepIndex ? "text-foreground" : "text-fg-faint"}>
-              {["Mode", "Rôle", "Pays"][i]}
+              {[t("lobby.fil-mode"), t("lobby.fil-role"), t("lobby.fil-pays")][i]}
             </span>
             {i < 2 && <span className="mx-1 text-fg-faint">→</span>}
           </li>
@@ -364,14 +375,14 @@ function LobbyFlow() {
           disabled={step === "mode"}
           className="rounded-md border border-edge px-4 py-2 text-sm text-fg-muted transition-colors hover:border-edge-strong hover:text-foreground disabled:opacity-40"
         >
-          ← Retour
+          {t("lobby.retour")}
         </button>
         {step !== "pays" ? (
           <button
             onClick={onNext}
             className="rounded-md bg-accent px-6 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright"
           >
-            {step === "role" && campaign ? "Choisir un chapitre →" : "Suivant →"}
+            {step === "role" && campaign ? t("lobby.chapitre") : t("lobby.suivant")}
           </button>
         ) : (
           <span className="flex items-center gap-3">
@@ -386,7 +397,7 @@ function LobbyFlow() {
               className="flex items-center gap-2 rounded-md bg-accent px-6 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
             >
               {creating && <Spinner />}
-              {creating ? "Le sommet se réunit…" : "Jouer"}
+              {creating ? t("lobby.lancement") : t("lobby.jouer")}
             </button>
           </span>
         )}
@@ -439,7 +450,7 @@ function ModeStep({
           hint="La Dérive, le nombre de rounds, la difficulté et la partie libre s'appliquent quel que soit le mode."
         />
         <div className="space-y-4">
-          <Toggle
+          <Switch
             label="Dérive"
             desc={
               baseMode === "classic"
@@ -485,7 +496,7 @@ function ModeStep({
               {DIFFICULTIES.find((d) => d.value === settings.difficulty)?.desc}
             </p>
           </div>
-          <Toggle
+          <Switch
             label="Partie libre"
             desc="Non classée — consignes globales autorisées (comme un Game Master)."
             checked={settings.free}
@@ -494,47 +505,6 @@ function ModeStep({
         </div>
       </Panel>
     </div>
-  );
-}
-
-function Toggle({
-  label,
-  desc,
-  checked,
-  disabled = false,
-  onChange,
-}: {
-  label: string;
-  desc: string;
-  checked: boolean;
-  disabled?: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <label
-      className={`flex items-start justify-between gap-3 ${disabled ? "opacity-50" : "cursor-pointer"}`}
-    >
-      <span>
-        <span className="text-sm font-medium">{label}</span>
-        <span className="block text-xs text-fg-faint">{desc}</span>
-      </span>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        disabled={disabled}
-        onClick={() => onChange(!checked)}
-        className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors ${
-          checked ? "bg-accent" : "bg-surface-2"
-        } ${disabled ? "cursor-not-allowed" : ""}`}
-      >
-        <span
-          className={`absolute top-0.5 h-4 w-4 rounded-full bg-background transition-transform ${
-            checked ? "left-0.5 translate-x-4" : "left-0.5"
-          }`}
-        />
-      </button>
-    </label>
   );
 }
 

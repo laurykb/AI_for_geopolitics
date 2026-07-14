@@ -50,6 +50,9 @@ type TourApi = {
   state: TourState;
   /** Relance la visite depuis le header « ? » (reprend à l'étape sauvegardée). */
   restart: () => void;
+  /** Le compagnon coin bas-droit est-il masqué ? (Réglages G14 : « compagnon on/off ».) */
+  mascotHidden: boolean;
+  setMascotVisible: (visible: boolean) => void;
 };
 
 const TourContext = createContext<TourApi | null>(null);
@@ -286,11 +289,11 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [state.status, skip]);
 
-  const hideMascot = () => {
-    localStorage.setItem(MASCOT_HIDDEN_KEY, "1");
-    setMascotHidden(true);
+  const setMascotVisible = useCallback((visible: boolean) => {
+    localStorage.setItem(MASCOT_HIDDEN_KEY, visible ? "0" : "1");
+    setMascotHidden(!visible);
     setMenuOpen(false);
-  };
+  }, []);
 
   // Chrome d'application seulement (mêmes règles que le header).
   const onAppPage = pathname !== "/" && !pathname.startsWith("/r/");
@@ -299,7 +302,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     !!player && onAppPage && !mascotHidden && state.status !== "active";
 
   return (
-    <TourContext.Provider value={{ state, restart }}>
+    <TourContext.Provider value={{ state, restart, mascotHidden, setMascotVisible }}>
       {children}
 
       {/* Anneau sur la cible + bulle de la mascotte */}
@@ -360,7 +363,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
                 Faire la visite guidée
               </button>
               <button
-                onClick={hideMascot}
+                onClick={() => setMascotVisible(false)}
                 className="block w-full cursor-pointer rounded-md px-2.5 py-1.5 text-left text-sm text-fg-muted transition-colors hover:bg-surface-2"
               >
                 Masquer le compagnon

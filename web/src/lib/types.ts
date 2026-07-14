@@ -383,6 +383,7 @@ export type CreateGameBody = {
   difficulty?: Difficulty; // G11 — beginner | intermediate | expert (§4)
   drift_enabled?: boolean; // G11 — la Dérive peut frapper une SI (transversal)
   free?: boolean; // G11-b — partie libre : non classée + consignes globales autorisées
+  language?: "fr" | "en"; // G14 — langue des dialogues (lue par le backend dès CC-3)
 };
 
 export type FogScenarioView = {

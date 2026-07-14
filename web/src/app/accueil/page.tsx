@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { Globe } from "@/components/globe";
 import { RankBadge } from "@/components/rank-badge";
+import { useT } from "@/components/settings-provider";
 import { Banner, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
 import { usePlanetLaunch } from "@/hooks/usePlanetLaunch";
 import { getLeaguePlayer, humanizeError, listGames } from "@/lib/api";
@@ -22,6 +23,7 @@ import type { GameView } from "@/lib/types";
 
 export default function AccueilPage() {
   const { player } = useAuth();
+  const t = useT();
   const { launching, launch } = usePlanetLaunch();
   const [games, setGames] = useState<GameView[] | null>(null);
   const [lp, setLp] = useState<number | null>(null); // LP autoritatif (backend, G11-c)
@@ -60,14 +62,14 @@ export default function AccueilPage() {
             World of Super-Intelligence
           </p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-5xl">
-            Bienvenue,{" "}
+            {t("accueil.bienvenue")}{" "}
             <Link href="/profil" className="text-accent-bright hover:underline" title="Voir mon profil">
               {player.pseudo}
             </Link>
           </h1>
           <p className="mt-2 text-sm text-fg-muted">
             {progress.rank.name} · {lp ?? player.lp} LP
-            {level != null && ` · Niveau ${level}`}
+            {level != null && ` · ${t("accueil.niveau")} ${level}`}
           </p>
         </div>
 
@@ -82,15 +84,15 @@ export default function AccueilPage() {
             data-tour="demarrer"
             className="cursor-pointer rounded-full bg-accent px-8 py-3.5 text-base font-semibold text-background shadow-[0_0_32px_rgba(202,138,4,0.35)] transition-all hover:bg-accent-bright hover:shadow-[0_0_48px_rgba(234,179,8,0.45)] disabled:cursor-default disabled:opacity-60"
           >
-            Démarrer une partie
+            {t("accueil.demarrer")}
           </button>
           <button
             onClick={() => resumable && launch(`/games/${resumable.id}`)}
             disabled={launching || !resumable}
-            title={resumable ? "Reprendre ta partie en cours" : "Aucune partie à reprendre"}
+            title={resumable ? t("accueil.reprendre-hint") : t("accueil.reprendre-aucune")}
             className="cursor-pointer rounded-full border border-edge-strong px-8 py-3.5 text-base font-medium transition-colors hover:border-accent hover:text-accent-bright disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Reprendre une partie
+            {t("accueil.reprendre")}
           </button>
         </div>
 
@@ -111,7 +113,7 @@ export default function AccueilPage() {
               </span>
               {level != null && (
                 <span className="rounded-full border border-accent-bright/50 px-2 py-0.5 text-xs font-medium text-accent-bright">
-                  Niveau {level}
+                  {t("accueil.niveau")} {level}
                 </span>
               )}
             </p>
@@ -123,8 +125,8 @@ export default function AccueilPage() {
             </div>
             <p className="mt-1 text-xs text-fg-faint">
               {progress.next
-                ? `${progress.toNext} LP avant ${progress.next.name}`
-                : "Rang maximal atteint — Éminence."}
+                ? `${progress.toNext} ${t("accueil.lp-avant")} ${progress.next.name}`
+                : t("accueil.rang-max")}
             </p>
           </div>
         </div>
@@ -134,9 +136,9 @@ export default function AccueilPage() {
       {/* Ses dernières parties (remplace l'observatoire public) */}
       <Panel>
         <PanelTitle
-          kicker="À toi"
-          title="Tes dernières parties"
-          hint="Seules tes parties apparaissent ici. Une partie vivante se rejoint au théâtre ; une partie finie se relit au replay."
+          kicker={t("accueil.parties-kicker")}
+          title={t("accueil.parties-titre")}
+          hint={t("accueil.parties-hint")}
         />
         {error && <Banner tone="bad">{error}</Banner>}
         {!error && recent === null && (
@@ -146,9 +148,9 @@ export default function AccueilPage() {
         )}
         {recent !== null && recent.length === 0 && (
           <p className="text-sm text-fg-faint">
-            Aucune partie encore —{" "}
+            {t("accueil.aucune-partie")}{" "}
             <button onClick={() => launch("/lobby")} className="underline hover:text-foreground">
-              compose ton premier sommet
+              {t("accueil.composer")}
             </button>
             .
           </p>
@@ -160,21 +162,22 @@ export default function AccueilPage() {
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-2 text-sm">
                     <span className="font-medium">{g.scenario}</span>
-                    {g.ranked && <Pill tone="accent">classée</Pill>}
+                    {g.ranked && <Pill tone="accent">{t("accueil.classee")}</Pill>}
                   </p>
                   <p className="mt-0.5 text-xs text-fg-faint">
-                    {fmtDateTime(g.created_at)} · horizon {g.horizon} rounds
+                    {fmtDateTime(g.created_at)} · {t("accueil.horizon")} {g.horizon}{" "}
+                    {t("accueil.rounds")}
                   </p>
                 </div>
                 {g.mode !== "classic" && (
                   <Pill tone="neutral">{MODES.find((m) => m.value === g.mode)?.label}</Pill>
                 )}
                 {g.live ? (
-                  <Pill tone="good">en direct</Pill>
+                  <Pill tone="good">{t("accueil.en-direct")}</Pill>
                 ) : g.resumable ? (
-                  <Pill tone="warn">reprenable</Pill>
+                  <Pill tone="warn">{t("accueil.reprenable")}</Pill>
                 ) : (
-                  <Pill tone="neutral">relecture</Pill>
+                  <Pill tone="neutral">{t("accueil.relecture")}</Pill>
                 )}
                 <span className="flex gap-2">
                   {(g.live || g.resumable) && (
@@ -182,7 +185,7 @@ export default function AccueilPage() {
                       href={`/games/${g.id}`}
                       className="rounded-md border border-edge-strong px-3 py-1.5 text-xs font-medium transition-colors hover:border-accent hover:text-accent-bright"
                     >
-                      Théâtre
+                      {t("accueil.theatre")}
                     </Link>
                   )}
                   {g.result && (
@@ -190,14 +193,14 @@ export default function AccueilPage() {
                       href={`/games/${g.id}/fin`}
                       className="rounded-md border border-edge-strong px-3 py-1.5 text-xs font-medium transition-colors hover:border-accent hover:text-accent-bright"
                     >
-                      Bilan
+                      {t("accueil.bilan")}
                     </Link>
                   )}
                   <Link
                     href={`/games/${g.id}/replay`}
                     className="rounded-md border border-edge px-3 py-1.5 text-xs text-fg-muted transition-colors hover:border-edge-strong hover:text-foreground"
                   >
-                    Replay
+                    {t("accueil.replay")}
                   </Link>
                 </span>
               </li>

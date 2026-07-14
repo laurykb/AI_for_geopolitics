@@ -164,8 +164,9 @@ export function buildCreateBody(args: {
   flag?: string | null;
   ownerId?: string;
   invent?: CreateGameBody["invent"];
+  language?: "fr" | "en"; // G14 — réglage utilisateur, lu par le backend dès CC-3
 }): CreateGameBody {
-  const { scenario, baseMode, settings, role, selected, flag, ownerId, invent } = args;
+  const { scenario, baseMode, settings, role, selected, flag, ownerId, invent, language } = args;
   // Le Spectateur ne motionne pas ; or la boucle de la Dérive SE GAGNE par une motion.
   // On la désactive pour lui, sinon sa partie n'a aucune boucle de jeu (il ne fait que parier).
   const driftOn = settings.drift && role !== "spectator";
@@ -178,6 +179,7 @@ export function buildCreateBody(args: {
     difficulty: settings.difficulty,
     drift_enabled: driftOn,
     free: settings.free,
+    language,
     owner_id: ownerId,
     play_as: role === "player" ? (flag ?? undefined) : role === "invent" ? invent?.name : undefined,
     invent: role === "invent" ? invent : undefined,

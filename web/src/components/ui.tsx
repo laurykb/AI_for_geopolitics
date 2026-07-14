@@ -138,15 +138,27 @@ export function Banner({
   tone = "warn",
   children,
 }: {
-  tone?: "warn" | "bad" | "neutral";
+  tone?: "warn" | "bad" | "neutral" | "good";
   children: ReactNode;
 }) {
   const border =
-    tone === "bad" ? "border-bad/40" : tone === "warn" ? "border-warn/40" : "border-edge-strong";
+    tone === "bad"
+      ? "border-bad/40"
+      : tone === "warn"
+        ? "border-warn/40"
+        : tone === "good"
+          ? "border-good/40"
+          : "border-edge-strong";
   // Liseré gauche appuyé : la nature du message se lit d'un coup d'œil (pas
   // seulement par la couleur — le texte porte toujours l'information).
   const edge =
-    tone === "bad" ? "border-l-bad" : tone === "warn" ? "border-l-warn" : "border-l-indigo-soft";
+    tone === "bad"
+      ? "border-l-bad"
+      : tone === "warn"
+        ? "border-l-warn"
+        : tone === "good"
+          ? "border-l-good"
+          : "border-l-indigo-soft";
   return (
     <div
       role="status"
@@ -170,6 +182,49 @@ export function Spinner() {
 /** Bloc de chargement : réserve l'espace (zéro layout shift) avec le shimmer .skeleton. */
 export function Skeleton({ className = "" }: { className?: string }) {
   return <div aria-hidden className={`skeleton rounded-md ${className}`} />;
+}
+
+/** Interrupteur du kit (role=switch) : libellé + description à gauche, piste à droite.
+ * Extrait du lobby (G11-b) pour être partagé avec les Réglages (G14). */
+export function Switch({
+  label,
+  desc,
+  checked,
+  disabled = false,
+  onChange,
+}: {
+  label: string;
+  desc: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label
+      className={`flex items-start justify-between gap-3 ${disabled ? "opacity-50" : "cursor-pointer"}`}
+    >
+      <span>
+        <span className="text-sm font-medium">{label}</span>
+        <span className="block text-xs text-fg-faint">{desc}</span>
+      </span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        disabled={disabled}
+        onClick={() => onChange(!checked)}
+        className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors ${
+          checked ? "bg-accent" : "bg-surface-2"
+        } ${disabled ? "cursor-not-allowed" : ""}`}
+      >
+        <span
+          className={`absolute top-0.5 h-4 w-4 rounded-full bg-background transition-transform ${
+            checked ? "left-0.5 translate-x-4" : "left-0.5"
+          }`}
+        />
+      </button>
+    </label>
+  );
 }
 
 /** Dialogue de confirmation du kit — remplace confirm() natif (cohérence + clavier).
