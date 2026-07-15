@@ -1347,3 +1347,92 @@ scratchpad) rejoué à l'identique — même comportement attendu, SMOKE OK.
   le diff du jour.
 
 <!-- fin section POLISH-2 -->
+
+## POLISH-3 — Passe de dette technique et durcissements — notes de session
+
+<!-- début section POLISH-3 (2026-07-15) -->
+
+Dernière passe agent avant la vérification visuelle finale du coordinateur.
+Même branche (`feat/jeu-polish-qualite`, worktree polish), derrière POLISH-1/2.
+Deux volets : les legs actionnables des passes 1-2 (corrigés), et l'audit de
+dette du projet entier (`docs/DETTE_TECHNIQUE.md`).
+
+**Volet A — corrigé (un commit par item) :**
+
+1. **`f867ed5` — durcissement des 3 champs ANCIENS du Verdict**
+   (`attribute_deltas`/`tension_deltas`/`new_pacts`) : même fragilité que le
+   bug n°2 de POLISH-1 — un `"new_pacts": "aucun"` d'un 7B échouait
+   `model_validate` AVANT les garde-fous d'`apply_verdict` → verdict NEUTRE
+   entier. Patron `mode="before"` étendu (`_tolerant_list` + `_tolerant_dict`) :
+   le champ fautif retombe sur son défaut, le reste survit. Test rouge d'abord
+   (`test_junk_legacy_field_does_not_nuke_the_verdict`) + un test qui VERROUILLE
+   que les entrées malformées internes passent la validation (le garde-fou aval
+   les ignore une à une). +2 tests.
+2. **`2a4c332` — reliquat i18n CC-15b consigné par POLISH-1** : `CountryTable`
+   migrée ENTIÈRE (colonnes+aides, postures, tendances, en-têtes, pastille
+   « toi », bascule Vue simple/Voir les 5 colonnes, tempéraments — famille
+   `table.*` + `temperament.*`) et la gravité du décret (`event.gravite.*`,
+   `severityKey` renvoie une clé). Parité fr/en verrouillée (lexicon.test.ts
+   vert) ; slugs backend = clés de mapping, slug inconnu affiché brut comme
+   avant ; tests de la table rendus sous `SettingsProvider` (patron event-card).
+3. **`3d56497` — `TONE_BORDER` pour `Banner`** (ui.tsx) : les deux ternaires
+   tri-états border/edge deviennent UNE table (bordure + liseré par ton), typée
+   `BannerTone = Exclude<Tone, "accent">` (aucune classe Tailwind inutile
+   générée). DOM identique ; +3 tests (mapping + défaut warn).
+4. **`929abb1` — le smoke théâtre mistral VERSIONNÉ** :
+   `scripts/smoke_theatre_mistral.py` (le script POLISH-1 vivait dans un
+   scratchpad de session et aurait disparu avec elle ; sys.path rendu relatif
+   au dépôt, patron du smoke storyteller). Rejoué après versionnement : OK.
+
+**Volet A — examiné et NON corrigé (documenté dans DETTE_TECHNIQUE.md §D4b) :**
+
+- **Libellés backend FR-only** (`d.label`, `profile_label`, `act.label`) — les
+  trois débordent proprement : `d.label` = phrases composées persistées dans
+  les snapshots et rejouées dans les trames SSE, sans slug/args dans le schéma
+  (correctif = composer selon `game.language` à la création) ; `profile_label`
+  a DÉJÀ son slug (`DriftRevealView.profile`) mais le panneau révélation entier
+  est encore FR-dur (traduire la seule pastille = panneau bilingue) et le
+  `result_json` publié ne persiste pas le slug ; `act.label` = catalogue
+  data-driven (`data/drift/params.json`) sans slug stable (collision vote/palier
+  0,30 — correctif = `act_en` en data + sélection par langue). Chemin complet
+  tracé dans l'audit, à faire DANS les lots i18n.
+- Au fil de l'eau : **0 TODO/FIXME dans tout le code** (py/ts/tsx), aucun import
+  mort (ruff/eslint stricts déjà verts) — rien à solder.
+
+**Volet B — `docs/DETTE_TECHNIQUE.md` (commit `c2247f1`)** : audit D1-D8
+priorisé (impact/effort/reco/séquencement) — D1 plan de découpage de
+`game_api.py` (3 597 lignes) en 3 PRs (schémas+sessions → orchestrateur →
+endpoints par domaine, invariants à verrouiller AVANT : ordre `_start_round`
+et ordre des trames SSE) ; D2 contrat de sortie LLM (4 copies identiques de
+`_extract_json` à factoriser en module neutre) ; D3 parité SQLite↔Supabase à
+la main (16 tables, 3 DDL — test de parité recommandé en priorité) ; D4
+l'inventaire i18n complet (front ~150+ chaînes dont page théâtre 1 737 lignes,
++ la couche serveur ci-dessus) ; D5 smokes Ollama hors CI ; D6 params.json
+multipliés (miroirs gardés par commentaires) ; D7 reliquats V2 à arbitrer
+(si_context jamais lu, void des books, og:image défi, marché du jour
+spectateurs) ; D8 divers (idiome `or 0.5`, suite py 215 s, `legacy/`).
+**Top 5 « une journée »** : parité stores → smoke versionné+checklist →
+`_extract_json`+contrat → README data/+cohérence params → lot 1 i18n théâtre.
+
+**Vert complet après la passe** : **917 py + 3 skips** (+2), ruff OK,
+**237 js** (+3), eslint OK, `next build` OK. **Smoke mistral réel rejoué ×2**
+(scratchpad puis version scripts/) : cycle armed→expired→struck, conséquence =
+événement du round 2, kahn/signal persistés, différentiel ultimatum,
+reveal complet — SMOKE OK (52 s / 55 s), comportement identique aux passes 1-2.
+
+**Pour la vérification visuelle finale (navigateur), regarder en priorité :**
+
+1. **La table « État des pays » en partie EN** (i18n neuve) : en-têtes, aides,
+   postures, tendance, pastille « you », bascule « Show the 5 columns »/
+   « Simple view » — et vérifier qu'en FR rien n'a bougé.
+2. **Le slider Gravité du décret** (Options avancées → Inventer l'événement) :
+   minor/serious/severe en EN, faible/sérieuse/grave en FR.
+3. **Les bannières** (motion, suspension, campagne, relecture) : bordure +
+   liseré gauche par ton inchangés (refactor TONE_BORDER — DOM identique
+   attendu).
+4. Un round Dérive avec ultimatum jusqu'au reveal (le smoke l'a validé côté
+   API ; l'œil doit confirmer le théâtre).
+5. Les marges du bloc « Options avancées » (fragilité déjà signalée par
+   CC-15c, non touchée ici mais voisine du point 2).
+
+<!-- fin section POLISH-3 -->
