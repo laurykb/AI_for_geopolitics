@@ -584,3 +584,131 @@ Round usa/iran : le juge a produit `actions` ET `signals` bien formés (iran :
 - Libellés i18n `signal.*` à relire par Cowork (fr/en).
 
 <!-- ======================== FIN NOTES CC-10 / G20 ======================== -->
+
+<!-- ======================= DÉBUT NOTES CC-12 / G22 ======================= -->
+
+## Notes de session — CC-12 / G22 (tracker de promesses, 2026-07-15)
+
+Branche `feat/jeu-g22-promesses` (worktree g22, base `feat/jeu-g20-signal-action`
+392a627). Spec : `docs/specs_jeu/spec_g22_tracker_promesses.md`. **Tout est fait**,
+823 tests py (+39) et 173 js (+11) verts, ruff/eslint/build OK, smoke mistral réel OK
+(voir plus bas). Dernière session du lot G18-G23.
+
+### Ce qui existe maintenant
+
+- **`simulation/promises.py`** (pur, sans LLM) : `Promise` {id déterministe
+  `p<round>-<n>`, author, beneficiary, type, deadline_round (None = « partie »),
+  text, round_made, status, resolved_round, motif} ; `classify_promises` (garde-fou
+  du JSON du juge, patron `classify_actions` — **seuil STRICT** : sans auteur connu,
+  sans texte ou sans échéance lisible ET future, l'entrée est refusée : la politesse
+  vague ne passe jamais) ; `parse_deadline` (int, « round 3 », « R3 », « partie »/
+  « game »/« fin » → engagement-partie ; sinon INVALID) ; `classify_resolutions`
+  (tenue/rompue + alias EN, « caduque » n'est PAS un statut de juge) ;
+  `apply_resolutions` (pur : « tenue » refusée AVANT l'échéance d'une promesse datée,
+  « rompue » acceptée à tout moment, promesse due non jugée → re-présentée au round
+  suivant — les omissions d'un 7B ne fabriquent pas de verdict) ; `settle_at_game_end`
+  (partie finie → toute promesse en cours devient caduque) ; `kept_rate` /
+  `kept_rate_summary` (taux de tenue, caduques exclues, None sans donnée) ;
+  `flash_eligible` (extraites CE round, datées, échéance ≤ `promises.
+  flash_horizon_rounds` de `data/gamefeel/params.json`, défaut 2) ;
+  `promise_rubric_text` + `format_registry_for_prompt` (échues « À JUGER » d'abord,
+  borné à 12 lignes — budget contexte).
+- **Croisement M8 sans double comptage** : `alignment.merge_rupture_divergences` —
+  une promesse rompue vaut AU MOINS un rang de duplicité (1/5 = 0,2) pour son auteur ;
+  si M8 a déjà mesuré plus fort ce round, rien ne s'ajoute (max, jamais une somme).
+- **Schéma du juge étendu** (le MÊME verdict que G18/G20) : `Verdict.promises` +
+  `Verdict.promise_resolutions` (bruts, permissifs) ; `build_judge_verdict_prompt`
+  porte la rubrique des types (slugs énumérés — leçon smoke CC-8), la consigne du
+  seuil strict, et — SEULEMENT quand un registre est en cours — le bloc « REGISTRE
+  DES PROMESSES EN COURS » + le champ `promise_resolutions` avec statuts énumérés
+  (tenue | rompue). Résolution dans la même passe : aucune requête LLM de plus.
+- **Câblage round** (`simulation/live_round.py`) : résolution PUIS extraction,
+  rupture fusionnée aux divergences M8 avant `update_gaps`, registre sur
+  `WorldState.promises` (survit au restart via le snapshot, aucune migration) ;
+  `VerdictStep` gagne `promises` / `promise_resolutions` / `promise_registry`
+  (champs à défaut : SSE/front rétro-compatibles par construction).
+- **Persistance** : `judge_json["promises"] = {extracted, resolved, registry}` (clé
+  dédiée comme `kahn`/`signal`, absente des vieux rounds ET des parties sans aucune
+  promesse) ; le registre persisté est cumulatif → le front relit le DERNIER round
+  qui porte la clé. `_finalize_game` règle le registre (caduque) et re-snapshot.
+- **Reveal Dérive** : `DriftRevealView.promise_kept_deviant/_table` (None avant
+  G22) — taux de tenue déviante vs table relu des résolutions persistées.
+- **Marché éclair (canal G12 réutilisé)** : prédicat `promise_kept(id)` dans
+  `market/predicates.py` (tenue → YES, rompue → NO, en cours → OPEN) +
+  `MarketContext.promises` (statuts relus du monde — session ou snapshot) ; règle
+  FIXE dans `market/flash.py` (comme la censure) : une promesse fraîche à échéance
+  ≤ 2 rounds ouvre TOUJOURS son book « X tiendra-t-il sa promesse — « … » ? », coté
+  par le bot ; câblage `open_flash_markets` via `flash_eligible`.
+- **Front** : `web/src/lib/promises.ts` (pur, testé : `showPromisePanel` masqué en
+  Expert — MÊME mécanique que `showSignalGauge` —, `promiseStats` par SI — taux de
+  tenue caduques exclues, jamais un 0 trompeur —, `latestPromiseRegistry`,
+  `promiseTone` ≥ 0,7 good / ≥ 0,4 warn / sinon bad) ; panneau **« Parole donnée »**
+  dans les observables (par SI : taux coloré, « N tenues · M rompues », promesses en
+  cours en pastilles avec échéance R<n> ou « partie », dernière rupture en rouge ;
+  les paroles les moins fiables triées en premier) ; section « Parole donnée » du
+  `DriftRevealPanel` (théâtre + replay) ; réducteur SSE `verdict` étendu ; i18n
+  fr/en complet (`promise.*`).
+
+### Décisions notables
+
+- **« tenue » jamais en avance sur la date** : une promesse datée ne peut être
+  constatée tenue qu'à son échéance (un engagement-partie, lui, peut être constaté
+  à tout moment) ; « rompue » est acceptée dès que les actes contredisent la parole.
+- **Promesse due non jugée → re-présentée** (pas de verdict par défaut) ; seul le
+  code déclare « caduque », à la fin de partie.
+- **Caduque au marché = book jamais réglé** : le canal des marchés vivants ne
+  connaît que YES/NO/OPEN — pas de remboursement (v1, documenté dans
+  `_promise_kept`). Personne ne gagne ni ne perd de plus ; à revoir si un mécanisme
+  de « void » arrive au moteur de marché.
+- **Auteur inconnu → promesse refusée** (pas de repli) : une promesse d'un acteur
+  hors table n'est pas vérifiable. Type inconnu → repli `action` + log (patron
+  `normalize_class`).
+- Le front répute caduques les « en cours » d'une partie finie (le dernier round
+  persisté peut précéder la fin) — le backend fait foi dans le snapshot.
+
+### Smoke mistral réel (TestClient in-process, store :memory:, 68 s)
+
+Joueur-pays usa, 2 rounds, événements imposés (détroit d'Ormuz). Round 1 : le joueur
+promet en séance un retrait « au round 2 » → le juge mistral a tenu QUATRE listes
+distinctes (actions, signals, `promises`, deltas) et extrait la promesse
+`{country: usa, type: action, echeance: "round 2", texte: …}` → registre `p1-1`
+persisté ; `POST /flash` a ouvert le book « États-Unis tiendra-t-il sa promesse —
+« Les navires… » (échéance round 2) ? » coté par le bot (0,51/0,49). Round 2 : le
+registre re-présenté au juge → `promise_resolutions: [{id: p1-1, statut: tenue,
+motif: "Le retrait … a été constaté par les observateurs neutres."}]` → registre
+`tenue`, `flash/resolve` a réglé le book (YES gagne). **Variance constatée** : sur
+un premier run identique, le juge n'avait rien extrait (les 7B omettent parfois le
+champ — le seuil strict assume : pas d'extraction forcée) ; le second run est
+propre de bout en bout. À surveiller à la calibration Cowork (10 parties).
+
+### Reliquats / TODO_COWORK
+
+- **Calibration du seuil d'extraction** (spec §Répartition Cowork) : jouer 10
+  parties et vérifier que les formules creuses ne passent pas ; ajuster la consigne
+  du prompt et `promises.flash_horizon_rounds` (params.json) au besoin.
+- **Libellés du panneau** (spec : livrable Cowork) : les clés `promise.*` de
+  `web/src/i18n/{fr,en}.json` sont un premier jet à relire.
+- Question des books en français uniquement (comme la censure G12) — l'habillage
+  EN des marchés vivants est un reliquat transversal G12/G14, pas propre à G22.
+- Remboursement des books caducs si le moteur de marché gagne un jour un « void ».
+- Panneau « Parole donnée » au replay (les rounds persistés le permettent) — non
+  requis par la spec, sur demande.
+
+### Intégration au merge du lot G18-G23 (je clos le lot)
+
+- **Pile empilée** : `feat/jeu-g18-bareme-kahn` → `feat/jeu-g20-signal-action` →
+  `feat/jeu-g22-promesses` (cette branche embarque les trois). **Une PR de la tête
+  `feat/jeu-g22-promesses` suffit** pour G18+G20+G22 ; g19/g21/g23 sont des sœurs
+  indépendantes à merger séparément.
+- **Zones de friction attendues avec g19/g21/g23** (branches sœurs, non vues d'ici) :
+  `agents/prompts.py` (si G19/G21 touchent les prompts GM/juge — le verdict du juge
+  n'est modifié QUE par la pile g18/g20/g22), `app/game_api.py` (_handle_step,
+  _finalize_game — G21 y tague sous_ultimatum), `web/src/lib/types.ts` +
+  `useRoundStream.ts` (champs SSE additifs de chaque session : tous à défaut, les
+  conflits git seront textuels, jamais sémantiques), `data/gamefeel/params.json`
+  (blocs séparés par feature : merges triviaux), i18n fr/en (clés préfixées par
+  feature : additif).
+- `MarketContext` gagne un champ (`promises`) — si une sœur étend aussi les
+  prédicats, le catalogue `_CATALOG` se fusionne ligne à ligne sans risque.
+
+<!-- ======================== FIN NOTES CC-12 / G22 ======================== -->
