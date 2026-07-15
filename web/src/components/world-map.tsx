@@ -13,6 +13,7 @@ import { uTint } from "@/lib/stage";
 import { WORLD_FEATURES } from "@/lib/world";
 
 import { EarthMapDefs } from "./earth-defs";
+import { useT } from "./settings-provider";
 
 const WIDTH = 940;
 const HEIGHT = 480;
@@ -28,6 +29,7 @@ export function WorldMap({
   /** U locale par pays — même dérivation que la scène (`localU` de lib/stage). */
   uByCountry?: Record<string, number>;
 }) {
+  const t = useT();
   const path = useMemo(() => {
     const projection = geoNaturalEarth1().fitSize([WIDTH, HEIGHT], { type: "Sphere" });
     return geoPath(projection);
@@ -41,7 +43,7 @@ export function WorldMap({
       <svg
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         role="img"
-        aria-label={`Carte du monde — chaque pays du sommet teinté par son indice U local (global ${fmt(utopia)})`}
+        aria-label={t("worldmap.aria").replace("{u}", fmt(utopia))}
         className="w-full"
       >
         <EarthMapDefs height={HEIGHT} />
@@ -63,7 +65,7 @@ export function WorldMap({
             >
               <title>
                 {slug
-                  ? `${speakerMeta(slug).label} — au sommet (U locale ${fmt(localU(slug))})`
+                  ? `${speakerMeta(slug).label}${t("worldmap.au-sommet").replace("{u}", fmt(localU(slug)))}`
                   : ((f.properties as { name?: string })?.name ?? "")}
               </title>
             </path>
@@ -79,11 +81,11 @@ export function WorldMap({
                 "linear-gradient(to right, var(--dystopia), var(--warn), var(--utopia))",
             }}
           />
-          teinte = trajectoire du pays (échelle U fixe)
+          {t("worldmap.legende")}
         </span>
-        <span>pays hors sommet en gris</span>
+        <span>{t("worldmap.hors-sommet")}</span>
         <span className="ml-auto font-mono tabular-nums" style={{ color: uTint(utopia) }}>
-          U = {fmt(utopia)}
+          {t("worldmap.monde")} {fmt(utopia)}
         </span>
       </figcaption>
     </figure>

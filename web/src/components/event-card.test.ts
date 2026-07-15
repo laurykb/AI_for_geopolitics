@@ -29,8 +29,8 @@ describe("EventCard — libellé du type d'événement", () => {
     expect(html).toContain("événement");
   });
 
-  it("les types connus gardent leur libellé dédié", () => {
-    expect(render(base("human"))).toContain("décrété par l&#x27;humain");
+  it("les types connus gardent leur libellé dédié (i18n)", () => {
+    expect(render(base("human"))).toContain("inventé par l&#x27;humain");
     expect(render(base("motion"))).toContain("motion de suspension");
   });
 });

@@ -12,6 +12,7 @@ import { ISO_NUM, ROSTER, speakerMeta } from "@/lib/countries";
 import { WORLD_FEATURES } from "@/lib/world";
 
 import { EarthMapDefs } from "./earth-defs";
+import { useT } from "./settings-provider";
 
 const WIDTH = 940;
 const HEIGHT = 480;
@@ -41,6 +42,7 @@ export function SelectMap({
   onPickFlag?: (slug: string) => void;
   ficheFor?: (slug: string) => Fiche | null;
 }) {
+  const t = useT();
   const [hovered, setHovered] = useState<string | null>(null);
 
   const path = useMemo(() => {
@@ -66,7 +68,7 @@ export function SelectMap({
           viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
           className="w-full"
           role="group"
-          aria-label="Carte du monde — choisis les 7 États du sommet"
+          aria-label={t("selectmap.aria")}
         >
           <EarthMapDefs height={HEIGHT} />
           <path
@@ -100,7 +102,7 @@ export function SelectMap({
                 role="button"
                 tabIndex={0}
                 aria-pressed={on}
-                aria-label={`${label}${on ? " — au sommet" : ""}${isFlag ? " — ton pays" : ""}`}
+                aria-label={`${label}${on ? t("selectmap.aria-au-sommet") : ""}${isFlag ? t("selectmap.aria-ton-pays") : ""}`}
                 onClick={() => activate(slug)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
@@ -121,7 +123,7 @@ export function SelectMap({
           })}
         </svg>
         <p className="mt-2 flex items-center justify-between text-xs text-fg-faint">
-          <span>Éligibles en blanc · au sommet en jaune · clique pour ajouter/retirer</span>
+          <span>{t("selectmap.legende")}</span>
           <span
             className={`font-mono tabular-nums ${
               selected.length === capacity ? "text-accent-bright" : "text-warn"
@@ -155,18 +157,18 @@ export function SelectMap({
                 ))}
               </dl>
             ) : (
-              <p className="text-xs text-fg-faint">Indices clés indisponibles.</p>
+              <p className="text-xs text-fg-faint">{t("selectmap.infos-indisponibles")}</p>
             )}
             {chosen.has(hovered!) && (
               <p className="text-xs text-accent-bright">
-                {flag === hovered ? "★ Ton pays" : "Au sommet"}
+                {flag === hovered ? t("selectmap.ton-pays") : t("selectmap.au-sommet")}
               </p>
             )}
           </div>
         ) : (
           <p className="text-xs text-fg-faint">
-            Survole un pays pour voir ses indices clés.
-            {pickingFlag && " Clique un pays au sommet pour le jouer."}
+            {t("selectmap.survole")}
+            {pickingFlag && ` ${t("selectmap.designer")}`}
           </p>
         )}
       </aside>
