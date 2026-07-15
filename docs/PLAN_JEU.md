@@ -404,6 +404,51 @@ prévisualisation, test), **page Profil/Statistiques** (parties, victoires par m
 définitions actées, niveau, argent des marchés, taux de détection de la Dérive).
 2 sessions : G12-a progression/marché/stats, G12-b campagne/éditeur.
 
+## CC-9 / G19 — Le GM-Storyteller (mode Dérive)
+
+**Notes d'implémentation (G19 faite — spec `docs/specs_jeu/spec_g19_gm_storyteller.md`,
+branche `feat/jeu-g19-gm-storyteller`)** :
+
+- **Noyau pur** : `simulation/storyteller.py` — estimateur de **tension 0-1**
+  déterministe (heuristique sur les actions du conseil : achats intel ciblant la
+  déviante ou non, motions humaines justes/fausses, prises de parole qui suspectent
+  nommément la déviante — marqueurs FR+EN), décision `decide()` (couverture si
+  tension > 0,7 **avant le round h−2** ; indice si tension < 0,3 **après h/2**),
+  cible de couverture seedée par `(game_id, round)` (jamais la déviante ni le pays du
+  joueur), rubrique du prompt GM (2 mandats + éthique) et journal `GMIntervention`.
+- **Config** : bloc `storyteller` dans `data/drift/params.json` (seuils + poids de
+  l'heuristique — l'équilibrage Cowork ajuste sans code, `DRIFT_PARAMS_PATH` pour les
+  tests) ; `DriftParams.storyteller` avec défauts si le bloc manque (rétro-compat).
+- **Câblage round** (`app/game_api.py::_start_round`, Dérive UNIQUEMENT) : tension
+  estimée chaque round (`_storyteller_signals` relit les rounds persistés + les achats
+  du round en préparation + la motion en débat et son motif) ; la **rubrique n'est
+  injectée que quand le GM invente l'événement** (jamais sur motion/crise/événement
+  humain — les interventions passent par l'événement, **jamais** par les verdicts du
+  juge) ; journal persisté dans `judge_json["drift"]["gm"]` (patron `*_json`), donc
+  **caché en live** (la clé `drift` est déjà rédigée du GET tant que la partie court).
+- **Révélation** : `DriftRevealView.gm_tension` + `gm_interventions` (relus du journal,
+  vides pour les parties d'avant G19) ; front — section **« L'ombre du GM »** dans
+  `DriftRevealPanel` (`web/src/components/drift.tsx`, items cliquables vers le
+  scrubber, cible en pastille, tension estimée), lib pure `web/src/lib/storyteller.ts`
+  (kind → clé i18n), chaînes fr/en via `useT`.
+- **Prompt GM** : `GameMasterAgent.generate_event(storyteller=…)` ajoute la rubrique en
+  fin de prompt ; `run_negotiation_round(storyteller=…)` la transmet (le « flash »
+  Escalation ne la reçoit pas — hors Dérive par construction).
+- **Tests** : 18 noyau (`tests/test_storyteller.py`) + 6 API
+  (`tests/test_storyteller_api.py` : rubrique jamais hors drift, tension journalisée et
+  cachée en live, indice après h/2, couverture avant h−2 avec poids config, aucune
+  intervention sur un round de motion, révélation) ; smoke réel
+  `scripts/smoke_storyteller_mistral.py` (TestClient in-process, aucun port) — **joué
+  VERT sur mistral** (2026-07-15 : indice journalisé au round 2/2, révélation
+  `gm_tension`+`gm_interventions` servie, partie classique sans aucune clé drift).
+- **TODO_COWORK** : les libellés définitifs de la rubrique (2 mandats + éthique) sont à
+  la charge de Cowork (spec §Répartition) — V1 sobre en place dans
+  `simulation/storyteller.py` (marquée `TODO_COWORK`) ; équilibrage des seuils sur
+  10 parties Dérive (DoD spec) = Cowork aussi.
+- **Décisions notables** : la tension n'est **pas** recalculable des seeds (elle dépend
+  des actions libres du joueur) → le journal persisté est la source de vérité de la
+  révélation ; en partie classique, aucune clé, aucun appel, aucun texte (testé).
+
 ---
 
 ## Specs Cowork (rédigées)
