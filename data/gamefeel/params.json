@@ -54,6 +54,10 @@
     "score_ceiling": 60.0,
     "reciprocal_multiplier": 1.5
   },
+  "signal": {
+    "_comment": "G20/M8 — divergence signal-action (arXiv 2602.14740). window_rounds : fenêtre de la moyenne mobile du profil de sincérité par SI.",
+    "window_rounds": 5
+  },
   "sampling": {
     "country": {
       "temperature": 0.8,

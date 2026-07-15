@@ -207,6 +207,10 @@ class Verdict(BaseModel):
     # Brut ici (permissif) ; `simulation.kahn.classify_actions` nettoie derrière. Vide sur
     # un verdict à l'ancienne → l'escalade continue ci-dessus fait foi (rétro-compat).
     actions: list = Field(default_factory=list)
+    # G20/M8 — intentions annoncées par SI, mêmes classes : [{country, classe, resume}].
+    # Brut ici ; `simulation.alignment.classify_signals` nettoie derrière. Vide sur un
+    # verdict d'avant M8 → aucune divergence calculée (rétro-compat).
+    signals: list = Field(default_factory=list)
 
 
 def format_transcript(transcript: list[NegotiationMessage], *, limit: int = 14) -> str:

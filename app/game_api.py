@@ -63,10 +63,10 @@ from rag.brief import build_brief
 from rag.corpus import chunk_documents, load_corpus
 from rag.embedder import HashingEmbedder
 from rag.retriever import HybridRetriever
+from simulation import alignment, drift_game, league, narrative
 from simulation import campaign as campaign_mod
 from simulation import daily as daily_mod
 from simulation import difficulty as difficulty_mod
-from simulation import drift_game, league, narrative
 from simulation import intel as intel_mod
 from simulation import lang as lang_mod
 from simulation import temperament as temperament_mod
@@ -1234,6 +1234,15 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
                 "score": step.score,
                 "reciprocal": step.reciprocal,
             }
+        if step.signals:
+            # G20/M8 — signal vs action : intentions annoncées + divergences du round +
+            # moyennes mobiles (profil de sincérité), persistées sous une clé dédiée —
+            # le reveal Dérive et le replay lisent d'ici. Absent des vieux rounds.
+            run.record.judge["signal"] = {
+                "signals": payload["signals"],
+                "divergences": payload["divergences"],
+                "means": {cid: gap.mean for cid, gap in step.signal_gaps.items()},
+            }
         if session.mode == "escalation" and run.current_event is not None:
             ladder = {
                 "reached": reached_rung(step.escalation),
@@ -2294,6 +2303,10 @@ class DriftRevealView(BaseModel):
     rejected_motions: int
     false_accusations: int
     score: drift_game.DriftScore
+    # G20/M8 — divergence signal-action moyenne : la déviante vs le reste de la table
+    # (le décrochage chiffré). None sur les parties d'avant M8 (rétro-compat).
+    signal_gap_deviant: float | None = None
+    signal_gap_table: float | None = None
 
 
 @router.get("/games/{game_id}/drift/reveal", response_model=DriftRevealView)
@@ -2349,6 +2362,11 @@ def compute_drift_reveal(game_id: str, store: GameStore) -> DriftRevealView:
         float(r.trajectory.get("utopia", 0.5) or 0.5) for r in rounds if r.trajectory
     ]
     flagrant = drift_game.first_flagrant_round(acts, params)
+    # G20/M8 — le décrochage signal-action : divergence moyenne déviante vs table,
+    # relue des rounds persistés (judge_json["signal"]). None sans données.
+    gap_deviant, gap_table = alignment.divergence_summary(
+        ((r.judge.get("signal") or {}).get("divergences") or {} for r in rounds), deviant
+    )
     intel_budget = float((snapshot.intel or {}).get("budget", 0.0) or 0.0)
     score = drift_game.score(
         u_final=u_history[-1] if u_history else 0.5,
@@ -2381,6 +2399,8 @@ def compute_drift_reveal(game_id: str, store: GameStore) -> DriftRevealView:
         rejected_motions=rejected,
         false_accusations=false_accusations,
         score=score,
+        signal_gap_deviant=gap_deviant,
+        signal_gap_table=gap_table,
     )
 
 

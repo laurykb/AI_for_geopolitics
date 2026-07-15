@@ -102,6 +102,12 @@ class KahnParams(BaseModel):
     reciprocal_multiplier: float = 1.5
 
 
+class SignalParams(BaseModel):
+    """G20/M8 — divergence signal-action : fenêtre de la moyenne mobile par SI."""
+
+    window_rounds: int = 5
+
+
 class SamplingParams(BaseModel):
     """G9 §1 — options de décodage par rôle (anti-boucle au niveau du décodeur)."""
 
@@ -120,6 +126,7 @@ class GamefeelParams(BaseModel):
     deltas: DeltaParams = Field(default_factory=DeltaParams)
     postures: PostureParams = Field(default_factory=PostureParams)
     kahn: KahnParams = Field(default_factory=KahnParams)
+    signal: SignalParams = Field(default_factory=SignalParams)
     sampling: SamplingByRole = Field(default_factory=SamplingByRole)
 
 

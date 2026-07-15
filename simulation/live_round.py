@@ -23,6 +23,13 @@ from core.risk import RiskEngine, RiskScore
 from core.rounds import RoundSummary
 from core.world_state import WorldState
 from inference.telemetry import BudgetLedger, grounding_proxy
+from simulation.alignment import (
+    AnnouncedSignal,
+    SignalGap,
+    classify_signals,
+    round_divergences,
+    update_gaps,
+)
 from simulation.clock import SimClock
 from simulation.fog import FogScenario, resolve_perception
 from simulation.gamefeel import DeltaTuning
@@ -164,6 +171,12 @@ class VerdictStep:
     actions: list[ClassifiedAction] = field(default_factory=list)
     score: float = 0.0
     reciprocal: bool = False
+    # G20/M8 — signal vs action : intentions annoncées, divergence signée du round par
+    # SI, et profils de sincérité (moyenne mobile) après mise à jour. Vides sur un
+    # verdict d'avant M8 (rétro-compat : le front ignore l'absent).
+    signals: list[AnnouncedSignal] = field(default_factory=list)
+    divergences: dict[str, float] = field(default_factory=dict)
+    signal_gaps: dict[str, SignalGap] = field(default_factory=dict)
 
 
 @dataclass
@@ -568,6 +581,13 @@ def run_negotiation_round(
     kahn_score = round_score(actions) if actions else 0.0
     escalation = score_to_escalation(kahn_score) if actions else _clamp(verdict.escalation)
     reciprocal = reciprocal_deescalation(actions)
+    # G20/M8 — signal vs action : divergence signée par SI signalée (annonce vs acte le
+    # plus sévère du round) ; le profil de sincérité (moyenne mobile) rejoint M1-M7 sur
+    # le WorldState — il survit au restart via le snapshot. Rien sans `signals` (rétro-compat).
+    signals = classify_signals(verdict.signals)
+    divergences = round_divergences(signals, actions)
+    if divergences:
+        world.signal_gap = update_gaps(world.signal_gap, divergences)
     deltas = apply_verdict(world, verdict, tuning)  # G9 §4 — amplitude indexée sur l'horizon
     yield VerdictStep(
         deltas=deltas,
@@ -576,6 +596,9 @@ def run_negotiation_round(
         actions=actions,
         score=kahn_score,
         reciprocal=reciprocal,
+        signals=signals,
+        divergences=divergences,
+        signal_gaps=dict(world.signal_gap) if divergences else {},
     )
 
     update_memories(world, event, transcript, verdict)
