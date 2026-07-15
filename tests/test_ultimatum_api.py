@@ -182,6 +182,43 @@ def test_ultimatum_satisfied_no_consequence(satisfied_client):
     assert not [p for n, p in events if n == "ultimatum"]
 
 
+def test_motion_defers_consequence_and_strip_keeps_the_threat(client):
+    """POLISH-1 — une motion en attente diffère la conséquence d'un round (spec G21) :
+    pendant le round de motion, la menace doit RESTER au bandeau (DeadlineStrip) au
+    lieu de disparaître silencieusement — la conséquence tombe bien au round suivant."""
+    crisis_id = _register_crisis(client)
+    game = _create(client, countries=["usa", "iran", "france"], mode="crisis")
+
+    _play(client, game["id"], body={"crisis_id": crisis_id})  # round 1 : armé
+    _play(client, game["id"], body={"crisis_id": crisis_id})  # round 2 : expiré
+
+    # Une motion se dépose entre les rounds : elle prendra l'événement du round 3.
+    resp = client.post(
+        f"/api/games/{game['id']}/motions", json={"country": "france", "reason": "dérive"}
+    )
+    assert resp.status_code == 201
+
+    # Round 3 : la motion EST l'événement (l'API refuse tout body : sans corps, comme
+    # le front) — la conséquence est différée, la menace reste visible (trame
+    # ultimatum « expired » + entrée du bandeau).
+    events = _play(client, game["id"])
+    event = next(p for n, p in events if n == "event")["event"]
+    assert event["event_type"] == "motion"
+    statuses = [p["status"] for n, p in events if n == "ultimatum"]
+    assert "expired" in statuses, "la menace différée a disparu du théâtre"
+    deadlines = next(p for n, p in events if n == "deadlines")
+    strip = [d for d in deadlines["items"] if d["kind"] == "ultimatum"]
+    assert strip, "la menace différée a disparu du bandeau d'échéances"
+    assert "conséquence" in strip[0]["label"]
+
+    # Round 4 : la conséquence tombe (un round de retard, pas d'oubli).
+    events = _play(client, game["id"], body={"crisis_id": crisis_id})
+    event = next(p for n, p in events if n == "event")["event"]
+    assert event["event_type"] == "ultimatum"
+    statuses = [p["status"] for n, p in events if n == "ultimatum"]
+    assert statuses == ["struck"]
+
+
 # --- décret GM : deux champs, échéance séance tenante -------------------------------
 
 

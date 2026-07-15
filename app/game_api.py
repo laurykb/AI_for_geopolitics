@@ -1085,6 +1085,29 @@ def _start_round(
                 {**state.model_dump(), "in_rounds": max(0, state.round - round_id)},
             )
         )
+    elif (
+        session.ultimatum is not None
+        and session.ultimatum.status == ultimatum_mod.STATUS_EXPIRED
+    ):
+        # POLISH-1 — conséquence DIFFÉRÉE (une motion a pris l'événement de ce round) :
+        # la menace reste visible au lieu de disparaître silencieusement — le bandeau
+        # est ré-entretenu (la consommation générique des échéances l'a purgé plus
+        # haut) et la trame « expired » rappelle que la conséquence tombera au round
+        # suivant. Sans motion, ce chemin est mort : le statut passe STRUCK dès le
+        # choix de l'événement.
+        state = session.ultimatum
+        session.deadlines = [d for d in session.deadlines if d.kind != "ultimatum"]
+        session.deadlines.append(
+            Deadline(
+                kind="ultimatum",
+                due_round=round_id + 1,
+                label=ultimatum_mod.strip_label(state),
+                ref_id="ultimatum",
+            )
+        )
+        run.pre_frames.append(
+            sse_frame("ultimatum", {**state.model_dump(), "in_rounds": 1})
+        )
 
     if intel_record:
         record.judge["intel"] = intel_record
