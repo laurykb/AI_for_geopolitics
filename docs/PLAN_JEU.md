@@ -959,3 +959,96 @@ conservés), `web/src/lib/auth.test.ts` (+4 — garde admin). Vert complet : **9
   gêne près d'un bord d'écran, ajuster la classe dans `hint.tsx`, pas les call sites.
 
 <!-- fin section CC-15a -->
+
+## CC-15b — Simplification : la passe de vocabulaire (audit n°5/6/9/10 + inventaire) — notes de session
+
+<!-- début section CC-15b (2026-07-15) -->
+
+Deuxième des trois sessions de simplification, branche `feat/jeu-cc15b-vocabulaire`
+sur `feat/jeu-cc15a-fondations` (tête `12ed96f`). Front uniquement — zéro changement
+Python. Source de vérité : `docs/AUDIT_SIMPLICITE.md` (grep par chaînes, jamais par
+numéro de ligne — la base avait bougé depuis `d8be74a`).
+
+**Fait, par commit :**
+
+- **`0963f5a` — /r/{id}, la vitrine d'abord (audit n°10)** : phrase du monde
+  (« Le monde a fini mieux qu'il n'a commencé : 42 → 61 sur 100 ») partagée entre
+  page, description OpenGraph et og:image via `worldSentence`/`deltaSentence` pures
+  et testées dans `lib/public.ts` ; « +0,3 pt pour le monde » remplace « ΔU
+  +0.003 » ; mode via `MODE_LABELS` (fini le slug `fog` brut) ; titre canonique ;
+  footer « Ceci est une simulation… » ; tutoiement.
+- **`3cf7a60` — un mot par concept (audit n°6)** : **Classement** partout (fr),
+  **Revoir** partout, l'écran de jeu = **« le théâtre »** (GameNav migré i18n :
+  Théâtre / Marché / Revoir), titre unique « Théâtre des super-intelligences »
+  (login + accueil), pitch du login (`login.pitch`), accueil « à reprendre /
+  terminée / durée », boutons « Rejoindre / Bilan / Revoir », marché « Gains » et
+  « justesse » (Brier en bulle).
+- **`b11705b` — sigles définis (audit n°5)** : phrase-thermomètre canonique
+  `u.thermometre` (« Le thermomètre du monde : 0 = cauchemar, 1 = monde rêvé. »)
+  en bulle sur CHAQUE affichage de U (plateau, bandeau, trajectoire, bilan,
+  marché) ; « monde à 0,42 » remplace « U 0,42 » dans toutes les infobulles ;
+  « points de ligue (LP) » à la première occurrence de chaque écran + bulles
+  `lp.aide`/`xp.aide` (accueil, bilan, profil) ; SI → IA dans tout le visible
+  (y compris tuto/tour — voix de Laury conservée) ; axe A2 → « Contrôle humain ».
+- **`be6f8ed` — le vocabulaire du quotidien (inventaire complet)** : théâtre
+  (abandon en clair −15 LP, motion = « demander l'exclusion d'un pays », bannière
+  campagne sans « uchronie » + tutoiement, messages techniques humanisés, décret →
+  « Inventer toi-même l'événement » / « Le jeu choisit tout seul », gravité en mots
+  faible/sérieuse/grave, fog « pays trompé / coupable inconnu / la fausse info
+  qu'il recevra », « mot après mot ») ; marché (« Le monde finira-t-il bien ? »,
+  OUI/NON en toutes lettres, « Fermer le marché ») ; Tension / Dégâts économiques
+  partout ; kickers anglais → Brouillard / Tension / L'Histoire rejouée ;
+  Armée / Puissance de calcul ; Dossier sans « corroboré » ni « brief RAG » ;
+  frise en mots simples (vote d'exclusion, pays exclu, coup de théâtre, traité
+  signé) ; « Monde réel » remplace Real World ; clés G18-G23 au filtre 12-65 :
+  classes du juge en verbes (**apaise / ne bouge pas / menace / frappe sans
+  armes / frappe / frappe nucléaire**), « Elle dit / elle fait », kickers
+  « Surveillance », « Ton des messages », l'ombre du Game Master ; ajout demandé
+  en cours de session (retour créateur) : `Meter` gagne une option `percent`, les
+  soutiens du communiqué s'affichent en % avec bulle « Plus la barre est pleine,
+  plus ce pays adhère au communiqué commun ».
+- **`6540f37` — migration i18n des composants en dur** : event-card (ENTIER —
+  reliquat CC-15a soldé, « inventé par l'humain » remplace « décrété »),
+  transcript (+ bulle Boîte de verre, « sûr à X % », « trompé »), turn-composer,
+  directive-composer (+ bulle « un conseil, pas un ordre »), flash-markets
+  (« 📈 Tu peux parier ! », OUI/NON, bulle mise 5 pièces), select-map (« infos
+  clés »), world-map, alliance-pills. ~60 clés nouvelles par langue, parité
+  fr/en stricte.
+- **verrou anti-régression** : `web/src/i18n/lexicon.test.ts` — dictionnaires
+  sans termes bannis (+ sigle nu `\bSIs?\b` en regex bornée), sources .ts/.tsx
+  scannées commentaires retirés, parité de clés fr/en. Le verrou a attrapé
+  4 vrais résidus à sa première exécution (corrigés dans le même commit).
+
+**Reliquats CC-15a couverts** : event-card migré entier ; « scrubber » /
+« le moteur » visibles purgés (`drift.tsx` titles, hints observables/judge/
+treaties, théâtre « bornés par les règles du jeu »).
+
+**Vert complet** : 906 py + 3 skips, ruff OK, **213 js** (+10 : 6 public, 4
+lexique — world-map/event-card adaptés au provider), eslint OK, `next build` OK.
+Pas de smoke navigateur (jeu live sur :3000/:8000, interdits à la session) — la
+page /r dépend de Supabase, vérifiée par tests purs + build.
+
+**Vigilances pour CC-15c (fusions structurelles, s'empile sur cette branche) :**
+
+- Libellés côté BACKEND encore en dur (hors périmètre, à traiter côté serveur) :
+  items du `DeadlineStrip` (`d.label` serveur FR-only), `comparison.label`
+  (slugs « conforme / plus escaladé / moins escaladé » mappés côté front dans
+  `modes.tsx` `COMPARISON_LABELS` — le mapping saute si le backend change),
+  `doc.verdict` du Dossier (« corroboré » mappé dans `intel.tsx`
+  `VERDICT_LABELS`), `postures` (slugs mappés dans `country-table.tsx`),
+  `reveal.profile_label`, `act.label` de la révélation Dérive.
+- Les kickers « Surveillance » (signal/promise/power-seeking) préfigurent le
+  panneau « Renseignement » à onglets de CC-15c — fusion structurelle à toi.
+- `verdict.*` : le théâtre affiche désormais le verdict via `t()` comme le bilan
+  — si tu factorises, une seule helper suffirait.
+- Le test lexique scanne `web/src` entier : si tu déplaces des fichiers, il suit
+  tout seul ; si tu veux bannir un nouveau terme, ajoute-le aux listes de
+  `web/src/i18n/lexicon.test.ts` (attention aux identifiants de code : la liste
+  sources ne doit contenir que des termes impossibles en code légitime).
+- `tour.3` ne cite plus les modes un par un (« Chaque mode change l'ambiance ») —
+  si CC-15c renomme des modes, rien à retoucher dans la visite.
+- « motion de suspension », « Boîte de verre », « Game Master », « Dossier »,
+  « Déclassifier », noms de rangs : vocabulaire diégétique CONSERVÉ (décision
+  audit), désormais toujours accompagné d'une bulle.
+
+<!-- fin section CC-15b -->
