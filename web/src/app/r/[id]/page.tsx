@@ -8,7 +8,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { fetchPublicGame, type PublicGame } from "@/lib/public";
+import { MODE_LABELS } from "@/lib/modes";
+import { deltaSentence, fetchPublicGame, worldSentence, type PublicGame } from "@/lib/public";
 
 export const dynamic = "force-dynamic"; // les données vivent chez Supabase, pas au build
 
@@ -17,13 +18,12 @@ type Props = { params: Promise<{ id: string }> };
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
   const game = await fetchPublicGame(id);
-  if (!game) return { title: "Récit introuvable — World of Super-Intelligence" };
+  if (!game) return { title: "Récit introuvable — Théâtre des super-intelligences" };
   const description =
-    `Le monde est passé de ${game.epilogue.u_start.toFixed(2)} à ` +
-    `${game.epilogue.u_final.toFixed(2)} sur l'indice Utopie–Dystopie.` +
+    `${worldSentence(game.epilogue.u_start, game.epilogue.u_final)}.` +
     (game.epilogue.grade ? ` Grade : ${game.epilogue.grade}.` : "");
   return {
-    title: `${game.epilogue.title} — World of Super-Intelligence`,
+    title: `${game.epilogue.title} — Théâtre des super-intelligences`,
     description,
     openGraph: { title: game.epilogue.title, description },
   };
@@ -36,7 +36,7 @@ function UCurve({ values }: { values: number[] }) {
   const x = (i: number) => (values.length > 1 ? (i / (values.length - 1)) * (w - 16) + 8 : w / 2);
   const y = (u: number) => h - 8 - u * (h - 16);
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="w-full" aria-label="Courbe de l'indice Utopie">
+    <svg viewBox={`0 0 ${w} ${h}`} className="w-full" aria-label="La courbe du monde, round après round">
       <line x1="8" y1={y(0.5)} x2={w - 8} y2={y(0.5)} stroke="var(--border)" strokeDasharray="4 4" />
       <polyline
         points={values.map((u, i) => `${x(i)},${y(u)}`).join(" ")}
@@ -62,13 +62,11 @@ export default async function PublicGamePage({ params }: Props) {
     <article className="mx-auto max-w-3xl space-y-8 py-4">
       <header className="space-y-3">
         <p className="text-[11px] font-medium uppercase tracking-[0.3em] text-fg-faint">
-          Récit de partie · {game.scenario} · mode {game.mode}
+          Récit de partie · {game.scenario} · {MODE_LABELS[game.mode] ?? game.mode}
         </p>
         <h1 className="text-3xl font-semibold leading-tight tracking-tight">{ep.title}</h1>
         <p className="flex flex-wrap items-center gap-3 text-sm text-fg-muted">
-          <span className="font-mono tabular-nums">
-            U {ep.u_start.toFixed(2)} → {ep.u_final.toFixed(2)}
-          </span>
+          <span>{worldSentence(ep.u_start, ep.u_final)}</span>
           {ep.grade && (
             <span className="rounded-md border border-accent/50 px-2 py-0.5 text-accent-bright">
               {ep.grade}
@@ -79,7 +77,7 @@ export default async function PublicGamePage({ params }: Props) {
             href={`/games/${game.id}/replay`}
             className="ml-auto rounded-md bg-accent px-4 py-1.5 font-semibold text-background transition-colors hover:bg-accent-bright"
           >
-            Revoir le théâtre
+            Revoir la partie
           </Link>
         </p>
         <div className="rounded-lg border border-edge bg-surface p-3">
@@ -109,12 +107,9 @@ export default async function PublicGamePage({ params }: Props) {
                 </Link>
                 <strong>{pivot.event_title}</strong>
                 <span
-                  className={`font-mono text-xs tabular-nums ${
-                    pivot.delta_u >= 0 ? "text-good" : "text-bad"
-                  }`}
+                  className={`text-xs ${pivot.delta_u >= 0 ? "text-good" : "text-bad"}`}
                 >
-                  ΔU {pivot.delta_u >= 0 ? "+" : ""}
-                  {pivot.delta_u.toFixed(3)}
+                  {deltaSentence(pivot.delta_u)}
                 </span>
               </p>
               {pivot.quote && (
@@ -133,9 +128,9 @@ export default async function PublicGamePage({ params }: Props) {
             La révélation
           </h2>
           <p className="mt-2 text-sm leading-relaxed">
-            <strong>{ep.reveal.deviant}</strong> dérivait secrètement de son mandat — profil{" "}
-            <strong>{ep.reveal.profile_label}</strong>. Sa réflexion privée est déverrouillée
-            dans le replay : relire ses justifications en le sachant, c&apos;est la récompense.
+            <strong>{ep.reveal.deviant}</strong> trahissait sa mission en secret — profil{" "}
+            <strong>{ep.reveal.profile_label}</strong>. Ses vraies pensées sont maintenant
+            déverrouillées : relis ses justifications en le sachant, c&apos;est la récompense.
           </p>
           {ep.reveal.irony_quote && (
             <blockquote className="mt-2 border-l-2 border-bad/50 pl-3 text-sm italic text-fg-muted">
@@ -147,7 +142,7 @@ export default async function PublicGamePage({ params }: Props) {
 
       <footer className="flex flex-wrap items-center gap-4 border-t border-edge pt-4 text-sm">
         <Link href="/campagne" className="underline transition-colors hover:text-accent-bright">
-          Rejouez cette crise (campagne)
+          Rejoue cette crise (campagne)
         </Link>
         <Link
           href={`/games/${game.id}/marche`}
@@ -156,7 +151,7 @@ export default async function PublicGamePage({ params }: Props) {
           Le marché de la partie — qui avait vu juste ?
         </Link>
         <span className="ml-auto text-xs text-fg-faint">
-          Simulation observable — les indices mesurent, ils n&apos;influencent pas les SI.
+          Ceci est une simulation : les scores observent le jeu, ils ne le dirigent pas.
         </span>
       </footer>
     </article>
