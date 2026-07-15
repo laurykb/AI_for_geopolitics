@@ -4,6 +4,11 @@ import type { ReactNode } from "react";
 
 import { fmt } from "@/lib/format";
 
+import { Hint } from "./hint";
+
+// Ré-exportée ici : tous les call sites importent la bulle d'aide depuis le kit.
+export { Hint };
+
 export function Panel({ children, className = "" }: { children: ReactNode; className?: string }) {
   // Verre spatial : surface translucide + flou d'arrière-plan (le ciel étoilé transparaît),
   // liseré clair en haut (lumière rasante) + ombre douce pour l'élévation.
@@ -43,21 +48,6 @@ export function PanelTitle({
       </div>
       {right}
     </header>
-  );
-}
-
-/** Bulle d'aide : icône « ? » + infobulle native (title). */
-export function Hint({ text }: { text: string }) {
-  return (
-    <span
-      title={text}
-      aria-label={text}
-      tabIndex={0}
-      role="note"
-      className="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-edge-strong text-[10px] leading-none text-fg-muted transition-colors hover:border-accent-bright hover:text-foreground"
-    >
-      ?
-    </span>
   );
 }
 
