@@ -70,7 +70,7 @@ export function GlassBanner({
         </p>
       )}
       <p className="mt-1.5 text-xs text-fg-faint">
-        Les bulles du débat sont teintées : ambre = orateur désinformé, vert = bien informé,
+        Les bulles du débat sont teintées : ambre = orateur trompé, vert = bien informé,
         pointillé = dans le noir.
       </p>
     </div>

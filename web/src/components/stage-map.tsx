@@ -151,7 +151,7 @@ export function StageMap({
                 opacity={0.3}
                 className="stage-veil"
               >
-                <title>{`${speakerMeta(slug).label} — désinformé : « ${misled[slug]} »`}</title>
+                <title>{`${speakerMeta(slug).label} — trompé : « ${misled[slug]} »`}</title>
               </path>
             );
           })}

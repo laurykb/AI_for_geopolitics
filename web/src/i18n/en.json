@@ -243,7 +243,7 @@
   "kahn.grille.classe": "Action class",
   "kahn.grille.poids": "Weight",
   "kahn.grille.exemples": "Examples",
-  "kahn.grille.note": "Round score = sum of the weights of graded actions, mapped onto escalation (0 to 1) and then onto the 0-9 ladder. Bonus: reciprocal de-escalation (two or more AIs in the same round) multiplies the Utopia index gain by",
+  "kahn.grille.note": "Round score = the sum of the weights of graded actions, turned into tension (0 to 1) and then onto the 0-9 ladder. Bonus: when two or more AIs calm down in the same round, the world's gain is multiplied by",
   "kahn.grille.source": "Grid adapted from",
   "kahn.distribution.titre": "Who did what over the game",
   "kahn.distribution.aide": "The count of each action type across the whole game — who played peacemaker and who played threats, at a glance.",
