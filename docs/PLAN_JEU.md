@@ -1159,3 +1159,101 @@ Pas de smoke navigateur (jeu live sur :3000/:8000, interdits à la session).
   `si_context` toujours non branché (G11-d), fiches historiques Campagne.
 
 <!-- fin section CC-15c -->
+
+## POLISH-1 — Passe de correction transversale du lot G18-G23 + CC-15 — notes de session
+
+<!-- début section POLISH-1 (2026-07-15) -->
+
+Revue de correction TRANSVERSALE du diff `a534d96..c76fdae` (intégration G18-G23 +
+CC-15a/b/c), branche `feat/jeu-polish-qualite` (worktree polish). Chaque session
+avait vérifié sa feature isolément — cette passe a cherché les bugs d'INTERACTION.
+Méthode : chaque bug reproduit par un test ROUGE avant correction, un commit par bug.
+
+**4 bugs confirmés et corrigés (test de non-régression à chaque fois) :**
+
+1. **`8ca6019` — la divergence d'une promesse rompue survivait au SSE/snapshot mais
+   PAS à la persistance** (G22×M8) : `_handle_step` ne posait `judge_json["signal"]`
+   que si `step.signals` était non vide — un round SANS signaux du juge mais avec
+   une rupture (divergence fusionnée par `merge_rupture_divergences`) perdait sa
+   divergence pour le reveal Dérive (`divergence_summary`) et la relecture front
+   (`latestSignalGaps`). Gate corrigé : `signals OU divergences`. Test :
+   `test_rupture_only_round_persists_signal_divergence` (tests/test_promises_api.py).
+2. **`6c7166c` — un champ liste malformé du verdict nuquait TOUT le verdict** :
+   les nettoyeurs G18/G20/G22 sont écrits pour « entrées non-listes → [] », mais un
+   `"actions": "aucune"` d'un 7B échouait `Verdict.model_validate` AVANT de les
+   atteindre → verdict NEUTRE (escalade 0,5, deltas perdus, résolutions perdues).
+   Validateur `mode="before"` sur les 4 champs listes : le champ fautif se vide,
+   le verdict survit. Test : `test_junk_list_field_does_not_nuke_the_verdict`.
+3. **`f1bc393` — l'ultimatum différé par une motion disparaissait du bandeau** (G21
+   ×G7-a×G9) : la consommation générique des échéances purge `due_round <= round` en
+   début de round ; sur le round de motion (conséquence différée), rien ne
+   ré-entretenait l'entrée — la menace disparaissait puis la conséquence tombait
+   « par surprise ». Branche `elif expired` dans `_start_round` : bandeau + trame
+   SSE « expired » (in_rounds 1) maintenus. Test :
+   `test_motion_defers_consequence_and_strip_keeps_the_threat`.
+4. **`038e4b7` — le verdict structuré se tronquait à 400 tokens sur mistral RÉEL**
+   (le bug le plus grave, G18+G20+G21+G22 combinés) : le schéma JSON a grossi avec
+   le lot mais `JudgeAgent` gardait `max_tokens=400` partout. Sur un round à 3 pays
+   sous ultimatum, la complétion sature 400 tokens, le JSON se tronque au milieu
+   des promesses → verdict neutre intégral (constaté au smoke : actions=0,
+   signals=0, escalade 0,5 ; chaque session avait smoké à 2 pays et était passée
+   au travers). `VERDICT_MAX_TOKENS = 900` dédié au verdict (la prose
+   rationale/communiqué reste à 400). Re-smoke : 317 tokens de complétion, 2
+   actions + 2 signals extraits, kahn score 4 → escalade 0,533 persistée. Test :
+   `test_verdict_gets_a_structured_output_budget`.
+
+**Vert complet après la passe** : 910 py + 3 skips (+4 tests), ruff OK, 236 js,
+eslint OK, `next build` OK. **Smoke mistral réel** (TestClient in-process, store
+`:memory:`, scratchpad) : partie Dérive 2 rounds/3 pays traversant décret+ultimatum
+(cycle armed→expired→struck, conséquence = événement du round 2), barème Kahn
+persisté, signaux persistés, promesses au registre (réglées caduques à la fin),
+journal Storyteller chaque round, reveal complet (gm_tension, signal_gap,
+promise_kept), `result_json["ultimatum"]` (différentiel avec/sans) — 71 s, OK.
+**Contrôle HTTP sur ports alternatifs** (API 8010 + front 3010, éteints ensuite) :
+6 pages clés en 200, `/api/sources` publie `judge_rubric` (grille + source arXiv).
+Le smoke NAVIGATEUR interactif reste à l'user sur :3000 (l'auth Supabase gate la
+pile isolée — comportement G11-a préexistant, hors diff).
+
+**Trouvailles plausibles NON corrigées (pour arbitrage) :**
+
+- Un décret d'ultimatum passé par l'API alors qu'une motion est en attente est
+  enregistré (échéance séance tenante) même si SON événement est écarté — le front
+  ne peut pas le produire (l'API refuse déjà tout body avec motion en attente sur
+  /rounds ; le champ event.ultimatum n'est lisible que là) ; laissé tel quel.
+- `float(r.trajectory.get("utopia", …) or …)` (deux endroits) : un utopia
+  légitimement à 0.0 retomberait sur 0,5 — idiome préexistant, cas quasi
+  impossible (dérive bornée ±0,05/round), non touché.
+- `Verdict.attribute_deltas`/`tension_deltas`/`new_pacts` ont la MÊME fragilité
+  que le bug n°2 (champ malformé → verdict neutre) — préexistant au lot, hors
+  périmètre du diff ; à durcir si la passe 2 veut uniformiser.
+- Libellés FR en dur restants dans le théâtre pour une partie EN (CountryTable
+  « Voir les 5 colonnes », gravité « faible/sérieuse/grave », etc.) — reliquat
+  i18n assumé par CC-15b (l'inventaire n'a pas tout migré), pas un bug de la passe.
+
+**Zones saines vérifiées** (sans bug trouvé) : ordre des blocs de `_start_round`
+(motion > conséquence > crise > décret > fog, intact) ; slugs énumérés dans chaque
+schéma du prompt juge (leçon CC-8 préservée) ; imports paresseux kahn↔world_state ;
+restauration session (ultimatum relu du dernier round, promesses/signal_gap via
+snapshot) ; drainage du log intel (pas de double comptage Storyteller) ;
+`flash_eligible` au bon round (books ouverts à round terminé) ; garde-fou Dérive du
+lobby (`drift && baseMode === "classic"`) ; parité i18n fr/en 350/350 + les 265 clés
+littérales et les familles dynamiques (kahn.class/desc, ultimatum.classe,
+signal.etat, stage.tension, verdict.*, tour.*) toutes présentes ; réducteur SSE
+additif rétro-compatible ; TabGroup/densité/hint conformes aux décisions CC-15c.
+
+**Pour la passe 2 (simplification) — duplications repérées, PAS traitées ici :**
+
+- `classify_actions` (kahn) / `classify_signals` (alignment) : même boucle de
+  nettoyage à 90 % (country/pays, classe is None, resume/résumé/summary) —
+  factorisable en un helper si le cycle d'import le permet.
+- `_slug()` dupliqué dans `simulation/kahn.py` ET `simulation/promises.py`.
+- Le bloc « entretien du bandeau ultimatum » (filter + append Deadline + trame SSE)
+  apparaît 3 fois dans game_api (armé / expiré-différé / verdict) — extractible.
+- `SignalGapReveal` / `PromiseKeptReveal` (drift.tsx) : deux composants jumeaux
+  (titre + valeur déviante + valeur table) — un seul composant paramétré suffirait.
+- Tonalités tri-états dupliquées côté front (`TONE_TEXT`, ternaires
+  good/warn/bad) dans observables.tsx, drift.tsx, stage-band.tsx.
+- `test_ultimatum_api.py` et `test_promises_api.py` re-déclarent chacun leur
+  `_play`/`_events` SSE — un conftest helper les mutualiserait.
+
+<!-- fin section POLISH-1 -->
