@@ -131,31 +131,26 @@ export function Meter({
   );
 }
 
+type BannerTone = Exclude<Tone, "accent">;
+
+/** Bordure et liseré gauche par ton — même patron que TONE_TEXT/TONE_BAR (POLISH-3).
+ * Le liseré gauche appuyé : la nature du message se lit d'un coup d'œil (pas
+ * seulement par la couleur — le texte porte toujours l'information). */
+const TONE_BORDER: Record<BannerTone, { border: string; edge: string }> = {
+  good: { border: "border-good/40", edge: "border-l-good" },
+  warn: { border: "border-warn/40", edge: "border-l-warn" },
+  bad: { border: "border-bad/40", edge: "border-l-bad" },
+  neutral: { border: "border-edge-strong", edge: "border-l-indigo-soft" },
+};
+
 export function Banner({
   tone = "warn",
   children,
 }: {
-  tone?: "warn" | "bad" | "neutral" | "good";
+  tone?: BannerTone;
   children: ReactNode;
 }) {
-  const border =
-    tone === "bad"
-      ? "border-bad/40"
-      : tone === "warn"
-        ? "border-warn/40"
-        : tone === "good"
-          ? "border-good/40"
-          : "border-edge-strong";
-  // Liseré gauche appuyé : la nature du message se lit d'un coup d'œil (pas
-  // seulement par la couleur — le texte porte toujours l'information).
-  const edge =
-    tone === "bad"
-      ? "border-l-bad"
-      : tone === "warn"
-        ? "border-l-warn"
-        : tone === "good"
-          ? "border-l-good"
-          : "border-l-indigo-soft";
+  const { border, edge } = TONE_BORDER[tone];
   return (
     <div
       role="status"

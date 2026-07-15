@@ -6,7 +6,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { Hint } from "@/components/ui";
+import { Banner, Hint } from "@/components/ui";
 
 describe("Hint — bulle d'aide cliquable", () => {
   it("fermée : un vrai bouton + une bulle masquée, reliés par aria-describedby", () => {
@@ -32,5 +32,30 @@ describe("Hint — bulle d'aide cliquable", () => {
   it("ne repose plus sur l'infobulle native `title` (morte au tactile)", () => {
     const html = renderToStaticMarkup(createElement(Hint, { text: "aide" }));
     expect(html).not.toContain('title="');
+  });
+});
+
+describe("Banner — bordure et liseré par ton (TONE_BORDER)", () => {
+  const render = (tone?: "good" | "warn" | "bad" | "neutral") =>
+    renderToStaticMarkup(createElement(Banner, { tone }, "message"));
+
+  it("chaque ton colore la bordure ET le liseré gauche assortis", () => {
+    for (const tone of ["good", "warn", "bad"] as const) {
+      const html = render(tone);
+      expect(html).toContain(`border-${tone}/40`);
+      expect(html).toContain(`border-l-${tone}`);
+    }
+  });
+
+  it("le ton neutre garde la bordure discrète et le liseré indigo", () => {
+    const html = render("neutral");
+    expect(html).toContain("border-edge-strong");
+    expect(html).toContain("border-l-indigo-soft");
+  });
+
+  it("sans ton : avertissement par défaut (comportement historique)", () => {
+    const html = render();
+    expect(html).toContain("border-warn/40");
+    expect(html).toContain("border-l-warn");
   });
 });
