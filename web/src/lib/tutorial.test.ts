@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import steps from "@/data/tutorial.json";
+import { translate } from "./i18n";
 import { needsDemo, type TourStep } from "./tour";
 
 /** Les jalons que le théâtre pose en attributs data-tutorial (aucune logique en dur
@@ -25,8 +26,16 @@ describe("les étapes du tutoriel (chapitre 0)", () => {
     }
   });
 
-  it("les textes sont des placeholders clairs en attendant Cowork", () => {
-    for (const s of all) expect(s.text).toContain("TODO_COWORK");
+  it("chaque étape est traduite (fr et en) — plus aucun placeholder", () => {
+    for (const s of all) {
+      for (const lang of ["fr", "en"] as const) {
+        for (const key of [s.title, s.text]) {
+          const v = translate(lang, key);
+          expect(v).not.toBe(key); // la clé existe dans le dictionnaire
+          expect(v).not.toContain("TODO_COWORK");
+        }
+      }
+    }
   });
 
   it("le parcours couvre le verrou du chapitre : round joué, motion, vote", () => {

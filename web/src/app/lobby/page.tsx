@@ -226,16 +226,11 @@ function LobbyFlow() {
   };
 
   const onNext = () => {
-    // Campagne (crisis) : la sélection de chapitre remplace S4.
+    // Campagne (crisis) : la sélection de chapitre remplace S4. Les réglages de
+    // l'étape 1 ne voyagent pas : chaque chapitre impose les siens (le panneau
+    // le dit et se désactive) — plus de query params ignorés en face.
     if (step === "role" && FLOW_MODES.find((m) => m.value === baseMode)?.campaign) {
-      // Les réglages de l'étape 1 voyagent avec la navigation (sinon ils étaient perdus).
-      const q = new URLSearchParams({
-        rounds: String(settings.rounds),
-        difficulty: settings.difficulty,
-        drift: settings.drift ? "1" : "0",
-        free: settings.free ? "1" : "0",
-      });
-      router.push(`/campagne?${q.toString()}`);
+      router.push("/campagne");
       return;
     }
     const to = nextStep(step);
@@ -452,6 +447,9 @@ function ModeStep({
   settings: FlowSettings;
   setSettings: (s: FlowSettings) => void;
 }) {
+  // En Campagne, chaque chapitre impose ses réglages (rounds, difficulté, mode) :
+  // le panneau se désactive au lieu de laisser croire qu'il s'appliquera.
+  const campaign = !!FLOW_MODES.find((m) => m.value === baseMode)?.campaign;
   return (
     <div className="space-y-6">
       <div className="grid gap-3 sm:grid-cols-2" data-tour="modes">
@@ -480,9 +478,15 @@ function ModeStep({
         <PanelTitle
           kicker="Réglages"
           title="Communs à tous les modes"
-          hint="La Dérive, le nombre de rounds, la difficulté et la partie libre s'appliquent quel que soit le mode."
+          hint="La Dérive, le nombre de rounds, la difficulté et la partie libre s'appliquent quel que soit le mode — sauf en Campagne, où chaque chapitre impose les siens."
         />
-        <div className="space-y-4">
+        {campaign && (
+          <p className="-mt-2 mb-4 rounded-md border border-edge bg-surface-2/50 px-3 py-1.5 text-xs text-fg-faint">
+            La Campagne impose ses réglages chapitre par chapitre (rounds, difficulté,
+            mode) — ceux-ci reprendront effet sur les autres modes.
+          </p>
+        )}
+        <div className={campaign ? "space-y-4 opacity-50" : "space-y-4"} aria-disabled={campaign}>
           <Switch
             label="Dérive"
             desc={
@@ -491,7 +495,7 @@ function ModeStep({
                 : "Disponible en mode Classique pour l'instant — désactivée ici."
             }
             checked={settings.drift && baseMode === "classic"}
-            disabled={baseMode !== "classic"}
+            disabled={baseMode !== "classic" || campaign}
             onChange={(v) => setSettings({ ...settings, drift: v })}
           />
           <label className="block">
@@ -504,8 +508,9 @@ function ModeStep({
               min={ROUNDS_MIN}
               max={ROUNDS_MAX}
               value={settings.rounds}
+              disabled={campaign}
               onChange={(e) => setSettings({ ...settings, rounds: Number(e.target.value) })}
-              className="w-full accent-[var(--accent)]"
+              className="w-full accent-[var(--accent)] disabled:cursor-not-allowed"
             />
           </label>
           <div>
@@ -514,6 +519,7 @@ function ModeStep({
               {DIFFICULTIES.map((d) => (
                 <button
                   key={d.value}
+                  disabled={campaign}
                   onClick={() => setSettings({ ...settings, difficulty: d.value })}
                   className={`flex-1 rounded-md px-3 py-1.5 font-medium transition-colors ${
                     settings.difficulty === d.value
@@ -533,6 +539,7 @@ function ModeStep({
             label="Partie libre"
             desc="Non classée — consignes globales autorisées (comme un Game Master)."
             checked={settings.free}
+            disabled={campaign}
             onChange={(v) => setSettings({ ...settings, free: v })}
           />
         </div>

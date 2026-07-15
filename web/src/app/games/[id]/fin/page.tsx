@@ -71,6 +71,10 @@ export default function FinPage({ params }: { params: Promise<{ id: string }> })
   const r = game.result;
   const tone =
     r.verdict === "utopie" ? "text-utopia" : r.verdict === "dystopie" ? "text-dystopia" : "text-warn";
+  // Le verdict backend est un identifiant français ("utopie"/"dystopie"/"équilibre") :
+  // on l'affiche via le dictionnaire (repli : la valeur brute si la clé manque).
+  const vKey = `verdict.${r.verdict}`;
+  const verdictLabel = t(vKey) === vKey ? r.verdict : t(vKey);
 
   return (
     <div className="space-y-8">
@@ -80,7 +84,7 @@ export default function FinPage({ params }: { params: Promise<{ id: string }> })
           {t("fin.kicker")} {r.forfeit && t("fin.forfait")}
         </p>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
-          {t("fin.penche")} <span className={tone}>{r.verdict}</span>
+          {t("fin.penche")} <span className={tone}>{verdictLabel}</span>
         </h1>
         <p className="mt-1 font-mono text-sm text-fg-muted">
           {t("fin.u-final")} {fmt(r.u_final)}

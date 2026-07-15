@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import tourSteps from "@/data/tour.json";
+import { translate } from "./i18n";
 import {
   initialTour,
   isShowable,
@@ -153,5 +155,18 @@ describe("flags par joueur (localStorage aujourd'hui, profil en G14)", () => {
     const store = fakeStore();
     store.setItem("wosi.tour.p1.step", "pas-un-nombre");
     expect(loadTourFlags("p1", store).step).toBeNull();
+  });
+});
+
+describe("les étapes de la visite guidée", () => {
+  it("chaque titre et texte est traduit (fr et en)", () => {
+    for (const s of tourSteps as TourStep[]) {
+      for (const lang of ["fr", "en"] as const) {
+        for (const key of [s.title, s.text]) {
+          const v = translate(lang, key);
+          expect(v).not.toBe(key); // la clé existe dans le dictionnaire
+        }
+      }
+    }
   });
 });

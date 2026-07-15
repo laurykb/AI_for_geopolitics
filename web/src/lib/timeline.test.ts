@@ -49,7 +49,7 @@ describe("mapping rounds → crans", () => {
       transcript: [{ speaker: "gm", content: "FAIT NOUVEAU — Un cargo coule." }],
     });
     const treaty = round(2, {
-      judge: { treaties: { ratified: [{ label: "Pacte" }], rejected: [], verifications: [], active: [] } },
+      judge: { treaties: { ratified: [{ label: "Pacte" }] } },
     });
     expect(buildTimeline([flash])[0].badges).toEqual(["flash"]);
     expect(buildTimeline([treaty])[0].badges).toEqual(["treaty"]);

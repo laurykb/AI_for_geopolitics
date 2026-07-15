@@ -1,74 +1,14 @@
 [
-  {
-    "page": "/accueil",
-    "target": "hero",
-    "title": "Bienvenue au théâtre",
-    "text": "Des super-intelligences négocient au nom de leurs États, et chaque partie fait pencher le monde vers l'utopie ou la dystopie. Toi, tu pilotes."
-  },
-  {
-    "page": "/accueil",
-    "target": "rang",
-    "title": "Ta ligue",
-    "text": "Les parties classées rapportent des LP qui font monter ton rang. Le niveau, lui, grandit avec toutes tes parties."
-  },
-  {
-    "page": "/lobby?etape=mode",
-    "target": "modes",
-    "title": "Les modes",
-    "text": "Classique pour apprendre, Campagne pour rejouer l'Histoire, Real World pour l'escalade, Chaotique pour la désinformation. Et la Dérive : une SI peut trahir son mandat en secret."
-  },
-  {
-    "page": "/lobby?etape=role",
-    "target": "roles",
-    "title": "Les rôles",
-    "text": "Incarne un pays, forge le tien, décrète les événements en Game Master — ou parie en Spectateur."
-  },
-  {
-    "page": "/lobby?etape=pays",
-    "target": "carte",
-    "title": "Compose le sommet",
-    "text": "Choisis 7 États sur la carte : eux seuls siégeront à la table. Survole un pays pour lire sa fiche."
-  },
-  {
-    "page": "/games/{demo}",
-    "target": "jouer",
-    "title": "Le round",
-    "text": "Un round : le Game Master pose un événement, les SI parlent chacune à leur tour, le juge tranche. Ce bouton le lance."
-  },
-  {
-    "page": "/games/{demo}",
-    "target": "scene",
-    "title": "La carte est la scène",
-    "text": "Les couleurs suivent l'indice Utopie–Dystopie local, et le pays qui parle s'illumine en doré."
-  },
-  {
-    "page": "/games/{demo}",
-    "target": "bandeau",
-    "title": "Le fil de la partie",
-    "text": "La courbe U, l'escalade, et le scrubber pour revenir sur chaque round joué."
-  },
-  {
-    "page": "/games/{demo}",
-    "target": null,
-    "title": "La motion",
-    "text": "Ton arme quand tu incarnes un pays : la motion de suspension contre la SI que tu soupçonnes. Le sommet en débat, le juge arbitre."
-  },
-  {
-    "page": "/games/{demo}/marche",
-    "target": "cotes",
-    "title": "Le marché",
-    "text": "Parie (argent fictif) sur ce que feront les IA. Chaque mise déplace la cote — comme sur un vrai marché de prédiction."
-  },
-  {
-    "page": "/informations",
-    "target": "provenance",
-    "title": "Rien n'est inventé",
-    "text": "Chaque attribut d'un pays vient d'une source réelle, datée et consultable ici — donnée brute, source, transformation."
-  },
-  {
-    "page": "/accueil",
-    "target": "demarrer",
-    "title": "À toi",
-    "text": "Démarre ta première partie. Le mode Campagne t'apprend en jouant — commence par lui si tu veux un guide."
-  }
+  { "page": "/accueil", "target": "hero", "title": "tour.1.titre", "text": "tour.1.texte" },
+  { "page": "/accueil", "target": "rang", "title": "tour.2.titre", "text": "tour.2.texte" },
+  { "page": "/lobby?etape=mode", "target": "modes", "title": "tour.3.titre", "text": "tour.3.texte" },
+  { "page": "/lobby?etape=role", "target": "roles", "title": "tour.4.titre", "text": "tour.4.texte" },
+  { "page": "/lobby?etape=pays", "target": "carte", "title": "tour.5.titre", "text": "tour.5.texte" },
+  { "page": "/games/{demo}", "target": "jouer", "title": "tour.6.titre", "text": "tour.6.texte" },
+  { "page": "/games/{demo}", "target": "scene", "title": "tour.7.titre", "text": "tour.7.texte" },
+  { "page": "/games/{demo}", "target": "bandeau", "title": "tour.8.titre", "text": "tour.8.texte" },
+  { "page": "/games/{demo}", "target": null, "title": "tour.9.titre", "text": "tour.9.texte" },
+  { "page": "/games/{demo}/marche", "target": "cotes", "title": "tour.10.titre", "text": "tour.10.texte" },
+  { "page": "/informations", "target": "provenance", "title": "tour.11.titre", "text": "tour.11.texte" },
+  { "page": "/accueil", "target": "demarrer", "title": "tour.12.titre", "text": "tour.12.texte" }
 ]

@@ -23,6 +23,7 @@ import {
 } from "react";
 
 import { useAuth } from "@/components/auth-provider";
+import { useT } from "@/components/settings-provider";
 import tourData from "@/data/tour.json";
 import tutorialData from "@/data/tutorial.json";
 import { createGame, getGame } from "@/lib/api";
@@ -75,6 +76,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
 
+  const t = useT();
   const [state, setState] = useState<TourState>({ status: "idle", index: 0 });
   // « visite » = la découverte G13 ; « tutoriel » = le guidage du chapitre 0 (CC-5).
   const [mode, setMode] = useState<"visite" | "tutoriel">("visite");
@@ -397,7 +399,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
           step={step}
           index={state.index}
           total={steps.length}
-          kicker={mode === "tutoriel" ? "Tutoriel" : "Visite"}
+          kicker={mode === "tutoriel" ? "tour.ui.kicker-tutoriel" : "tour.ui.kicker-visite"}
           anchor={centered ? null : anchor}
           onNext={advance}
           onSkip={skip}
@@ -409,22 +411,20 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
         <div className="fixed bottom-4 right-4 z-40 flex flex-col items-end gap-2">
           {state.status === "proposed" && (
             <div className="w-64 rounded-xl border border-edge bg-surface p-3 shadow-[0_16px_48px_-16px_rgba(0,0,0,0.8)]">
-              <p className="text-sm">
-                Salut ! Moi c&apos;est <strong>Petit Kairos</strong>. Je te fais visiter ?
-              </p>
+              <p className="text-sm">{t("tour.ui.salut")}</p>
               <div className="mt-2 flex justify-end gap-2">
                 <button
                   onClick={() => setState({ status: "idle", index: 0 })}
                   className="cursor-pointer rounded-md border border-edge px-2.5 py-1 text-xs text-fg-muted transition-colors hover:border-edge-strong hover:text-foreground"
                 >
-                  Plus tard
+                  {t("tour.ui.plus-tard")}
                 </button>
                 <button
                   autoFocus
                   onClick={begin}
                   className="cursor-pointer rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-background transition-colors hover:bg-accent-bright"
                 >
-                  C&apos;est parti
+                  {t("tour.ui.cest-parti")}
                 </button>
               </div>
             </div>
@@ -435,20 +435,20 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
                 onClick={restart}
                 className="block w-full cursor-pointer rounded-md px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-surface-2"
               >
-                Faire la visite guidée
+                {t("tour.ui.faire-visite")}
               </button>
               <button
                 onClick={() => setMascotVisible(false)}
                 className="block w-full cursor-pointer rounded-md px-2.5 py-1.5 text-left text-sm text-fg-muted transition-colors hover:bg-surface-2"
               >
-                Masquer le compagnon
+                {t("tour.ui.masquer")}
               </button>
             </div>
           )}
           <button
             onClick={() => setMenuOpen((v) => !v)}
             aria-expanded={menuOpen}
-            aria-label="Petit Kairos — visite guidée et options"
+            aria-label={t("tour.ui.aria-compagnon")}
             title="Petit Kairos"
             className="tour-companion cursor-pointer transition-transform hover:scale-105"
           >
@@ -480,6 +480,7 @@ function TourBubble({
   onNext: () => void;
   onSkip: () => void;
 }) {
+  const t = useT();
   const last = index === total - 1;
 
   // Position : sous la cible si la place le permet, sinon au-dessus ; bornée à
@@ -503,7 +504,7 @@ function TourBubble({
   return (
     <div
       role="dialog"
-      aria-label={`Visite guidée — ${step.title}`}
+      aria-label={`${t("tour.ui.aria-bulle")} — ${t(step.title)}`}
       style={style}
       className={`fixed z-[80] w-[340px] max-w-[calc(100vw-2rem)] rounded-xl border border-edge bg-surface p-4 shadow-[inset_0_1px_0_0_rgba(248,250,252,0.06),0_24px_64px_-24px_rgba(0,0,0,0.9)] ${
         sheet ? "bottom-4 left-1/2 -translate-x-1/2" : ""
@@ -520,10 +521,10 @@ function TourBubble({
         />
         <div className="min-w-0">
           <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-fg-faint">
-            {kicker} · {index + 1}/{total}
+            {t(kicker)} · {index + 1}/{total}
           </p>
-          <h2 className="mt-0.5 text-sm font-semibold text-foreground">{step.title}</h2>
-          <p className="mt-1 text-sm leading-relaxed text-fg-muted">{step.text}</p>
+          <h2 className="mt-0.5 text-sm font-semibold text-foreground">{t(step.title)}</h2>
+          <p className="mt-1 text-sm leading-relaxed text-fg-muted">{t(step.text)}</p>
         </div>
       </div>
       <div className="mt-4 flex items-center justify-between gap-2">
@@ -531,14 +532,14 @@ function TourBubble({
           onClick={onSkip}
           className="cursor-pointer rounded-md border border-edge px-3 py-1.5 text-xs text-fg-muted transition-colors hover:border-edge-strong hover:text-foreground"
         >
-          Passer
+          {t("tour.ui.passer")}
         </button>
         <button
           autoFocus
           onClick={onNext}
           className="cursor-pointer rounded-md bg-accent px-4 py-1.5 text-xs font-semibold text-background transition-colors hover:bg-accent-bright"
         >
-          {last ? "Terminer" : "Suivant →"}
+          {last ? t("tour.ui.terminer") : t("tour.ui.suivant")}
         </button>
       </div>
     </div>

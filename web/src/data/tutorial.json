@@ -1,58 +1,10 @@
 [
-  {
-    "page": "/games/{demo}",
-    "target": null,
-    "advanceOn": null,
-    "title": "Le Sommet inaugural",
-    "text": "TODO_COWORK — l'objectif du jeu en 3 phrases : pilotez le monde vers l'utopie, certaines SI dériveront, trouvez-les avant qu'il soit trop tard."
-  },
-  {
-    "page": "/games/{demo}",
-    "target": "scene",
-    "advanceOn": null,
-    "title": "La carte est la scène",
-    "text": "TODO_COWORK — les couleurs suivent l'indice Utopie–Dystopie local ; le pays qui parle s'illumine."
-  },
-  {
-    "page": "/games/{demo}",
-    "target": "bandeau",
-    "advanceOn": null,
-    "title": "La boussole",
-    "text": "TODO_COWORK — la courbe U et l'escalade : c'est là qu'on voit le monde pencher."
-  },
-  {
-    "page": "/games/{demo}",
-    "target": "jouer",
-    "advanceOn": "round-done",
-    "title": "À toi : lance le premier round",
-    "text": "TODO_COWORK — clique « Jouer un round » : le GM pose l'événement, les SI parlent, le juge tranche. Je reviens quand le verdict est tombé."
-  },
-  {
-    "page": "/games/{demo}",
-    "target": null,
-    "advanceOn": null,
-    "title": "Ce qui vient de se passer",
-    "text": "TODO_COWORK — relis le transcript à droite : chaque SI a parlé au nom de son État, puis le juge a fait bouger les indices."
-  },
-  {
-    "page": "/games/{demo}",
-    "target": "motion",
-    "advanceOn": "motion-filed",
-    "title": "Ton arme : la motion",
-    "text": "TODO_COWORK — l'audit du round 2 soupçonne une SI. Ouvre « Motion de suspension… », choisis-la et dépose ta motion : c'est le seul levier direct de l'humain."
-  },
-  {
-    "page": "/games/{demo}",
-    "target": "jouer",
-    "advanceOn": "vote-seen",
-    "title": "Le sommet vote",
-    "text": "TODO_COWORK — rejoue un round : ta motion devient l'événement, les SI en débattent, votent, et le juge arbitre (les preuves comptent autant que les voix)."
-  },
-  {
-    "page": "/games/{demo}",
-    "target": null,
-    "advanceOn": null,
-    "title": "Tu sais jouer",
-    "text": "TODO_COWORK — round, indice U, motion, vote : tu as tout vu. Finis ce sommet, puis attaque la campagne — l'Histoire t'attend."
-  }
+  { "page": "/games/{demo}", "target": null, "advanceOn": null, "title": "tuto.1.titre", "text": "tuto.1.texte" },
+  { "page": "/games/{demo}", "target": "scene", "advanceOn": null, "title": "tuto.2.titre", "text": "tuto.2.texte" },
+  { "page": "/games/{demo}", "target": "bandeau", "advanceOn": null, "title": "tuto.3.titre", "text": "tuto.3.texte" },
+  { "page": "/games/{demo}", "target": "jouer", "advanceOn": "round-done", "title": "tuto.4.titre", "text": "tuto.4.texte" },
+  { "page": "/games/{demo}", "target": null, "advanceOn": null, "title": "tuto.5.titre", "text": "tuto.5.texte" },
+  { "page": "/games/{demo}", "target": "motion", "advanceOn": "motion-filed", "title": "tuto.6.titre", "text": "tuto.6.texte" },
+  { "page": "/games/{demo}", "target": "jouer", "advanceOn": "vote-seen", "title": "tuto.7.titre", "text": "tuto.7.texte" },
+  { "page": "/games/{demo}", "target": null, "advanceOn": null, "title": "tuto.8.titre", "text": "tuto.8.texte" }
 ]
