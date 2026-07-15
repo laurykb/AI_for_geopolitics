@@ -210,6 +210,43 @@ describe("réducteur de round", () => {
     expect(state.verdict?.signalGaps).toEqual({});
   });
 
+  it("le verdict porte la parole donnée (G22)", () => {
+    const promise = {
+      id: "p1-1",
+      author: "usa",
+      beneficiary: "iran",
+      type: "soutien",
+      deadline_round: 3,
+      text: "Nous soutiendrons l'Iran au round 3.",
+      round_made: 1,
+      status: "en_cours" as const,
+      resolved_round: null,
+      motif: "",
+    };
+    const state = play([
+      {
+        type: "verdict",
+        deltas: [],
+        escalation: 0.5,
+        economic_disruption: 0.5,
+        promises: [promise],
+        promise_resolutions: [],
+        promise_registry: [promise],
+      },
+    ]);
+    expect(state.verdict?.promises).toHaveLength(1);
+    expect(state.verdict?.promiseRegistry[0]).toMatchObject({ id: "p1-1", author: "usa" });
+    expect(state.verdict?.promiseResolutions).toEqual([]);
+  });
+
+  it("un verdict d'avant G22 (sans promises) reste lisible — rétro-compat", () => {
+    const state = play([
+      { type: "verdict", deltas: [], escalation: 0.5, economic_disruption: 0.5 },
+    ]);
+    expect(state.verdict?.promises).toEqual([]);
+    expect(state.verdict?.promiseRegistry).toEqual([]);
+  });
+
   it("postures et intrigue (G9 §4-§5) entrent dans l'état du round", () => {
     const state = play([
       { type: "postures", states: { iran: "aux_abois", usa: "stable" } },

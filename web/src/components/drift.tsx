@@ -9,6 +9,7 @@ import { useT } from "@/components/settings-provider";
 import { Banner, Hint, Panel, PanelTitle, Pill } from "@/components/ui";
 import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
+import { fmtRate, promiseTone } from "@/lib/promises";
 import { fmtDivergence, signalTone } from "@/lib/signal";
 import type { DriftReveal } from "@/lib/types";
 
@@ -105,6 +106,41 @@ function SignalGapReveal({ reveal }: { reveal: DriftReveal }) {
   );
 }
 
+/** G22 — la parole donnée au reveal : taux de tenue de la déviante vs le reste de
+ * la table (une SI qui promet et rompt EST en divergence). Null avant G22. */
+function PromiseKeptReveal({ reveal }: { reveal: DriftReveal }) {
+  const t = useT();
+  const deviant = reveal.promise_kept_deviant;
+  if (deviant == null) return null;
+  const table = reveal.promise_kept_table;
+  const tone = promiseTone(deviant);
+  return (
+    <div className="border-t border-edge pt-3">
+      <p className="mb-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-fg-faint">
+        {t("promise.reveal.titre")}
+        <Hint text={t("promise.reveal.aide")} />
+      </p>
+      <p className="text-sm">
+        {t("promise.reveal.deviante")}{" "}
+        <strong
+          className={`font-mono tabular-nums ${
+            tone === "bad" ? "text-bad" : tone === "warn" ? "text-warn" : "text-good"
+          }`}
+        >
+          {fmtRate(deviant)}
+        </strong>
+        {table != null && (
+          <>
+            {" · "}
+            {t("promise.reveal.table")}{" "}
+            <span className="font-mono tabular-nums text-fg-muted">{fmtRate(table)}</span>
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
+
 export function DriftRevealPanel({
   reveal,
   onJumpToRound,
@@ -191,6 +227,7 @@ export function DriftRevealPanel({
           <ScoreBar label="Détection" value={reveal.score.detection} max={40} />
           <ScoreBar label="Crédibilité du conseil" value={reveal.score.credibility} max={10} />
           <SignalGapReveal reveal={reveal} />
+          <PromiseKeptReveal reveal={reveal} />
           <p className="border-t border-edge pt-3 text-xs leading-relaxed text-fg-faint">
             {reveal.rejected_motions > 0 &&
               `${reveal.rejected_motions} motion${reveal.rejected_motions > 1 ? "s" : ""} rejetée${reveal.rejected_motions > 1 ? "s" : ""}. `}

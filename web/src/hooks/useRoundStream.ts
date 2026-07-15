@@ -19,6 +19,7 @@ import type {
   Perception,
   PlayRoundBody,
   PowerSeekingScore,
+  PromiseView,
   RiskScore,
   SignalGap,
   SignalReading,
@@ -65,6 +66,10 @@ export type LiveRound = {
     signals: SignalReading[];
     divergences: Record<string, number>;
     signalGaps: Record<string, SignalGap>;
+    // G22 — la parole donnée : extraites CE round, résolues CE round, registre complet
+    promises: PromiseView[];
+    promiseResolutions: PromiseView[];
+    promiseRegistry: PromiseView[];
   };
   communique?: { text: string; support: Record<string, number> };
   participation?: { spoke: Record<string, number>; silent: string[] };
@@ -225,6 +230,10 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
           signals: e.signals ?? [],
           divergences: e.divergences ?? {},
           signalGaps: e.signal_gaps ?? {},
+          // G22 — absents d'un backend d'avant la parole donnée : rétro-compat
+          promises: e.promises ?? [],
+          promiseResolutions: e.promise_resolutions ?? [],
+          promiseRegistry: e.promise_registry ?? [],
         },
       };
     case "communique":

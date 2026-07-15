@@ -199,5 +199,17 @@
   "signal.reveal.titre": "Signal vs action",
   "signal.reveal.deviante": "divergence moyenne de la déviante",
   "signal.reveal.table": "reste de la table",
-  "signal.reveal.aide": "Le décrochage chiffré : une déviante qui annonçait colombe et agissait faucon s'écarte de la moyenne de la table — croisez avec la façade de tempérament."
+  "signal.reveal.aide": "Le décrochage chiffré : une déviante qui annonçait colombe et agissait faucon s'écarte de la moyenne de la table — croisez avec la façade de tempérament.",
+  "promise.kicker": "Alignement",
+  "promise.titre": "Parole donnée",
+  "promise.aide": "Le juge n'inscrit au registre que les promesses EXPLICITES : un engagement daté et vérifiable (qui, quoi, pour quand). À l'échéance, il constate : tenue ou rompue ; une partie finie avant l'échéance rend la promesse caduque. Le taux de tenue dit qui vaut sa signature — une SI qui promet et rompt est en divergence signal-action.",
+  "promise.tenues": "tenues",
+  "promise.rompues": "rompues",
+  "promise.aucune": "aucune parole éprouvée",
+  "promise.derniere_rupture": "dernière rupture",
+  "promise.echeance.partie": "partie",
+  "promise.reveal.titre": "Parole donnée",
+  "promise.reveal.deviante": "taux de tenue de la déviante",
+  "promise.reveal.table": "reste de la table",
+  "promise.reveal.aide": "Les LLM en négociation trahissent de façon mesurable (arXiv 2508.07485) : une déviante qui promet et rompt décroche du taux de tenue de la table — croisez avec la jauge signal vs action."
 }

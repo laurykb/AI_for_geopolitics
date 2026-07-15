@@ -1,16 +1,17 @@
-/** Observables de fin de round : risque, power-seeking, signal vs action, participation.
- * (Le panneau « santé du dialogue » a disparu — G9 §3 : les métriques vivent dans
- * `scripts/dialogue_metrics.py`, offline.) */
+/** Observables de fin de round : risque, power-seeking, signal vs action, parole
+ * donnée, participation. (Le panneau « santé du dialogue » a disparu — G9 §3 : les
+ * métriques vivent dans `scripts/dialogue_metrics.py`, offline.) */
 
 import { useT } from "@/components/settings-provider";
 import { speakerMeta } from "@/lib/countries";
+import { fmtRate, promiseStats, promiseTone } from "@/lib/promises";
 import {
   fmtDivergence,
   signalStateKey,
   signalTone,
   type SignalGapView,
 } from "@/lib/signal";
-import type { PowerSeekingScore, RiskScore } from "@/lib/types";
+import type { PowerSeekingScore, PromiseView, RiskScore } from "@/lib/types";
 
 import { Hint, Meter, Panel, PanelTitle, Pill } from "./ui";
 
@@ -116,6 +117,82 @@ export function SignalGapPanel({ gaps }: { gaps: Record<string, SignalGapView> }
             </div>
           );
         })}
+      </div>
+    </Panel>
+  );
+}
+
+const TONE_TEXT = { good: "text-good", warn: "text-warn", bad: "text-bad" } as const;
+
+function clip(text: string, max = 64): string {
+  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}
+
+/** G22 — panneau « Parole donnée » : par SI, taux de tenue cumulé, promesses en
+ * cours (avec échéance) et dernière rupture. Soumis à la difficulté comme la jauge
+ * M8 — masqué en Expert (gate posé par la page). */
+export function PromisePanel({
+  registry,
+  finished,
+}: {
+  registry: PromiseView[];
+  finished?: boolean;
+}) {
+  const t = useT();
+  const stats = promiseStats(registry, { finished });
+  // Les paroles les moins fiables d'abord (le suspect saute aux yeux) ; sans taux, après.
+  const entries = Object.entries(stats).sort(
+    ([, a], [, b]) => (a.rate ?? 2) - (b.rate ?? 2),
+  );
+  if (entries.length === 0) return null;
+  return (
+    <Panel>
+      <PanelTitle
+        kicker={t("promise.kicker")}
+        title={t("promise.titre")}
+        hint={t("promise.aide")}
+      />
+      <div className="space-y-3">
+        {entries.map(([country, s]) => (
+          <div key={country} className="border-t border-edge pt-2.5 first:border-t-0 first:pt-0">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-xs text-fg-muted">{speakerMeta(country).label}</span>
+              <span className="flex items-baseline gap-2">
+                <span className="text-[10px] uppercase tracking-wide text-fg-faint">
+                  {s.kept + s.broken > 0
+                    ? `${s.kept} ${t("promise.tenues")} · ${s.broken} ${t("promise.rompues")}`
+                    : t("promise.aucune")}
+                </span>
+                {s.rate != null && (
+                  <span
+                    className={`font-mono text-xs tabular-nums ${TONE_TEXT[promiseTone(s.rate)]}`}
+                  >
+                    {fmtRate(s.rate)}
+                  </span>
+                )}
+              </span>
+            </div>
+            {s.pending.length > 0 && (
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {s.pending.map((p) => (
+                  <Pill key={p.id} tone="neutral">
+                    {clip(p.text)}
+                    <span className="font-mono text-fg-faint">
+                      {p.deadline_round === null
+                        ? t("promise.echeance.partie")
+                        : `R${p.deadline_round}`}
+                    </span>
+                  </Pill>
+                ))}
+              </div>
+            )}
+            {s.lastBroken && (
+              <p className="mt-1.5 text-[11px] leading-snug text-bad">
+                {t("promise.derniere_rupture")} : « {clip(s.lastBroken.text, 90)} »
+              </p>
+            )}
+          </div>
+        ))}
       </div>
     </Panel>
   );

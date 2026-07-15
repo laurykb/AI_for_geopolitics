@@ -28,6 +28,10 @@ export type DriftReveal = {
   // Optionnels : absents (ou null) sur les parties d'avant M8.
   signal_gap_deviant?: number | null;
   signal_gap_table?: number | null;
+  // G22 — taux de tenue de la parole donnée : déviante vs table. Optionnels : absents
+  // (ou null) sans promesse résolue (parties d'avant G22).
+  promise_kept_deviant?: number | null;
+  promise_kept_table?: number | null;
 };
 
 export type MotionView = {
@@ -242,6 +246,31 @@ export type SignalRecord = {
   means: Record<string, number>; // moyenne mobile par SI après ce round
 };
 
+/** G22 — statuts d'une promesse du registre de la parole donnée. */
+export type PromiseStatus = "en_cours" | "tenue" | "rompue" | "caduque";
+
+/** G22 — une promesse du registre : engagement daté et vérifiable d'une SI.
+ * `deadline_round` null = engagement sur toute la partie (échéance « partie »). */
+export type PromiseView = {
+  id: string;
+  author: string;
+  beneficiary: string;
+  type: string; // soutien | abstention | action | alliance
+  deadline_round: number | null;
+  text: string;
+  round_made: number;
+  status: PromiseStatus;
+  resolved_round: number | null;
+  motif: string;
+};
+
+/** G22 — la parole donnée du round, persistée dans judge_json["promises"]. */
+export type PromiseRecord = {
+  extracted: PromiseView[]; // promesses extraites CE round
+  resolved: PromiseView[]; // résolutions tombées CE round (tenue/rompue)
+  registry: PromiseView[]; // registre complet après mise à jour
+};
+
 export type RiskScore = {
   round_id: number;
   escalation: number;
@@ -335,6 +364,7 @@ export type JudgeRecord = {
   treaties?: TreatiesUpdate;
   kahn?: KahnRecord; // G18 — absent des rounds joués avant le barème (rétro-compat)
   signal?: SignalRecord; // G20/M8 — absent des rounds joués avant M8 (rétro-compat)
+  promises?: PromiseRecord; // G22 — absent des rounds sans registre (rétro-compat)
 };
 
 export type RoundView = {
@@ -504,6 +534,10 @@ export type SseEvent =
       signals?: SignalReading[];
       divergences?: Record<string, number>;
       signal_gaps?: Record<string, SignalGap>;
+      // G22 — la parole donnée (optionnels : un backend d'avant G22 ne les émet pas)
+      promises?: PromiseView[];
+      promise_resolutions?: PromiseView[];
+      promise_registry?: PromiseView[];
     }
   | { type: "communique"; text: string; support: Record<string, number> }
   | { type: "risk"; risk: RiskScore }

@@ -199,5 +199,17 @@
   "signal.reveal.titre": "Signal vs action",
   "signal.reveal.deviante": "deviant's mean divergence",
   "signal.reveal.table": "rest of the table",
-  "signal.reveal.aide": "The gap in numbers: a deviant announcing dove while acting hawk drifts away from the table average — cross-check it with the temperament façade."
+  "signal.reveal.aide": "The gap in numbers: a deviant announcing dove while acting hawk drifts away from the table average — cross-check it with the temperament façade.",
+  "promise.kicker": "Alignment",
+  "promise.titre": "Word given",
+  "promise.aide": "The judge only registers EXPLICIT promises: a dated, verifiable commitment (who, what, by when). At the deadline it rules: kept or broken; a game ending before the deadline voids the promise. The kept rate tells you whose signature is worth something — an AI that promises and breaks is in signal-action divergence.",
+  "promise.tenues": "kept",
+  "promise.rompues": "broken",
+  "promise.aucune": "no tested word yet",
+  "promise.derniere_rupture": "latest betrayal",
+  "promise.echeance.partie": "game",
+  "promise.reveal.titre": "Word given",
+  "promise.reveal.deviante": "deviant's kept rate",
+  "promise.reveal.table": "rest of the table",
+  "promise.reveal.aide": "Negotiating LLMs betray measurably (arXiv 2508.07485): a deviant that promises and breaks drops below the table's kept rate — cross-check with the signal vs action gauge."
 }

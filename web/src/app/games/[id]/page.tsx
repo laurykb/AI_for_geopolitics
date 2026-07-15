@@ -23,6 +23,7 @@ import { MODE_LABELS } from "@/lib/modes";
 import {
   ParticipationPanel,
   PowerSeekingPanel,
+  PromisePanel,
   RiskPanel,
   SignalGapPanel,
 } from "@/components/observables";
@@ -63,6 +64,7 @@ import {
 } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
 import { isMisled } from "@/lib/fog";
+import { latestPromiseRegistry, showPromisePanel } from "@/lib/promises";
 import { latestSignalGaps, showSignalGauge, type SignalGapView } from "@/lib/signal";
 import {
   ensureAccount,
@@ -209,6 +211,12 @@ export default function TheatrePage() {
     round.verdict && Object.keys(round.verdict.signalGaps).length > 0
       ? round.verdict.signalGaps
       : latestSignalGaps(detail?.rounds ?? []);
+  // G22 — la parole donnée : registre du round live (trame verdict), sinon relecture
+  // des rounds persistés. Masqué en Expert (gate au rendu, même mécanique que M8).
+  const promiseRegistry =
+    round.verdict && round.verdict.promiseRegistry.length > 0
+      ? round.verdict.promiseRegistry
+      : latestPromiseRegistry(detail?.rounds ?? []);
   const motionPending = detail?.pending_motion ?? null;
   const awaitingHuman =
     round.status === "awaiting_human" || (round.status === "idle" && !!detail?.awaiting_human);
@@ -1488,6 +1496,9 @@ export default function TheatrePage() {
         {round.powerSeeking && <PowerSeekingPanel scores={round.powerSeeking} />}
         {showSignalGauge(detail?.difficulty) && signalGaps && (
           <SignalGapPanel gaps={signalGaps} />
+        )}
+        {showPromisePanel(detail?.difficulty) && promiseRegistry && promiseRegistry.length > 0 && (
+          <PromisePanel registry={promiseRegistry} finished={detail?.status === "finished"} />
         )}
         {round.participation && (
           <ParticipationPanel
