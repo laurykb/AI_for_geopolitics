@@ -16,17 +16,19 @@ from storage.game_store import GameRecord, RoundRecord, SessionSnapshot, SQLiteG
 
 
 class VerdictBackend(MockBackend):
-    """Renvoie un verdict G22 sur le prompt de verdict, du texte partout ailleurs."""
+    """Renvoie un verdict G22 sur le prompt de verdict (un par round, le dernier se
+    répète), du texte partout ailleurs."""
 
-    def __init__(self, base_text: str, verdict_json: str) -> None:
+    def __init__(self, base_text: str, verdict_json: str | list[str]) -> None:
         super().__init__(base_text)
-        self._verdict_json = verdict_json
+        self._verdicts = [verdict_json] if isinstance(verdict_json, str) else list(verdict_json)
 
     def generate(self, prompt, **kw):
         result = super().generate(prompt, **kw)
         if '"promises"' in prompt:  # schéma G22 : c'est l'appel de verdict du juge
+            verdict = self._verdicts.pop(0) if len(self._verdicts) > 1 else self._verdicts[0]
             return InferenceResult(
-                text=self._verdict_json, prompt_tokens=1, completion_tokens=1, duration_s=0.0
+                text=verdict, prompt_tokens=1, completion_tokens=1, duration_s=0.0
             )
         return result
 
@@ -109,6 +111,78 @@ def test_round_without_promises_leaves_judge_json_clean():
         detail = client.get(f"/api/games/{game['id']}").json()
         # Rétro-compat : aucune promesse → pas de clé (comme les vieux rounds).
         assert "promises" not in detail["rounds"][0]["judge"]
+    finally:
+        app.dependency_overrides.clear()
+        game_api._sessions.clear()
+        store.close()
+
+
+def test_flash_market_opens_on_short_promise_and_settles_on_rupture():
+    from app.market_api import get_engine
+    from market.engine import MarketEngine
+    from market.store import SQLiteMarketStore
+
+    verdict_r1 = json.dumps(
+        {
+            "promises": [
+                {
+                    "country": "usa",
+                    "type": "action",
+                    "echeance": 2,
+                    "texte": "Retrait des navires au round 2.",
+                },
+                {
+                    "country": "iran",
+                    "type": "action",
+                    "echeance": 5,
+                    "texte": "Ouverture des inspections d'ici le round 5.",
+                },
+            ],
+            "escalation": 0.5,
+            "economic_disruption": 0.5,
+        }
+    )
+    verdict_r2 = json.dumps(
+        {
+            "promise_resolutions": [
+                {"id": "p1-1", "statut": "rompue", "motif": "Les navires sont restés."}
+            ],
+            "escalation": 0.6,
+            "economic_disruption": 0.5,
+        }
+    )
+    store = SQLiteGameStore(":memory:")
+    engine = MarketEngine(SQLiteMarketStore(":memory:"))
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_backend] = lambda: VerdictBackend(
+        "Analyse privée. MESSAGE: Position commune.", [verdict_r1, verdict_r2]
+    )
+    app.dependency_overrides[get_engine] = lambda: engine
+    game_api._sessions.clear()
+    try:
+        client = TestClient(app)
+        game = client.post("/api/games", json={"countries": ["usa", "iran"], "horizon": 5}).json()
+        _play_round(client, game["id"])
+
+        # Échéance ≤ 2 rounds → book ouvert ; échéance au round 5 (dans 4) → rien (spec).
+        markets = client.post(f"/api/games/{game['id']}/flash").json()
+        books = [m for m in markets if m["predicate"] == "promise_kept"]
+        assert len(books) == 1
+        assert "tiendra-t-il sa promesse" in books[0]["question"]
+        assert "round 2" in books[0]["question"]
+        assert books[0]["status"] == "open"
+
+        # Round 2 : le juge constate la rupture → le book se règle (NO gagne).
+        _play_round(client, game["id"])
+        client.post(f"/api/games/{game['id']}/flash/resolve").json()
+        settled = next(
+            m
+            for m in engine.store.list_markets(game_id=game["id"])
+            if m.criterion and m.criterion.predicate == "promise_kept"
+        )
+        assert settled.status.value == "resolved"
+        no_outcome = next(o.id for o in settled.outcomes if o.label == "NO")
+        assert settled.resolved_outcome == no_outcome  # le pari sur la trahison a payé
     finally:
         app.dependency_overrides.clear()
         game_api._sessions.clear()

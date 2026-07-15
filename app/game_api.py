@@ -2907,6 +2907,10 @@ def _market_context(
         utopia = float(rounds[-1].trajectory.get("utopia", 0.5))
     if session is not None:
         suspended |= set(session.suspended)
+    # G22 — statut par promesse (le registre vit sur le monde : session ou snapshot,
+    # déjà réglé « caduque » par _finalize_game quand la partie est finie).
+    world = session.world if session is not None else _game_world(game.id, store)
+    promise_status = {p.id: p.status for p in world.promises} if world is not None else {}
     return MarketContext(
         current_round=(session.world.current_round if session else len(rounds)),
         motion_verdicts=verdicts,
@@ -2915,6 +2919,7 @@ def _market_context(
         utopia=utopia,
         suspended=suspended,
         game_over=game.status is GameStatus.FINISHED,
+        promises=promise_status,
     )
 
 
@@ -2956,6 +2961,19 @@ def open_flash_markets(
         ),
         mode=game.mode,
         countries=sorted(world.countries),
+        # G22 — une promesse fraîche à échéance ≤ 2 rounds ouvre TOUJOURS son book
+        # « X tiendra-t-il sa promesse ? » (règle fixe, résolu par l'issue de la promesse).
+        promises=[
+            flash_mod.PromiseBrief(
+                id=p.id,
+                author_label=(
+                    world.countries[p.author].name if p.author in world.countries else p.author
+                ),
+                text=p.text,
+                deadline_round=p.deadline_round or 0,
+            )
+            for p in promises_mod.flash_eligible(world.promises, round_no)
+        ],
     )
     specs = flash_mod.generate_flash_specs(backend, event_text, state)
 

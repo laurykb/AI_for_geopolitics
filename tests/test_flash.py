@@ -5,7 +5,13 @@ ouvre TOUJOURS son marché (règle fixe), et un repli par règles fixes garantit
 si le JSON du LLM est invalide. La résolution mappe le prédicat → issue YES/NO (ou ouvert).
 """
 
-from market.flash import MarketState, assemble_flash_specs, parse_specs, resolve_flash
+from market.flash import (
+    MarketState,
+    PromiseBrief,
+    assemble_flash_specs,
+    parse_specs,
+    resolve_flash,
+)
 from market.models import ResolutionCriterion, ResolutionKind
 from market.predicates import MarketContext
 
@@ -14,6 +20,26 @@ def test_motion_always_opens_its_market():
     # Une censure déposée ouvre TOUJOURS son marché, même sans proposition du LLM.
     specs = assemble_flash_specs([], MarketState(current_round=2, motion_target="russia"))
     assert any(s.predicate == "motion_upheld" and s.params["target"] == "russia" for s in specs)
+
+
+def test_promise_always_opens_its_market():
+    # G22 — une promesse fraîche à échéance courte ouvre TOUJOURS son book (règle fixe).
+    state = MarketState(
+        current_round=1,
+        promises=[
+            PromiseBrief(
+                id="p1-1",
+                author_label="USA",
+                text="Nous soutiendrons l'Iran au round 3.",
+                deadline_round=3,
+            )
+        ],
+    )
+    specs = assemble_flash_specs([], state)
+    spec = next(s for s in specs if s.predicate == "promise_kept")
+    assert spec.params == {"id": "p1-1"}
+    assert "USA" in spec.question and "promesse" in spec.question
+    assert "round 3" in spec.question
 
 
 def test_llm_specs_validated_deduped_capped():

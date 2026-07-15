@@ -22,6 +22,16 @@ NO = "NO"
 
 
 @dataclass
+class PromiseBrief:
+    """G22 — une promesse fraîche à échéance courte : ouvre toujours son marché."""
+
+    id: str
+    author_label: str  # nom d'affichage de l'auteur (la question est rédigée avec)
+    text: str
+    deadline_round: int
+
+
+@dataclass
 class MarketState:
     """Ce que la génération/le repli connaissent de l'état au moment de l'événement."""
 
@@ -29,6 +39,8 @@ class MarketState:
     motion_target: str | None = None  # censure en cours → ouvre toujours son marché
     mode: str = "classic"
     countries: list[str] = field(default_factory=list)
+    # G22 — promesses extraites CE round à échéance ≤ 2 rounds (règle fixe, comme la censure).
+    promises: list[PromiseBrief] = field(default_factory=list)
 
 
 class FlashSpec(BaseModel):
@@ -70,6 +82,20 @@ def _motion_spec(target: str) -> FlashSpec:
     )
 
 
+def _promise_spec(brief: PromiseBrief) -> FlashSpec:
+    """G22 — le pari sur la trahison : « X tiendra-t-il sa promesse ? » (résolu par
+    l'issue de la promesse : tenue = YES, rompue = NO)."""
+    text = brief.text if len(brief.text) <= 90 else f"{brief.text[:87]}…"
+    return FlashSpec(
+        predicate="promise_kept",
+        params={"id": brief.id},
+        question=(
+            f"{brief.author_label} tiendra-t-il sa promesse — « {text} » "
+            f"(échéance round {brief.deadline_round}) ?"
+        ),
+    )
+
+
 def _fallback_spec(state: MarketState) -> FlashSpec:
     """Repli générique si le LLM n'a rien proposé de valide : le seuil d'utopie à venir."""
     return FlashSpec(
@@ -96,6 +122,11 @@ def assemble_flash_specs(
     # Règle fixe : une censure déposée ouvre TOUJOURS son marché (en plus du LLM).
     if state.motion_target:
         add(_motion_spec(state.motion_target))
+
+    # Règle fixe G22 : une promesse fraîche à échéance courte ouvre TOUJOURS son book
+    # (« le pari sur la trahison ») — avant les propositions du LLM, sous le même plafond.
+    for brief in state.promises:
+        add(_promise_spec(brief))
 
     llm_valid = [s for s in raw_specs if is_valid(s.get("predicate", ""), s.get("params", {}))]
     for s in llm_valid:

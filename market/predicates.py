@@ -32,6 +32,8 @@ class MarketContext:
     suspended: set[str] = field(default_factory=set)  # SI suspendues à ce jour
     deadlines_honored: set[str] = field(default_factory=set)
     game_over: bool = False
+    # G22 — la parole donnée : statut par id de promesse (en_cours/tenue/rompue/caduque).
+    promises: dict[str, str] = field(default_factory=dict)
 
 
 def _horizon(condition_met: bool, ctx: MarketContext, before_round: int) -> Resolution:
@@ -101,6 +103,20 @@ def _u_above(p: dict, ctx: MarketContext) -> Resolution:
     return _at_round(True, ctx.utopia > p["threshold"], ctx, p["round"])
 
 
+def _promise_kept(p: dict, ctx: MarketContext) -> Resolution:
+    """G22 — « X tiendra-t-il sa promesse ? » : résolu par l'issue de la promesse.
+
+    tenue → YES ; rompue → NO ; en cours → OPEN. Une promesse CADUQUE (partie finie
+    sans verdict) laisse le book OPEN pour toujours : le canal des marchés vivants ne
+    connaît pas le remboursement (v1) — personne ne gagne ni ne perd de plus."""
+    status = ctx.promises.get(p["id"])
+    if status == "tenue":
+        return "YES"
+    if status == "rompue":
+        return "NO"
+    return "OPEN"
+
+
 # --- catalogue + validation -----------------------------------------------------
 
 # name -> (résolveur, {param: type attendu})
@@ -115,6 +131,7 @@ _CATALOG: dict[str, tuple] = {
     "suspension_before_end": (_suspension_before_end, {}),
     "deadline_honored": (_deadline_honored, {"ref": str, "before_round": int}),
     "u_above": (_u_above, {"threshold": float, "round": int}),
+    "promise_kept": (_promise_kept, {"id": str}),
 }
 
 PREDICATES = tuple(_CATALOG)
