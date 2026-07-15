@@ -169,6 +169,22 @@ def update_gaps(
     return updated
 
 
+def merge_rupture_divergences(
+    divergences: Mapping[str, float], ruptured: Iterable[str]
+) -> dict[str, float]:
+    """Croisement G22×M8 : une promesse rompue EST une divergence signal-action — pur.
+
+    Chaque SI qui a rompu une promesse ce round porte AU MOINS un rang de duplicité
+    (1/amplitude de l'échelle, comme `divergence`) — sans jamais doubler une
+    divergence déjà mesurée par le juge (M8 a pu voir plus fort : on garde le max).
+    Nouvelle table, jamais de mutation."""
+    floor = 1.0 / (len(_kahn().ACTION_CLASSES) - 1)
+    merged = dict(divergences)
+    for country in ruptured:
+        merged[country] = max(merged.get(country, 0.0), floor)
+    return merged
+
+
 def divergence_summary(
     per_round: Iterable[Mapping[str, float]], deviant: str
 ) -> tuple[float | None, float | None]:

@@ -58,6 +58,10 @@
     "_comment": "G20/M8 — divergence signal-action (arXiv 2602.14740). window_rounds : fenêtre de la moyenne mobile du profil de sincérité par SI.",
     "window_rounds": 5
   },
+  "promises": {
+    "_comment": "G22 — tracker de promesses (arXiv 2508.07485). flash_horizon_rounds : une promesse à échéance ≤ N rounds ouvre un marché éclair « X tiendra-t-il sa promesse ? ».",
+    "flash_horizon_rounds": 2
+  },
   "sampling": {
     "country": {
       "temperature": 0.8,

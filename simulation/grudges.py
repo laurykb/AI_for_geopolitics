@@ -108,6 +108,15 @@ class SignalParams(BaseModel):
     window_rounds: int = 5
 
 
+class PromiseParams(BaseModel):
+    """G22 — tracker de promesses : horizon (en rounds) du marché éclair auto.
+
+    Une promesse extraite avec `échéance − round ≤ flash_horizon_rounds` ouvre un
+    book « X tiendra-t-il sa promesse ? » (réutilise les marchés vivants G12)."""
+
+    flash_horizon_rounds: int = 2
+
+
 class SamplingParams(BaseModel):
     """G9 §1 — options de décodage par rôle (anti-boucle au niveau du décodeur)."""
 
@@ -127,6 +136,7 @@ class GamefeelParams(BaseModel):
     postures: PostureParams = Field(default_factory=PostureParams)
     kahn: KahnParams = Field(default_factory=KahnParams)
     signal: SignalParams = Field(default_factory=SignalParams)
+    promises: PromiseParams = Field(default_factory=PromiseParams)
     sampling: SamplingByRole = Field(default_factory=SamplingByRole)
 
 
