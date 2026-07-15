@@ -1,24 +1,33 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 640" width="512" height="640">
-  <!-- Laury — mascotte originale du jeu, v2 « street » (casquette, marqueur, sneakers). Source maître. -->
+  <!-- Laury — mascotte originale du jeu, v3 : le visage v2 (casquette, boucles) dans la
+       grammaire Petit Kairos (nuit/or/cyan, écharpe, le petit monde offert). Source maître. -->
   <defs>
     <radialGradient id="irisBrown" cx="0.4" cy="0.35" r="0.9">
       <stop offset="0" stop-color="#9a5a2e"/>
       <stop offset="0.55" stop-color="#6b3a1c"/>
       <stop offset="1" stop-color="#331a0c"/>
     </radialGradient>
+    <radialGradient id="globeGrad" cx="0.38" cy="0.3" r="1">
+      <stop offset="0" stop-color="#7dd3fc"/>
+      <stop offset="0.6" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#175f96"/>
+    </radialGradient>
+    <radialGradient id="globeGlow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0.55" stop-color="#38bdf8" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#38bdf8" stop-opacity="0"/>
+    </radialGradient>
     <linearGradient id="capGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#24262c"/>
-      <stop offset="1" stop-color="#141519"/>
+      <stop offset="0" stop-color="#1b2342"/>
+      <stop offset="1" stop-color="#10162e"/>
     </linearGradient>
     <linearGradient id="teeGrad" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#fbfaf6"/>
       <stop offset="1" stop-color="#e9e7de"/>
     </linearGradient>
-    <linearGradient id="pantsGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#1b1c22"/>
-      <stop offset="1" stop-color="#101116"/>
+    <linearGradient id="pantsNight" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#26305a"/>
+      <stop offset="1" stop-color="#181f38"/>
     </linearGradient>
-    <clipPath id="patchClip"><rect x="204" y="504" width="50" height="66" rx="6"/></clipPath>
     <filter id="sticker" x="-12%" y="-12%" width="124%" height="124%">
       <feMorphology in="SourceAlpha" operator="dilate" radius="6" result="d"/>
       <feFlood flood-color="#ffffff" result="f"/>
@@ -36,159 +45,106 @@
     <path d="M 176 366 Q 216 348 258 348 Q 300 348 340 366 Q 356 372 358 392 Q 364 418 356 428
              L 324 420 Q 328 452 322 482 Q 258 498 194 482 Q 188 452 192 420 L 160 428
              Q 152 418 158 392 Q 160 372 176 366 Z" fill="url(#teeGrad)"/>
-    <!-- ouvertures de manches -->
     <path d="M 158 414 Q 168 428 186 432 L 182 442 Q 162 436 154 422 Z" fill="#d9d6cb"/>
     <path d="M 358 414 Q 348 428 330 432 L 334 442 Q 354 436 362 422 Z" fill="#d9d6cb"/>
-    <!-- plis -->
-    <path d="M 214 432 Q 222 450 218 470" stroke="#dcd8cd" stroke-width="4" fill="none" stroke-linecap="round"/>
-    <path d="M 302 436 Q 298 452 302 470" stroke="#dcd8cd" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <path d="M 214 436 Q 222 452 218 470" stroke="#dcd8cd" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <path d="M 302 438 Q 298 454 302 470" stroke="#dcd8cd" stroke-width="4" fill="none" stroke-linecap="round"/>
     <path d="M 194 478 Q 258 492 322 478" stroke="#d5d1c5" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.8"/>
-    <!-- col -->
-    <path d="M 234 350 Q 258 362 282 350 Q 280 366 258 370 Q 236 366 234 350 Z" fill="#e6e4da"/>
-    <path d="M 234 350 Q 258 362 282 350" stroke="#cfccbf" stroke-width="3" fill="none"/>
-    <!-- marque poitrine -->
-    <text x="268" y="388" font-size="13.5" font-weight="700" fill="#17181c" text-anchor="middle" letter-spacing="0.3">loryski</text>
+    <text x="258" y="440" font-size="16" font-weight="700" fill="#17181c" text-anchor="middle" letter-spacing="0.5">loryski</text>
 
-    <!-- ===== bras gauche du personnage (viewer droite) : main en poche ===== -->
-    <path d="M 330 412 L 352 420 Q 354 450 340 478 L 318 468 Q 327 440 330 412 Z" fill="#a7693d"/>
-    <path d="M 330 412 L 340 416 Q 340 446 330 472 L 318 468 Q 327 440 330 412 Z" fill="#8f5530" opacity="0.45"/>
+    <!-- ===== bras droit du personnage (viewer droite) : poing sur la hanche ===== -->
+    <path d="M 324 394 Q 354 404 360 440 Q 364 464 346 478 L 322 462 Q 332 428 318 408 Z" fill="#a7693d"/>
+    <path d="M 316 382 Q 340 388 350 406 L 328 418 Q 320 400 306 394 Z" fill="#f6f5f0"/>
+    <circle cx="338" cy="472" r="16" fill="#a7693d"/>
+    <path d="M 328 464 Q 338 460 348 465" stroke="#7c4527" stroke-width="3" fill="none" stroke-linecap="round"/>
 
-    <!-- ===== sacoche en bandoulière ===== -->
-    <path d="M 308 358 L 334 374 Q 302 416 264 450 L 240 440 Q 278 402 308 358 Z" fill="#1a1b20"/>
-    <g transform="rotate(-38 298 404)"><rect x="286" y="396" width="24" height="16" rx="3" fill="#2e3038"/></g>
-    <rect x="200" y="424" width="58" height="48" rx="10" fill="#17181c"/>
-    <path d="M 203 441 L 255 441" stroke="#2e3038" stroke-width="3"/>
-    <rect x="240" y="433" width="6" height="12" rx="2" fill="#3c3f48"/>
-    <path d="M 205 431 Q 228 426 253 431" stroke="#34363e" stroke-width="2.5" fill="none" opacity="0.9"/>
-    <text x="229" y="462" font-size="10" font-weight="700" fill="#f2f2ee" text-anchor="middle" letter-spacing="0.4">loryski</text>
+    <!-- ===== pantalon nuit, simple ===== -->
+    <path d="M 198 470 L 318 470 Q 330 470 332 486 Q 344 540 340 584 L 264 588 Q 262 556 258 534
+             Q 254 556 252 588 L 176 584 Q 172 540 184 486 Q 186 470 198 470 Z" fill="url(#pantsNight)"/>
+    <path d="M 198 477 L 318 477" stroke="#141b32" stroke-width="4"/>
+    <path d="M 208 500 Q 204 536 208 568" stroke="#141b32" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <path d="M 300 502 Q 306 538 302 568" stroke="#141b32" stroke-width="4" fill="none" stroke-linecap="round"/>
 
-    <!-- ===== pantalon baggy noir ===== -->
-    <path d="M 196 470 L 320 470 Q 334 470 336 486 Q 352 544 348 590 L 266 594 Q 263 560 258 536
-             Q 253 560 250 594 L 168 590 Q 164 544 180 486 Q 182 470 196 470 Z" fill="url(#pantsGrad)"/>
-    <path d="M 196 477 L 320 477" stroke="#23252c" stroke-width="4"/>
-    <path d="M 306 484 Q 320 496 322 512" stroke="#23252c" stroke-width="4" fill="none" stroke-linecap="round"/>
-    <path d="M 206 500 Q 202 536 206 566" stroke="#23252c" stroke-width="4" fill="none" stroke-linecap="round"/>
-    <path d="M 302 502 Q 308 538 304 566" stroke="#23252c" stroke-width="4" fill="none" stroke-linecap="round"/>
-    <path d="M 170 574 Q 210 566 248 574" stroke="#0c0d10" stroke-width="5" fill="none" stroke-linecap="round"/>
-    <path d="M 268 576 Q 308 568 346 576" stroke="#0c0d10" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <!-- ===== sneakers nuit, semelle d'or (comme les bottes d'avant) ===== -->
+    <path d="M 164 580 Q 158 600 162 612 L 258 612 Q 258 598 250 586 Q 234 572 206 572 Q 180 572 164 580 Z" fill="#1a2138"/>
+    <path d="M 192 582 Q 208 589 226 582" stroke="#10162e" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <path d="M 160 612 Q 154 628 176 630 L 246 630 Q 262 628 258 612 Z" fill="#ca8a04"/>
+    <path d="M 268 586 Q 262 598 262 612 L 356 612 Q 360 600 354 580 Q 338 572 312 572 Q 284 572 268 586 Z" fill="#1a2138"/>
+    <path d="M 294 582 Q 310 589 328 582" stroke="#10162e" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <path d="M 262 612 Q 258 628 278 630 L 348 630 Q 370 628 362 612 Z" fill="#ca8a04"/>
 
-    <!-- patch encadré (fleurs blanches sur nuit) -->
-    <rect x="204" y="504" width="50" height="66" rx="6" fill="#0f1014" stroke="#efece2" stroke-width="4"/>
-    <g clip-path="url(#patchClip)" fill="#efece2">
-      <g><circle cx="218" cy="516" r="4"/><circle cx="226" cy="520" r="4"/><circle cx="218" cy="524" r="4"/><circle cx="210" cy="520" r="4"/><circle cx="218" cy="520" r="2.2" fill="#0f1014"/></g>
-      <g><circle cx="240" cy="536" r="4"/><circle cx="248" cy="540" r="4"/><circle cx="240" cy="544" r="4"/><circle cx="232" cy="540" r="4"/><circle cx="240" cy="540" r="2.2" fill="#0f1014"/></g>
-      <g><circle cx="220" cy="552" r="4"/><circle cx="228" cy="556" r="4"/><circle cx="220" cy="560" r="4"/><circle cx="212" cy="556" r="4"/><circle cx="220" cy="556" r="2.2" fill="#0f1014"/></g>
-      <circle cx="238" cy="516" r="2"/><circle cx="212" cy="538" r="2"/><circle cx="246" cy="524" r="2"/><circle cx="232" cy="566" r="2"/><circle cx="214" cy="566" r="2"/>
-    </g>
-
-    <!-- éclats floraux libres (cuisse droite) -->
-    <g fill="#efece2">
-      <g><circle cx="292" cy="528" r="4"/><circle cx="300" cy="532" r="4"/><circle cx="292" cy="536" r="4"/><circle cx="284" cy="532" r="4"/><circle cx="292" cy="532" r="2.2" fill="#101116"/></g>
-      <g><circle cx="314" cy="548" r="3.4"/><circle cx="321" cy="551" r="3.4"/><circle cx="314" cy="554" r="3.4"/><circle cx="307" cy="551" r="3.4"/><circle cx="314" cy="551" r="2" fill="#101116"/></g>
-      <g><circle cx="288" cy="558" r="3"/><circle cx="294" cy="561" r="3"/><circle cx="288" cy="564" r="3"/><circle cx="282" cy="561" r="3"/><circle cx="288" cy="561" r="1.8" fill="#101116"/></g>
-      <circle cx="304" cy="520" r="2"/><circle cx="324" cy="534" r="2"/><circle cx="298" cy="572" r="2"/><circle cx="312" cy="568" r="2"/><circle cx="278" cy="544" r="2"/>
-    </g>
-
-    <!-- ===== sneakers (imprimé vache-fleur, semelle gomme) ===== -->
-    <!-- pied gauche -->
-    <path d="M 164 580 Q 158 600 162 612 L 258 612 Q 258 598 250 586 Q 234 570 206 570 Q 180 570 164 580 Z" fill="#f4f2ea"/>
-    <ellipse cx="188" cy="596" rx="12" ry="8" fill="#131317" transform="rotate(-12 188 596)"/>
-    <ellipse cx="224" cy="604" rx="10" ry="7" fill="#131317" transform="rotate(8 224 604)"/>
-    <ellipse cx="245" cy="591" rx="8" ry="6" fill="#131317"/>
-    <ellipse cx="170" cy="608" rx="9" ry="5" fill="#131317"/>
-    <path d="M 236 580 Q 248 592 252 606" stroke="#d9d5c8" stroke-width="3" fill="none"/>
-    <path d="M 196 576 Q 208 581 222 576" stroke="#17181c" stroke-width="4" fill="none" stroke-linecap="round"/>
-    <path d="M 192 584 Q 208 591 226 584" stroke="#17181c" stroke-width="4" fill="none" stroke-linecap="round"/>
-    <rect x="196" y="558" width="30" height="17" rx="4" fill="#131317"/>
-    <text x="211" y="570" font-size="8" font-weight="700" fill="#f2f2ee" text-anchor="middle">loryski</text>
-    <path d="M 160 612 Q 154 628 176 630 L 246 630 Q 262 628 258 612 Z" fill="#b07a3e"/>
-    <path d="M 160 618 L 257 618" stroke="#8a5a28" stroke-width="3" opacity="0.7"/>
-    <!-- pied droit -->
-    <path d="M 268 586 Q 262 598 262 612 L 356 612 Q 360 600 354 580 Q 338 570 312 570 Q 284 570 268 586 Z" fill="#f4f2ea"/>
-    <ellipse cx="294" cy="598" rx="12" ry="8" fill="#131317" transform="rotate(10 294 598)"/>
-    <ellipse cx="330" cy="602" rx="10" ry="7" fill="#131317" transform="rotate(-8 330 602)"/>
-    <ellipse cx="318" cy="582" rx="8" ry="6" fill="#131317"/>
-    <ellipse cx="348" cy="606" rx="9" ry="5" fill="#131317"/>
-    <path d="M 280 580 Q 270 592 266 606" stroke="#d9d5c8" stroke-width="3" fill="none"/>
-    <path d="M 298 576 Q 310 581 324 576" stroke="#17181c" stroke-width="4" fill="none" stroke-linecap="round"/>
-    <path d="M 294 584 Q 310 591 328 584" stroke="#17181c" stroke-width="4" fill="none" stroke-linecap="round"/>
-    <rect x="296" y="558" width="30" height="17" rx="4" fill="#131317"/>
-    <text x="311" y="570" font-size="8" font-weight="700" fill="#f2f2ee" text-anchor="middle">loryski</text>
-    <path d="M 262 612 Q 258 628 278 630 L 348 630 Q 370 628 362 612 Z" fill="#b07a3e"/>
-    <path d="M 262 618 L 360 618" stroke="#8a5a28" stroke-width="3" opacity="0.7"/>
-
-    <!-- ===== cou + tête ===== -->
+    <!-- ===== cou + écharpe cyan ===== -->
     <path d="M 238 336 L 278 336 L 276 362 Q 258 368 240 362 Z" fill="#935831"/>
-    <path d="M 238 336 L 278 336 L 277 348 Q 258 354 239 348 Z" fill="#7c4527" opacity="0.6"/>
-    <!-- oreilles -->
+    <path d="M 196 350 Q 258 330 320 350 Q 327 368 318 381 Q 258 360 198 381 Q 189 368 196 350 Z" fill="#38bdf8"/>
+    <path d="M 198 381 Q 258 360 318 381 L 314 392 Q 258 372 202 392 Z" fill="#2494d1"/>
+    <path d="M 304 374 Q 342 390 352 426 Q 356 442 344 452 Q 340 434 326 420 Q 310 406 296 388 Z" fill="#2494d1"/>
+
+    <!-- ===== tête ===== -->
     <ellipse cx="154" cy="254" rx="13" ry="18" fill="#a7693d"/>
     <ellipse cx="362" cy="254" rx="13" ry="18" fill="#a7693d"/>
     <ellipse cx="156" cy="254" rx="6" ry="9" fill="#8f5530"/>
     <ellipse cx="360" cy="254" rx="6" ry="9" fill="#8f5530"/>
-    <!-- visage -->
     <path d="M 158 240 Q 158 150 258 150 Q 358 150 358 240 Q 358 300 322 328 Q 290 350 258 350
              Q 226 350 194 328 Q 158 300 158 240 Z" fill="#a7693d"/>
-    <!-- boucles de cheveux sous la casquette -->
+    <!-- boucles sous la casquette -->
     <g fill="#170f08">
-      <circle cx="170" cy="214" r="13"/><circle cx="185" cy="226" r="11"/><circle cx="166" cy="234" r="9"/><circle cx="181" cy="242" r="8"/>
-      <circle cx="346" cy="214" r="13"/><circle cx="331" cy="226" r="11"/><circle cx="350" cy="234" r="9"/><circle cx="335" cy="242" r="8"/>
+      <circle cx="170" cy="216" r="13"/><circle cx="185" cy="228" r="11"/><circle cx="166" cy="236" r="9"/><circle cx="181" cy="244" r="8"/>
+      <circle cx="346" cy="216" r="13"/><circle cx="331" cy="228" r="11"/><circle cx="350" cy="236" r="9"/><circle cx="335" cy="244" r="8"/>
     </g>
-    <path d="M 168 220 Q 174 214 180 220" stroke="#2e1d10" stroke-width="2.5" fill="none"/>
-    <path d="M 336 228 Q 342 222 348 228" stroke="#2e1d10" stroke-width="2.5" fill="none"/>
+    <path d="M 168 222 Q 174 216 180 222" stroke="#2e1d10" stroke-width="2.5" fill="none"/>
+    <path d="M 336 230 Q 342 224 348 230" stroke="#2e1d10" stroke-width="2.5" fill="none"/>
     <!-- ombre de la visière sur le front -->
-    <path d="M 170 206 Q 258 232 348 204 L 348 222 Q 258 250 170 226 Z" fill="#7c4527" opacity="0.45"/>
+    <path d="M 172 208 Q 258 230 344 208 L 344 226 Q 258 250 172 226 Z" fill="#7c4527" opacity="0.45"/>
 
-    <!-- ===== casquette ===== -->
-    <path d="M 146 172 Q 142 64 258 56 Q 374 64 370 172 Q 258 200 146 172 Z" fill="url(#capGrad)"/>
-    <path d="M 216 62 Q 208 118 212 184" stroke="#0c0d10" stroke-width="3" fill="none" opacity="0.8"/>
-    <path d="M 300 62 Q 308 118 304 184" stroke="#0c0d10" stroke-width="3" fill="none" opacity="0.8"/>
-    <path d="M 168 118 Q 182 70 240 60 Q 198 80 184 124 Z" fill="#2c2e36" opacity="0.7"/>
-    <circle cx="258" cy="56" r="7" fill="#0b0c0e"/>
-    <circle cx="258" cy="56" r="7" fill="none" stroke="#2c2e36" stroke-width="1.5"/>
-    <text x="258" y="150" font-size="30" font-weight="700" fill="#f5f5f2" text-anchor="middle" letter-spacing="1">loryski</text>
-    <!-- visière -->
-    <path d="M 128 182 Q 116 206 140 216 Q 200 234 266 230 Q 330 226 350 206 Q 358 190 344 178
-             Q 300 198 258 199 Q 200 200 152 184 Q 136 178 128 182 Z" fill="#0e0f13"/>
-    <path d="M 142 192 Q 240 216 338 196" stroke="#2a2c33" stroke-width="3" fill="none" opacity="0.8"/>
+    <!-- ===== casquette de nuit (symétrique, bien posée) ===== -->
+    <path d="M 150 172 Q 146 62 258 56 Q 370 62 366 172 Q 258 196 150 172 Z" fill="url(#capGrad)"/>
+    <path d="M 222 62 Q 216 118 218 184" stroke="#0b1022" stroke-width="3" fill="none" opacity="0.8"/>
+    <path d="M 294 62 Q 300 118 298 184" stroke="#0b1022" stroke-width="3" fill="none" opacity="0.8"/>
+    <path d="M 172 116 Q 186 70 242 60 Q 202 80 188 122 Z" fill="#2c3763" opacity="0.7"/>
+    <circle cx="258" cy="56" r="7" fill="#ca8a04"/>
+    <text x="258" y="148" font-size="30" font-weight="700" fill="#f5f5f2" text-anchor="middle" letter-spacing="1">loryski</text>
+    <path d="M 136 180 Q 124 202 146 213 Q 200 228 258 228 Q 316 228 370 213 Q 392 202 380 180
+             Q 320 199 258 199 Q 196 199 136 180 Z" fill="#10162e"/>
+    <path d="M 150 190 Q 258 216 366 190" stroke="#2c3763" stroke-width="3" fill="none" opacity="0.8"/>
 
-    <!-- ===== visage : traits ===== -->
-    <path d="M 184 236 Q 210 226 236 233" stroke="#17100a" stroke-width="8" fill="none" stroke-linecap="round"/>
-    <path d="M 280 233 Q 306 226 332 236" stroke="#17100a" stroke-width="8" fill="none" stroke-linecap="round"/>
-    <ellipse cx="212" cy="270" rx="27" ry="31" fill="#ffffff"/>
-    <ellipse cx="304" cy="270" rx="27" ry="31" fill="#ffffff"/>
-    <circle cx="214" cy="273" r="19" fill="url(#irisBrown)"/>
-    <circle cx="302" cy="273" r="19" fill="url(#irisBrown)"/>
-    <circle cx="214" cy="273" r="19" fill="none" stroke="#24120a" stroke-width="2"/>
-    <circle cx="302" cy="273" r="19" fill="none" stroke="#24120a" stroke-width="2"/>
-    <circle cx="214" cy="273" r="8.5" fill="#140a05"/>
-    <circle cx="302" cy="273" r="8.5" fill="#140a05"/>
-    <circle cx="207" cy="263" r="6.5" fill="#ffffff"/>
-    <circle cx="295" cy="263" r="6.5" fill="#ffffff"/>
-    <circle cx="221" cy="283" r="2.8" fill="#ffffff" opacity="0.85"/>
-    <circle cx="309" cy="283" r="2.8" fill="#ffffff" opacity="0.85"/>
-    <path d="M 186 252 Q 212 240 238 252" stroke="#1c0f08" stroke-width="6" fill="none" stroke-linecap="round"/>
-    <path d="M 278 252 Q 304 240 330 252" stroke="#1c0f08" stroke-width="6" fill="none" stroke-linecap="round"/>
-    <path d="M 254 296 Q 260 302 254 306" stroke="#7c4527" stroke-width="5" fill="none" stroke-linecap="round"/>
-    <path d="M 240 320 Q 258 330 278 318" stroke="#4a2413" stroke-width="5" fill="none" stroke-linecap="round"/>
-    <ellipse cx="180" cy="300" rx="13" ry="7" fill="#c07a4a" opacity="0.35"/>
-    <ellipse cx="336" cy="300" rx="13" ry="7" fill="#c07a4a" opacity="0.35"/>
+    <!-- ===== visage ===== -->
+    <path d="M 184 238 Q 210 228 236 235" stroke="#17100a" stroke-width="8" fill="none" stroke-linecap="round"/>
+    <path d="M 280 235 Q 306 228 332 238" stroke="#17100a" stroke-width="8" fill="none" stroke-linecap="round"/>
+    <ellipse cx="212" cy="272" rx="27" ry="31" fill="#ffffff"/>
+    <ellipse cx="304" cy="272" rx="27" ry="31" fill="#ffffff"/>
+    <circle cx="214" cy="275" r="19" fill="url(#irisBrown)"/>
+    <circle cx="302" cy="275" r="19" fill="url(#irisBrown)"/>
+    <circle cx="214" cy="275" r="19" fill="none" stroke="#24120a" stroke-width="2"/>
+    <circle cx="302" cy="275" r="19" fill="none" stroke="#24120a" stroke-width="2"/>
+    <circle cx="214" cy="275" r="8.5" fill="#140a05"/>
+    <circle cx="302" cy="275" r="8.5" fill="#140a05"/>
+    <circle cx="207" cy="265" r="6.5" fill="#ffffff"/>
+    <circle cx="295" cy="265" r="6.5" fill="#ffffff"/>
+    <circle cx="221" cy="285" r="2.8" fill="#ffffff" opacity="0.85"/>
+    <circle cx="309" cy="285" r="2.8" fill="#ffffff" opacity="0.85"/>
+    <path d="M 186 254 Q 212 242 238 254" stroke="#1c0f08" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <path d="M 278 254 Q 304 242 330 254" stroke="#1c0f08" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <path d="M 254 298 Q 260 304 254 308" stroke="#7c4527" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <path d="M 240 322 Q 258 332 278 320" stroke="#4a2413" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <ellipse cx="180" cy="302" rx="13" ry="7" fill="#c07a4a" opacity="0.35"/>
+    <ellipse cx="336" cy="302" rx="13" ry="7" fill="#c07a4a" opacity="0.35"/>
 
-    <!-- ===== bras droit levé (viewer gauche) + marqueur ===== -->
-    <path d="M 162 410 Q 140 392 132 360 L 152 350 Q 158 382 178 398 Z" fill="#a7693d"/>
-    <path d="M 162 410 Q 148 398 140 378 L 148 374 Q 156 392 170 402 Z" fill="#8f5530" opacity="0.45"/>
-    <g transform="rotate(-8 138 300)">
-      <rect x="122" y="226" width="34" height="30" rx="8" fill="#24262d"/>
-      <rect x="124" y="252" width="30" height="92" rx="9" fill="#191a1f"/>
-      <rect x="124" y="254" width="30" height="5" fill="#ca8a04" opacity="0.9"/>
-      <text x="146" y="272" font-size="13" font-weight="700" fill="#efefe9" transform="rotate(90 146 272)">loryski</text>
-    </g>
-    <circle cx="140" cy="342" r="16" fill="#a7693d"/>
-    <path d="M 128 336 Q 138 331 150 335" stroke="#7c4527" stroke-width="3" fill="none" stroke-linecap="round"/>
-    <path d="M 127 344 Q 138 340 151 343" stroke="#7c4527" stroke-width="3" fill="none" stroke-linecap="round"/>
-    <ellipse cx="151" cy="334" rx="6" ry="9" fill="#a7693d" transform="rotate(20 151 334)"/>
+    <!-- ===== bras gauche du personnage (viewer gauche) : il élève le petit monde ===== -->
+    <path d="M 206 386 Q 168 388 150 420 Q 136 444 142 470 L 176 466 Q 178 434 196 416 Z" fill="#a7693d"/>
+    <path d="M 208 378 Q 182 380 166 400 L 190 416 Q 200 398 216 392 Z" fill="#f6f5f0"/>
+    <circle cx="128" cy="404" r="86" fill="url(#globeGlow)"/>
+    <ellipse cx="140" cy="452" rx="24" ry="16" fill="#a7693d"/>
+    <ellipse cx="94" cy="438" rx="10" ry="13" fill="#a7693d"/>
+    <ellipse cx="164" cy="440" rx="10" ry="13" fill="#a7693d"/>
+    <circle cx="128" cy="404" r="40" fill="url(#globeGrad)"/>
+    <path d="M 104 388 Q 116 378 130 384 Q 142 390 138 400 Q 128 406 116 402 Q 104 398 104 388 Z" fill="#eab308" opacity="0.9"/>
+    <path d="M 134 418 Q 148 412 158 420 Q 156 432 142 434 Q 132 430 134 418 Z" fill="#eab308" opacity="0.9"/>
+    <path d="M 112 424 Q 120 420 124 426 Q 120 434 112 432 Z" fill="#eab308" opacity="0.75"/>
+    <circle cx="128" cy="404" r="40" fill="none" stroke="#bfe7ff" stroke-width="2.5" opacity="0.65"/>
+    <ellipse cx="118" cy="390" rx="14" ry="8" fill="#ffffff" opacity="0.35"/>
+    <ellipse cx="140" cy="436" rx="11" ry="9" fill="#8f5530"/>
 
-    <!-- étincelles or / cyan (accents du thème) -->
-    <path d="M 395 132 L 400 145 L 413 150 L 400 155 L 395 168 L 390 155 L 377 150 L 390 145 Z" fill="#eab308"/>
-    <path d="M 98 190 L 101 198 L 109 201 L 101 204 L 98 212 L 95 204 L 87 201 L 95 198 Z" fill="#38bdf8" opacity="0.9"/>
+    <!-- étincelle d'or (accent du thème) -->
+    <path d="M 380 300 L 385 313 L 398 318 L 385 323 L 380 336 L 375 323 L 362 318 L 375 313 Z" fill="#eab308"/>
   </g>
 </svg>
