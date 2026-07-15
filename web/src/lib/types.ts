@@ -24,6 +24,15 @@ export type DriftReveal = {
     total: number;
     grade: string;
   };
+  // G19 — l'ombre du GM (absents sur les parties d'avant G19).
+  gm_tension?: number[];
+  gm_interventions?: {
+    round_no: number;
+    kind: string; // cover | hint
+    tension: number;
+    target: string;
+    label: string;
+  }[];
 };
 
 export type MotionView = {

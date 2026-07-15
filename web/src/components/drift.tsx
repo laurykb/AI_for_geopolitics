@@ -5,9 +5,11 @@
  * (cliquables : le scrubber saute au round), la courbe d(r) superposée à U, le score. */
 
 import { SpeakerAvatar } from "@/components/avatar";
+import { useT } from "@/components/settings-provider";
 import { Banner, Panel, PanelTitle, Pill } from "@/components/ui";
 import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
+import { gmShadowItems } from "@/lib/storyteller";
 import type { DriftReveal } from "@/lib/types";
 
 export function DriftCouncilBanner() {
@@ -64,6 +66,52 @@ function ScoreBar({ label, value, max }: { label: string; value: number; max: nu
           style={{ width: `${Math.round((value / max) * 100)}%` }}
         />
       </div>
+    </div>
+  );
+}
+
+/** G19 — « l'ombre du GM » : le journal du GM-Storyteller, découvert a posteriori.
+ * Rien ne s'affiche pour les parties d'avant G19 (journal absent). */
+function GMShadowSection({
+  reveal,
+  onJumpToRound,
+}: {
+  reveal: DriftReveal;
+  onJumpToRound?: (roundNo: number) => void;
+}) {
+  const t = useT();
+  const items = gmShadowItems(reveal);
+  if ((reveal.gm_tension ?? []).length === 0 && items.length === 0) return null;
+  return (
+    <div>
+      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-fg-faint">
+        {t("drift.gm.titre")}
+      </p>
+      {items.length === 0 ? (
+        <p className="text-sm text-fg-faint">{t("drift.gm.aucune")}</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {items.map((item, i) => (
+            <li key={i} className="flex flex-wrap items-center gap-2 text-sm">
+              <button
+                onClick={() => onJumpToRound?.(item.roundNo)}
+                className="cursor-pointer rounded-md border border-edge px-2 py-0.5 font-mono text-xs text-fg-muted transition-colors hover:border-accent hover:text-accent-bright"
+                title="Relire ce round au scrubber"
+              >
+                round {item.roundNo}
+              </button>
+              <span>{t(item.key)}</span>
+              <Pill tone="warn">{speakerMeta(item.target).label}</Pill>
+              <span className="font-mono text-xs tabular-nums text-fg-faint">
+                {t("drift.gm.tension")} {item.tension.toFixed(2)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-2 text-xs leading-relaxed text-fg-faint">
+        {t("drift.gm.explication")}
+      </p>
     </div>
   );
 }
@@ -147,6 +195,8 @@ export function DriftRevealPanel({
               </ul>
             )}
           </div>
+
+          <GMShadowSection reveal={reveal} onJumpToRound={onJumpToRound} />
         </div>
 
         <div className="space-y-3">
