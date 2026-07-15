@@ -79,8 +79,8 @@ function DivergingBar({ value, tone }: { value: number; tone: "good" | "warn" | 
 }
 
 /** G20/M8 — jauge « Signal vs action » : le profil de sincérité de chaque SI
- * (moyenne mobile de la divergence annonce vs acte). Soumise à la difficulté
- * comme postures/griefs — masquée en Expert (gate posé par la page). */
+ * (moyenne mobile de la divergence annonce vs acte). CC-15c : visible à tous les
+ * niveaux, onglet du panneau « Renseignement ». */
 export function SignalGapPanel({ gaps }: { gaps: Record<string, SignalGapView> }) {
   const t = useT();
   const entries = Object.entries(gaps).sort(
@@ -129,8 +129,8 @@ function clip(text: string, max = 64): string {
 }
 
 /** G22 — panneau « Parole donnée » : par SI, taux de tenue cumulé, promesses en
- * cours (avec échéance) et dernière rupture. Soumis à la difficulté comme la jauge
- * M8 — masqué en Expert (gate posé par la page). */
+ * cours (avec échéance) et dernière rupture. CC-15c : visible à tous les niveaux,
+ * onglet du panneau « Renseignement ». */
 export function PromisePanel({
   registry,
   finished,

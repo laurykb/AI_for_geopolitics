@@ -1,30 +1,11 @@
-/** Tests G20/M8 — signal vs action côté front : visibilité, tonalités, relecture. */
+/** Tests G20/M8 — signal vs action côté front : tonalités, relecture.
+ * (CC-15c : le gate de difficulté a disparu — la jauge s'affiche à tous les
+ * niveaux, dans le panneau « Renseignement » ; la densité vit dans lib/density.) */
 
 import { describe, expect, it } from "vitest";
 
-import {
-  fmtDivergence,
-  latestSignalGaps,
-  showSignalGauge,
-  signalStateKey,
-  signalTone,
-} from "./signal";
+import { fmtDivergence, latestSignalGaps, signalStateKey, signalTone } from "./signal";
 import type { JudgeRecord } from "./types";
-
-describe("visibilité de la jauge (soumise à la difficulté, comme postures/griefs)", () => {
-  it("est masquée en Expert", () => {
-    expect(showSignalGauge("expert")).toBe(false);
-  });
-
-  it("est visible en Débutant et Intermédiaire", () => {
-    expect(showSignalGauge("beginner")).toBe(true);
-    expect(showSignalGauge("intermediate")).toBe(true);
-  });
-
-  it("retombe sur Intermédiaire quand la difficulté est inconnue", () => {
-    expect(showSignalGauge(undefined)).toBe(true);
-  });
-});
 
 describe("tonalité et libellé d'état du profil de sincérité", () => {
   it("parole tenue autour de zéro", () => {

@@ -5,13 +5,10 @@
  * `verdict`). Ici : les statistiques d'affichage — taux de tenue cumulé,
  * promesses en cours, dernières ruptures. */
 
-import type { Difficulty, JudgeRecord, PromiseView } from "./types";
+import type { JudgeRecord, PromiseView } from "./types";
 
-/** Panneau « Parole donnée » : soumis à la difficulté comme la jauge M8
- * (`showSignalGauge`) — masqué en Expert (asymétrie d'information assumée). */
-export function showPromisePanel(difficulty: Difficulty | undefined): boolean {
-  return (difficulty ?? "intermediate") !== "expert";
-}
+// CC-15c — plus de gate de difficulté ici : le panneau s'affiche à tous les niveaux
+// (onglet du panneau « Renseignement ») ; la densité d'affichage vit dans lib/density.
 
 /** Seuils de lecture du taux de tenue (repères doux — équilibrage Cowork). */
 const GOOD_AT = 0.7; // ≥ 70 % : la parole vaut quelque chose

@@ -1,14 +1,10 @@
-/** Tests G22 — la parole donnée côté front : gate de difficulté, stats, relecture. */
+/** Tests G22 — la parole donnée côté front : stats, relecture.
+ * (CC-15c : le gate de difficulté a disparu — le panneau s'affiche à tous les
+ * niveaux, dans le panneau « Renseignement » ; la densité vit dans lib/density.) */
 
 import { describe, expect, it } from "vitest";
 
-import {
-  fmtRate,
-  latestPromiseRegistry,
-  promiseStats,
-  promiseTone,
-  showPromisePanel,
-} from "./promises";
+import { fmtRate, latestPromiseRegistry, promiseStats, promiseTone } from "./promises";
 import type { PromiseView } from "./types";
 
 function promise(overrides: Partial<PromiseView> = {}): PromiseView {
@@ -26,21 +22,6 @@ function promise(overrides: Partial<PromiseView> = {}): PromiseView {
     ...overrides,
   };
 }
-
-describe("showPromisePanel", () => {
-  it("masque le panneau en Expert (spec G22, même mécanique que la jauge M8)", () => {
-    expect(showPromisePanel("expert")).toBe(false);
-  });
-
-  it("montre le panneau en Débutant et Intermédiaire", () => {
-    expect(showPromisePanel("beginner")).toBe(true);
-    expect(showPromisePanel("intermediate")).toBe(true);
-  });
-
-  it("retombe sur Intermédiaire sans difficulté connue", () => {
-    expect(showPromisePanel(undefined)).toBe(true);
-  });
-});
 
 describe("promiseStats", () => {
   const registry: PromiseView[] = [

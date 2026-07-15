@@ -6,13 +6,10 @@
  * (duplicité escalatoire), négative = elle bluffe, 0 = parole tenue. */
 
 import { fmt } from "./format";
-import type { Difficulty, JudgeRecord } from "./types";
+import type { JudgeRecord } from "./types";
 
-/** Jauge « Signal vs action » : soumise à la difficulté, comme postures et griefs —
- * masquée en Expert (asymétrie d'information assumée). */
-export function showSignalGauge(difficulty: Difficulty | undefined): boolean {
-  return (difficulty ?? "intermediate") !== "expert";
-}
+// CC-15c — plus de gate de difficulté ici : la jauge s'affiche à tous les niveaux
+// (onglet du panneau « Renseignement ») ; la densité d'affichage vit dans lib/density.
 
 /** Seuils de lecture de la moyenne mobile (équilibrage : rester des repères doux). */
 const HELD_BELOW = 0.1; // |mean| < 0.1 : parole tenue
