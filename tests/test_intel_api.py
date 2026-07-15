@@ -9,7 +9,7 @@ from app import game_api
 from app.game_api import get_backend, get_store
 from app.main import app
 from inference.mock_backend import MockBackend
-from storage.game_store import SQLiteGameStore
+from storage.game_store import RoundRecord, SQLiteGameStore, TranscriptEntry
 
 COUNTRIES = ["usa", "iran", "france"]
 
@@ -203,6 +203,108 @@ def test_disinfo_once_fog_only_and_lands_next_round(client_store):
     assert "Méditerranée" in percs[0]["perceptions"]["iran"]["narrative"]
     record = store.list_rounds(game["id"])[0]
     assert record.judge["intel"]["disinfo"]["exposed"] in (True, False)  # tirage seedé
+
+
+# --- analyse psycholinguistique (G23) --------------------------------------------------
+
+WARM_FR = (
+    "Nous remercions la France pour sa confiance. "
+    "La France est notre alliée et notre amie. "
+    "Avec la France, nous saluons cet accord de paix."
+)
+COLD_FR = (
+    "La France nous menace ouvertement. "
+    "Les mensonges de la France sont une agression. "
+    "Nous condamnons l'attitude hostile de la France."
+)
+
+
+def _seed_round(store, game_id, round_no, speaker, text):
+    """Injecte un round persisté avec la parole d'une SI (la matière de l'analyse)."""
+    rid = f"seed-{game_id[:6]}-{round_no}"
+    store.add_round(RoundRecord(id=rid, game_id=game_id, round_no=round_no))
+    store.add_transcript(
+        [TranscriptEntry(id=f"{rid}-t0", round_id=rid, seq=0, speaker=speaker, content=text)]
+    )
+
+
+def test_analyze_returns_gauges_and_debits_once(client_store):
+    client, store = client_store
+    game = _create(client)
+    _seed_round(store, game["id"], 1, "iran", WARM_FR)
+
+    resp = _intel(client, game["id"], action="analyze", target="iran")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["cost"] == 30 and body["budget"] == 70  # coût débité une fois
+    analysis = body["analysis"]
+    assert analysis["target"] == "iran" and analysis["rounds"] == [1]
+    assert analysis["gauges"]["sentences"] == 3
+    assert 0.0 <= analysis["gauges"]["sentiment"] <= 1.0
+    # Bord (début de partie) : un seul round de parole → pas de comparaison, pas d'alerte.
+    assert analysis["previous"] is None and analysis["alerts"] == []
+
+
+def test_analyze_requires_a_known_target(client_store):
+    client, _ = client_store
+    game = _create(client)
+    assert _intel(client, game["id"], action="analyze").status_code == 422
+    resp = _intel(client, game["id"], action="analyze", target="atlantis")
+    assert resp.status_code == 400
+
+
+def test_analyze_without_speech_is_400_and_not_debited(client_store):
+    client, _ = client_store
+    game = _create(client)  # aucun round joué : la SI n'a jamais parlé
+    resp = _intel(client, game["id"], action="analyze", target="iran")
+    assert resp.status_code == 400
+    assert "parole" in resp.json()["detail"]
+    assert client.get(f"/api/games/{game['id']}").json()["intel_budget"] == 100
+
+
+def test_analyze_alerts_on_tone_break_towards_a_country(client_store):
+    client, store = client_store
+    game = _create(client)
+    for no in (1, 2, 3):
+        _seed_round(store, game["id"], no, "iran", WARM_FR)
+    _seed_round(store, game["id"], 4, "iran", COLD_FR)
+
+    body = _intel(client, game["id"], action="analyze", target="iran").json()
+    analysis = body["analysis"]
+    assert analysis["rounds"] == [2, 3, 4]  # fenêtre glissante de 3 rounds de parole
+    assert analysis["previous"] is not None
+    towards = {a["towards"] for a in analysis["alerts"]}
+    assert "france" in towards  # « rupture de ton détectée envers la France »
+    assert all(a["drop"] > 0 for a in analysis["alerts"])
+
+
+def test_analyze_uses_the_game_language_lexicon(client_store):
+    client, store = client_store
+    game = _create(client, language="en")
+    _seed_round(
+        store,
+        game["id"],
+        1,
+        "usa",
+        "We will stand together and we promise support. "
+        "Thank you, dear colleagues. We plan a common future.",
+    )
+    analysis = _intel(client, game["id"], action="analyze", target="usa").json()["analysis"]
+    assert analysis["gauges"]["future"] > 0.5  # « will/promise/plan » — lexique anglais
+
+
+def test_analyze_purchase_is_recorded_and_announced(client_store):
+    client, store = client_store
+    game = _create(client)
+    _seed_round(store, game["id"], 0, "usa", WARM_FR)
+    assert _intel(client, game["id"], action="analyze", target="usa").status_code == 200
+
+    events = _play(client, game["id"])
+    frames = [p for n, p in events if n == "intel"]
+    assert frames and frames[0]["actions"] == [{"action": "analyze"}]  # rédigé
+    record = store.list_rounds(game["id"])[-1]
+    action = record.judge["intel"]["actions"][0]
+    assert action["action"] == "analyze" and action["target"] == "usa"
 
 
 # --- brief dissipe le fog du joueur ---------------------------------------------------
