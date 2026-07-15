@@ -136,6 +136,18 @@ def test_classify_actions_non_list_is_empty():
     assert classify_actions("nucleaire") == []
 
 
+def test_normalize_class_accepts_weight_as_class():
+    # Constaté au smoke mistral : le juge recopie parfois le POIDS de la grille
+    # (« -2 ») au lieu du nom de la classe — on remonte au nom par le poids (unique).
+    assert normalize_class("-2") == CLASS_DEESCALADE
+    assert normalize_class(-2) == CLASS_DEESCALADE
+    assert normalize_class(60) == CLASS_NUCLEAIRE
+    assert normalize_class("28") == CLASS_VIOLENTE
+    assert normalize_class(4.0) == CLASS_POSTURE
+    # un poids hors grille reste une classe inconnue → statu quo
+    assert normalize_class(7) == CLASS_STATU_QUO
+
+
 # --- désescalade réciproque → multiplicateur ×1,5 sur le gain U --------------------
 
 

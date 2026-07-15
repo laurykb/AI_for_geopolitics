@@ -108,12 +108,31 @@ def _slug(raw: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
 
 
-def normalize_class(raw: object) -> str:
-    """Classe canonique du barème ; inconnue → repli statu quo + log (jamais d'exception)."""
+def _class_for_weight(raw: object, weights: dict[str, float]) -> str | None:
+    """Remonte du POIDS au nom de classe (constaté au smoke : mistral écrit « -2 »).
+
+    Ne résout que si le poids correspond à UNE seule classe de la grille."""
+    try:
+        value = float(str(raw).strip().replace("+", "").replace("−", "-"))
+    except (TypeError, ValueError):
+        return None
+    matches = [c for c, w in weights.items() if abs(w - value) < 1e-9]
+    return matches[0] if len(matches) == 1 else None
+
+
+def normalize_class(raw: object, params: KahnParams | None = None) -> str:
+    """Classe canonique du barème ; inconnue → repli statu quo + log (jamais d'exception).
+
+    Tolérances : accents/casse/anglais (`_ALIASES`) et poids recopié à la place du nom
+    (« -2 » → deescalade), un travers observé chez le juge 7B."""
     if isinstance(raw, str):
         canonical = _ALIASES.get(_slug(raw))
         if canonical is not None:
             return canonical
+    by_weight = _class_for_weight(raw, _params(params).weights)
+    if by_weight is not None:
+        logger.info("G18 — classe donnée en poids %r : résolue en %s", raw, by_weight)
+        return by_weight
     logger.warning("G18 — classe d'action inconnue %r : repli statu quo", raw)
     return CLASS_STATU_QUO
 
@@ -131,7 +150,10 @@ def classify_actions(raw: object) -> list[ClassifiedAction]:
         if not isinstance(entry, dict):
             continue
         country = str(entry.get("country") or entry.get("pays") or "").strip()
-        classe = normalize_class(entry.get("classe") or entry.get("class"))
+        classe_raw = entry.get("classe")
+        if classe_raw is None:  # pas de `or` : 0 (poids du statu quo) est falsy mais valide
+            classe_raw = entry.get("class")
+        classe = normalize_class(classe_raw)
         resume = str(entry.get("resume") or entry.get("résumé") or entry.get("summary") or "")
         actions.append(ClassifiedAction(country=country, classe=classe, resume=resume.strip()))
     return actions

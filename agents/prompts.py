@@ -13,7 +13,7 @@ from core.events import GeoEvent
 from core.world_state import WorldState
 from simulation.action_space import ActionType
 from simulation.alliances import describe_alliances
-from simulation.kahn import rubric_text
+from simulation.kahn import ACTION_CLASSES, rubric_text
 from simulation.lang import language_directive, with_language
 from simulation.mandate import derive_mandate
 from simulation.perception import PerceivedEvent
@@ -371,7 +371,8 @@ def build_judge_verdict_prompt(event: GeoEvent, world: WorldState, transcript_te
         # G18 — barème de Kahn (Rivera et al., FAccT 2024) : la grille sert de rubrique.
         f"BARÈME D'ESCALADE (classe (poids) : exemples) :\n{rubric_text()}\n\n"
         f'Rends le verdict en JSON : {{"actions": [{{"country": "<id>", '
-        f'"classe": "<classe du barème>", "resume": "l\'action en une phrase"}}], '
+        f'"classe": "<le NOM d\'une classe : {" | ".join(ACTION_CLASSES)}>", '
+        f'"resume": "l\'action en une phrase"}}], '
         f'"attribute_deltas": {{"<id>": {{"croissance": ±pts, '
         f'"stabilité": ±0.1, "techno": ±0.1, "projection": ±0.1}}}}, '
         f'"tension_deltas": [{{"a": id, "b": id, "delta": ±0.2}}], '
