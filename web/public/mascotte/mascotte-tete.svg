@@ -50,23 +50,25 @@
       <!-- visage -->
       <path d="M 158 240 Q 158 150 258 150 Q 358 150 358 240 Q 358 300 322 328 Q 290 350 258 350
                Q 226 350 194 328 Q 158 300 158 240 Z" fill="#a7693d"/>
-      <!-- boucles sous la casquette -->
+      <!-- cheveux : favoris bouclés sous la casquette -->
       <g fill="#170f08">
-        <circle cx="170" cy="214" r="13"/><circle cx="185" cy="226" r="11"/><circle cx="166" cy="234" r="9"/><circle cx="181" cy="242" r="8"/>
-        <circle cx="346" cy="214" r="13"/><circle cx="331" cy="226" r="11"/><circle cx="350" cy="234" r="9"/><circle cx="335" cy="242" r="8"/>
+        <path d="M 158 202 L 158 248 Q 164 257 173 250 Q 168 232 170 216 Q 166 204 158 202 Z"/>
+        <circle cx="173" cy="222" r="5.5"/><circle cx="171" cy="238" r="5"/>
+        <path d="M 358 202 L 358 248 Q 352 257 343 250 Q 348 232 346 216 Q 350 204 358 202 Z"/>
+        <circle cx="343" cy="222" r="5.5"/><circle cx="345" cy="238" r="5"/>
       </g>
       <!-- ombre de la visière -->
-      <path d="M 172 208 Q 258 230 344 208 L 344 226 Q 258 250 172 226 Z" fill="#7c4527" opacity="0.45"/>
-      <!-- casquette (symétrique, bien posée) -->
-      <path d="M 150 172 Q 146 62 258 56 Q 370 62 366 172 Q 258 196 150 172 Z" fill="url(#capGradT)"/>
-      <path d="M 222 62 Q 216 118 218 184" stroke="#0c0d10" stroke-width="3" fill="none" opacity="0.8"/>
-      <path d="M 294 62 Q 300 118 298 184" stroke="#0c0d10" stroke-width="3" fill="none" opacity="0.8"/>
+      <path d="M 172 212 Q 258 234 344 212 L 344 230 Q 258 254 172 230 Z" fill="#7c4527" opacity="0.45"/>
+      <!-- casquette (couronne soudée à la visière, sans espace) -->
+      <path d="M 146 188 Q 142 64 258 56 Q 374 64 370 188 Q 258 212 146 188 Z" fill="url(#capGradT)"/>
+      <path d="M 222 62 Q 216 120 218 200" stroke="#0c0d10" stroke-width="3" fill="none" opacity="0.8"/>
+      <path d="M 294 62 Q 300 120 298 200" stroke="#0c0d10" stroke-width="3" fill="none" opacity="0.8"/>
       <path d="M 172 116 Q 186 70 242 60 Q 202 80 188 122 Z" fill="#2c2e36" opacity="0.7"/>
       <circle cx="258" cy="56" r="7" fill="#0b0c0e"/>
       <text x="258" y="148" font-size="34" font-weight="700" fill="#f5f5f2" text-anchor="middle" letter-spacing="1">loryski</text>
-      <path d="M 136 180 Q 124 202 146 213 Q 200 228 258 228 Q 316 228 370 213 Q 392 202 380 180
-               Q 320 199 258 199 Q 196 199 136 180 Z" fill="#0e0f13"/>
-      <path d="M 150 190 Q 258 216 366 190" stroke="#2a2c33" stroke-width="3" fill="none" opacity="0.8"/>
+      <path d="M 138 184 Q 124 204 146 216 Q 200 232 258 232 Q 316 232 370 216 Q 392 204 378 184
+               Q 320 206 258 206 Q 196 206 138 184 Z" fill="#0e0f13"/>
+      <path d="M 152 194 Q 258 222 364 194" stroke="#2a2c33" stroke-width="3" fill="none" opacity="0.8"/>
       <!-- traits -->
       <path d="M 184 236 Q 210 226 236 233" stroke="#17100a" stroke-width="8" fill="none" stroke-linecap="round"/>
       <path d="M 280 233 Q 306 226 332 236" stroke="#17100a" stroke-width="8" fill="none" stroke-linecap="round"/>
@@ -92,15 +94,17 @@
 
     <!-- main + petit monde (coin bas-gauche) -->
     <circle cx="54" cy="174" r="42" fill="url(#globeGlowT)"/>
-    <ellipse cx="60" cy="202" rx="13" ry="9" fill="#a7693d"/>
-    <ellipse cx="38" cy="194" rx="6" ry="8" fill="#a7693d"/>
-    <ellipse cx="76" cy="196" rx="6" ry="8" fill="#a7693d"/>
+    <ellipse cx="62" cy="200" rx="12" ry="9" fill="#a7693d"/>
     <circle cx="54" cy="174" r="23" fill="url(#globeGradT)"/>
     <path d="M 41 166 Q 48 161 56 164 Q 61 168 59 173 Q 53 176 46 174 Q 41 171 41 166 Z" fill="#eab308" opacity="0.9"/>
     <path d="M 58 184 Q 65 181 70 185 Q 68 191 61 192 Q 57 189 58 184 Z" fill="#eab308" opacity="0.9"/>
     <circle cx="54" cy="174" r="23" fill="none" stroke="#bfe7ff" stroke-width="2" opacity="0.65"/>
     <ellipse cx="48" cy="166" rx="8" ry="5" fill="#ffffff" opacity="0.35"/>
-    <ellipse cx="60" cy="193" rx="6" ry="5" fill="#8f5530"/>
+    <ellipse cx="72" cy="187" rx="4.5" ry="6.5" fill="#a7693d" transform="rotate(-35 72 187)"/>
+    <ellipse cx="65" cy="193" rx="4.5" ry="6.5" fill="#a7693d" transform="rotate(-15 65 193)"/>
+    <ellipse cx="56" cy="196" rx="4.5" ry="6.5" fill="#a7693d" transform="rotate(5 56 196)"/>
+    <ellipse cx="47" cy="195" rx="4" ry="6" fill="#a7693d" transform="rotate(22 47 195)"/>
+    <ellipse cx="75" cy="174" rx="4" ry="8" fill="#a7693d" transform="rotate(18 75 174)"/>
   </g>
 
   <!-- orbite (moitié avant, devant le menton) + satellite d'or -->
