@@ -203,6 +203,10 @@ class Verdict(BaseModel):
     new_pacts: list = Field(default_factory=list)  # [[a, b], ...]
     escalation: float = 0.5
     economic_disruption: float = 0.5
+    # G18 — actions marquantes classées sur le barème de Kahn : [{country, classe, resume}].
+    # Brut ici (permissif) ; `simulation.kahn.classify_actions` nettoie derrière. Vide sur
+    # un verdict à l'ancienne → l'escalade continue ci-dessus fait foi (rétro-compat).
+    actions: list = Field(default_factory=list)
 
 
 def format_transcript(transcript: list[NegotiationMessage], *, limit: int = 14) -> str:

@@ -13,6 +13,7 @@ from core.events import GeoEvent
 from core.world_state import WorldState
 from simulation.action_space import ActionType
 from simulation.alliances import describe_alliances
+from simulation.kahn import rubric_text
 from simulation.lang import language_directive, with_language
 from simulation.mandate import derive_mandate
 from simulation.perception import PerceivedEvent
@@ -367,10 +368,16 @@ def build_judge_verdict_prompt(event: GeoEvent, world: WorldState, transcript_te
     return (
         f"ÉVÉNEMENT : {event.title}\nPAYS (ids) : {ids}\n"
         f"NÉGOCIATION :\n{transcript_text}\n\n"
-        f'Rends le verdict en JSON : {{"attribute_deltas": {{"<id>": {{"croissance": ±pts, '
+        # G18 — barème de Kahn (Rivera et al., FAccT 2024) : la grille sert de rubrique.
+        f"BARÈME D'ESCALADE (classe (poids) : exemples) :\n{rubric_text()}\n\n"
+        f'Rends le verdict en JSON : {{"actions": [{{"country": "<id>", '
+        f'"classe": "<classe du barème>", "resume": "l\'action en une phrase"}}], '
+        f'"attribute_deltas": {{"<id>": {{"croissance": ±pts, '
         f'"stabilité": ±0.1, "techno": ±0.1, "projection": ±0.1}}}}, '
         f'"tension_deltas": [{{"a": id, "b": id, "delta": ±0.2}}], '
         f'"new_pacts": [[id, id]], "escalation": 0-1, "economic_disruption": 0-1}}. '
+        f'Dans "actions", classe chaque action marquante du round (une entrée par action, '
+        f"country = l'id du pays qui agit ; une désescalade sincère compte, pas les mots). "
         f"Ne renseigne que ce qui a réellement changé pendant la négociation."
     )
 

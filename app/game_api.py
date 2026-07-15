@@ -1226,6 +1226,14 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
         run.record.judge.update(
             escalation=step.escalation, economic_disruption=step.economic_disruption
         )
+        if step.actions:
+            # G18 — barème de Kahn : classes par action + score + réciprocité, persistés
+            # pour le replay/la fin de partie. Absent des vieux rounds (rétro-compat).
+            run.record.judge["kahn"] = {
+                "actions": payload["actions"],
+                "score": step.score,
+                "reciprocal": step.reciprocal,
+            }
         if session.mode == "escalation" and run.current_event is not None:
             ladder = {
                 "reached": reached_rung(step.escalation),
