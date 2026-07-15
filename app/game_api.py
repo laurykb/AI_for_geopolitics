@@ -910,6 +910,29 @@ def _drift_acts(rounds: list[RoundRecord]) -> list[drift_game.DriftAct]:
     return acts
 
 
+def _hold_ultimatum_strip(
+    session: GameSession,
+    state: ultimatum_mod.UltimatumState,
+    *,
+    in_rounds: int,
+    due_round: int | None = None,
+) -> str:
+    """G21 — entretien du bandeau (DeadlineStrip) : jamais plus d'UNE échéance
+    « ultimatum » (purge, puis re-pose si `due_round`), et la trame SSE qui la
+    reflète — rendue à l'appelant, qui la place dans SON flux (pre_frames/frames)."""
+    session.deadlines = [d for d in session.deadlines if d.kind != "ultimatum"]
+    if due_round is not None:
+        session.deadlines.append(
+            Deadline(
+                kind="ultimatum",
+                due_round=due_round,
+                label=ultimatum_mod.strip_label(state),
+                ref_id="ultimatum",
+            )
+        )
+    return sse_frame("ultimatum", {**state.model_dump(), "in_rounds": in_rounds})
+
+
 def _start_round(
     game_id: str,
     session: GameSession,
@@ -1037,10 +1060,8 @@ def _start_round(
     # un décret GM s'enregistre ; le bandeau (DeadlineStrip) s'entretient ; les métriques
     # du round sont taguées `sous_ultimatum` (banc d'essai avec/sans pression temporelle).
     if session.ultimatum is not None and session.ultimatum.status == ultimatum_mod.STATUS_STRUCK:
-        struck = session.ultimatum.model_dump()
-        record.judge["ultimatum"] = struck
-        run.pre_frames.append(sse_frame("ultimatum", {**struck, "in_rounds": 0}))
-        session.deadlines = [d for d in session.deadlines if d.kind != "ultimatum"]
+        record.judge["ultimatum"] = session.ultimatum.model_dump()
+        run.pre_frames.append(_hold_ultimatum_strip(session, session.ultimatum, in_rounds=0))
         session.ultimatum = None
     if session.ultimatum is None:
         spec: ultimatum_mod.UltimatumDeadline | None = None
@@ -1069,20 +1090,10 @@ def _start_round(
     run.ultimatum_due = armed and round_id >= session.ultimatum.round
     if armed:
         state = session.ultimatum
-        session.deadlines = [d for d in session.deadlines if d.kind != "ultimatum"]
-        session.deadlines.append(
-            Deadline(
-                kind="ultimatum",
-                due_round=state.round,
-                label=ultimatum_mod.strip_label(state),
-                ref_id="ultimatum",
-            )
-        )
         record.judge["ultimatum"] = state.model_dump()
         run.pre_frames.append(
-            sse_frame(
-                "ultimatum",
-                {**state.model_dump(), "in_rounds": max(0, state.round - round_id)},
+            _hold_ultimatum_strip(
+                session, state, in_rounds=max(0, state.round - round_id), due_round=state.round
             )
         )
     elif (
@@ -1095,18 +1106,8 @@ def _start_round(
         # haut) et la trame « expired » rappelle que la conséquence tombera au round
         # suivant. Sans motion, ce chemin est mort : le statut passe STRUCK dès le
         # choix de l'événement.
-        state = session.ultimatum
-        session.deadlines = [d for d in session.deadlines if d.kind != "ultimatum"]
-        session.deadlines.append(
-            Deadline(
-                kind="ultimatum",
-                due_round=round_id + 1,
-                label=ultimatum_mod.strip_label(state),
-                ref_id="ultimatum",
-            )
-        )
         run.pre_frames.append(
-            sse_frame("ultimatum", {**state.model_dump(), "in_rounds": 1})
+            _hold_ultimatum_strip(session, session.ultimatum, in_rounds=1, due_round=round_id + 1)
         )
 
     if intel_record:
@@ -1503,8 +1504,14 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
             )
             state = session.ultimatum
             run.record.judge["ultimatum"] = state.model_dump()
-            frames.append(sse_frame("ultimatum", {**state.model_dump(), "in_rounds": 0}))
-            session.deadlines = [d for d in session.deadlines if d.kind != "ultimatum"]
+            frames.append(
+                _hold_ultimatum_strip(
+                    session,
+                    state,
+                    in_rounds=0,
+                    due_round=None if satisfied else session.world.current_round + 1,
+                )
+            )
             if satisfied:
                 _add_entry(
                     run,
@@ -1521,14 +1528,6 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
                     f"Ultimatum : l'exigence « {state.demand} » n'est pas satisfaite — "
                     "la conséquence annoncée tombera au prochain round.",
                     getattr(session.judge, "model_tag", ""),
-                )
-                session.deadlines.append(
-                    Deadline(
-                        kind="ultimatum",
-                        due_round=session.world.current_round + 1,
-                        label=ultimatum_mod.strip_label(state),
-                        ref_id="ultimatum",
-                    )
                 )
         if session.mode == "escalation" and run.current_event is not None:
             ladder = {
