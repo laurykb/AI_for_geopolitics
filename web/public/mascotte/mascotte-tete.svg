@@ -7,9 +7,21 @@
       <stop offset="1" stop-color="#331a0c"/>
     </radialGradient>
     <linearGradient id="capGradT" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#24262c"/>
-      <stop offset="1" stop-color="#141519"/>
+      <stop offset="0" stop-color="#2b2d35"/>
+      <stop offset="0.55" stop-color="#1c1d23"/>
+      <stop offset="1" stop-color="#121317"/>
     </linearGradient>
+    <!-- lettrage « loryski » en tracés vectoriels (gras géométrique) -->
+    <g id="wordmarkT" fill="none" stroke-width="9" stroke-linejoin="round">
+      <path d="M 4.5 4 L 4.5 40"/>
+      <circle cx="28" cy="27" r="9.5"/>
+      <path d="M 51.5 15 L 51.5 40 M 51.5 25 Q 51.5 15 62 15"/>
+      <path d="M 70 15 L 81 33.5 M 88.5 15 L 75.5 50"/>
+      <path d="M 112 18 Q 105 13.5 100.5 17.5 Q 97 21.5 101.5 24.5 Q 104.5 26.5 108.5 28 Q 113.5 30.5 111.5 35.5 Q 109 40.5 99.5 37"/>
+      <path d="M 124.5 4 L 124.5 40 M 137 15 L 125.5 28.5 M 128 26 L 138 40"/>
+      <path d="M 149.5 15 L 149.5 40"/>
+      <path d="M 149.5 5.5 L 149.5 5.6" stroke-linecap="round"/>
+    </g>
     <radialGradient id="globeGradT" cx="0.38" cy="0.3" r="1">
       <stop offset="0" stop-color="#7dd3fc"/>
       <stop offset="0.6" stop-color="#38bdf8"/>
@@ -41,7 +53,7 @@
     <path d="M 102 206 Q 128 220 154 206 L 152 228 Q 128 240 104 228 Z" fill="#f4f2ea"/>
 
     <!-- ===== tête (mêmes formes que la mascotte pied, recentrées) ===== -->
-    <g transform="translate(-27 -14) scale(0.60)">
+    <g transform="translate(-27 -14) scale(0.60) rotate(-2.5 258 250)">
       <!-- oreilles -->
       <ellipse cx="154" cy="254" rx="13" ry="18" fill="#a7693d"/>
       <ellipse cx="362" cy="254" rx="13" ry="18" fill="#a7693d"/>
@@ -70,7 +82,7 @@
       <path d="M 294 62 Q 300 120 297 204" stroke="#0c0d10" stroke-width="3" fill="none" opacity="0.8"/>
       <path d="M 172 116 Q 186 70 242 60 Q 202 80 188 122 Z" fill="#2c2e36" opacity="0.7"/>
       <circle cx="258" cy="56" r="7" fill="#0b0c0e"/>
-      <text x="258" y="148" font-size="34" font-weight="700" fill="#f5f5f2" text-anchor="middle" letter-spacing="1">loryski</text>
+      <use href="#wordmarkT" transform="translate(192.5 116) scale(0.85)" stroke="#f5f5f2"/>
       <!-- traits -->
       <path d="M 184 236 Q 210 226 236 233" stroke="#17100a" stroke-width="8" fill="none" stroke-linecap="round"/>
       <path d="M 280 233 Q 306 226 332 236" stroke="#17100a" stroke-width="8" fill="none" stroke-linecap="round"/>
