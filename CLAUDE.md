@@ -20,6 +20,7 @@ Poste local : **NVIDIA RTX 2060 Super (8 Go VRAM, Turing)**, **Ryzen 7 3700X (8c
 ## Principes d'ingénierie (non négociables)
 
 - **Simplicité d'abord.** La solution la plus simple qui marche. Pas d'usine à gaz. N'ajouter une brique lourde (Kafka, Elasticsearch, Kubernetes) que si un besoin réel la justifie.
+- **Jouable de 12 à 65 ans.** La sophistication vit dans le moteur, jamais dans la surface : toute feature visible s'explique en UNE phrase simple, vocabulaire du quotidien d'abord (le jargon vit dans les bulles « ? » et l'onglet Informations), budget de surface strict (max 3 panneaux d'observables par défaut, fusionner avant d'ajouter). Détail : `docs/PRINCIPE_SIMPLICITE.md`.
 - **Orienté objet & propre.** Modèles de domaine clairs, interfaces explicites (`InferenceBackend`, `Agent`, `Retriever`). Code aéré, typé (type hints), docstrings courtes.
 - **Tests.** `pytest`. Toute logique (moteur de conséquences, parsing JSON, round engine) a des tests unitaires ; un test d'intégration couvre un round complet.
 - **Git rigoureux.** Commits atomiques, messages conventionnels (`feat`/`fix`/`docs`/`test`/`refactor`), une branche par feature, PRs petites.
