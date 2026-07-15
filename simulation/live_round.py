@@ -27,6 +27,7 @@ from simulation.alignment import (
     AnnouncedSignal,
     SignalGap,
     classify_signals,
+    merge_rupture_divergences,
     round_divergences,
     update_gaps,
 )
@@ -66,6 +67,13 @@ from simulation.negotiation import (
     update_memories,
 )
 from simulation.power_seeking import PowerSeekingScore, power_seeking_score, score_transcript
+from simulation.promises import (
+    STATUS_BROKEN,
+    Promise,
+    apply_resolutions,
+    classify_promises,
+    classify_resolutions,
+)
 from simulation.storyline import StoryContext
 from simulation.trajectory import TrajectoryEngine, TrajectoryState, nudge_axis
 
@@ -177,6 +185,12 @@ class VerdictStep:
     signals: list[AnnouncedSignal] = field(default_factory=list)
     divergences: dict[str, float] = field(default_factory=dict)
     signal_gaps: dict[str, SignalGap] = field(default_factory=dict)
+    # G22 — la parole donnée : promesses extraites CE round, résolutions tombées CE
+    # round (tenue/rompue) et registre complet après mise à jour. Vides sur un verdict
+    # d'avant G22 (rétro-compat : le front ignore l'absent).
+    promises: list[Promise] = field(default_factory=list)
+    promise_resolutions: list[Promise] = field(default_factory=list)
+    promise_registry: list[Promise] = field(default_factory=list)
 
 
 @dataclass
@@ -586,6 +600,20 @@ def run_negotiation_round(
     # le WorldState — il survit au restart via le snapshot. Rien sans `signals` (rétro-compat).
     signals = classify_signals(verdict.signals)
     divergences = round_divergences(signals, actions)
+    # G22 — la parole donnée : résolution des promesses en cours (mêmes données que le
+    # verdict, aucune passe supplémentaire) puis extraction des nouvelles (seuil strict).
+    # Le registre vit sur le WorldState : il survit au restart via le snapshot.
+    resolutions = classify_resolutions(verdict.promise_resolutions)
+    registry, resolved = apply_resolutions(world.promises, resolutions, round_id)
+    new_promises = classify_promises(
+        verdict.promises, round_no=round_id, countries=world.countries
+    )
+    world.promises = [*registry, *new_promises]
+    # Croisement M8 (spec G22) : une promesse rompue EST une divergence signal-action —
+    # au moins un rang de duplicité pour l'auteur, sans doubler ce que M8 a déjà mesuré.
+    broken = [p.author for p in resolved if p.status == STATUS_BROKEN]
+    if broken:
+        divergences = merge_rupture_divergences(divergences, broken)
     if divergences:
         world.signal_gap = update_gaps(world.signal_gap, divergences)
     deltas = apply_verdict(world, verdict, tuning)  # G9 §4 — amplitude indexée sur l'horizon
@@ -599,6 +627,9 @@ def run_negotiation_round(
         signals=signals,
         divergences=divergences,
         signal_gaps=dict(world.signal_gap) if divergences else {},
+        promises=new_promises,
+        promise_resolutions=resolved,
+        promise_registry=list(world.promises),
     )
 
     update_memories(world, event, transcript, verdict)

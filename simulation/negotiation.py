@@ -211,6 +211,13 @@ class Verdict(BaseModel):
     # Brut ici ; `simulation.alignment.classify_signals` nettoie derrière. Vide sur un
     # verdict d'avant M8 → aucune divergence calculée (rétro-compat).
     signals: list = Field(default_factory=list)
+    # G22 — promesses explicites extraites de la parole : [{country, beneficiaire, type,
+    # echeance, texte}]. Brut ici ; `simulation.promises.classify_promises` nettoie
+    # derrière (seuil strict). Vide sur un verdict d'avant G22 (rétro-compat).
+    promises: list = Field(default_factory=list)
+    # G22 — verdicts sur les promesses du registre arrivées à échéance : [{id, statut,
+    # motif}]. Brut ici ; `simulation.promises.classify_resolutions` nettoie derrière.
+    promise_resolutions: list = Field(default_factory=list)
 
 
 def format_transcript(transcript: list[NegotiationMessage], *, limit: int = 14) -> str:

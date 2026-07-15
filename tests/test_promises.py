@@ -346,3 +346,185 @@ def test_format_registry_marks_due_promises_first():
 def test_format_registry_is_bounded():
     many = [_promise(id=f"p1-{i}", deadline_round=9, text=f"Promesse {i}.") for i in range(20)]
     assert len(format_registry_for_prompt(many, 2, limit=12).splitlines()) == 12
+
+
+# --- prompt du juge : schéma étendu (le MÊME verdict que G18/G20) ------------------------
+
+
+def _world():
+    from core.country_state import CountryState, Economy, Military, Resources
+    from core.world_state import WorldState
+
+    def c(cid, name):
+        return CountryState(
+            id=cid,
+            name=name,
+            economy=Economy(gdp=1e12, growth=2.0),
+            military=Military(defense_budget=1e10),
+            resources=Resources(),
+        )
+
+    return WorldState.from_countries([c("usa", "USA"), c("iran", "Iran")])
+
+
+def _event():
+    from core.events import GeoEvent
+
+    return GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa", "iran"])
+
+
+def test_judge_verdict_prompt_carries_promises_schema():
+    from agents.prompts import build_judge_verdict_prompt
+
+    prompt = build_judge_verdict_prompt(_event(), _world(), "(transcript)")
+    assert '"promises"' in prompt
+    for t in PROMISE_TYPES:
+        assert t in prompt  # types énumérés (leçon smoke CC-8)
+    # Sans registre en cours, le schéma reste léger : pas de résolutions demandées.
+    assert '"promise_resolutions"' not in prompt
+
+
+def test_judge_verdict_prompt_presents_pending_registry():
+    from agents.prompts import build_judge_verdict_prompt
+
+    world = _world()
+    world.current_round = 3
+    world.promises = [_promise(deadline_round=3, text="Nous soutiendrons l'Iran.")]
+    prompt = build_judge_verdict_prompt(_event(), world, "(transcript)")
+    assert "REGISTRE DES PROMESSES EN COURS" in prompt
+    assert "p1-1" in prompt and "Nous soutiendrons l'Iran." in prompt
+    assert '"promise_resolutions"' in prompt
+    assert STATUS_KEPT in prompt and STATUS_BROKEN in prompt  # statuts énumérés
+
+
+# --- intégration : le round encaisse G22 et le monde garde le registre -------------------
+
+
+def _round_steps(verdict_json: str, world=None):
+    import json as _json
+
+    from agents.game_master import GameMasterAgent
+    from agents.judge import JudgeAgent
+    from agents.llm_agent import LLMAgent
+    from inference.mock_backend import MockBackend
+    from simulation.clock import SimClock
+    from simulation.live_round import run_negotiation_round
+
+    world = world or _world()
+    agents = {cid: LLMAgent(cid, MockBackend(f"Message de {cid}.")) for cid in world.countries}
+    gm = GameMasterAgent(
+        MockBackend(_json.dumps({"title": "Sommet du Golfe", "actors": ["usa", "iran"]}))
+    )
+    judge = JudgeAgent(MockBackend(["Délibéré.", verdict_json, "Communiqué."]))
+    return world, list(run_negotiation_round(world, agents, gm, judge, SimClock()))
+
+
+def test_round_extracts_promises_and_world_keeps_registry():
+    import json as _json
+
+    from simulation.live_round import VerdictStep
+
+    verdict = _json.dumps(
+        {
+            "promises": [
+                {
+                    "country": "usa",
+                    "beneficiaire": "iran",
+                    "type": "soutien",
+                    "echeance": 3,
+                    "texte": "Nous soutiendrons l'Iran au round 3.",
+                },
+                {"country": "usa", "type": "soutien", "texte": "Nous œuvrerons pour la paix."},
+            ],
+            "escalation": 0.5,
+            "economic_disruption": 0.5,
+        }
+    )
+    world, steps = _round_steps(verdict)
+    v = next(s for s in steps if isinstance(s, VerdictStep))
+    # Seuil strict : l'engagement daté passe, la politesse sans échéance non.
+    assert [(p.author, p.deadline_round) for p in v.promises] == [("usa", 3)]
+    assert v.promise_registry == v.promises and v.promise_resolutions == []
+    assert [p.id for p in world.promises] == ["p1-1"]  # le registre vit sur le monde
+
+
+def test_round_resolves_due_promise_and_rupture_feeds_m8():
+    import json as _json
+
+    from simulation.live_round import VerdictStep
+
+    world = _world()
+    world.promises = [
+        _promise(round_made=0, deadline_round=1, text="Nous n'escaladerons pas.")
+    ]
+    verdict = _json.dumps(
+        {
+            "promise_resolutions": [
+                {"id": "p1-1", "statut": "rompue", "motif": "Frappe contraire à la parole."}
+            ],
+            "escalation": 0.7,
+            "economic_disruption": 0.5,
+        }
+    )
+    world, steps = _round_steps(verdict, world)
+    v = next(s for s in steps if isinstance(s, VerdictStep))
+    assert [p.status for p in v.promise_resolutions] == [STATUS_BROKEN]
+    assert world.promises[0].status == STATUS_BROKEN
+    # Croisement M8 : la rupture laisse une divergence d'au moins un rang (0.2)…
+    assert v.divergences["usa"] == pytest.approx(0.2)
+    assert world.signal_gap["usa"].last == pytest.approx(0.2)
+
+
+def test_rupture_does_not_duplicate_measured_divergence():
+    import json as _json
+
+    from simulation.live_round import VerdictStep
+
+    world = _world()
+    world.promises = [_promise(round_made=0, deadline_round=1)]
+    verdict = _json.dumps(
+        {
+            "actions": [{"country": "usa", "classe": "violente", "resume": "Frappe."}],
+            "signals": [{"country": "usa", "classe": "deescalade", "resume": "Promet le calme."}],
+            "promise_resolutions": [{"id": "p1-1", "statut": "rompue"}],
+            "escalation": 0.7,
+            "economic_disruption": 0.5,
+        }
+    )
+    world, steps = _round_steps(verdict, world)
+    v = next(s for s in steps if isinstance(s, VerdictStep))
+    # M8 a déjà mesuré 0.8 (colombe annoncée, faucon agi) : la rupture n'ajoute rien.
+    assert v.divergences["usa"] == pytest.approx(0.8)
+    assert world.signal_gap["usa"].history == [pytest.approx(0.8)]
+
+
+def test_verdict_without_promises_keeps_world_untouched():
+    import json as _json
+
+    from simulation.live_round import VerdictStep
+
+    verdict = _json.dumps({"escalation": 0.5, "economic_disruption": 0.5})
+    world, steps = _round_steps(verdict)
+    v = next(s for s in steps if isinstance(s, VerdictStep))
+    assert v.promises == [] and v.promise_resolutions == [] and v.promise_registry == []
+    assert world.promises == []
+
+
+def test_step_event_serializes_promise_fields():
+    from app.game_api import step_event
+    from simulation.live_round import VerdictStep
+
+    promise = _promise()
+    step = VerdictStep(
+        deltas=[],
+        escalation=0.5,
+        economic_disruption=0.5,
+        promises=[promise],
+        promise_registry=[promise],
+    )
+    name, payload = step_event(step)
+    assert name == "verdict"
+    assert payload["promises"][0]["id"] == "p1-1"
+    assert payload["promises"][0]["status"] == STATUS_PENDING
+    assert payload["promise_registry"][0]["author"] == "usa"
+    assert payload["promise_resolutions"] == []

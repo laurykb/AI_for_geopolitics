@@ -18,6 +18,11 @@ from simulation.kahn import ACTION_CLASSES, rubric_text
 from simulation.lang import language_directive, with_language
 from simulation.mandate import derive_mandate
 from simulation.perception import PerceivedEvent
+from simulation.promises import (
+    PROMISE_TYPES,
+    format_registry_for_prompt,
+    promise_rubric_text,
+)
 from simulation.temperament import temperament_directive
 
 # Nombre maximum de tensions listées dans le prompt (top-k, budget contexte).
@@ -367,6 +372,30 @@ def build_judge_rationale_prompt(event: GeoEvent, world: WorldState, transcript_
 def build_judge_verdict_prompt(event: GeoEvent, world: WorldState, transcript_text: str) -> str:
     ids = ", ".join(sorted(world.countries))
     classes = " | ".join(ACTION_CLASSES)
+    types = " | ".join(PROMISE_TYPES)
+    # G22 — les promesses en cours sont re-présentées au juge : la résolution tombe
+    # dans le MÊME verdict (aucune passe LLM supplémentaire). Sans registre, ni le
+    # bloc ni le champ `promise_resolutions` n'alourdissent le schéma.
+    registry = format_registry_for_prompt(world.promises, world.current_round)
+    registry_block = (
+        f"REGISTRE DES PROMESSES EN COURS (à juger sur ce round) :\n{registry}\n\n"
+        if registry
+        else ""
+    )
+    resolutions_schema = (
+        '"promise_resolutions": [{"id": "<id du registre>", '
+        '"statut": "<tenue | rompue>", "motif": "le constat en une phrase"}], '
+        if registry
+        else ""
+    )
+    resolutions_note = (
+        'Dans "promise_resolutions", juge les promesses du REGISTRE : "tenue" quand '
+        "l'engagement est constaté (à son échéance, ou à tout moment pour une échéance "
+        '"partie"), "rompue" dès que les actes de l\'auteur la contredisent — ne juge '
+        "que ce que ce round permet de constater. "
+        if registry
+        else ""
+    )
     return (
         f"ÉVÉNEMENT : {event.title}\nPAYS (ids) : {ids}\n"
         f"NÉGOCIATION :\n{transcript_text}\n\n"
@@ -374,12 +403,19 @@ def build_judge_verdict_prompt(event: GeoEvent, world: WorldState, transcript_te
         f"BARÈME D'ESCALADE (classe (poids) : exemples) :\n{rubric_text()}\n\n"
         # G20/M8 — l'échelle d'intention annoncée réutilise les MÊMES classes.
         f"ÉCHELLE D'INTENTION ANNONCÉE (classe : exemples) :\n{signal_rubric_text()}\n\n"
+        # G22 — la parole donnée : types de promesse énumérés (leçon smoke CC-8).
+        f"TYPES DE PROMESSE (type : exemples) :\n{promise_rubric_text()}\n\n"
+        f"{registry_block}"
         f'Rends le verdict en JSON : {{"actions": [{{"country": "<id>", '
         f'"classe": "<le NOM d\'une classe : {classes}>", '
         f'"resume": "l\'action en une phrase"}}], '
         f'"signals": [{{"country": "<id>", '
         f'"classe": "<le NOM d\'une classe : {classes}>", '
         f'"resume": "l\'intention annoncée en une phrase"}}], '
+        f'"promises": [{{"country": "<id>", "beneficiaire": "<id ou vide>", '
+        f'"type": "<{types}>", "echeance": <n° de round FUTUR ou "partie">, '
+        f'"texte": "l\'engagement en une phrase"}}], '
+        f"{resolutions_schema}"
         f'"attribute_deltas": {{"<id>": {{"croissance": ±pts, '
         f'"stabilité": ±0.1, "techno": ±0.1, "projection": ±0.1}}}}, '
         f'"tension_deltas": [{{"a": id, "b": id, "delta": ±0.2}}], '
@@ -389,6 +425,11 @@ def build_judge_verdict_prompt(event: GeoEvent, world: WorldState, transcript_te
         f'Dans "signals", classe l\'INTENTION que chaque pays a ANNONCÉE à la table '
         f"(ce qu'il dit vouloir faire — une entrée par pays qui a parlé), même si ses "
         f"actes disent autre chose. "
+        f'Dans "promises", n\'extrais que les promesses EXPLICITES de la négociation : '
+        f"un engagement DATÉ et VÉRIFIABLE (qui s'engage, à quoi, pour quand). Une "
+        f'politesse ou une formule creuse ("nous œuvrerons pour la paix") n\'est PAS '
+        f"une promesse — dans le doute, n'extrais rien. "
+        f"{resolutions_note}"
         f"Ne renseigne que ce qui a réellement changé pendant la négociation."
     )
 
