@@ -522,7 +522,7 @@ p {
   }
 }
 
-/* --- G13 : le compagnon « Petit Kairos » (coin bas-droit) ----------------------- */
+/* --- G13 : le compagnon « Laury » (coin bas-droit) ------------------------------ */
 .tour-companion {
   animation: tour-companion-float 4s ease-in-out infinite;
   filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5));

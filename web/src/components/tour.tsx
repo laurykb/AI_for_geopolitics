@@ -1,6 +1,6 @@
 "use client";
 
-/** La visite guidée & la mascotte « Petit Kairos » (G13).
+/** La visite guidée & la mascotte « Laury » (G13).
  *
  * Le moteur (états, étapes, flags) est pur dans `lib/tour.ts` ; ce composant porte
  * React : navigation entre pages, ancrage de la bulle sur `[data-tour=…]`, la
@@ -449,7 +449,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
             onClick={() => setMenuOpen((v) => !v)}
             aria-expanded={menuOpen}
             aria-label={t("tour.ui.aria-compagnon")}
-            title="Petit Kairos"
+            title="Laury"
             className="tour-companion cursor-pointer transition-transform hover:scale-105"
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- SVG local, pas d'optimisation utile */}

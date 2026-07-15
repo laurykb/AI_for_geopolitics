@@ -1,6 +1,9 @@
-# « Petit Kairos » — philosophie de design
+# « Laury » — philosophie de design
 
-**Le mouvement.** Petit Kairos est l'art de condenser une immensité — le ciel, la machine, le destin des nations — dans une silhouette de poche. C'est le chibi pris au sérieux : des proportions d'enfant (la tête comme un monde, le corps comme son satellite), exécutées avec la rigueur d'un dessinateur industriel. Rien n'y est griffonné ; chaque courbe est une décision, chaque écart de teinte un réglage patient. L'œuvre doit sembler avoir coûté des centaines d'heures à quelqu'un au sommet de son métier — parce que la sympathie, pour être crédible, exige la précision.
+> Nom finalisé le 2026-07-15 par le créateur du jeu : **« Laury »** (nom de travail
+> pendant la conception : « Petit Kairos »).
+
+**Le mouvement.** Laury est l'art de condenser une immensité — le ciel, la machine, le destin des nations — dans une silhouette de poche. C'est le chibi pris au sérieux : des proportions d'enfant (la tête comme un monde, le corps comme son satellite), exécutées avec la rigueur d'un dessinateur industriel. Rien n'y est griffonné ; chaque courbe est une décision, chaque écart de teinte un réglage patient. L'œuvre doit sembler avoir coûté des centaines d'heures à quelqu'un au sommet de son métier — parce que la sympathie, pour être crédible, exige la précision.
 
 **Espace et forme.** La forme maîtresse est le cercle imparfait : un crâne planétaire, des yeux en hublots, un globe tenu comme une pomme. Autour, le vide travaille — la silhouette doit se lire en une demi-seconde, de loin, en 24 pixels comme en affiche. Les masses s'empilent en poupée russe : grande (tête), moyenne (torse), petites (mains, bottes), et une seule diagonale vivante — la crête de cheveux, flamme blanche penchée par un vent qui n'existe que pour elle — casse la symétrie et donne le mouvement.
 
