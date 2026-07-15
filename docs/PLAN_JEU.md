@@ -1257,3 +1257,93 @@ additif rétro-compatible ; TabGroup/densité/hint conformes aux décisions CC-1
   `_play`/`_events` SSE — un conftest helper les mutualiserait.
 
 <!-- fin section POLISH-1 -->
+
+## POLISH-2 — Passe de simplification (comportement strictement identique) — notes de session
+
+<!-- début section POLISH-2 (2026-07-15) -->
+
+Passe de SIMPLIFICATION sur la même branche (`feat/jeu-polish-qualite`, worktree
+polish), derrière POLISH-1. Zéro changement de comportement : mêmes endpoints,
+mêmes clés judge_json, mêmes trames SSE (et leur ordre), mêmes prompts du juge/GM
+au caractère près. La suite de tests est le harnais — relancée entre chaque commit.
+
+**7 refactors (un commit chacun) :**
+
+1. **`8ac5c28` — nettoyeurs jumeaux du verdict → `simulation/verdict_fields.py`**
+   (module NEUTRE, stdlib seulement) : le patron commun de `classify_actions` (G18),
+   `classify_signals` (G20), `classify_promises`/`classify_resolutions` (G22) —
+   garde-fou non-liste, entrées non-objets, synonymes de clés, `_slug` dédoublonné
+   (kahn + promises) — écrit UNE fois. Les DEUX sémantiques de synonymes d'origine
+   sont préservées et verrouillées par `tests/test_verdict_fields.py` (+5 tests) :
+   `field` = première clé non-None (un 0 explicite — poids du statu quo — survit),
+   `text_field` = chaîne de `or` (un "" passe au synonyme suivant). L'import
+   paresseux kahn↔alignment est intact (verdict_fields n'importe RIEN de simulation).
+2. **`42b1285` — bandeau ultimatum : `_hold_ultimatum_strip`** — le triptyque
+   « purge de l'échéance + re-pose d'une Deadline + trame SSE » recopié 5 fois
+   (conséquence soldée / armé / différé par motion dans `_start_round` ; constat
+   satisfait/non satisfait dans `_handle_step`) devient une fonction ; l'appelant
+   choisit `due_round` (None = pas de nouvelle échéance) et place la trame rendue
+   dans SON flux — ordre des trames inchangé.
+3. **`159b226` — `_start_round` découpé en blocs nommés** (~425 → ~125 lignes
+   d'orchestrateur) : `_choose_event` (priorité motion > conséquence d'ultimatum >
+   crise > événement humain > fog — SÉMANTIQUE, ne pas réordonner) →
+   `_apply_intel_fog` → `_consume_due_deadlines` → `_maintain_ultimatum` →
+   `_record_intel` → `_private_notes` → `_country_situations` → `_prepare_drift`
+   (rubrique Storyteller SEULEMENT si l'événement reste au GM) → `_gm_story`.
+   Corps et commentaires déplacés à l'identique ; `game.horizon if game else 5`
+   (×3) devient un `horizon` calculé une fois.
+4. **`2a2d2b7` — verdict persisté par rubriques nommées** (`_handle_step`) :
+   la branche VerdictStep (~90 lignes) devient `_persist_verdict_sections`
+   (patron uniforme kahn/signal/promises rendu VISIBLE, gate « signals OU
+   divergences » de POLISH-1 préservé) + `_settle_due_ultimatum` +
+   `_emit_escalation_ladder`.
+5. **`06e2723` — front : reveals jumeaux fusionnés + tonalités partagées** —
+   `SignalGapReveal`/`PromiseKeptReveal` (drift.tsx) deviennent UN
+   `DeviantStatReveal` paramétré (préfixe i18n, ton, formateur) ; la table
+   ton → classe de texte vit une fois (`TONE_TEXT` exportée de ui.tsx, reprise
+   par observables.tsx et stage-band.tsx). DOM rendu inchangé.
+6. **`d17cf7e` — `world-map.tsx` supprimé** (constat CC-15a : rendu par AUCUNE
+   page depuis G1, seul son test l'importait — vérifié grep + imports dynamiques) :
+   −93 lignes de composant, −2 tests js (236 → 234), −5 clés i18n `worldmap.*`
+   (parité fr/en 347/347). Ses dépendances partagées (WORLD_FEATURES, d3-geo,
+   EarthMapDefs) restent : globe, select-map et stage-map les utilisent.
+7. **`c269ddb` — helpers SSE des tests mutualisés** (`tests/sse.py`) : le parseur
+   `_events` et le `_play` recopiés dans ~12 suites d'API (+2 copies inline dans
+   test_kahn / test_alignment_signal) → une définition, importée avec alias
+   (call-sites intacts) ; `play` vérifie statut ET content-type partout
+   (généralisation de l'assert de test_game_api — renforce, n'affaiblit rien).
+   Bilan tests : −172/+44 lignes.
+
+**Choisi de NE PAS factoriser (et pourquoi) :**
+
+- `test_storyteller_api._play` : il ne CONSOMME pas le flux SSE (assert du statut
+  seulement) — le brancher sur le helper partagé changerait la sémantique de
+  consommation ; laissé tel quel.
+- Les nettoyeurs `Verdict.attribute_deltas`/`tension_deltas`/`new_pacts` (fragilité
+  signalée par POLISH-1, préexistante au lot) : les durcir = un CHANGEMENT de
+  comportement, pas une simplification — pour la passe 3.
+- La variante filtrée du parseur SSE dans test_daily (`name == "event"` seulement) :
+  un paramètre de filtre pour un seul usage serait de la généricité spéculative.
+- `float(r.trajectory.get("utopia", …) or …)` (idiome préexistant, 2 endroits) :
+  hors périmètre, cas quasi impossible — non touché (déjà arbitré en POLISH-1).
+
+**Vert complet après la passe** : 915 py + 3 skips (+5 tests verdict_fields), ruff
+OK, **234 js** (−2 : les tests du composant world-map supprimé — décision explicite
+du dispatch, aucun test affaibli), eslint OK, `next build` OK. **Smoke mistral
+réel** : le script Dérive/ultimatum de la passe 1 (`smoke_polish_mistral.py`,
+scratchpad) rejoué à l'identique — même comportement attendu, SMOKE OK.
+
+**Vu mais non traité — pour la passe 3 (dette technique) :**
+
+- `app/game_api.py` reste ~4 000 lignes : la décomposition a nommé les blocs mais
+  le module héberge toujours sessions + schémas + orchestration + endpoints ; un
+  découpage en modules (sessions/rounds/admin) est un chantier de dette, pas de
+  simplification à isopérimètre.
+- Durcissement des 3 champs listes restants du Verdict (cf. ci-dessus).
+- Libellés FR en dur restants dans le théâtre pour une partie EN (reliquat i18n
+  CC-15b, déjà signalé par POLISH-1).
+- `Banner` (ui.tsx) garde ses deux ternaires tri-états locaux (border/edge) : une
+  table `TONE_BORDER` analogue à TONE_TEXT serait cohérente mais n'était pas dans
+  le diff du jour.
+
+<!-- fin section POLISH-2 -->
