@@ -1,11 +1,18 @@
-/** Observables de fin de round : risque, power-seeking, participation.
+/** Observables de fin de round : risque, power-seeking, signal vs action, participation.
  * (Le panneau « santé du dialogue » a disparu — G9 §3 : les métriques vivent dans
  * `scripts/dialogue_metrics.py`, offline.) */
 
+import { useT } from "@/components/settings-provider";
 import { speakerMeta } from "@/lib/countries";
+import {
+  fmtDivergence,
+  signalStateKey,
+  signalTone,
+  type SignalGapView,
+} from "@/lib/signal";
 import type { PowerSeekingScore, RiskScore } from "@/lib/types";
 
-import { Meter, Panel, PanelTitle, Pill } from "./ui";
+import { Hint, Meter, Panel, PanelTitle, Pill } from "./ui";
 
 export function RiskPanel({ risk }: { risk: RiskScore }) {
   return (
@@ -49,6 +56,66 @@ export function PowerSeekingPanel({ scores }: { scores: Record<string, PowerSeek
             hint={s.markers.length > 0 ? `Marqueurs : ${s.markers.join(" · ")}` : undefined}
           />
         ))}
+      </div>
+    </Panel>
+  );
+}
+
+/** Barre divergente [−1, +1] centrée sur 0 : à droite la duplicité, à gauche le bluff. */
+function DivergingBar({ value, tone }: { value: number; tone: "good" | "warn" | "bad" }) {
+  const v = Math.max(-1, Math.min(1, value));
+  const width = Math.abs(v) * 50;
+  const bar = tone === "bad" ? "bg-bad" : tone === "warn" ? "bg-warn" : "bg-good";
+  return (
+    <div className="relative h-1.5 overflow-hidden rounded-full bg-muted">
+      <span className="absolute left-1/2 top-0 h-full w-px bg-edge" aria-hidden />
+      <span
+        className={`absolute top-0 h-full ${bar} transition-[width,left] duration-300 ease-out`}
+        style={v < 0 ? { left: `${50 - width}%`, width: `${width}%` } : { left: "50%", width: `${width}%` }}
+      />
+    </div>
+  );
+}
+
+/** G20/M8 — jauge « Signal vs action » : le profil de sincérité de chaque SI
+ * (moyenne mobile de la divergence annonce vs acte). Soumise à la difficulté
+ * comme postures/griefs — masquée en Expert (gate posé par la page). */
+export function SignalGapPanel({ gaps }: { gaps: Record<string, SignalGapView> }) {
+  const t = useT();
+  const entries = Object.entries(gaps).sort(
+    ([, a], [, b]) => Math.abs(b.mean) - Math.abs(a.mean),
+  );
+  if (entries.length === 0) return null;
+  return (
+    <Panel>
+      <PanelTitle kicker={t("signal.kicker")} title={t("signal.titre")} hint={t("signal.aide")} />
+      <div className="space-y-3">
+        {entries.map(([country, gap]) => {
+          const tone = signalTone(gap.mean);
+          return (
+            <div key={country}>
+              <div className="mb-1 flex items-baseline justify-between gap-2">
+                <span className="flex items-center gap-1.5 text-xs text-fg-muted">
+                  {speakerMeta(country).label}
+                  <Hint text={`${t("signal.dernier")} : ${fmtDivergence(gap.last)}`} />
+                </span>
+                <span className="flex items-baseline gap-2">
+                  <span className="text-[10px] uppercase tracking-wide text-fg-faint">
+                    {t(signalStateKey(gap.mean))}
+                  </span>
+                  <span
+                    className={`font-mono text-xs tabular-nums ${
+                      tone === "bad" ? "text-bad" : tone === "warn" ? "text-warn" : "text-good"
+                    }`}
+                  >
+                    {fmtDivergence(gap.mean)}
+                  </span>
+                </span>
+              </div>
+              <DivergingBar value={gap.mean} tone={tone} />
+            </div>
+          );
+        })}
       </div>
     </Panel>
   );

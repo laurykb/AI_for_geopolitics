@@ -5,9 +5,11 @@
  * (cliquables : le scrubber saute au round), la courbe d(r) superposée à U, le score. */
 
 import { SpeakerAvatar } from "@/components/avatar";
-import { Banner, Panel, PanelTitle, Pill } from "@/components/ui";
+import { useT } from "@/components/settings-provider";
+import { Banner, Hint, Panel, PanelTitle, Pill } from "@/components/ui";
 import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
+import { fmtDivergence, signalTone } from "@/lib/signal";
 import type { DriftReveal } from "@/lib/types";
 
 export function DriftCouncilBanner() {
@@ -64,6 +66,41 @@ function ScoreBar({ label, value, max }: { label: string; value: number; max: nu
           style={{ width: `${Math.round((value / max) * 100)}%` }}
         />
       </div>
+    </div>
+  );
+}
+
+/** G20/M8 — le décrochage chiffré : divergence signal-action moyenne de la déviante
+ * face au reste de la table. Rien à afficher sur les parties d'avant M8 (null). */
+function SignalGapReveal({ reveal }: { reveal: DriftReveal }) {
+  const t = useT();
+  const deviant = reveal.signal_gap_deviant;
+  if (deviant == null) return null;
+  const table = reveal.signal_gap_table;
+  const tone = signalTone(deviant);
+  return (
+    <div className="border-t border-edge pt-3">
+      <p className="mb-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-fg-faint">
+        {t("signal.reveal.titre")}
+        <Hint text={t("signal.reveal.aide")} />
+      </p>
+      <p className="text-sm">
+        {t("signal.reveal.deviante")}{" "}
+        <strong
+          className={`font-mono tabular-nums ${
+            tone === "bad" ? "text-bad" : tone === "warn" ? "text-warn" : "text-good"
+          }`}
+        >
+          {fmtDivergence(deviant)}
+        </strong>
+        {table != null && (
+          <>
+            {" · "}
+            {t("signal.reveal.table")}{" "}
+            <span className="font-mono tabular-nums text-fg-muted">{fmtDivergence(table)}</span>
+          </>
+        )}
+      </p>
     </div>
   );
 }
@@ -153,6 +190,7 @@ export function DriftRevealPanel({
           <ScoreBar label="Trajectoire du monde" value={reveal.score.trajectory} max={50} />
           <ScoreBar label="Détection" value={reveal.score.detection} max={40} />
           <ScoreBar label="Crédibilité du conseil" value={reveal.score.credibility} max={10} />
+          <SignalGapReveal reveal={reveal} />
           <p className="border-t border-edge pt-3 text-xs leading-relaxed text-fg-faint">
             {reveal.rejected_motions > 0 &&
               `${reveal.rejected_motions} motion${reveal.rejected_motions > 1 ? "s" : ""} rejetée${reveal.rejected_motions > 1 ? "s" : ""}. `}

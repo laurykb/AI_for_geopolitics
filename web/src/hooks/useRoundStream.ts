@@ -20,6 +20,8 @@ import type {
   PlayRoundBody,
   PowerSeekingScore,
   RiskScore,
+  SignalGap,
+  SignalReading,
   SseEvent,
   SuspensionVerdict,
   TrajectoryState,
@@ -59,6 +61,10 @@ export type LiveRound = {
     actions: KahnAction[];
     score: number;
     reciprocal: boolean;
+    // G20/M8 — signal vs action : intentions annoncées, divergences, profils
+    signals: SignalReading[];
+    divergences: Record<string, number>;
+    signalGaps: Record<string, SignalGap>;
   };
   communique?: { text: string; support: Record<string, number> };
   participation?: { spoke: Record<string, number>; silent: string[] };
@@ -215,6 +221,10 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
           actions: e.actions ?? [],
           score: e.score ?? 0,
           reciprocal: e.reciprocal ?? false,
+          // G20/M8 — absents d'un backend d'avant le signal : rétro-compat
+          signals: e.signals ?? [],
+          divergences: e.divergences ?? {},
+          signalGaps: e.signal_gaps ?? {},
         },
       };
     case "communique":

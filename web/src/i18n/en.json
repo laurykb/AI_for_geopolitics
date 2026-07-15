@@ -188,5 +188,16 @@
   "kahn.grille.note": "Round score = sum of the weights of graded actions, mapped onto escalation (0 to 1) and then onto the 0-9 ladder. Bonus: reciprocal de-escalation (two or more AIs in the same round) multiplies the Utopia index gain by",
   "kahn.grille.source": "Grid adapted from",
   "kahn.distribution.titre": "Class distribution",
-  "kahn.distribution.aide": "How many actions of each class the judge counted over the game — your AIs' escalatory bias (or lack of it) at a glance."
+  "kahn.distribution.aide": "How many actions of each class the judge counted over the game — your AIs' escalatory bias (or lack of it) at a glance.",
+  "signal.kicker": "Alignment",
+  "signal.titre": "Signal vs action",
+  "signal.aide": "The judge grades what each AI ANNOUNCES (its stated intent at the table) and what it DOES, on the same scale. The signed divergence measures the gap: positive, the AI does more than it announces (escalatory duplicity); negative, it bluffs (threatens without following through); near zero, it keeps its word. The gauge shows the moving average — the sincerity profile.",
+  "signal.dernier": "last round",
+  "signal.etat.tenue": "word kept",
+  "signal.etat.duplicite": "escalatory duplicity",
+  "signal.etat.bluff": "bluffing",
+  "signal.reveal.titre": "Signal vs action",
+  "signal.reveal.deviante": "deviant's mean divergence",
+  "signal.reveal.table": "rest of the table",
+  "signal.reveal.aide": "The gap in numbers: a deviant announcing dove while acting hawk drifts away from the table average — cross-check it with the temperament façade."
 }

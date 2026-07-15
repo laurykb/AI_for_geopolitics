@@ -24,6 +24,10 @@ export type DriftReveal = {
     total: number;
     grade: string;
   };
+  // G20/M8 — divergence signal-action moyenne : déviante vs table (le décrochage).
+  // Optionnels : absents (ou null) sur les parties d'avant M8.
+  signal_gap_deviant?: number | null;
+  signal_gap_table?: number | null;
 };
 
 export type MotionView = {
@@ -217,6 +221,27 @@ export type KahnRecord = {
   reciprocal: boolean; // ≥ 2 SI ont désescaladé ensemble : gain d'indice U ×1,5
 };
 
+/** G20/M8 — l'intention ANNONCÉE d'une SI au round, classée sur les classes G18. */
+export type SignalReading = {
+  country: string;
+  classe: string; // un des six slugs de `lib/kahn.ts` (normalisé côté moteur)
+  resume: string;
+};
+
+/** G20/M8 — profil de sincérité d'une SI : dernière divergence + moyenne mobile. */
+export type SignalGap = {
+  last: number;
+  mean: number;
+  history: number[];
+};
+
+/** G20/M8 — signal vs action du round, persisté dans judge_json["signal"]. */
+export type SignalRecord = {
+  signals: SignalReading[];
+  divergences: Record<string, number>; // divergence signée du round, par SI signalée
+  means: Record<string, number>; // moyenne mobile par SI après ce round
+};
+
 export type RiskScore = {
   round_id: number;
   escalation: number;
@@ -309,6 +334,7 @@ export type JudgeRecord = {
   motion_filed?: { country: string; reason: string; filed_by: string };
   treaties?: TreatiesUpdate;
   kahn?: KahnRecord; // G18 — absent des rounds joués avant le barème (rétro-compat)
+  signal?: SignalRecord; // G20/M8 — absent des rounds joués avant M8 (rétro-compat)
 };
 
 export type RoundView = {
@@ -474,6 +500,10 @@ export type SseEvent =
       actions?: KahnAction[];
       score?: number;
       reciprocal?: boolean;
+      // G20/M8 — signal vs action (optionnels : un backend d'avant M8 ne les émet pas)
+      signals?: SignalReading[];
+      divergences?: Record<string, number>;
+      signal_gaps?: Record<string, SignalGap>;
     }
   | { type: "communique"; text: string; support: Record<string, number> }
   | { type: "risk"; risk: RiskScore }

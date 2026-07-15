@@ -20,7 +20,12 @@ import {
   PerceptionsPanel,
 } from "@/components/modes";
 import { MODE_LABELS } from "@/lib/modes";
-import { ParticipationPanel, PowerSeekingPanel, RiskPanel } from "@/components/observables";
+import {
+  ParticipationPanel,
+  PowerSeekingPanel,
+  RiskPanel,
+  SignalGapPanel,
+} from "@/components/observables";
 import { CountryTable, type CountrySnapshot } from "@/components/country-table";
 import { DriftCouncilBanner, DriftRevealPanel } from "@/components/drift";
 import { IntelBudget, IntelPanel } from "@/components/intel";
@@ -58,6 +63,7 @@ import {
 } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
 import { isMisled } from "@/lib/fog";
+import { latestSignalGaps, showSignalGauge, type SignalGapView } from "@/lib/signal";
 import {
   ensureAccount,
   openFlashMarkets,
@@ -197,6 +203,12 @@ export default function TheatrePage() {
   }, [mode, castKey]);
 
   const { round, start, streaming } = useRoundStream(id, resync);
+  // G20/M8 — profil de sincérité (signal vs action) : trame verdict du round live,
+  // sinon relecture des rounds persistés (rechargement). Masqué en Expert (gate au rendu).
+  const signalGaps: Record<string, SignalGapView> | null =
+    round.verdict && Object.keys(round.verdict.signalGaps).length > 0
+      ? round.verdict.signalGaps
+      : latestSignalGaps(detail?.rounds ?? []);
   const motionPending = detail?.pending_motion ?? null;
   const awaitingHuman =
     round.status === "awaiting_human" || (round.status === "idle" && !!detail?.awaiting_human);
@@ -1474,6 +1486,9 @@ export default function TheatrePage() {
         {round.ladder && <LadderPanel ladder={round.ladder} />}
         {round.risk && <RiskPanel risk={round.risk} />}
         {round.powerSeeking && <PowerSeekingPanel scores={round.powerSeeking} />}
+        {showSignalGauge(detail?.difficulty) && signalGaps && (
+          <SignalGapPanel gaps={signalGaps} />
+        )}
         {round.participation && (
           <ParticipationPanel
             spoke={round.participation.spoke}
