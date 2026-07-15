@@ -98,8 +98,10 @@ const TURN_CHOICES = [
   { label: "12 tours", value: 12 },
 ];
 
-/** La gravité d'un événement inventé, en mots (12-65) — jamais « 0.65 » nu. */
-const severityLabel = (s: number) => (s < 0.34 ? "faible" : s < 0.67 ? "sérieuse" : "grave");
+/** La gravité d'un événement inventé, en mots (12-65) — jamais « 0.65 » nu.
+ * Renvoie une clé i18n (fr/en) — POLISH-3, reliquat CC-15b. */
+const severityKey = (s: number) =>
+  s < 0.34 ? "event.gravite.faible" : s < 0.67 ? "event.gravite.serieuse" : "event.gravite.grave";
 
 // G21 — les 6 classes de conséquence d'un ultimatum décrété (slugs kahn.ACTION_CLASSES).
 const ULTIMATUM_CLASSES = [
@@ -1114,7 +1116,7 @@ export default function TheatrePage() {
                 className="rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
               />
               <label className="flex items-center gap-2 text-xs text-fg-muted">
-                Gravité
+                {t("event.gravite")}
                 <input
                   type="range"
                   min={0}
@@ -1125,7 +1127,7 @@ export default function TheatrePage() {
                   disabled={streaming}
                   className="w-24 accent-[var(--accent)]"
                 />
-                <span className="w-14 font-medium">{severityLabel(severity)}</span>
+                <span className="w-14 font-medium">{t(severityKey(severity))}</span>
               </label>
               {/* G21 — l'ultimatum du décret : exigence + classe de conséquence. */}
               <div className="sm:col-span-3 flex flex-wrap items-end gap-3 rounded-md border border-edge bg-surface-2/50 p-3">

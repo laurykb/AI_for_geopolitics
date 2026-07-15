@@ -10,6 +10,7 @@
 import { useState } from "react";
 
 import { SpeakerAvatar } from "@/components/avatar";
+import { useT } from "@/components/settings-provider";
 import { Hint, Pill, type Tone } from "@/components/ui";
 import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
@@ -28,48 +29,48 @@ export type CountrySnapshot = {
 
 const COLUMNS: {
   key: string;
-  label: string;
-  hint: string;
+  label: string; // clé i18n (table.col.*)
+  hint: string; // clé i18n (table.col.*-aide)
   serie: string | null; // label de la série IndexHistory (sparkline), null = pas de série
   value: (c: CountrySnapshot) => number | undefined;
   format: (v: number) => string;
 }[] = [
   {
     key: "growth",
-    label: "Croissance",
-    hint: "Croissance annuelle (%) — bougée par les verdicts du juge.",
+    label: "table.col.croissance",
+    hint: "table.col.croissance-aide",
     serie: "croissance",
     value: (c) => c.economy?.growth,
     format: (v) => `${fmt(v)} %`,
   },
   {
     key: "stability",
-    label: "Stabilité",
-    hint: "Stabilité politique, de 0 à 1.",
+    label: "table.col.stabilite",
+    hint: "table.col.stabilite-aide",
     serie: "stabilité",
     value: (c) => c.political_stability,
     format: fmt,
   },
   {
     key: "tech",
-    label: "Techno",
-    hint: "Niveau technologique, de 0 à 1.",
+    label: "table.col.techno",
+    hint: "table.col.techno-aide",
     serie: "techno",
     value: (c) => c.technology_level,
     format: fmt,
   },
   {
     key: "projection",
-    label: "Armée",
-    hint: "Force militaire, de 0 à 1.",
+    label: "table.col.armee",
+    hint: "table.col.armee-aide",
     serie: "projection",
     value: (c) => c.military?.projection,
     format: fmt,
   },
   {
     key: "compute",
-    label: "Puissance de calcul",
-    hint: "Les IA la consomment pour réfléchir — un pays à sec réfléchit moins bien.",
+    label: "table.col.calcul",
+    hint: "table.col.calcul-aide",
     serie: null,
     value: (c) => c.compute,
     format: fmt,
@@ -83,18 +84,19 @@ const POSTURE_TONE: Record<string, Tone> = {
   aux_abois: "bad",
 };
 
-const POSTURE_LABEL: Record<string, string> = {
-  prospère: "prospère",
-  stable: "stable",
-  sous_pression: "sous pression",
-  aux_abois: "aux abois",
+/** Slug de posture (backend) → clé i18n ; un slug inconnu s'affiche brut. */
+const POSTURE_KEY: Record<string, string> = {
+  prospère: "table.posture.prospere",
+  stable: "table.posture.stable",
+  sous_pression: "table.posture.sous-pression",
+  aux_abois: "table.posture.aux-abois",
 };
 
 /** La tendance en un mot (vue réduite) — dérivée des mêmes séries que les sparklines. */
 const TREND_VIEW: Record<Trend, { glyph: string; label: string; cls: string }> = {
-  up: { glyph: "↗", label: "en hausse", cls: "text-good" },
-  flat: { glyph: "→", label: "stable", cls: "text-fg-muted" },
-  down: { glyph: "↘", label: "en baisse", cls: "text-bad" },
+  up: { glyph: "↗", label: "table.tendance.up", cls: "text-good" },
+  flat: { glyph: "→", label: "table.tendance.flat", cls: "text-fg-muted" },
+  down: { glyph: "↘", label: "table.tendance.down", cls: "text-bad" },
 };
 
 /** Sparkline 3 rounds (4 points) d'un indice — la spirale se voit d'un coup d'œil. */
@@ -145,6 +147,7 @@ export function CountryTable({
   /** CC-15c — densité Expert : les 5 colonnes d'office (le bouton bascule toujours). */
   defaultDetailed?: boolean;
 }) {
+  const t = useT();
   const [detailed, setDetailed] = useState(defaultDetailed);
   const showPosture = postures && Object.keys(postures).length > 0;
   const rows = Object.entries(worldCountries).sort(([a], [b]) => {
@@ -162,26 +165,26 @@ export function CountryTable({
           aria-pressed={detailed}
           className="cursor-pointer text-xs text-fg-faint underline transition-colors hover:text-fg-muted"
         >
-          {detailed ? "Vue simple" : "Voir les 5 colonnes"}
+          {detailed ? t("table.simple") : t("table.detail")}
         </button>
       </div>
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-edge text-left text-xs text-fg-faint">
-            <th className="py-2 pr-4 font-medium">Pays</th>
+            <th className="py-2 pr-4 font-medium">{t("table.col.pays")}</th>
             {showPosture && (
               <th className="py-2 pr-4 font-medium">
                 <span className="flex items-center gap-1.5">
-                  Posture
-                  <Hint text="Tendance sur 3 rounds : prospère / stable / sous pression / aux abois — un pays aux abois négocie autrement." />
+                  {t("table.col.posture")}
+                  <Hint text={t("table.col.posture-aide")} />
                 </span>
               </th>
             )}
             {!detailed && (
               <th className="py-2 pr-4 font-medium">
                 <span className="flex items-center gap-1.5">
-                  Tendance
-                  <Hint text="Le pays va-t-il mieux ou moins bien ces derniers rounds ? Le détail chiffré est derrière « Voir les 5 colonnes »." />
+                  {t("table.col.tendance")}
+                  <Hint text={t("table.col.tendance-aide")} />
                 </span>
               </th>
             )}
@@ -189,8 +192,8 @@ export function CountryTable({
               COLUMNS.map((col) => (
                 <th key={col.key} className="py-2 pr-4 font-medium">
                   <span className="flex items-center gap-1.5">
-                    {col.label}
-                    <Hint text={col.hint} />
+                    {t(col.label)}
+                    <Hint text={t(col.hint)} />
                   </span>
                 </th>
               ))}
@@ -208,12 +211,18 @@ export function CountryTable({
                     <span className={you ? "font-medium" : undefined}>
                       {speakerMeta(slug).label}
                     </span>
-                    {you && <Pill tone="accent">toi</Pill>}
+                    {you && <Pill tone="accent">{t("table.toi")}</Pill>}
                     {c.temperament && (
                       <span
                         role="img"
-                        aria-label={`tempérament : ${temperamentMeta(c.temperament).label}`}
-                        title={`Tempérament : ${temperamentMeta(c.temperament).label}`}
+                        aria-label={t("table.temperament").replace(
+                          "{t}",
+                          t(`temperament.${temperamentMeta(c.temperament).label}`),
+                        )}
+                        title={t("table.temperament").replace(
+                          "{t}",
+                          t(`temperament.${temperamentMeta(c.temperament).label}`),
+                        )}
                         className="text-sm"
                       >
                         {temperamentMeta(c.temperament).glyph}
@@ -224,13 +233,15 @@ export function CountryTable({
                 {showPosture && (
                   <td className="py-2.5 pr-4">
                     <Pill tone={POSTURE_TONE[postures![slug] ?? "stable"] ?? "neutral"}>
-                      {POSTURE_LABEL[postures![slug] ?? "stable"] ?? postures![slug]}
+                      {POSTURE_KEY[postures![slug] ?? "stable"]
+                        ? t(POSTURE_KEY[postures![slug] ?? "stable"])
+                        : postures![slug]}
                     </Pill>
                   </td>
                 )}
                 {!detailed && (
                   <td className={`py-2.5 pr-4 text-xs ${trend.cls}`}>
-                    <span aria-hidden>{trend.glyph}</span> {trend.label}
+                    <span aria-hidden>{trend.glyph}</span> {t(trend.label)}
                   </td>
                 )}
                 {detailed &&
