@@ -125,11 +125,12 @@ export const startDaily = (ownerId: string, free = false): Promise<GameView> =>
 export const startChapter = (chapterId: string): Promise<GameView> =>
   request(`/api/campaign/${chapterId}/start`, { method: "POST" });
 
-/** Achat de renseignement (G4) : brief classifié, vérification, désinformation. */
+/** Achat de renseignement (G4) : brief classifié, vérification, désinformation,
+ * analyse psycholinguistique (G23 — `target` = la SI analysée). */
 export const buyIntel = (
   gameId: string,
   body: {
-    action: "brief" | "verify" | "disinfo";
+    action: "brief" | "verify" | "disinfo" | "analyze";
     target?: string;
     claim?: string;
     speaker?: string;

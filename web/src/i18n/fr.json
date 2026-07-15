@@ -161,5 +161,16 @@
   "tuto.7.titre": "Le sommet vote",
   "tuto.7.texte": "Rejoue un round : ta motion devient l'événement du jour. Les SI en débattent, votent — et le juge arbitre, en pesant les preuves autant que les voix.",
   "tuto.8.titre": "Tu sais jouer",
-  "tuto.8.texte": "Round, indice U, motion, vote : tu as tout vécu. Finis ce sommet tranquillement, puis ouvre la campagne — l'Histoire t'attend, et moi je ne suis jamais loin."
+  "tuto.8.texte": "Round, indice U, motion, vote : tu as tout vécu. Finis ce sommet tranquillement, puis ouvre la campagne — l'Histoire t'attend, et moi je ne suis jamais loin.",
+  "intel.analyse.label": "Analyse psycholinguistique (30)",
+  "intel.analyse.cible": "— cible —",
+  "intel.analyse.bouton": "Analyser",
+  "intel.analyse.doc": "Analyse psycholinguistique",
+  "intel.analyse.sentiment": "Sentiment positif",
+  "intel.analyse.politesse": "Politesse",
+  "intel.analyse.futur": "Focus-futur",
+  "intel.analyse.rounds": "rounds de parole",
+  "intel.analyse.alerte": "Rupture de ton détectée envers",
+  "intel.analyse.alerte-generale": "Rupture de ton détectée",
+  "intel.analyse.caveat": "Signal historique faible (~57 %) — un indice, pas une preuve."
 }

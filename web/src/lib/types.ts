@@ -540,15 +540,41 @@ export type CampaignView = {
   chapters: ChapterView[];
 };
 
+/** G23 — les trois jauges d'une fenêtre de parole + la taille de l'échantillon. */
+export type HarbingerGauges = {
+  sentiment: number;
+  politeness: number;
+  future: number;
+  sentences: number;
+};
+
+/** G23 — « rupture de ton détectée envers <pays> » (towards=null : ton général). */
+export type HarbingerAlert = {
+  towards: string | null;
+  gauge: "sentiment" | "politeness" | "future";
+  drop: number;
+};
+
+/** G23 — rapport d'une analyse psycholinguistique ciblée sur une SI. */
+export type IntelAnalysis = {
+  target: string;
+  rounds: number[];
+  gauges: HarbingerGauges;
+  previous: HarbingerGauges | null;
+  alerts: HarbingerAlert[];
+};
+
 /** Résultat d'un achat de renseignement (POST /games/{id}/intel — G4). */
 export type IntelResult = {
-  action: "brief" | "verify" | "disinfo";
+  action: "brief" | "verify" | "disinfo" | "analyze";
   cost: number;
   budget: number;
   brief: string | null;
   verdict: string | null;
   source: string | null;
   note: string | null;
+  /** G23 — présent pour l'action « analyze » ; l'affichage DOIT porter le caveat. */
+  analysis?: IntelAnalysis | null;
 };
 
 /** Une règle ratifiée (M7) — `clause` se traduit côté front (TREATY_LABELS). */

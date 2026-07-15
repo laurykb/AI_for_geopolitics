@@ -2553,6 +2553,9 @@ def buy_intel(
                 status_code=400,
                 detail="aucune parole à analyser — cette SI n'a pas encore parlé",
             )
+        report.caveat = psy_mod.CAVEATS.get(
+            lang_mod.normalize_language(session.world.language), psy_mod.CAVEATS["fr"]
+        )
         result.analysis = report
 
     else:  # disinfo (mode fog + unicité déjà vérifiés avant le débit)

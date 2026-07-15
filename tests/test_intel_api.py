@@ -1,6 +1,7 @@
 """Tests du renseignement G4 (POST /games/{id}/intel) — offline, MockBackend + RAG seed."""
 
 import json
+import os
 
 import pytest
 from fastapi.testclient import TestClient
@@ -243,6 +244,8 @@ def test_analyze_returns_gauges_and_debits_once(client_store):
     assert 0.0 <= analysis["gauges"]["sentiment"] <= 1.0
     # Bord (début de partie) : un seul round de parole → pas de comparaison, pas d'alerte.
     assert analysis["previous"] is None and analysis["alerts"] == []
+    # Le caveat d'honnêteté voyage avec le rapport (obligatoire à l'affichage).
+    assert "57" in analysis["caveat"] and "indice" in analysis["caveat"]
 
 
 def test_analyze_requires_a_known_target(client_store):
@@ -291,6 +294,7 @@ def test_analyze_uses_the_game_language_lexicon(client_store):
     )
     analysis = _intel(client, game["id"], action="analyze", target="usa").json()["analysis"]
     assert analysis["gauges"]["future"] > 0.5  # « will/promise/plan » — lexique anglais
+    assert "clue, not proof" in analysis["caveat"]  # le caveat suit la langue de la partie
 
 
 def test_analyze_purchase_is_recorded_and_announced(client_store):
@@ -305,6 +309,41 @@ def test_analyze_purchase_is_recorded_and_announced(client_store):
     record = store.list_rounds(game["id"])[-1]
     action = record.judge["intel"]["actions"][0]
     assert action["action"] == "analyze" and action["target"] == "usa"
+
+
+# --- smoke live (Ollama/mistral) --------------------------------------------------------
+
+
+@pytest.mark.skipif(
+    os.getenv("OLLAMA_SMOKE") != "1",
+    reason="smoke live Ollama : hors CI. Lancer avec OLLAMA_SMOKE=1 et Ollama up.",
+)
+def test_smoke_live_analyze_on_real_speech():  # pragma: no cover - dépend d'un modèle servi
+    """G23 sur de la vraie parole : 2 rounds mistral, puis l'analyse d'une SI."""
+    from inference.ollama_backend import OllamaBackend
+
+    store = SQLiteGameStore(":memory:")
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_backend] = lambda: OllamaBackend()
+    game_api._sessions.clear()
+    try:
+        client = TestClient(app)
+        game = _create(client)
+        for _ in range(2):
+            _play(client, game["id"])
+
+        resp = _intel(client, game["id"], action="analyze", target="iran")
+        assert resp.status_code == 200, resp.text
+        analysis = resp.json()["analysis"]
+        assert analysis["gauges"]["sentences"] > 0  # la vraie parole a bien été analysée
+        for gauge in ("sentiment", "politeness", "future"):
+            assert 0.0 <= analysis["gauges"][gauge] <= 1.0
+        assert analysis["previous"] is not None  # 2 rounds → fenêtre de comparaison
+        assert "57" in analysis["caveat"]  # l'honnêteté voyage avec le rapport
+    finally:
+        app.dependency_overrides.clear()
+        game_api._sessions.clear()
+        store.close()
 
 
 # --- brief dissipe le fog du joueur ---------------------------------------------------

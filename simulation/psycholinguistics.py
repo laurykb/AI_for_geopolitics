@@ -157,6 +157,14 @@ class HarbingerAlert(BaseModel):
     drop: float  # chute (fenêtre précédente − fenêtre courante), > 0
 
 
+# Le caveat d'honnêteté scientifique — OBLIGATOIRE partout où le rapport s'affiche
+# (ACL 2015 : classifieur à ~57 % contre une base de 52 % — un indice, pas une preuve).
+CAVEATS: dict[str, str] = {
+    "fr": "Signal historique faible (~57 %) — un indice, pas une preuve.",
+    "en": "Historically weak signal (~57%) — a clue, not proof.",
+}
+
+
 class HarbingerReport(BaseModel):
     """Le rapport d'une analyse psycholinguistique ciblée sur une SI."""
 
@@ -165,6 +173,7 @@ class HarbingerReport(BaseModel):
     gauges: GaugeScores
     previous: GaugeScores | None = None  # fenêtre décalée d'un round (None en début de partie)
     alerts: list[HarbingerAlert] = Field(default_factory=list)
+    caveat: str = CAVEATS["fr"]  # jamais absent — la langue de la partie le traduit
 
 
 def _window_sentences(
