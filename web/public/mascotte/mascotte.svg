@@ -27,7 +27,6 @@
       <stop offset="0.55" stop-color="#38bdf8" stop-opacity="0.35"/>
       <stop offset="1" stop-color="#38bdf8" stop-opacity="0"/>
     </radialGradient>
-    <clipPath id="patchClip"><rect x="204" y="504" width="50" height="66" rx="6"/></clipPath>
     <filter id="sticker" x="-12%" y="-12%" width="124%" height="124%">
       <feMorphology in="SourceAlpha" operator="dilate" radius="6" result="d"/>
       <feFlood flood-color="#ffffff" result="f"/>
@@ -65,29 +64,20 @@
     <!-- ===== sacoche en bandoulière ===== -->
     <path d="M 308 358 L 334 374 Q 302 416 264 450 L 240 440 Q 278 402 308 358 Z" fill="#1a1b20"/>
     <g transform="rotate(-38 298 404)"><rect x="286" y="396" width="24" height="16" rx="3" fill="#2e3038"/></g>
-    <rect x="200" y="424" width="58" height="48" rx="10" fill="#17181c"/>
+    <rect x="200" y="424" width="58" height="48" rx="10" fill="#17181c" stroke="#43464f" stroke-width="2"/>
     <path d="M 203 441 L 255 441" stroke="#2e3038" stroke-width="3"/>
     <rect x="240" y="433" width="6" height="12" rx="2" fill="#3c3f48"/>
     <path d="M 205 431 Q 228 426 253 431" stroke="#34363e" stroke-width="2.5" fill="none" opacity="0.9"/>
-    <text x="229" y="462" font-size="10" font-weight="700" fill="#f2f2ee" text-anchor="middle" letter-spacing="0.4">loryski</text>
 
     <!-- ===== pantalon baggy noir ===== -->
     <path d="M 196 470 L 320 470 Q 334 470 336 486 Q 352 544 348 590 L 266 594 Q 263 560 258 536
              Q 253 560 250 594 L 168 590 Q 164 544 180 486 Q 182 470 196 470 Z" fill="url(#pantsGrad)"/>
-    <path d="M 196 477 L 320 477" stroke="#23252c" stroke-width="4"/>
-    <path d="M 306 484 Q 320 496 322 512" stroke="#23252c" stroke-width="4" fill="none" stroke-linecap="round"/>
-    <path d="M 206 500 Q 202 536 206 566" stroke="#23252c" stroke-width="4" fill="none" stroke-linecap="round"/>
-    <path d="M 302 502 Q 308 538 304 566" stroke="#23252c" stroke-width="4" fill="none" stroke-linecap="round"/>
-    <path d="M 170 574 Q 210 566 248 574" stroke="#0c0d10" stroke-width="5" fill="none" stroke-linecap="round"/>
-    <path d="M 268 576 Q 308 568 346 576" stroke="#0c0d10" stroke-width="5" fill="none" stroke-linecap="round"/>
-
-    <!-- patch encadré (fleurs blanches sur nuit) -->
-    <rect x="204" y="504" width="50" height="66" rx="6" fill="#0f1014" stroke="#efece2" stroke-width="4"/>
-    <g clip-path="url(#patchClip)" fill="#efece2">
-      <g><circle cx="218" cy="516" r="4"/><circle cx="226" cy="520" r="4"/><circle cx="218" cy="524" r="4"/><circle cx="210" cy="520" r="4"/><circle cx="218" cy="520" r="2.2" fill="#0f1014"/></g>
-      <g><circle cx="240" cy="536" r="4"/><circle cx="248" cy="540" r="4"/><circle cx="240" cy="544" r="4"/><circle cx="232" cy="540" r="4"/><circle cx="240" cy="540" r="2.2" fill="#0f1014"/></g>
-      <g><circle cx="220" cy="552" r="4"/><circle cx="228" cy="556" r="4"/><circle cx="220" cy="560" r="4"/><circle cx="212" cy="556" r="4"/><circle cx="220" cy="556" r="2.2" fill="#0f1014"/></g>
-    </g>
+    <path d="M 196 477 L 320 477" stroke="#31353f" stroke-width="4"/>
+    <path d="M 306 484 Q 320 496 322 512" stroke="#31353f" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <path d="M 206 500 Q 202 536 206 566" stroke="#31353f" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <path d="M 302 502 Q 308 538 304 566" stroke="#31353f" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <path d="M 170 574 Q 210 566 248 574" stroke="#2c303c" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <path d="M 268 576 Q 308 568 346 576" stroke="#2c303c" stroke-width="5" fill="none" stroke-linecap="round"/>
 
     <!-- ===== sneakers (imprimé vache-fleur, semelle gomme) ===== -->
     <!-- pied gauche -->
@@ -99,8 +89,6 @@
     <path d="M 236 580 Q 248 592 252 606" stroke="#d9d5c8" stroke-width="3" fill="none"/>
     <path d="M 196 576 Q 208 581 222 576" stroke="#17181c" stroke-width="4" fill="none" stroke-linecap="round"/>
     <path d="M 192 584 Q 208 591 226 584" stroke="#17181c" stroke-width="4" fill="none" stroke-linecap="round"/>
-    <rect x="196" y="558" width="30" height="17" rx="4" fill="#131317"/>
-    <text x="211" y="570" font-size="8" font-weight="700" fill="#f2f2ee" text-anchor="middle">loryski</text>
     <path d="M 160 612 Q 154 628 176 630 L 246 630 Q 262 628 258 612 Z" fill="#b07a3e"/>
     <path d="M 160 618 L 257 618" stroke="#8a5a28" stroke-width="3" opacity="0.7"/>
     <!-- pied droit -->
@@ -112,8 +100,6 @@
     <path d="M 280 580 Q 270 592 266 606" stroke="#d9d5c8" stroke-width="3" fill="none"/>
     <path d="M 298 576 Q 310 581 324 576" stroke="#17181c" stroke-width="4" fill="none" stroke-linecap="round"/>
     <path d="M 294 584 Q 310 591 328 584" stroke="#17181c" stroke-width="4" fill="none" stroke-linecap="round"/>
-    <rect x="296" y="558" width="30" height="17" rx="4" fill="#131317"/>
-    <text x="311" y="570" font-size="8" font-weight="700" fill="#f2f2ee" text-anchor="middle">loryski</text>
     <path d="M 262 612 Q 258 628 278 630 L 348 630 Q 370 628 362 612 Z" fill="#b07a3e"/>
     <path d="M 262 618 L 360 618" stroke="#8a5a28" stroke-width="3" opacity="0.7"/>
 
@@ -138,20 +124,19 @@
     <path d="M 163 216 Q 168 211 172 216" stroke="#2e1d10" stroke-width="2" fill="none"/>
     <path d="M 344 216 Q 348 211 353 216" stroke="#2e1d10" stroke-width="2" fill="none"/>
     <!-- ombre de la visière sur le front -->
-    <path d="M 172 212 Q 258 234 344 212 L 344 230 Q 258 254 172 230 Z" fill="#7c4527" opacity="0.45"/>
+    <path d="M 170 226 Q 250 248 336 224 L 336 242 Q 250 264 170 244 Z" fill="#7c4527" opacity="0.45"/>
 
-    <!-- ===== casquette (couronne soudée à la visière, sans espace) ===== -->
-    <path d="M 146 188 Q 142 64 258 56 Q 374 64 370 188 Q 258 212 146 188 Z" fill="url(#capGrad)"/>
-    <path d="M 222 62 Q 216 120 218 200" stroke="#0c0d10" stroke-width="3" fill="none" opacity="0.8"/>
-    <path d="M 294 62 Q 300 120 298 200" stroke="#0c0d10" stroke-width="3" fill="none" opacity="0.8"/>
+    <!-- ===== casquette : visière de baseball (balayée côté gauche), couronne PAR-DESSUS ===== -->
+    <path d="M 108 186 Q 86 202 104 218 Q 150 236 230 234 Q 302 232 344 214 Q 358 204 346 188
+             Q 300 206 240 206 Q 166 206 108 186 Z" fill="#0e0f13"/>
+    <path d="M 120 200 Q 230 228 338 200" stroke="#2a2c33" stroke-width="3" fill="none" opacity="0.8"/>
+    <path d="M 146 192 Q 142 64 258 56 Q 374 64 370 192 Q 258 216 146 192 Z" fill="url(#capGrad)"/>
+    <path d="M 222 62 Q 216 120 219 204" stroke="#0c0d10" stroke-width="3" fill="none" opacity="0.8"/>
+    <path d="M 294 62 Q 300 120 297 204" stroke="#0c0d10" stroke-width="3" fill="none" opacity="0.8"/>
     <path d="M 172 116 Q 186 70 242 60 Q 202 80 188 122 Z" fill="#2c2e36" opacity="0.7"/>
     <circle cx="258" cy="56" r="7" fill="#0b0c0e"/>
     <circle cx="258" cy="56" r="7" fill="none" stroke="#2c2e36" stroke-width="1.5"/>
     <text x="258" y="148" font-size="30" font-weight="700" fill="#f5f5f2" text-anchor="middle" letter-spacing="1">loryski</text>
-    <!-- visière (attachée au bord de la couronne) -->
-    <path d="M 138 184 Q 124 204 146 216 Q 200 232 258 232 Q 316 232 370 216 Q 392 204 378 184
-             Q 320 206 258 206 Q 196 206 138 184 Z" fill="#0e0f13"/>
-    <path d="M 152 194 Q 258 222 364 194" stroke="#2a2c33" stroke-width="3" fill="none" opacity="0.8"/>
 
     <!-- ===== visage : traits ===== -->
     <path d="M 184 236 Q 210 226 236 233" stroke="#17100a" stroke-width="8" fill="none" stroke-linecap="round"/>
@@ -195,8 +180,7 @@
     <path d="M 147 320 Q 144 326 145 331" stroke="#7c4527" stroke-width="2" fill="none" opacity="0.7"/>
     <path d="M 134 326 Q 132 331 133 335" stroke="#7c4527" stroke-width="2" fill="none" opacity="0.7"/>
 
-    <!-- étincelles or / cyan (accents du thème) -->
+    <!-- étincelle d'or (accent du thème) -->
     <path d="M 395 132 L 400 145 L 413 150 L 400 155 L 395 168 L 390 155 L 377 150 L 390 145 Z" fill="#eab308"/>
-    <path d="M 98 190 L 101 198 L 109 201 L 101 204 L 98 212 L 95 204 L 87 201 L 95 198 Z" fill="#38bdf8" opacity="0.9"/>
   </g>
 </svg>
