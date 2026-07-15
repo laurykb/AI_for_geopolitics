@@ -257,5 +257,6 @@
   "promise.reveal.titre": "Parole donnée",
   "promise.reveal.deviante": "taux de tenue de la déviante",
   "promise.reveal.table": "reste de la table",
-  "promise.reveal.aide": "Les LLM en négociation trahissent de façon mesurable (arXiv 2508.07485) : une déviante qui promet et rompt décroche du taux de tenue de la table — croisez avec la jauge signal vs action."
+  "promise.reveal.aide": "Les LLM en négociation trahissent de façon mesurable (arXiv 2508.07485) : une déviante qui promet et rompt décroche du taux de tenue de la table — croisez avec la jauge signal vs action.",
+  "event.type.defaut": "événement"
 }

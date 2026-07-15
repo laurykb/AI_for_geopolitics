@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { Banner, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
 import { humanizeError, listGames } from "@/lib/api";
+import { adminDenied } from "@/lib/auth";
 import { fmtDateTime } from "@/lib/format";
 import { MODES } from "@/lib/modes";
 import type { GameView } from "@/lib/types";
@@ -21,9 +22,10 @@ export default function AdminPage() {
   const [games, setGames] = useState<GameView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Garde de rôle : la session existe (garde d'auth) mais il faut être admin.
+  // Garde de rôle : il faut être admin — le visiteur sans session est renvoyé
+  // aussi (sinon il resterait bloqué sur le spinner de vérification).
   useEffect(() => {
-    if (!loading && player && !player.is_admin) router.replace("/accueil");
+    if (adminDenied(loading, player)) router.replace("/accueil");
   }, [loading, player, router]);
 
   useEffect(() => {

@@ -1,9 +1,12 @@
+"use client";
+
 /** Carte de l'événement du round (posé par le Game Master ou décrété par l'humain). */
 
 import { speakerMeta } from "@/lib/countries";
 import type { GeoEvent } from "@/lib/types";
 
 import { SpeakerAvatar } from "./avatar";
+import { useT } from "./settings-provider";
 import { Meter, Panel, PanelTitle, Pill } from "./ui";
 
 export function EventCard({
@@ -15,6 +18,7 @@ export function EventCard({
   date?: string;
   truth?: boolean; // boîte de verre (Fog) : cet événement est la vérité, que toi seul vois
 }) {
+  const t = useT();
   const when = event.date || date;
   return (
     <Panel className="border-l-2 border-l-accent">
@@ -29,7 +33,8 @@ export function EventCard({
                 ? "décrété par l'humain"
                 : event.event_type === "motion"
                   ? "motion de suspension"
-                  : event.event_type}
+                  : // jamais le slug technique brut — libellé générique (audit n°3)
+                    t("event.type.defaut")}
             </Pill>
           </span>
         }

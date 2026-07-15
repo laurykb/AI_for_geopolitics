@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { emailForPseudo, slugify, validateCredentials } from "./auth";
+import { adminDenied, emailForPseudo, slugify, validateCredentials, type Player } from "./auth";
 
 describe("slugify", () => {
   it("réduit à l'alphanumérique en minuscules, sans accents", () => {
@@ -36,5 +36,26 @@ describe("validateCredentials", () => {
 
   it("refuse un mot de passe trop court", () => {
     expect(validateCredentials("laury", "12345")).toMatch(/mot de passe/i);
+  });
+});
+
+describe("adminDenied (garde de la vue admin)", () => {
+  const player = (is_admin: boolean): Player => ({ id: "p1", pseudo: "laury", is_admin, lp: 0 });
+
+  it("renvoie le visiteur non connecté (player null) — pas de spinner infini", () => {
+    expect(adminDenied(false, null)).toBe(true);
+  });
+
+  it("renvoie le joueur connecté non-admin", () => {
+    expect(adminDenied(false, player(false))).toBe(true);
+  });
+
+  it("laisse entrer l'admin", () => {
+    expect(adminDenied(false, player(true))).toBe(false);
+  });
+
+  it("ne décide rien tant que la session charge", () => {
+    expect(adminDenied(true, null)).toBe(false);
+    expect(adminDenied(true, player(false))).toBe(false);
   });
 });

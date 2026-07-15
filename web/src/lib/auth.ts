@@ -53,6 +53,13 @@ export function emailForPseudo(pseudo: string): string {
   return `${slugify(pseudo)}@wosi.local`;
 }
 
+/** Garde de la vue admin (/admin) : true = renvoyer à l'accueil. Renvoie le
+ * non-admin ET le visiteur sans session (sinon spinner infini) — jamais pendant
+ * le chargement, tant que la session n'est pas connue. */
+export function adminDenied(loading: boolean, player: Player | null): boolean {
+  return !loading && !(player?.is_admin ?? false);
+}
+
 /** Validation partagée des identifiants ; message FR montrable, ou null si valide. */
 export function validateCredentials(pseudo: string, password: string): string | null {
   if (slugify(pseudo).length < 3) return "Le pseudo fait au moins 3 caractères (lettres/chiffres).";

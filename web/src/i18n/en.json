@@ -257,5 +257,6 @@
   "promise.reveal.titre": "Word given",
   "promise.reveal.deviante": "deviant's kept rate",
   "promise.reveal.table": "rest of the table",
-  "promise.reveal.aide": "Negotiating LLMs betray measurably (arXiv 2508.07485): a deviant that promises and breaks drops below the table's kept rate — cross-check with the signal vs action gauge."
+  "promise.reveal.aide": "Negotiating LLMs betray measurably (arXiv 2508.07485): a deviant that promises and breaks drops below the table's kept rate — cross-check with the signal vs action gauge.",
+  "event.type.defaut": "event"
 }
