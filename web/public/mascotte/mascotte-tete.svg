@@ -74,20 +74,21 @@
       <!-- traits -->
       <path d="M 184 236 Q 210 226 236 233" stroke="#17100a" stroke-width="8" fill="none" stroke-linecap="round"/>
       <path d="M 280 233 Q 306 226 332 236" stroke="#17100a" stroke-width="8" fill="none" stroke-linecap="round"/>
-      <ellipse cx="212" cy="270" rx="27" ry="31" fill="#ffffff"/>
-      <ellipse cx="304" cy="270" rx="27" ry="31" fill="#ffffff"/>
-      <circle cx="214" cy="273" r="19" fill="url(#irisBrownT)"/>
-      <circle cx="302" cy="273" r="19" fill="url(#irisBrownT)"/>
-      <circle cx="214" cy="273" r="19" fill="none" stroke="#24120a" stroke-width="2"/>
-      <circle cx="302" cy="273" r="19" fill="none" stroke="#24120a" stroke-width="2"/>
-      <circle cx="214" cy="273" r="8.5" fill="#140a05"/>
-      <circle cx="302" cy="273" r="8.5" fill="#140a05"/>
-      <circle cx="207" cy="263" r="6.5" fill="#ffffff"/>
-      <circle cx="295" cy="263" r="6.5" fill="#ffffff"/>
-      <circle cx="221" cy="283" r="2.8" fill="#ffffff" opacity="0.85"/>
-      <circle cx="309" cy="283" r="2.8" fill="#ffffff" opacity="0.85"/>
-      <path d="M 186 252 Q 212 240 238 252" stroke="#1c0f08" stroke-width="6" fill="none" stroke-linecap="round"/>
-      <path d="M 278 252 Q 304 240 330 252" stroke="#1c0f08" stroke-width="6" fill="none" stroke-linecap="round"/>
+      <!-- yeux : cil supérieur intégré au bord (épais en haut, fin ailleurs), un seul sourcil -->
+      <ellipse cx="212" cy="272" rx="28" ry="32" fill="#1c0f08"/>
+      <ellipse cx="304" cy="272" rx="28" ry="32" fill="#1c0f08"/>
+      <ellipse cx="212" cy="276" rx="24.5" ry="27" fill="#ffffff"/>
+      <ellipse cx="304" cy="276" rx="24.5" ry="27" fill="#ffffff"/>
+      <circle cx="213" cy="277" r="17.5" fill="url(#irisBrownT)"/>
+      <circle cx="303" cy="277" r="17.5" fill="url(#irisBrownT)"/>
+      <circle cx="213" cy="277" r="17.5" fill="none" stroke="#24120a" stroke-width="2"/>
+      <circle cx="303" cy="277" r="17.5" fill="none" stroke="#24120a" stroke-width="2"/>
+      <circle cx="213" cy="277" r="8" fill="#140a05"/>
+      <circle cx="303" cy="277" r="8" fill="#140a05"/>
+      <circle cx="207" cy="268" r="6" fill="#ffffff"/>
+      <circle cx="297" cy="268" r="6" fill="#ffffff"/>
+      <circle cx="220" cy="287" r="2.6" fill="#ffffff" opacity="0.85"/>
+      <circle cx="310" cy="287" r="2.6" fill="#ffffff" opacity="0.85"/>
       <path d="M 254 296 Q 260 302 254 306" stroke="#7c4527" stroke-width="5" fill="none" stroke-linecap="round"/>
       <path d="M 240 320 Q 258 330 278 318" stroke="#4a2413" stroke-width="5" fill="none" stroke-linecap="round"/>
       <ellipse cx="180" cy="300" rx="13" ry="7" fill="#c07a4a" opacity="0.35"/>
