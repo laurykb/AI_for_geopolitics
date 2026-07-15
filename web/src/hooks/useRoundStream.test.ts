@@ -156,6 +156,32 @@ describe("réducteur de round", () => {
     expect(state.motionVerdict).toMatchObject({ vote_passed: true, evidence_met: false });
   });
 
+  it("le verdict porte les classes du barème de Kahn (G18)", () => {
+    const state = play([
+      {
+        type: "verdict",
+        deltas: [],
+        escalation: 0.33,
+        economic_disruption: 0.2,
+        actions: [{ country: "usa", classe: "deescalade", resume: "Retire ses forces." }],
+        score: -2,
+        reciprocal: false,
+      },
+    ]);
+    expect(state.verdict).toMatchObject({ escalation: 0.33, score: -2, reciprocal: false });
+    expect(state.verdict?.actions).toEqual([
+      { country: "usa", classe: "deescalade", resume: "Retire ses forces." },
+    ]);
+  });
+
+  it("un verdict à l'ancienne (sans actions) reste lisible — rétro-compat G18", () => {
+    const state = play([
+      { type: "verdict", deltas: [], escalation: 0.5, economic_disruption: 0.5 },
+    ]);
+    expect(state.verdict?.actions).toEqual([]);
+    expect(state.verdict?.reciprocal).toBe(false);
+  });
+
   it("postures et intrigue (G9 §4-§5) entrent dans l'état du round", () => {
     const state = play([
       { type: "postures", states: { iran: "aux_abois", usa: "stable" } },
