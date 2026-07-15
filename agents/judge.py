@@ -53,10 +53,18 @@ class JudgeAgent:
             yield "[arbitrage indisponible — backend hors service]"
 
     def verdict(
-        self, event: GeoEvent, world: WorldState, transcript: list[NegotiationMessage]
+        self,
+        event: GeoEvent,
+        world: WorldState,
+        transcript: list[NegotiationMessage],
+        *,
+        demand: str | None = None,
     ) -> Verdict:
-        """Verdict chiffré (JSON libre, parse tolérant) ; verdict neutre si invalide."""
-        prompt = build_judge_verdict_prompt(event, world, format_transcript(transcript))
+        """Verdict chiffré (JSON libre, parse tolérant) ; verdict neutre si invalide.
+
+        `demand` (G21) : exigence d'un ultimatum à échéance CE round — le juge constate
+        en plus « demande satisfaite o/n » (`Verdict.demand_satisfied`)."""
+        prompt = build_judge_verdict_prompt(event, world, format_transcript(transcript), demand)
         try:
             result = self.backend.generate(
                 prompt,

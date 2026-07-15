@@ -362,15 +362,29 @@ def build_judge_rationale_prompt(event: GeoEvent, world: WorldState, transcript_
     )
 
 
-def build_judge_verdict_prompt(event: GeoEvent, world: WorldState, transcript_text: str) -> str:
+def build_judge_verdict_prompt(
+    event: GeoEvent, world: WorldState, transcript_text: str, demand: str | None = None
+) -> str:
     ids = ", ".join(sorted(world.countries))
+    # G21 — à l'échéance d'un ultimatum, le juge constate en plus « demande satisfaite
+    # o/n » (champ structuré) ; sans ultimatum, le prompt est strictement inchangé.
+    ultimatum_block = ""
+    ultimatum_field = ""
+    if demand:
+        ultimatum_block = f"ULTIMATUM À ÉCHÉANCE CE ROUND — exigence : « {demand} ».\n"
+        ultimatum_field = (
+            ', "demand_satisfied": true|false (true UNIQUEMENT si la négociation ci-dessus '
+            "satisfait CONCRÈTEMENT l'exigence de l'ultimatum : engagement explicite et "
+            "vérifiable, pas une vague ouverture)"
+        )
     return (
-        f"ÉVÉNEMENT : {event.title}\nPAYS (ids) : {ids}\n"
+        f"ÉVÉNEMENT : {event.title}\nPAYS (ids) : {ids}\n{ultimatum_block}"
         f"NÉGOCIATION :\n{transcript_text}\n\n"
         f'Rends le verdict en JSON : {{"attribute_deltas": {{"<id>": {{"croissance": ±pts, '
         f'"stabilité": ±0.1, "techno": ±0.1, "projection": ±0.1}}}}, '
         f'"tension_deltas": [{{"a": id, "b": id, "delta": ±0.2}}], '
-        f'"new_pacts": [[id, id]], "escalation": 0-1, "economic_disruption": 0-1}}. '
+        f'"new_pacts": [[id, id]], "escalation": 0-1, "economic_disruption": 0-1'
+        f"{ultimatum_field}}}. "
         f"Ne renseigne que ce qui a réellement changé pendant la négociation."
     )
 

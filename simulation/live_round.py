@@ -151,6 +151,9 @@ class VerdictStep:
     deltas: list[AttributeDelta]
     escalation: float
     economic_disruption: float
+    # G21 — constat « demande satisfaite o/n » à l'échéance d'un ultimatum ;
+    # None = pas d'ultimatum ce round (rétro-compat totale).
+    demand_satisfied: bool | None = None
 
 
 @dataclass
@@ -403,6 +406,7 @@ def run_negotiation_round(
     tuning: DeltaTuning | None = None,
     story: StoryContext | None = None,
     storyteller: str | None = None,
+    ultimatum_demand: str | None = None,
 ) -> Iterator[RoundStep]:
     """Round arbitré : (GM ou événement fourni) -> négociation -> juge -> attributs bornés.
 
@@ -429,6 +433,8 @@ def run_negotiation_round(
     (le `TurnDirector` lui garantit la parole via `priority`). `flash_after` (théâtre
     Escalation) : après ce nombre de prises de parole, le GM annonce un **fait nouveau**
     en pleine réunion (`FlashStep`) — les orateurs suivants le voient dans le débat.
+    `ultimatum_demand` (G21) : exigence d'un ultimatum à échéance CE round — le juge
+    constate « demande satisfaite o/n » et le `VerdictStep` porte le constat.
     """
     round_id = world.current_round + 1
     if ledger is not None:
@@ -551,12 +557,16 @@ def run_negotiation_round(
     with _ledger_ctx(ledger, "judge"):
         for token in judge.stream_rationale(event, world, transcript):
             yield JudgeTokenStep(token=token)
-        verdict = judge.verdict(event, world, transcript)
+        verdict = judge.verdict(event, world, transcript, demand=ultimatum_demand)
     deltas = apply_verdict(world, verdict, tuning)  # G9 §4 — amplitude indexée sur l'horizon
     yield VerdictStep(
         deltas=deltas,
         escalation=_clamp(verdict.escalation),
         economic_disruption=_clamp(verdict.economic_disruption),
+        # G21 — porté seulement quand un ultimatum est à échéance (jamais d'hallucination).
+        # Le constat est BINAIRE à l'échéance : juge muet = non satisfaite (un ultimatum
+        # ne s'éteint pas tout seul).
+        demand_satisfied=bool(verdict.demand_satisfied) if ultimatum_demand else None,
     )
 
     update_memories(world, event, transcript, verdict)

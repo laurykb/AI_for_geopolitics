@@ -470,3 +470,65 @@ les ajuste sans toucher au code.
    est une boucle : jouer → mesurer → ajuster les specs → petite PR).
 4. L'analyse qualité du dialogue 7B (répétitivité, mistral vs qwen2.5 vs llama3.1) se fait
    sur Cowork avant G3 — la Dérive exige des dialogues crédibles.
+
+---
+
+## Notes de session — CC-11 / G21 (mode deadline / ultimatum, 2026-07-15)
+
+<!-- section délimitée CC-11/G21 : début -->
+
+**Fait** (spec `docs/specs_jeu/spec_g21_mode_deadline.md`, branche `feat/jeu-g21-deadline`) :
+
+- **Schéma** : `Crisis.deadline` optionnel (`simulation/crisis.py`) = `UltimatumDeadline
+  {round, demand, consequence{classe, cible}}` — validé pour les fiches embarquées ET les
+  crises maison admin ; rétro-compat totale (None = rien ne change, vérifié par test).
+- **Module pur `simulation/ultimatum.py`** : classes G18 locales (`CONSEQUENCE_CLASSES`,
+  repli statu_quo + log sur classe inconnue), `consequence_event` (déterministe, fr/en,
+  gravité ordonnée par classe, tout le sommet acteur — même logique que `motion_event`),
+  `strip_label` (libellés du DeadlineStrip), `differential` (moyennes escalade + ΔU par
+  round, groupes `avec`/`sans`, None si jamais sous ultimatum).
+- **Juge** : `Verdict.demand_satisfied` (parse tolérant oui/non/true/false),
+  `build_judge_verdict_prompt(demand=…)` ajoute le bloc ULTIMATUM + le champ structuré
+  (prompt inchangé sans ultimatum) ; `run_negotiation_round(ultimatum_demand=…)` →
+  `VerdictStep.demand_satisfied` **binaire à l'échéance** (juge muet = non satisfaite :
+  un ultimatum ne s'éteint pas tout seul).
+- **API (`app/game_api.py`)** : enregistrement fiche (`crisis.deadline`, si `round_id ≤ k`)
+  ou décret GM (`HumanEventInput.ultimatum` — **2 champs** : exigence + classe ; l'échéance
+  d'un décret est le round décrété, réponse séance tenante) ; cycle `armed → satisfied |
+  expired → struck` persisté dans `judge_json["ultimatum"]` round après round ; conséquence
+  auto-injectée comme événement du round k+1 (prime sur la fiche/le décret/le fog, une
+  motion en attente la diffère d'un round) ; `judge_json["sous_ultimatum"]` tague CHAQUE
+  round ; trames SSE `ultimatum` ; bandeau : `session.deadlines` (kind `ultimatum`)
+  entretenu à chaque round → DeadlineStrip existant nourri sans changement de composant,
+  et la ligne « Échéances imminentes » des prompts SI porte l'ultimatum d'office ;
+  `result_json["ultimatum"]` = différentiel avec/sans ; reconstruction au restart depuis
+  les rounds persistés (`_ultimatum_from_records`, même patron que les traités — aucun
+  schéma de snapshot neuf).
+- **Front** : formulaire de décret (exigence + classe, i18n fr/en), réduction de la trame
+  `ultimatum` dans `useRoundStream`, bannières vivantes au théâtre (armé/satisfait/expiré/
+  tombé), section « Sous ultimatum vs sans » au bilan de fin (`fin/page.tsx`).
+- **Tests** : `tests/test_ultimatum.py` (module pur, 15), `tests/test_ultimatum_api.py`
+  (8 : expiration→conséquence, satisfaction→rien, décret 2 champs, rétro-compat, bilan,
+  restart), juge/moteur (5), réducteur front (2). **Smoke réel** :
+  `tests/test_ultimatum_smoke.py` (gardé `OLLAMA_SMOKE=1`, TestClient in-process,
+  mistral réel — mécanisme validé quel que soit le constat du juge).
+
+**Décisions notables** :
+
+- La `classe` de conséquence est une **chaîne validée localement** (6 valeurs G18) —
+  l'unification avec le barème Kahn de CC-8 (scores, multiplicateurs) se fera **au merge**
+  des deux branches (TODO_MERGE_G18).
+- Décret GM : échéance = le round décrété (jugement séance tenante). Une fiche de crise
+  peut viser un round futur (`deadline.round` = numéro de round ABSOLU de la partie).
+- Ultimatum expirant au dernier round de l'horizon : la partie se clôt sur le statut
+  `expired`, la conséquence n'a plus de round pour tomber (assumé).
+
+**Reliquats / TODO_COWORK** :
+
+- TODO_COWORK : fiches historiques Cuba 1962 (ch. 5) et Able Archer (ch. 6) avec leurs
+  `deadline` réels (backlog G10) + analyse du différentiel avec/sans sur 10 parties.
+- Les libellés serveur du DeadlineStrip (comme TOUTES les échéances G7-a) restent en
+  français même en partie EN — reliquat i18n préexistant, signalé.
+- TODO_MERGE_G18 : brancher `ultimatum.CONSEQUENCE_CLASSES` sur le barème CC-8 au merge.
+
+<!-- section délimitée CC-11/G21 : fin -->
