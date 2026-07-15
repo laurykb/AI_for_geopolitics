@@ -118,3 +118,17 @@ def test_junk_list_field_does_not_nuke_the_verdict():
     assert verdict.signals == []
     assert verdict.promises == []
     assert verdict.promise_resolutions == []
+
+
+def test_verdict_gets_a_structured_output_budget():
+    """POLISH-1 — le verdict structuré a grossi (G18 actions + G20 signals + G22
+    promesses + G21 demand_satisfied) : à 400 tokens de sortie, le JSON d'un round à
+    3+ pays se TRONQUE sur mistral et tout le verdict retombe au neutre (constaté au
+    smoke réel). Le verdict doit disposer d'un budget de sortie dédié, plus large que
+    le budget de prose du raisonnement/communiqué."""
+    backend = MockBackend(json.dumps({"escalation": 0.6}))
+    judge = JudgeAgent(backend)  # défauts de l'API (max_tokens=400)
+    judge.verdict(_event(), _world(), [])
+    assert backend.calls[-1]["max_tokens"] >= 900, (
+        "budget de sortie du verdict trop petit : le JSON G18/G20/G21/G22 se tronque"
+    )
