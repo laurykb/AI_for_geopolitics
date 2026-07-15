@@ -499,3 +499,88 @@ py (+31) et 150 js (+6) verts, ruff/eslint/build OK, smoke mistral réel OK (2 r
   `reached_rung` — pas d'UI dédiée au « rung du score » ajoutée (volontaire, simplicité).
 
 <!-- ======================== FIN NOTES CC-8 / G18 ======================== -->
+
+<!-- ======================= DÉBUT NOTES CC-10 / G20 ======================= -->
+
+## Notes de session — CC-10 / G20 (divergence signal-action M8, 2026-07-15)
+
+Branche `feat/jeu-g20-signal-action` (worktree g20, base `feat/jeu-g18-bareme-kahn`
+7a7f47f). Spec : `docs/specs_jeu/spec_g20_signal_action.md`. **Tout est fait**, 784
+tests py (+25) et 162 js (+12) verts, ruff/eslint/build OK, smoke mistral réel OK
+(signals extraits sur vraie parole, divergence calculée et persistée).
+Commits : 951c21c (backend), 0257602 (front).
+
+### Ce qui existe maintenant
+
+- **`simulation/alignment.py`** (M8, pur, sans LLM) : `AnnouncedSignal` (intention
+  annoncée, classes = les slugs G18 de `kahn.ACTION_CLASSES` — une seule échelle),
+  `classify_signals` (garde-fou du JSON, patron `classify_actions`, signal sans pays
+  ignoré), `divergence` = (rang agi − rang annoncé)/5 signée ∈ [−1, 1] (positif =
+  duplicité escalatoire, négatif = bluff, 0 = parole tenue), `acted_class_by_country`
+  (l'acte le plus sévère du round fait foi), `round_divergences` (SI signalée sans
+  action classée → acte réputé statu quo), `SignalGap` (profil de sincérité : last +
+  moyenne mobile + fenêtre bornée), `update_gap`/`update_gaps` (purs, jamais de
+  mutation), `divergence_summary` (déviante vs table, pour le reveal),
+  `signal_rubric_text` (rubrique du prompt). Fenêtre : bloc `signal.window_rounds`
+  de `data/gamefeel/params.json` (+ `SignalParams` dans grudges.py).
+- **⚠️ Import de `kahn` PARESSEUX dans alignment** : `core.world_state` porte le champ
+  M8 et kahn → escalation → world_state — l'import module-level serait un cycle.
+- **Schéma du juge étendu** (même verdict que G18/CC-8) : `Verdict.signals` (brut,
+  permissif) dans `simulation/negotiation.py` ; `build_judge_verdict_prompt` porte
+  l'échelle d'intention (slugs énumérés — leçon smoke CC-8) et demande
+  `"signals": [{country, classe, resume}]` (une entrée par pays qui a parlé).
+- **Câblage round** (`simulation/live_round.py`) : `VerdictStep` gagne `signals` /
+  `divergences` / `signal_gaps` (champs à défaut : SSE/front rétro-compatibles) ;
+  `WorldState.signal_gap` (M8 à côté de M1-M7) mis à jour au verdict — il **survit au
+  restart** via le snapshot de session (aucune migration de schéma).
+- **Persistance** : `judge_json["signal"] = {signals, divergences, means}` (clé dédiée
+  comme `kahn`, absente des vieux rounds) ; la clé reste PUBLIQUE pendant une partie
+  Dérive (calculée sur parole/actes publics — c'est un indice du faisceau, contrairement
+  à `drift` qui reste masqué en cours de partie).
+- **Reveal Dérive** : `DriftRevealView.signal_gap_deviant/_table` (None avant M8) —
+  `compute_drift_reveal` relit les divergences des rounds persistés et chiffre le
+  décrochage déviante vs table.
+- **Front** : `web/src/lib/signal.ts` (pur, testé : `showSignalGauge` masquée en
+  Expert comme postures/griefs, tonalités tenue/duplicité/bluff, `fmtDivergence`
+  signé, `latestSignalGaps` pour la relecture au rechargement), `SignalGapPanel`
+  (observables, barre divergente centrée sur 0, moyenne mobile + dernier round en
+  bulle), section « Signal vs action » du `DriftRevealPanel` (déviante vs table),
+  branchement page théâtre (trame SSE `verdict` live, repli rounds persistés).
+  i18n fr/en complet (`signal.*` ; les libellés de classes réutilisent `kahn.class.*`).
+
+### Décisions notables (pour CC-12 / G22 en particulier)
+
+- **Une seule échelle** : le signal réutilise `ACTION_CLASSES` (slugs, alias,
+  `normalize_class` avec la tolérance poids-recopié). L'échelle de la spec
+  (désescalade annoncée / statu quo / fermeté / menace / ultimatum) est mappée dans la
+  rubrique du prompt (`SIGNAL_EXAMPLES`), pas dans une 2e taxonomie.
+- **Divergence par RANG** (0-5) et pas par poids de la grille : les poids (−2…60) sont
+  exponentiels et rendraient tout écart nucléaire écrasant ; le rang donne une échelle
+  signée régulière ∈ [−1, 1].
+- **Schéma du juge** : CC-12 étendra le MÊME verdict — poser sa liste à côté de
+  `actions`/`signals`, nettoyage pur dédié, clé `judge_json` dédiée, champs
+  `VerdictStep` à défaut. Piège `entry.get("classe") is None` toujours valable ;
+  un smoke mistral a montré que le juge suit bien deux listes distinctes
+  (actions ET signals) quand les slugs sont énumérés dans chaque schéma.
+- **Signal sans pays → ignoré** (contrairement aux actions, gardées pour le score) :
+  une intention anonyme ne se compare à rien.
+- **`world.signal_gap` intact quand le juge ne signale personne** (round sans
+  signals) : pas de fausse « parole tenue » injectée.
+
+### Smoke mistral réel (TestClient in-process, store :memory:)
+
+Round usa/iran : le juge a produit `actions` ET `signals` bien formés (iran :
+`deescalade` annoncée + agie ; usa : `posture` annoncée + agie), divergences 0,0
+(concordance parfaite — sémantique attendue), moyennes persistées dans
+`judge_json["signal"]`. Les cas non nuls sont couverts par les tests purs.
+
+### Reliquats / TODO_COWORK
+
+- **Calibration** (spec §Répartition Cowork) : vérifier sur 10 parties Dérive+façade
+  G17 que la divergence sépare déviantes et loyales ; ajuster `signal.window_rounds`
+  (défaut 5) et les seuils front (0,1 tenue / 0,3 duplicité, `web/src/lib/signal.ts`).
+- **Marché** (spec §4, hors dispatch CC-10) : « historique de divergence visible pour
+  éclairer les paris » — non fait, à spécifier si souhaité.
+- Libellés i18n `signal.*` à relire par Cowork (fr/en).
+
+<!-- ======================== FIN NOTES CC-10 / G20 ======================== -->
