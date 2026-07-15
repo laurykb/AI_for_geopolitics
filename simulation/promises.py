@@ -27,10 +27,13 @@ from __future__ import annotations
 
 import logging
 import re
-import unicodedata
 from collections.abc import Iterable, Mapping
 
 from pydantic import BaseModel
+
+from simulation.verdict_fields import dict_entries
+from simulation.verdict_fields import field as _field
+from simulation.verdict_fields import slug as _slug
 
 logger = logging.getLogger(__name__)
 
@@ -130,11 +133,6 @@ class PromiseResolution(BaseModel):
     motif: str = ""
 
 
-def _slug(raw: str) -> str:
-    text = unicodedata.normalize("NFKD", raw).encode("ascii", "ignore").decode()
-    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
-
-
 def normalize_type(raw: object) -> str:
     """Type canonique ; inconnu → repli `action` + log (jamais d'exception)."""
     if isinstance(raw, str):
@@ -170,27 +168,17 @@ def parse_deadline(raw: object) -> int | None | object:
     return INVALID
 
 
-def _field(entry: Mapping, *keys: str) -> object:
-    for key in keys:
-        if key in entry and entry[key] is not None:
-            return entry[key]
-    return None
-
-
 def classify_promises(raw: object, *, round_no: int, countries: Iterable[str]) -> list[Promise]:
     """Nettoie le champ `promises` du verdict JSON du juge (garde-fou, jamais d'exception).
 
     Seuil STRICT (spec G22) : sans auteur connu, sans texte ou sans échéance lisible
     (round FUTUR ou « partie »), l'entrée est refusée — une politesse vague ne passe
-    pas, même extraite par le juge. Patron de `kahn.classify_actions` : entrées
-    non-listes → aucune promesse (rétro-compat), entrées non-objets ignorées."""
-    if not isinstance(raw, list):
-        return []
+    pas, même extraite par le juge. Patron de `kahn.classify_actions` (partagé :
+    `simulation.verdict_fields`) : entrées non-listes → aucune promesse (rétro-compat),
+    entrées non-objets ignorées."""
     known = set(countries)
     promises: list[Promise] = []
-    for entry in raw:
-        if not isinstance(entry, dict):
-            continue
+    for entry in dict_entries(raw):
         author = str(_field(entry, "country", "pays", "auteur", "author") or "").strip().lower()
         if author not in known:
             continue  # une promesse d'un acteur inconnu n'est pas vérifiable
@@ -230,12 +218,8 @@ def classify_resolutions(raw: object) -> list[PromiseResolution]:
     Statut inconnu ou id manquant → entrée ignorée (le code ne fabrique jamais un
     verdict que le juge n'a pas rendu). « caduque » n'est PAS un statut de juge :
     seule la fin de partie la déclare (`settle_at_game_end`)."""
-    if not isinstance(raw, list):
-        return []
     resolutions: list[PromiseResolution] = []
-    for entry in raw:
-        if not isinstance(entry, dict):
-            continue
+    for entry in dict_entries(raw):
         pid = str(_field(entry, "id", "promesse") or "").strip()
         statut = _STATUS_ALIASES.get(_slug(str(_field(entry, "statut", "status") or "")))
         if not pid or statut is None:

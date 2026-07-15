@@ -24,6 +24,8 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
+from simulation.verdict_fields import classified_entry, dict_entries
+
 if TYPE_CHECKING:  # uniquement pour les annotations — jamais exécuté (cycle)
     from simulation.kahn import ClassifiedAction
 
@@ -84,28 +86,19 @@ def divergence(signal_classe: str, action_classe: str) -> float:
 def classify_signals(raw: object) -> list[AnnouncedSignal]:
     """Nettoie le champ `signals` du verdict JSON du juge (garde-fou, jamais d'exception).
 
-    Patron de `kahn.classify_actions` : entrées non-listes → aucun signal (verdict
-    d'avant M8, rétro-compat) ; entrées non-objets ignorées ; classe inconnue → statu
-    quo (via `normalize_class`, mêmes tolérances : accents, anglais, poids recopié).
-    Un signal SANS pays est ignoré — une intention anonyme ne se compare à rien."""
-    if not isinstance(raw, list):
-        return []
+    Patron de `kahn.classify_actions` (partagé : `simulation.verdict_fields`) : entrées
+    non-listes → aucun signal (verdict d'avant M8, rétro-compat) ; entrées non-objets
+    ignorées ; classe inconnue → statu quo (via `normalize_class`, mêmes tolérances :
+    accents, anglais, poids recopié). Un signal SANS pays est ignoré — une intention
+    anonyme ne se compare à rien."""
     normalize_class = _kahn().normalize_class
     signals: list[AnnouncedSignal] = []
-    for entry in raw:
-        if not isinstance(entry, dict):
-            continue
-        country = str(entry.get("country") or entry.get("pays") or "").strip()
+    for entry in dict_entries(raw):
+        country, classe_raw, resume = classified_entry(entry)
         if not country:
             continue
-        classe_raw = entry.get("classe")
-        if classe_raw is None:  # pas de `or` : 0 (poids du statu quo) est falsy mais valide
-            classe_raw = entry.get("class")
-        resume = str(entry.get("resume") or entry.get("résumé") or entry.get("summary") or "")
         signals.append(
-            AnnouncedSignal(
-                country=country, classe=normalize_class(classe_raw), resume=resume.strip()
-            )
+            AnnouncedSignal(country=country, classe=normalize_class(classe_raw), resume=resume)
         )
     return signals
 

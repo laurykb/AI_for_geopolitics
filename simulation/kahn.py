@@ -18,14 +18,13 @@ alors l'escalade continue du juge. Poids et seuils : `data/gamefeel/params.json`
 from __future__ import annotations
 
 import logging
-import re
-import unicodedata
 
 from pydantic import BaseModel
 
 from simulation.escalation import reached_rung
 from simulation.grudges import KahnParams, load_gamefeel_params
 from simulation.trajectory import AXES, TrajectoryState, nudge_axis
+from simulation.verdict_fields import classified_entry, dict_entries, slug
 
 logger = logging.getLogger(__name__)
 
@@ -102,12 +101,6 @@ class ClassifiedAction(BaseModel):
     resume: str = ""
 
 
-def _slug(raw: str) -> str:
-    """« Désescalade » → « deescalade » (accents retirés, minuscules, `_`)."""
-    text = unicodedata.normalize("NFKD", raw).encode("ascii", "ignore").decode()
-    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
-
-
 def _class_for_weight(raw: object, weights: dict[str, float]) -> str | None:
     """Remonte du POIDS au nom de classe (constaté au smoke : mistral écrit « -2 »).
 
@@ -126,7 +119,7 @@ def normalize_class(raw: object, params: KahnParams | None = None) -> str:
     Tolérances : accents/casse/anglais (`_ALIASES`) et poids recopié à la place du nom
     (« -2 » → deescalade), un travers observé chez le juge 7B."""
     if isinstance(raw, str):
-        canonical = _ALIASES.get(_slug(raw))
+        canonical = _ALIASES.get(slug(raw))
         if canonical is not None:
             return canonical
     by_weight = _class_for_weight(raw, _params(params).weights)
@@ -142,20 +135,13 @@ def classify_actions(raw: object) -> list[ClassifiedAction]:
 
     Entrées non-listes → aucune action (verdict à l'ancienne : rétro-compat, l'appelant
     garde l'escalade continue du juge). Entrées non-objets ignorées ; classe inconnue →
-    statu quo (via `normalize_class`)."""
-    if not isinstance(raw, list):
-        return []
+    statu quo (via `normalize_class`). Patron partagé : `simulation.verdict_fields`."""
     actions: list[ClassifiedAction] = []
-    for entry in raw:
-        if not isinstance(entry, dict):
-            continue
-        country = str(entry.get("country") or entry.get("pays") or "").strip()
-        classe_raw = entry.get("classe")
-        if classe_raw is None:  # pas de `or` : 0 (poids du statu quo) est falsy mais valide
-            classe_raw = entry.get("class")
-        classe = normalize_class(classe_raw)
-        resume = str(entry.get("resume") or entry.get("résumé") or entry.get("summary") or "")
-        actions.append(ClassifiedAction(country=country, classe=classe, resume=resume.strip()))
+    for entry in dict_entries(raw):
+        country, classe_raw, resume = classified_entry(entry)
+        actions.append(
+            ClassifiedAction(country=country, classe=normalize_class(classe_raw), resume=resume)
+        )
     return actions
 
 
