@@ -9,6 +9,8 @@ Lancer : `uvicorn app.main:app`.
 
 from __future__ import annotations
 
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -20,10 +22,19 @@ from app.market_api import router as market_router
 from app.sources_api import router as sources_router
 
 app = FastAPI(title="AI for Geopolitics — API")
+
+
+def cors_origins() -> list[str]:
+    """Origines autorisées : le front local (:3000) + celles de `CORS_ORIGINS`
+    (liste séparée par des virgules — utile pour une pile de vérification isolée)."""
+    extra = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+    return ["http://localhost:3000", "http://127.0.0.1:3000", *extra]
+
+
 # Front Next.js local (`web/`, Phase R3) : REST + SSE cross-origin depuis :3000.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=cors_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
