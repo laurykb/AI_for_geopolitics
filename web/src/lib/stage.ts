@@ -33,6 +33,32 @@ export function localU(globalU: number, country: string, deltas: AttributeDelta[
   return Math.min(1, Math.max(0, globalU + 0.5 * swing));
 }
 
+// --- tension (pastille unique du bandeau, CC-15c) -----------------------------------
+
+export type TensionKey = "calme" | "tendue" | "critique";
+export type TensionTone = "good" | "warn" | "bad";
+
+/** La tension du round en UN mot pour le bandeau de scène (les jauges détaillées
+ * vivent dans les panneaux). L'échelle 0-9 du juge prime quand elle existe ; sinon
+ * l'escalade [0,1] du round fait foi ; sans donnée, null (pastille masquée). */
+export function tensionLevel(
+  escalation: number | undefined,
+  rung: number | null | undefined,
+): { key: TensionKey; tone: TensionTone } | null {
+  const level = (key: TensionKey, tone: TensionTone) => ({ key, tone });
+  if (rung != null) {
+    if (rung >= 7) return level("critique", "bad");
+    if (rung >= 4) return level("tendue", "warn");
+    return level("calme", "good");
+  }
+  if (escalation != null) {
+    if (escalation >= 0.67) return level("critique", "bad");
+    if (escalation >= 0.34) return level("tendue", "warn");
+    return level("calme", "good");
+  }
+  return null;
+}
+
 // --- capitales (projetables par d3-geo) -------------------------------------------
 
 /** [longitude, latitude] des capitales des pays connus. Un pays inventé n'a pas de

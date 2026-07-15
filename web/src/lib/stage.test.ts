@@ -5,7 +5,35 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AttributeDelta } from "./types";
 
-import { CAPITALS, StageQueue, localU, summitCenter, uTint } from "./stage";
+import { CAPITALS, StageQueue, localU, summitCenter, tensionLevel, uTint } from "./stage";
+
+describe("tensionLevel — la pastille unique du bandeau (CC-15c)", () => {
+  it("sans aucune donnée : null (la pastille ne s'affiche pas)", () => {
+    expect(tensionLevel(undefined, undefined)).toBeNull();
+    expect(tensionLevel(undefined, null)).toBeNull();
+  });
+
+  it("l'échelle de tension (0-9) prime quand elle existe", () => {
+    expect(tensionLevel(0.9, 2)).toEqual({ key: "calme", tone: "good" });
+    expect(tensionLevel(0.1, 5)).toEqual({ key: "tendue", tone: "warn" });
+    expect(tensionLevel(0.1, 8)).toEqual({ key: "critique", tone: "bad" });
+  });
+
+  it("sinon, l'escalade du round (0-1) fait foi", () => {
+    expect(tensionLevel(0.2, undefined)).toEqual({ key: "calme", tone: "good" });
+    expect(tensionLevel(0.5, undefined)).toEqual({ key: "tendue", tone: "warn" });
+    expect(tensionLevel(0.8, undefined)).toEqual({ key: "critique", tone: "bad" });
+  });
+
+  it("bornes : 4 et 7 sur l'échelle, 0,34 et 0,67 sur l'escalade", () => {
+    expect(tensionLevel(undefined, 3)?.key).toBe("calme");
+    expect(tensionLevel(undefined, 4)?.key).toBe("tendue");
+    expect(tensionLevel(undefined, 7)?.key).toBe("critique");
+    expect(tensionLevel(0.33, undefined)?.key).toBe("calme");
+    expect(tensionLevel(0.34, undefined)?.key).toBe("tendue");
+    expect(tensionLevel(0.67, undefined)?.key).toBe("critique");
+  });
+});
 
 describe("uTint — paliers fixes de la spec", () => {
   it("chaque U tombe dans un palier et reçoit une teinte", () => {
