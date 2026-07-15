@@ -117,6 +117,63 @@ def test_round_without_promises_leaves_judge_json_clean():
         store.close()
 
 
+def test_rupture_only_round_persists_signal_divergence():
+    """POLISH-1 — croisement G22×M8 : un round SANS signaux du juge mais avec une
+    promesse rompue doit persister la divergence fusionnée dans judge_json["signal"]
+    (le reveal Dérive et la relecture du front lisent d'ici ; la trame SSE et le
+    snapshot la portaient déjà — la persistance ne doit pas la perdre)."""
+    verdict_r1 = json.dumps(
+        {
+            "promises": [
+                {
+                    "country": "usa",
+                    "type": "abstention",
+                    "echeance": 2,
+                    "texte": "Nous n'escaladerons pas au round 2.",
+                }
+            ],
+            "escalation": 0.5,
+            "economic_disruption": 0.5,
+        }
+    )
+    verdict_r2 = json.dumps(
+        {
+            "promise_resolutions": [
+                {"id": "p1-1", "statut": "rompue", "motif": "Frappe contraire à la parole."}
+            ],
+            "escalation": 0.7,
+            "economic_disruption": 0.5,
+        }
+    )
+    store = SQLiteGameStore(":memory:")
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_backend] = lambda: VerdictBackend(
+        "Analyse privée. MESSAGE: Position commune.", [verdict_r1, verdict_r2]
+    )
+    game_api._sessions.clear()
+    try:
+        client = TestClient(app)
+        game = client.post("/api/games", json={"countries": ["usa", "iran"], "horizon": 5}).json()
+        _play_round(client, game["id"])
+        frames = _play_round(client, game["id"])
+
+        # La trame SSE du round 2 porte la divergence de rupture (déjà le cas).
+        verdict = next(p for n, p in frames if n == "verdict")
+        assert verdict["divergences"]["usa"] == pytest.approx(0.2)
+
+        # …et la persistance AUSSI : judge_json["signal"] ne doit pas la perdre.
+        detail = client.get(f"/api/games/{game['id']}").json()
+        signal = detail["rounds"][1]["judge"].get("signal")
+        assert signal is not None, "divergence de rupture perdue à la persistance"
+        assert signal["divergences"]["usa"] == pytest.approx(0.2)
+        assert signal["means"]["usa"] == pytest.approx(0.2)
+        assert signal["signals"] == []  # le juge n'a signalé personne ce round
+    finally:
+        app.dependency_overrides.clear()
+        game_api._sessions.clear()
+        store.close()
+
+
 def test_flash_market_opens_on_short_promise_and_settles_on_rupture():
     from app.market_api import get_engine
     from market.engine import MarketEngine

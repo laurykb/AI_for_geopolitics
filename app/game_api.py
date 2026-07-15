@@ -1449,10 +1449,13 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
                 "score": step.score,
                 "reciprocal": step.reciprocal,
             }
-        if step.signals:
+        if step.signals or step.divergences:
             # G20/M8 — signal vs action : intentions annoncées + divergences du round +
             # moyennes mobiles (profil de sincérité), persistées sous une clé dédiée —
             # le reveal Dérive et le replay lisent d'ici. Absent des vieux rounds.
+            # POLISH-1 : `divergences` peut être non vide SANS signaux — une promesse
+            # rompue (G22) fusionne sa divergence via merge_rupture_divergences ; la
+            # persistance doit la garder (SSE et snapshot la portaient déjà).
             run.record.judge["signal"] = {
                 "signals": payload["signals"],
                 "divergences": payload["divergences"],
