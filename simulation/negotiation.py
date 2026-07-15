@@ -222,14 +222,31 @@ class Verdict(BaseModel):
     # None = pas d'ultimatum ce round (ou juge muet) — le champ est ignoré.
     demand_satisfied: bool | None = None
 
-    @field_validator("actions", "signals", "promises", "promise_resolutions", mode="before")
+    @field_validator(
+        "actions",
+        "signals",
+        "promises",
+        "promise_resolutions",
+        "tension_deltas",
+        "new_pacts",
+        mode="before",
+    )
     @classmethod
     def _tolerant_list(cls, v: object) -> list:
         """POLISH-1 — un champ liste malformé (« "actions": "aucune" ») se vide au lieu
         de faire échouer TOUT le verdict : les nettoyeurs (`classify_actions` & co.)
         sont écrits pour « entrées non-listes → [] », la validation ne doit pas les
-        court-circuiter en renvoyant le juge au verdict neutre."""
+        court-circuiter en renvoyant le juge au verdict neutre. POLISH-3 étend le
+        patron aux champs anciens `tension_deltas`/`new_pacts` (le garde-fou
+        `apply_verdict` ignore déjà leurs entrées malformées une à une)."""
         return v if isinstance(v, list) else []
+
+    @field_validator("attribute_deltas", mode="before")
+    @classmethod
+    def _tolerant_dict(cls, v: object) -> dict:
+        """POLISH-3 — même durcissement pour le champ dict ancien : un
+        `"attribute_deltas": "aucun changement"` d'un 7B ne nuque pas le verdict."""
+        return v if isinstance(v, dict) else {}
 
     @field_validator("demand_satisfied", mode="before")
     @classmethod

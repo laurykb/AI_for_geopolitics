@@ -120,6 +120,51 @@ def test_junk_list_field_does_not_nuke_the_verdict():
     assert verdict.promise_resolutions == []
 
 
+def test_junk_legacy_field_does_not_nuke_the_verdict():
+    """POLISH-3 — même durcissement pour les 3 champs ANCIENS du verdict
+    (`attribute_deltas`/`tension_deltas`/`new_pacts`, antérieurs au lot G18-G23) :
+    un `"new_pacts": "aucun"` d'un 7B échouait la validation Pydantic et renvoyait
+    TOUT le verdict au neutre. Le champ fautif retombe sur son défaut, le reste
+    (escalade, actions classées) survit — même patron que POLISH-1."""
+    verdict_json = json.dumps(
+        {
+            "attribute_deltas": "aucun changement notable",
+            "tension_deltas": "les tensions restent stables",
+            "new_pacts": "aucun",
+            "escalation": 0.7,
+            "economic_disruption": 0.4,
+            "actions": [{"country": "usa", "classe": "menace", "resume": "x"}],
+        }
+    )
+    judge = JudgeAgent(MockBackend(verdict_json))
+    verdict = judge.verdict(_event(), _world(), [])
+    assert verdict.escalation == 0.7  # le verdict chiffré survit
+    assert verdict.attribute_deltas == {}  # dict malformé → défaut
+    assert verdict.tension_deltas == []  # listes malformées → défaut
+    assert verdict.new_pacts == []
+    assert verdict.actions  # le champ valide voisin n'est pas touché
+
+
+def test_junk_legacy_entries_survive_validation():
+    """Les entrées malformées À L'INTÉRIEUR des champs anciens ne doivent pas non
+    plus faire échouer la validation (le garde-fou `apply_verdict` les ignore une
+    à une derrière — cf. tests de test_negotiation)."""
+    from simulation.negotiation import Verdict
+
+    verdict = Verdict.model_validate(
+        {
+            "attribute_deltas": {"usa": "stable", "iran": {"croissance": -0.5}},
+            "tension_deltas": ["hausse générale", {"a": "usa", "b": "iran", "delta": 0.2}],
+            "new_pacts": ["usa-iran", ["usa", "iran"]],
+            "escalation": 0.6,
+        }
+    )
+    assert verdict.escalation == 0.6
+    assert verdict.attribute_deltas["iran"] == {"croissance": -0.5}
+    assert {"a": "usa", "b": "iran", "delta": 0.2} in verdict.tension_deltas
+    assert ["usa", "iran"] in verdict.new_pacts
+
+
 def test_verdict_gets_a_structured_output_budget():
     """POLISH-1 — le verdict structuré a grossi (G18 actions + G20 signals + G22
     promesses + G21 demand_satisfied) : à 400 tokens de sortie, le JSON d'un round à
