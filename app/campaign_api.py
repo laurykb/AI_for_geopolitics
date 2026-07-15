@@ -49,6 +49,7 @@ class ChapterView(BaseModel):
     unlocked: bool = False
     requires: list[str] = Field(default_factory=list)  # G12-b — arbre (chemins en Y)
     coming_soon: bool = False  # G12-b — fiche pas encore rédigée (grisée, non jouable)
+    tutorial: bool = False  # CC-5 — chapitre 0 : le front lance le guidage sur ce flag
 
 
 class CampaignView(BaseModel):
@@ -93,6 +94,7 @@ def get_campaign(store: Annotated[GameStore, Depends(get_store)]) -> CampaignVie
                 unlocked=unlocked.get(c.id, False),
                 requires=c.requires,
                 coming_soon=c.coming_soon,
+                tutorial=c.tutorial,
             )
             for c in camp.chapters
         ],
@@ -125,5 +127,7 @@ def start_chapter(
         countries=chapter.countries or None,
         horizon=chapter.horizon,
         mode=chapter.mode,  # type: ignore[arg-type] — validé par la fiche
+        # CC-5 — tutoriel imperdable : l'amplitude Débutant plafonne les verdicts.
+        difficulty="beginner" if chapter.tutorial else "intermediate",
     )
     return game_api.create_game(body, backend, store)

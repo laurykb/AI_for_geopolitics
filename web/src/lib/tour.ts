@@ -14,6 +14,9 @@ export type TourStep = {
   target: string | null; // ancre [data-tour=…] ; null = bulle centrée (étape concept)
   title: string;
   text: string;
+  // CC-5 — tutoriel : l'étape avance TOUTE SEULE quand le jalon apparaît dans le DOM
+  // ([data-tutorial=…], posé par le théâtre quand l'action attendue est faite).
+  advanceOn?: string | null;
 };
 
 // --- états ------------------------------------------------------------------------

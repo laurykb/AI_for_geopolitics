@@ -24,6 +24,7 @@ import {
 
 import { useAuth } from "@/components/auth-provider";
 import tourData from "@/data/tour.json";
+import tutorialData from "@/data/tutorial.json";
 import { createGame, getGame } from "@/lib/api";
 import {
   initialTour,
@@ -42,7 +43,11 @@ import {
 } from "@/lib/tour";
 
 const STEPS = tourData as TourStep[];
+// CC-5 — le chapitre 0 réutilise le même moteur avec ses propres étapes (jalons
+// data-tutorial posés par le théâtre : l'étape avance quand l'action est faite).
+const TUTORIAL_STEPS = tutorialData as TourStep[];
 const MASCOT_HIDDEN_KEY = "wosi.mascot.hidden"; // réactivable via Réglages (G14)
+const tutorialDoneKey = (gameId: string) => `wosi.tutorial.${gameId}.done`;
 const TARGET_TRIES = 20; // 20 × 150 ms ≈ 3 s avant de sauter une cible manquante
 const BUBBLE_W = 340;
 
@@ -50,6 +55,8 @@ type TourApi = {
   state: TourState;
   /** Relance la visite depuis le header « ? » (reprend à l'étape sauvegardée). */
   restart: () => void;
+  /** CC-5 — lance le guidage du chapitre 0 sur SA partie (une fois par partie). */
+  startTutorial: (gameId: string) => void;
   /** Le compagnon coin bas-droit est-il masqué ? (Réglages G14 : « compagnon on/off ».) */
   mascotHidden: boolean;
   setMascotVisible: (visible: boolean) => void;
@@ -69,6 +76,9 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   const [state, setState] = useState<TourState>({ status: "idle", index: 0 });
+  // « visite » = la découverte G13 ; « tutoriel » = le guidage du chapitre 0 (CC-5).
+  const [mode, setMode] = useState<"visite" | "tutoriel">("visite");
+  const [tutorialGameId, setTutorialGameId] = useState<string | null>(null);
   const [demoId, setDemoId] = useState<string | null>(null);
   const [anchor, setAnchor] = useState<DOMRect | null>(null); // rect de la cible
   const [centered, setCentered] = useState(false); // étape sans cible (bulle centrée)
@@ -79,6 +89,9 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const pushedFor = useRef<number>(-1); // une seule navigation par étape
   const demoCreating = useRef(false);
 
+  // Les étapes du mode courant (tableaux constants : identité stable par mode).
+  const steps = mode === "tutoriel" ? TUTORIAL_STEPS : STEPS;
+
   // --- flags du joueur (localStorage aujourd'hui ; profil en G14/CC-3) ------------
   // Lecture en microtâche : le stockage est un système externe, on ne pose pas
   // d'état de façon synchrone dans le corps de l'effet (règle set-state-in-effect).
@@ -88,6 +101,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
       if (!alive) return;
       if (!player) {
         setState({ status: "idle", index: 0 });
+        setMode("visite"); // une déconnexion interrompt aussi un tutoriel en cours
         return;
       }
       const flags = loadTourFlags(player.id, localStorage);
@@ -107,18 +121,25 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     [player],
   );
 
-  /** Sortie définitive (Terminer, Passer, Échap) : le flag neutralise la proposition. */
+  /** Sortie définitive (Terminer, Passer, Échap). Visite : le flag neutralise la
+   * proposition. Tutoriel : flag par PARTIE (pas de re-guidage au retour au théâtre),
+   * puis retour au mode visite — les flags de la visite ne bougent pas. */
   const finish = useCallback(
     (next: TourState, opts: { resetStep?: boolean } = {}) => {
       setState(next);
       setAnchor(null);
       setCentered(false);
+      if (mode === "tutoriel") {
+        if (tutorialGameId) localStorage.setItem(tutorialDoneKey(tutorialGameId), "1");
+        setMode("visite");
+        return;
+      }
       if (player) {
         saveTourDone(player.id, localStorage);
         if (opts.resetStep) saveTourStep(player.id, 0, localStorage); // « ? » repartira du début
       }
     },
-    [player],
+    [player, mode, tutorialGameId],
   );
 
   const begin = useCallback(() => {
@@ -127,31 +148,45 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   }, [persistStep]);
 
   const advance = useCallback(() => {
-    const s2 = nextStep(state, STEPS.length);
+    const s2 = nextStep(state, steps.length);
     if (s2.status === "done") {
       finish(s2, { resetStep: true });
       return;
     }
-    persistStep(s2.index);
+    if (mode === "visite") persistStep(s2.index); // le tutoriel ne se reprend pas à l'étape
     setState(s2);
     setAnchor(null);
     setCentered(false);
-  }, [state, finish, persistStep]);
+  }, [state, steps, mode, finish, persistStep]);
 
   // L'étape sauvegardée reste en place : « ? » reprendra où on s'est arrêté.
   const skip = useCallback(() => {
     finish(skipTour(state));
   }, [state, finish]);
 
+  /** Relance de la VISITE (header « ? », Réglages) — quitte un éventuel tutoriel. */
   const restart = useCallback(() => {
     if (!player) return;
     const flags = loadTourFlags(player.id, localStorage);
     pushedFor.current = -1;
+    setMode("visite");
     setMenuOpen(false);
     setAnchor(null);
     setCentered(false);
     setState(resumeTour(flags.step, STEPS.length));
   }, [player]);
+
+  /** CC-5 — guidage du chapitre 0 sur SA partie ; une fois par partie (flag local). */
+  const startTutorial = useCallback((gameId: string) => {
+    if (localStorage.getItem(tutorialDoneKey(gameId)) === "1") return;
+    pushedFor.current = -1;
+    setTutorialGameId(gameId);
+    setMode("tutoriel");
+    setMenuOpen(false);
+    setAnchor(null);
+    setCentered(false);
+    setState({ status: "active", index: 0 });
+  }, []);
 
   /** La partie de démonstration : réutilisée si elle existe encore, sinon recréée. */
   const ensureDemo = useCallback(async (): Promise<string | null> => {
@@ -184,7 +219,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   // corps de l'effet. Les resets d'ancre vivent dans advance/skip/restart/finish.
   useEffect(() => {
     if (state.status !== "active") return;
-    const step = STEPS[state.index];
+    const step = steps[state.index];
     if (!step) {
       // Garde défensive (index toujours borné par nextStep/resumeTour) — en timer,
       // jamais de setState synchrone dans le corps d'un effet.
@@ -193,10 +228,16 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     }
 
     let cancelled = false;
-    const page = resolvePage(step.page, demoId);
+    // Tutoriel : `{demo}` = la partie du chapitre 0 ; visite : la démo jetable.
+    const page = resolvePage(step.page, mode === "tutoriel" ? tutorialGameId : demoId);
 
     // Démo requise et absente : la créer une fois — en échec, sauter le bloc démo.
+    // (En tutoriel la partie existe par construction : id manquant = sortie propre.)
     if (page === null) {
+      if (mode === "tutoriel") {
+        const t = setTimeout(() => finish({ status: "done", index: state.index }), 0);
+        return () => clearTimeout(t);
+      }
       if (demoCreating.current) return;
       demoCreating.current = true;
       void ensureDemo().then((id) => {
@@ -206,8 +247,8 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
           setDemoId(id);
           return; // l'effet se rejoue avec la démo résolue
         }
-        const i = nextIndexWithoutDemo(STEPS, state.index);
-        if (i >= STEPS.length) finish({ status: "done", index: i }, { resetStep: true });
+        const i = nextIndexWithoutDemo(steps, state.index);
+        if (i >= steps.length) finish({ status: "done", index: i }, { resetStep: true });
         else {
           persistStep(i);
           setState({ status: "active", index: i });
@@ -229,28 +270,45 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Ancrer la bulle : cible trouvée → rect ; sans cible → centrée ; cible absente
-    // après ~3 s → étape sautée sans crash. Premier essai en timer 0 (asynchrone).
+    // après ~3 s → étape sautée sans crash. Avec un jalon `advanceOn`, la surveillance
+    // RESTE ouverte : l'étape avance toute seule quand l'action attendue est faite
+    // (et une cible manquante devient une bulle centrée au lieu d'un saut).
     let tries = 0;
+    let anchored = false;
     const tick = (): boolean => {
-      if (step.target === null) {
-        setCentered(true);
-        setAnchor(null);
-        return true;
-      }
-      const el = document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`);
-      if (el) {
-        targetEl.current = el;
-        el.scrollIntoView({ block: "center", behavior: "auto" });
-        setCentered(false);
-        setAnchor(el.getBoundingClientRect());
-        return true;
-      }
-      tries += 1;
-      if (tries >= TARGET_TRIES) {
+      if (
+        step.advanceOn &&
+        document.querySelector(`[data-tutorial="${step.advanceOn}"]`)
+      ) {
         advance();
         return true;
       }
-      return false;
+      if (step.target === null) {
+        setCentered(true);
+        setAnchor(null);
+        return !step.advanceOn;
+      }
+      if (!anchored) {
+        const el = document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`);
+        if (el) {
+          anchored = true;
+          targetEl.current = el;
+          el.scrollIntoView({ block: "center", behavior: "auto" });
+          setCentered(false);
+          setAnchor(el.getBoundingClientRect());
+        } else {
+          tries += 1;
+          if (tries >= TARGET_TRIES) {
+            if (!step.advanceOn) {
+              advance();
+              return true;
+            }
+            setCentered(true); // cible absente mais action attendue : bulle centrée
+            setAnchor(null);
+          }
+        }
+      }
+      return anchored && !step.advanceOn;
     };
     const iv = setInterval(() => {
       if (tick()) clearInterval(iv);
@@ -263,13 +321,27 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
       clearInterval(iv);
       clearTimeout(t0);
     };
-  }, [state, demoId, pathname, advance, ensureDemo, finish, persistStep, router]);
+  }, [
+    state,
+    steps,
+    mode,
+    tutorialGameId,
+    demoId,
+    pathname,
+    advance,
+    ensureDemo,
+    finish,
+    persistStep,
+    router,
+  ]);
 
-  // La bulle suit sa cible au scroll / redimensionnement.
+  // La bulle suit sa cible au scroll / redimensionnement. (isConnected : une cible
+  // retirée du DOM — ex. le bouton motion après le dépôt — garde sa dernière position
+  // au lieu d'un rect nul en haut à gauche.)
   useEffect(() => {
     if (state.status !== "active") return;
     const update = () => {
-      if (targetEl.current) setAnchor(targetEl.current.getBoundingClientRect());
+      if (targetEl.current?.isConnected) setAnchor(targetEl.current.getBoundingClientRect());
     };
     window.addEventListener("scroll", update, true);
     window.addEventListener("resize", update);
@@ -297,12 +369,14 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
 
   // Chrome d'application seulement (mêmes règles que le header).
   const onAppPage = pathname !== "/" && !pathname.startsWith("/r/");
-  const step = state.status === "active" ? STEPS[state.index] : null;
+  const step = state.status === "active" ? steps[state.index] : null;
   const showCompanion =
     !!player && onAppPage && !mascotHidden && state.status !== "active";
 
   return (
-    <TourContext.Provider value={{ state, restart, mascotHidden, setMascotVisible }}>
+    <TourContext.Provider
+      value={{ state, restart, startTutorial, mascotHidden, setMascotVisible }}
+    >
       {children}
 
       {/* Anneau sur la cible + bulle de la mascotte */}
@@ -322,7 +396,8 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
         <TourBubble
           step={step}
           index={state.index}
-          total={STEPS.length}
+          total={steps.length}
+          kicker={mode === "tutoriel" ? "Tutoriel" : "Visite"}
           anchor={centered ? null : anchor}
           onNext={advance}
           onSkip={skip}
@@ -392,6 +467,7 @@ function TourBubble({
   step,
   index,
   total,
+  kicker,
   anchor,
   onNext,
   onSkip,
@@ -399,6 +475,7 @@ function TourBubble({
   step: TourStep;
   index: number;
   total: number;
+  kicker: string;
   anchor: DOMRect | null;
   onNext: () => void;
   onSkip: () => void;
@@ -443,7 +520,7 @@ function TourBubble({
         />
         <div className="min-w-0">
           <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-fg-faint">
-            Visite · {index + 1}/{total}
+            {kicker} · {index + 1}/{total}
           </p>
           <h2 className="mt-0.5 text-sm font-semibold text-foreground">{step.title}</h2>
           <p className="mt-1 text-sm leading-relaxed text-fg-muted">{step.text}</p>

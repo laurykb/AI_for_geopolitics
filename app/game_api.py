@@ -836,7 +836,10 @@ def _start_round(
     if motion is not None:
         event = motion_event(motion, round_id, sorted(session.world.countries))
     elif crisis is not None:
-        event = crisis.events[0].model_copy(update={"round_id": round_id})
+        # CC-5 — une crise SCRIPTÉE avance avec les rounds (chapitre 0 : 3 événements
+        # fixés) ; une crise à événement unique rejoue le sien (comportement historique).
+        scripted = crisis.events[min(round_id, len(crisis.events)) - 1]
+        event = scripted.model_copy(update={"round_id": round_id})
     elif body.event is not None:
         event = GeoEvent(id=f"human-{round_id}", round_id=round_id, **body.event.model_dump())
         if body.fog is not None:

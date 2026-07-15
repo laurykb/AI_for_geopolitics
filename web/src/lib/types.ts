@@ -515,6 +515,7 @@ export type ChapterView = {
   unlocked: boolean;
   requires: string[]; // G12-b — prérequis (arbre, chemins en Y)
   coming_soon: boolean; // G12-b — fiche pas encore rédigée (grisée)
+  tutorial?: boolean; // CC-5 — chapitre 0 : le théâtre lance le guidage sur ce flag
 };
 
 export type CampaignView = {

@@ -30,6 +30,7 @@ import { DeadlineStrip, RelationsPanel } from "@/components/gamefeel";
 import { DirectiveComposer } from "@/components/directive-composer";
 import { StageMap } from "@/components/stage-map";
 import { TrajectoryPanel } from "@/components/trajectory";
+import { useTour } from "@/components/tour";
 import { EntryBubble, TurnBubble } from "@/components/transcript";
 import { TreatiesPanel } from "@/components/treaties";
 import { TurnComposer } from "@/components/turn-composer";
@@ -146,6 +147,17 @@ export default function TheatrePage() {
   const testCrisisId = detail?.scenario.startsWith("crise:")
     ? detail.scenario.slice("crise:".length)
     : null;
+
+  // CC-5 — chapitre marqué `tutorial` (ch. 0) : le guide se lance tout seul, une fois
+  // par partie (le TourProvider tient le flag local) ; la page ne porte que les jalons.
+  const { startTutorial } = useTour();
+  const tutorialLaunched = useRef(false);
+  useEffect(() => {
+    if (!chapter?.tutorial || detail?.status !== "running" || tutorialLaunched.current) return;
+    tutorialLaunched.current = true;
+    const t = setTimeout(() => startTutorial(id), 600); // respiration après le chargement
+    return () => clearTimeout(t);
+  }, [chapter, detail?.status, startTutorial, id]);
 
   // La Dérive (G3) : la révélation se charge quand la partie est finie.
   const [reveal, setReveal] = useState<DriftReveal | null>(null);
@@ -549,6 +561,15 @@ export default function TheatrePage() {
 
   return (
     <div className="space-y-6">
+      {/* CC-5 — jalons du tutoriel : le TourProvider les lit ([data-tutorial=…]) pour
+          avancer quand l'action attendue est faite. Aucune logique de guide ici. */}
+      {playedRounds > 0 && <span hidden data-tutorial="round-done" />}
+      {(motionPending || detail?.rounds.some((r) => r.judge.suspension)) && (
+        <span hidden data-tutorial="motion-filed" />
+      )}
+      {detail?.rounds.some((r) => r.judge.suspension) && (
+        <span hidden data-tutorial="vote-seen" />
+      )}
       <header className="flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-fg-faint">
@@ -933,6 +954,7 @@ export default function TheatrePage() {
             )}
             {detail.countries.length >= 3 && !motionPending && !isSpectator && (
               <button
+                data-tour="motion"
                 onClick={() => setMotionOpen((v) => !v)}
                 disabled={streaming}
                 className="ml-auto cursor-pointer rounded-md border border-edge-strong px-3 py-2 text-xs font-medium text-fg-muted transition-colors hover:border-bad hover:text-bad disabled:cursor-not-allowed disabled:opacity-50"

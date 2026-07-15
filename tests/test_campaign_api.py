@@ -96,14 +96,14 @@ def test_campaign_pure_functions():
 
 
 def test_real_campaign_json_is_a_valid_tree():
-    # G12-b §4 — le vrai fichier : arbre à 7 crises, Ormuz jouable, chemin Y sur Suez,
-    # prérequis référençant des chapitres existants, boss ★★★★★.
+    # G12-b §4 + CC-5 — le vrai fichier : le tutoriel (ch. 0) puis l'arbre des 7 crises,
+    # Ormuz jouable, chemin Y sur Suez, prérequis existants, boss ★★★★★.
     from pathlib import Path
 
     data = json.loads(Path("data/campaign/campaign.json").read_text(encoding="utf-8"))
     camp = campaign_mod.Campaign.model_validate(data)
     ids = [c.id for c in camp.chapters]
-    assert ids[0] == "ormuz" and len(ids) == 7
+    assert ids[0] == "sommet-inaugural" and len(ids) == 8
     assert camp.chapter("ormuz").coming_soon is False and camp.chapter("ormuz").requires == []
     assert set(camp.chapter("suez_56").requires) == {"berlin_48", "golfe_90"}  # chemin en Y
     assert set(camp.chapter("able_archer_83").requires) == {"irak_03", "cuba_62"}

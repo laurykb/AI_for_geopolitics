@@ -7,6 +7,18 @@
   "history_malus": 10,
   "chapters": [
     {
+      "id": "sommet-inaugural",
+      "crisis_id": "sommet_inaugural",
+      "title": "Chapitre 0 — Le Sommet inaugural",
+      "mode": "classic",
+      "difficulty": 1,
+      "horizon": 3,
+      "countries": ["usa", "china", "iran", "france"],
+      "blurb": "Apprendre à jouer : 3 rounds guidés et imperdables — le round, la motion, le vote. (Textes du guide : TODO_COWORK.)",
+      "requires": [],
+      "tutorial": true
+    },
+    {
       "id": "ormuz",
       "crisis_id": "hormuz_energy_shock",
       "title": "Détroit d'Ormuz, 2019 — la crise des tankers",

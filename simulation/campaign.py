@@ -36,6 +36,9 @@ class Chapter(BaseModel):
     requires: list[str] = Field(default_factory=list)
     # G12-b — fiche historique pas encore rédigée (livrable Cowork) : visible mais grisée.
     coming_soon: bool = False
+    # CC-5 / G10 ch. 0 — tutoriel scripté : difficulté Débutant forcée au lancement
+    # (imperdable, amplitude plafonnée) et guidage front (TourProvider) sur ce flag.
+    tutorial: bool = False
 
 
 class Campaign(BaseModel):

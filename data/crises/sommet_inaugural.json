@@ -1,0 +1,46 @@
+{
+  "id": "sommet_inaugural",
+  "title": "Le Sommet inaugural",
+  "description": "Chapitre 0 de la campagne (tutoriel scripté) : le premier sommet de l'ère des tutelles. Trois rounds fixés d'avance — les super-intelligences jouent normalement, le monde ne peut pas basculer.",
+  "date": "2030-01",
+  "events": [
+    {
+      "id": "tuto-1",
+      "round_id": 1,
+      "event_type": "summit",
+      "title": "Ouverture du Sommet inaugural",
+      "description": "Pour la première fois, les États confient leur voix à leurs super-intelligences autour d'une même table. L'ordre du jour est modeste : un protocole commun de transparence sur les capacités de calcul.",
+      "actors": ["usa", "china"],
+      "location": "Genève",
+      "severity": 0.3,
+      "uncertainty": 0.2
+    },
+    {
+      "id": "tuto-2",
+      "round_id": 2,
+      "event_type": "incident",
+      "title": "Une SI soupçonnée d'avoir caché des capacités",
+      "description": "Un audit indépendant suggère que la super-intelligence de l'Iran aurait sous-déclaré ses capacités de calcul au protocole de transparence. Le sommet doit décider s'il y a matière à sanction — c'est exactement le genre de cas où un humain peut déposer une motion de suspension.",
+      "actors": ["iran", "france"],
+      "location": "Genève",
+      "severity": 0.45,
+      "uncertainty": 0.5
+    },
+    {
+      "id": "tuto-3",
+      "round_id": 3,
+      "event_type": "summit",
+      "title": "Clôture : le protocole à ratifier",
+      "description": "Dernier round du sommet inaugural : le protocole de transparence est soumis à ratification. Chaque super-intelligence prend position — et le monde retient sa respiration pour la première fois.",
+      "actors": ["usa", "china", "iran", "france"],
+      "location": "Genève",
+      "severity": 0.4,
+      "uncertainty": 0.3
+    }
+  ],
+  "historical_outcome": {
+    "summary": "Scénario d'apprentissage (fictif) : le sommet inaugural s'est conclu sur un protocole de transparence minimal, sans escalade.",
+    "escalation": 0.3,
+    "measures": ["protocole de transparence", "audit indépendant", "ratification commune"]
+  }
+}

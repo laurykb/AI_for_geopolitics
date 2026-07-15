@@ -44,6 +44,9 @@
   "lobby.jouer": "Play",
   "lobby.lancement": "The summit is convening…",
   "lobby.transition-skip": "Click to skip",
+  "lobby.apprendre-question": "New here?",
+  "lobby.apprendre": "Learn to play (guided chapter 0)",
+  "lobby.apprendre-lancement": "The inaugural summit is opening…",
 
   "fin.kicker": "Game over",
   "fin.forfait": "— forfeit",

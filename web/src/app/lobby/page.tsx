@@ -17,7 +17,7 @@ import { useSettings } from "@/components/settings-provider";
 import { Globe } from "@/components/globe";
 import { SelectMap, type Fiche } from "@/components/select-map";
 import { Banner, Panel, PanelTitle, Spinner, Switch } from "@/components/ui";
-import { createGame, getSources, humanizeError } from "@/lib/api";
+import { createGame, getCampaign, getSources, humanizeError, startChapter } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
 import {
@@ -246,6 +246,24 @@ function LobbyFlow() {
     if (to) go(to);
   };
 
+  // CC-5 — « Apprendre à jouer » : ouvre le chapitre 0 (tutoriel guidé, imperdable).
+  // Le théâtre lance le guide tout seul sur le flag `tutorial` du chapitre.
+  const [learning, setLearning] = useState(false);
+  const learnToPlay = async () => {
+    setLearning(true);
+    setError(null);
+    try {
+      const camp = await getCampaign();
+      const ch = camp.chapters.find((c) => c.tutorial);
+      if (!ch) throw new Error("chapitre d'apprentissage introuvable");
+      const game = await startChapter(ch.id);
+      router.push(`/games/${game.id}`);
+    } catch (err) {
+      setError(humanizeError(err));
+      setLearning(false);
+    }
+  };
+
   const onLaunch = async () => {
     setCreating(true);
     setError(null);
@@ -335,7 +353,22 @@ function LobbyFlow() {
         ))}
       </ol>
 
-      {step === "mode" && <ModeStep {...{ baseMode, setBaseMode, settings, setSettings }} />}
+      {step === "mode" && (
+        <>
+          <ModeStep {...{ baseMode, setBaseMode, settings, setSettings }} />
+          {/* CC-5 — la porte d'entrée des nouveaux : le chapitre 0 guidé. */}
+          <p className="text-sm text-fg-faint">
+            {t("lobby.apprendre-question")}{" "}
+            <button
+              onClick={learnToPlay}
+              disabled={learning}
+              className="cursor-pointer underline transition-colors hover:text-foreground disabled:cursor-wait disabled:opacity-60"
+            >
+              {learning ? t("lobby.apprendre-lancement") : t("lobby.apprendre")}
+            </button>
+          </p>
+        </>
+      )}
       {step === "role" && (
         <RoleStep role={role} setRole={setRoleTrimming} settings={settings} />
       )}

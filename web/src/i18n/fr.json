@@ -44,6 +44,9 @@
   "lobby.jouer": "Jouer",
   "lobby.lancement": "Le sommet se réunit…",
   "lobby.transition-skip": "Clique pour passer",
+  "lobby.apprendre-question": "Nouveau ici ?",
+  "lobby.apprendre": "Apprendre à jouer (chapitre 0 guidé)",
+  "lobby.apprendre-lancement": "Le sommet inaugural s'ouvre…",
 
   "fin.kicker": "Fin de partie",
   "fin.forfait": "— forfait",
