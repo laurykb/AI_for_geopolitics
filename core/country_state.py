@@ -48,6 +48,9 @@ class CountryState(BaseModel):
     compute: float = Field(50.0, ge=0.0, description="Capacité de compute (unités abstraites)")
     ideology: list[str] = Field(default_factory=list)
     strategic_priorities: list[str] = Field(default_factory=list)
+    # G17 — tempérament de la SI (colombe | faucon | opportuniste) : une ligne de
+    # consigne dans son prompt, tirage seedé à la création (cf. simulation.temperament).
+    temperament: str = "opportuniste"
     memory_summary: str = ""
     # Surcharge optionnelle de la « fiche de comportement » (sinon dérivée) : clés
     # red_line / concessions / domestic_constraints / urgency. Cf. simulation.mandate.

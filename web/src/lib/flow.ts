@@ -5,6 +5,7 @@
  * « 7 exactement », mapping vers l'API). §0 : la Dérive n'est plus un mode mais un
  * toggle transversal ; l'architecte est fondu dans le Game Master. */
 
+import type { TableSetting } from "./temperament";
 import type { CreateGameBody, Difficulty, GameMode, GameRole } from "./types";
 
 // --- écrans ---------------------------------------------------------------------
@@ -85,6 +86,7 @@ export type FlowSettings = {
   rounds: number; // curseur 3-20 → horizon
   difficulty: Difficulty;
   free: boolean; // partie libre : off par défaut (on = non classé + consignes globales)
+  table?: TableSetting; // G17 — composition de la table (partie LIBRE uniquement)
 };
 
 export const ROUNDS_MIN = 3;
@@ -180,6 +182,8 @@ export function buildCreateBody(args: {
     drift_enabled: driftOn,
     free: settings.free,
     language,
+    // G17 — la composition de table n'existe qu'en partie libre (classée = équilibrée).
+    table: settings.free ? (settings.table ?? "equilibree") : undefined,
     owner_id: ownerId,
     play_as: role === "player" ? (flag ?? undefined) : role === "invent" ? invent?.name : undefined,
     invent: role === "invent" ? invent : undefined,

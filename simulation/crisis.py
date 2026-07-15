@@ -40,6 +40,9 @@ class Crisis(BaseModel):
     date: str = ""
     events: list[GeoEvent] = Field(default_factory=list)
     historical_outcome: HistoricalOutcome = Field(default_factory=HistoricalOutcome)
+    # G17 — la fiche peut imposer des tempéraments (le GM scénarise sa table) :
+    # {country_id: "colombe" | "faucon" | "opportuniste"}, appliqué à la création.
+    temperaments: dict[str, str] = Field(default_factory=dict)
 
 
 @dataclass

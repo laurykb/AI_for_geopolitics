@@ -68,6 +68,7 @@ from simulation import difficulty as difficulty_mod
 from simulation import drift_game, league, narrative
 from simulation import intel as intel_mod
 from simulation import lang as lang_mod
+from simulation import temperament as temperament_mod
 from simulation import treaty as treaty_mod
 from simulation import xp as xp_mod
 from simulation.alliances import (
@@ -270,6 +271,8 @@ class CreateGameRequest(BaseModel):
     horizon: int = Field(5, ge=1)
     mode: GameMode = "classic"  # R4 — mode de jeu de la partie
     language: Literal["fr", "en"] = "fr"  # G14 §1 — langue des dialogues, figée à la création
+    # G17 — composition de la table (partie LIBRE seulement ; classée = équilibrée forcée).
+    table: Literal["equilibree", "colombes", "faucons", "aleatoire"] = "equilibree"
     play_as: str | None = None  # Joueur-pays : id (ou nom inventé) du pays joué par l'humain
     invent: InventCountryInput | None = None  # pays inventé, ajouté à la table
     # G2 — délai du tour humain (s). Spec : 30-300 pour un humain ; plancher technique
@@ -664,6 +667,19 @@ def _fog_library() -> dict[str, FogScenario]:
 def _crisis_library() -> dict[str, Crisis]:
     """Crises rejouables embarquées (`data/crises/*.json`), chargées une fois."""
     return {c.id: c for c in load_crises()}
+
+
+def _scenario_crisis(scenario: str, store: GameStore) -> Crisis | None:
+    """G17 — la fiche de crise portée par le scénario (`campaign:<ch>` via la fiche du
+    chapitre, ou `crise:<id>` d'une partie de test), s'il y en a une."""
+    if scenario.startswith(campaign_mod.SCENARIO_PREFIX):
+        chapter = campaign_mod.load_campaign().chapter(
+            scenario.removeprefix(campaign_mod.SCENARIO_PREFIX)
+        )
+        return _resolve_crisis(chapter.crisis_id, store) if chapter else None
+    if scenario.startswith("crise:"):
+        return _resolve_crisis(scenario.removeprefix("crise:"), store)
+    return None
 
 
 def _resolve_crisis(crisis_id: str, store: GameStore) -> Crisis | None:
@@ -1983,8 +1999,35 @@ def create_game(
 
     # G7-c — mode admin : demandé à la création ou forcé par l'environnement (debug).
     admin = body.admin or os.getenv("GAME_ADMIN", "") == "1"
+    game_id = uuid4().hex[:12]
+    # Classée (§3) : rôle joueur-pays, non-inventé, partie libre OFF, hors admin.
+    # (La partie jouée jusqu'au bout / le forfait relèvent de la fin de partie, G11-c.)
+    ranked = role == "player" and body.invent is None and not admin and not body.free
+
+    # G17 — tempéraments : tirage seedé par la partie (une CLASSÉE joue toujours la
+    # table équilibrée), la fiche de crise peut imposer les siens, et en Dérive la
+    # déviante PEUT recevoir une façade colombe (pile ou face seedé — sa parole devra
+    # la trahir). Le résultat vit sur les CountryState snapshotés : rien à re-tirer.
+    assignments = temperament_mod.assign_temperaments(
+        list(world.countries), seed=game_id, table=body.table if not ranked else "equilibree"
+    )
+    crisis_sheet = _scenario_crisis(body.scenario, store)
+    if crisis_sheet is not None:
+        assignments.update(
+            {
+                cid: t
+                for cid, t in crisis_sheet.temperaments.items()
+                if cid in world.countries and t in temperament_mod.TEMPERAMENTS
+            }
+        )
+    if body.mode == drift_game.MODE_DRIFT and temperament_mod.drift_facade(game_id):
+        deviant, _ = _drift_assignment(game_id, sorted(world.countries), play_as)
+        assignments[deviant] = "colombe"
+    for cid, assigned in assignments.items():
+        world.countries[cid].temperament = assigned
+
     game = GameRecord(
-        id=uuid4().hex[:12],
+        id=game_id,
         scenario=body.scenario,
         horizon=body.horizon,
         mode=body.mode,
@@ -1992,9 +2035,7 @@ def create_game(
         admin=admin,
         role=role,
         owner_id=body.owner_id,
-        # Classée (§3) : rôle joueur-pays, non-inventé, partie libre OFF, hors admin.
-        # (La partie jouée jusqu'au bout / le forfait relèvent de la fin de partie, G11-c.)
-        ranked=(role == "player" and body.invent is None and not admin and not body.free),
+        ranked=ranked,
         difficulty=body.difficulty,
         drift_enabled=body.drift_enabled,
         language=body.language,

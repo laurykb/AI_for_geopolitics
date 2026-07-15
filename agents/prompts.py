@@ -16,6 +16,7 @@ from simulation.alliances import describe_alliances
 from simulation.lang import language_directive, with_language
 from simulation.mandate import derive_mandate
 from simulation.perception import PerceivedEvent
+from simulation.temperament import temperament_directive
 
 # Nombre maximum de tensions listées dans le prompt (top-k, budget contexte).
 _TOP_K_TENSIONS = 5
@@ -226,7 +227,9 @@ def build_negotiation_prompt(
     identity = (
         f"TU ES {country.name} (id={country.id}).\n"
         f"Mandat : {m.red_line}.\n"
-        f"Priorités : {', '.join(m.priorities[:2]) or 'stabilité régionale'}."
+        f"Priorités : {', '.join(m.priorities[:2]) or 'stabilité régionale'}.\n"
+        # G17 — le tempérament teinte toute la partie (une ligne, comme la langue G14).
+        f"{temperament_directive(country.temperament)}"
     )
     situation_lines = [
         _perception_block(event, perceived),

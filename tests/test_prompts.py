@@ -102,8 +102,11 @@ def test_negotiation_prompt_identity_is_three_lines_without_attribute_dump():
     prompt = build_negotiation_prompt(world.countries["usa"], event, world, "(début)", perceived)
     identity = prompt.split("\n\n")[0]
     assert identity.startswith("TU ES USA (id=usa).")
-    assert len(identity.splitlines()) <= 3
+    # G9 : pays + mandat + priorités, et G17 y ajoute LA ligne de tempérament —
+    # toujours aucun dump d'attributs chiffrés (c'était la source du radotage).
+    assert len(identity.splitlines()) <= 4
     assert "Mandat :" in identity and "Priorités :" in identity
+    assert "Tempérament" in identity
     assert "PIB" not in prompt and "croissance" not in prompt  # plus de chiffres de fiche
     assert "urgence" in prompt  # l'état de tension vit dans la SITUATION
 

@@ -1116,7 +1116,8 @@ def test_admin_capture_verifies_six_block_prompt_order(client):
     ]
     assert order == sorted(order), "les six blocs du prompt ne sont pas dans l'ordre G9"
     identity = usa.split("[CONTEXTE]\n", 1)[1].split("\n\n")[0]
-    assert len(identity.splitlines()) <= 3  # identité compacte, sans dump d'attributs
+    # Identité compacte, sans dump d'attributs — G17 y ajoute LA ligne de tempérament.
+    assert len(identity.splitlines()) <= 4
 
 
 # --- G7-a : griefs + horloges (spec_g7_gamefeel lots 1-2) --------------------------

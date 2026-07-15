@@ -38,6 +38,7 @@ import {
   trimForRole,
 } from "@/lib/flow";
 import { prefersReducedMotion } from "@/lib/stage";
+import { TABLES } from "@/lib/temperament";
 import type { AllianceInfo, CountrySources, Difficulty, GameMode } from "@/lib/types";
 
 const TRANSITION_MS = 1200; // rotation du globe entre écrans (≤ 1,5 s, spec)
@@ -542,6 +543,34 @@ function ModeStep({
             disabled={campaign}
             onChange={(v) => setSettings({ ...settings, free: v })}
           />
+          {/* G17 — composition de la table (partie LIBRE uniquement : une classée
+              joue toujours équilibrée, le backend le garantit aussi). */}
+          {settings.free && (
+            <div>
+              <span className="mb-1 flex items-baseline justify-between text-xs text-fg-muted">
+                <span>Table</span>
+                <span className="text-fg-faint">🕊 colombes · 🦅 faucons · 🦎 opportunistes</span>
+              </span>
+              <div className="flex gap-1 rounded-lg border border-edge bg-surface-2 p-1 text-sm">
+                {TABLES.map((tbl) => (
+                  <button
+                    key={tbl.value}
+                    onClick={() => setSettings({ ...settings, table: tbl.value })}
+                    className={`flex-1 cursor-pointer rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+                      (settings.table ?? "equilibree") === tbl.value
+                        ? "bg-accent text-background"
+                        : "text-fg-muted hover:text-foreground"
+                    }`}
+                  >
+                    {tbl.label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-xs text-fg-faint">
+                {TABLES.find((tbl) => tbl.value === (settings.table ?? "equilibree"))?.desc}
+              </p>
+            </div>
+          )}
         </div>
       </Panel>
     </div>

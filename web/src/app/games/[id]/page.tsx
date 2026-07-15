@@ -1463,6 +1463,7 @@ export default function TheatrePage() {
               worldCountries={{ [detail.play_as]: worldCountries[detail.play_as] }}
               postures={showPostures ? (round.postures ?? detail.postures) : {}}
               history={detail.index_history}
+              showTemperaments={showPostures}
             />
           </Panel>
         )}
@@ -1520,6 +1521,7 @@ export default function TheatrePage() {
             worldCountries={worldCountries}
             postures={showPostures ? (round.postures ?? detail?.postures) : {}}
             history={detail?.index_history}
+            showTemperaments={showPostures}
           />
         </Panel>
       )}

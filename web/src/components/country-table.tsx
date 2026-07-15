@@ -9,6 +9,7 @@ import { SpeakerAvatar } from "@/components/avatar";
 import { Hint, Pill, type Tone } from "@/components/ui";
 import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
+import { temperamentMeta } from "@/lib/temperament";
 
 /** Sous-ensemble du dump `CountryState` affiché dans la table d'état. */
 export type CountrySnapshot = {
@@ -17,6 +18,7 @@ export type CountrySnapshot = {
   technology_level?: number;
   military?: { projection?: number };
   compute?: number;
+  temperament?: string; // G17 — colombe | faucon | opportuniste
 };
 
 const COLUMNS: {
@@ -118,12 +120,16 @@ export function CountryTable({
   worldCountries,
   postures,
   history,
+  showTemperaments = false,
 }: {
   worldCountries: Record<string, CountrySnapshot>;
   /** G9 §4 — état de posture par pays (badge sur la fiche). */
   postures?: Record<string, string>;
   /** G9 §4 — séries d'indices par pays (IndexHistory.values) pour les sparklines. */
   history?: Record<string, Record<string, number[]>>;
+  /** G17 — pastille de tempérament (🕊/🦅/🦎), même canal que postures/griefs :
+   * Débutant/Intermédiaire la voient, l'Expert devine le faucon à sa parole. */
+  showTemperaments?: boolean;
 }) {
   const showPosture = postures && Object.keys(postures).length > 0;
   return (
@@ -159,6 +165,16 @@ export function CountryTable({
                   <span className="flex items-center gap-2">
                     <SpeakerAvatar id={slug} size={24} />
                     <span>{speakerMeta(slug).label}</span>
+                    {showTemperaments && c.temperament && (
+                      <span
+                        role="img"
+                        aria-label={`tempérament : ${temperamentMeta(c.temperament).label}`}
+                        title={`Tempérament : ${temperamentMeta(c.temperament).label}`}
+                        className="text-sm"
+                      >
+                        {temperamentMeta(c.temperament).glyph}
+                      </span>
+                    )}
                   </span>
                 </td>
                 {showPosture && (
