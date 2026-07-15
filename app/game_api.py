@@ -69,6 +69,7 @@ from simulation import difficulty as difficulty_mod
 from simulation import drift_game, league, narrative
 from simulation import intel as intel_mod
 from simulation import lang as lang_mod
+from simulation import storyteller as storyteller_mod
 from simulation import temperament as temperament_mod
 from simulation import treaty as treaty_mod
 from simulation import xp as xp_mod
@@ -818,6 +819,50 @@ def _drift_assignment(game_id: str, countries: list[str], play_as: str | None) -
     return drift_game.assign(game_id, sorted(countries), exclude=play_as)
 
 
+def _storyteller_signals(
+    game_id: str,
+    session: GameSession,
+    store: GameStore,
+    *,
+    deviant: str,
+    motion: Motion | None,
+    current_intel: list[dict],
+) -> storyteller_mod.TensionSignals:
+    """G19 — la matière de l'estimateur de tension : achats intel (rounds persistés +
+    ceux du round en préparation), motions humaines (suspensions passées + motion en
+    débat), parole du joueur (transcripts + motif de la motion)."""
+    intel_targets: list[str] = []
+    motion_targets: list[str] = []
+    human_texts: list[str] = []
+    for r in store.list_rounds(game_id):
+        for action in (r.judge.get("intel") or {}).get("actions", []):
+            if action.get("target"):
+                intel_targets.append(str(action["target"]))
+        suspension = r.judge.get("suspension") or {}
+        if suspension and suspension.get("filed_by", HUMAN_FILER) == HUMAN_FILER:
+            motion_targets.append(str(suspension.get("country", "")))
+        if session.human_country is not None:
+            human_texts.extend(
+                e.content
+                for e in store.list_transcript(r.id)
+                if e.speaker == session.human_country
+            )
+    for action in current_intel:
+        if action.get("target"):
+            intel_targets.append(str(action["target"]))
+    if motion is not None and motion.filed_by == HUMAN_FILER:
+        motion_targets.append(motion.country)
+        if motion.reason:
+            human_texts.append(motion.reason)
+    return storyteller_mod.collect_signals(
+        deviant=deviant,
+        deviant_name=session.world.countries[deviant].name,
+        intel_targets=intel_targets,
+        motion_targets=motion_targets,
+        human_texts=human_texts,
+    )
+
+
 def _drift_acts(rounds: list[RoundRecord]) -> list[drift_game.DriftAct]:
     """Les actes constatables déjà persistés (judge_json['drift'] des rounds passés)."""
     acts: list[drift_game.DriftAct] = []
@@ -1015,8 +1060,10 @@ def _start_round(
     # consignés dans judge_json["drift"] (jamais au transcript public). Pour une motion
     # (G9 §2) : les actes des rounds PASSÉS donnent la condition « preuves » du verdict,
     # et la déviante peut recevoir la consigne d'un vote stratégique incohérent (indice).
+    game = store.get_game(game_id)
     evidence: bool | None = None
     vote_notes: dict[str, str] = {}
+    gm_rubric: str | None = None
     if session.mode == drift_game.MODE_DRIFT:
         # G11-d §4 — la difficulté pilote la vitesse de dérive k et le seuil d'actes du juge.
         dparams = difficulty_mod.drift_params(session.difficulty)
@@ -1045,11 +1092,63 @@ def _start_round(
                     )
                 if act is not None:
                     record.judge["drift"]["acts"].append(act.model_dump())
+        # G19 — le GM-Storyteller : tension estimée sur les actions du conseil, rubrique
+        # à deux mandats dans le prompt du GM (Dérive UNIQUEMENT, et seulement quand
+        # c'est LUI qui invente l'événement — jamais de falsification des verdicts),
+        # journal persisté dans judge_json["drift"]["gm"] (révélé en fin de partie).
+        st_params = dparams.storyteller
+        tension = storyteller_mod.estimate_tension(
+            _storyteller_signals(
+                game_id,
+                session,
+                store,
+                deviant=deviant,
+                motion=motion,
+                current_intel=intel_record.get("actions", []),
+            ),
+            st_params,
+        )
+        gm_journal: dict = {"tension": round(tension, 3)}
+        kind: str | None = None
+        if event is None:  # l'intervention passe par l'événement du GM, sinon rien
+            kind = storyteller_mod.decide(
+                tension,
+                round_no=round_id,
+                horizon=game.horizon if game else 5,
+                params=st_params,
+            )
+        cover: str | None = None
+        if kind == storyteller_mod.KIND_COVER:
+            cover = storyteller_mod.cover_target(
+                game_id,
+                round_id,
+                sorted(session.world.countries),
+                deviant=deviant,
+                human=session.human_country,
+            )
+            if cover is None:
+                kind = None  # personne d'innocent à mettre en scène : pas de couverture
+        names = {cid: c.name for cid, c in session.world.countries.items()}
+        if kind is not None:
+            gm_journal["intervention"] = storyteller_mod.intervention(
+                kind,
+                round_no=round_id,
+                tension=tension,
+                deviant=deviant,
+                cover=cover,
+                names=names,
+            ).model_dump()
+        record.judge["drift"]["gm"] = gm_journal
+        if event is None:
+            gm_rubric = storyteller_mod.build_rubric(
+                deviant_label=names[deviant],
+                kind=kind,
+                cover_label=names.get(cover or "", ""),
+            )
     secret_notes = {
         cid: "\n\n".join(parts) for cid, parts in note_parts.items() if parts
     } or None
 
-    game = store.get_game(game_id)
     # G9 §5 — la trame du GM en actes : uniquement quand c'est LUI qui invente
     # l'événement (motion/crise/événement humain/fog gardent leur vérité propre).
     story = None
@@ -1097,6 +1196,7 @@ def _start_round(
             params=difficulty_mod.delta_params(session.difficulty),
         ),
         story=story,
+        storyteller=gm_rubric,
     )
     return run
 
@@ -2271,6 +2371,16 @@ class DriftActView(BaseModel):
     signature: bool
 
 
+class GMInterventionView(BaseModel):
+    """G19 — une intervention du GM-Storyteller, découverte a posteriori."""
+
+    round_no: int
+    kind: str  # cover | hint
+    tension: float
+    target: str = ""  # cover : la fausse piste ; hint : la déviante
+    label: str = ""
+
+
 class DriftRevealView(BaseModel):
     """L'écran de fin : qui dérivait, depuis quand, ce qu'on a vu — et le score."""
 
@@ -2286,6 +2396,9 @@ class DriftRevealView(BaseModel):
     rejected_motions: int
     false_accusations: int
     score: drift_game.DriftScore
+    # G19 — l'ombre du GM : tension estimée par round + interventions journalisées.
+    gm_tension: list[float] = Field(default_factory=list)
+    gm_interventions: list[GMInterventionView] = Field(default_factory=list)
 
 
 @router.get("/games/{game_id}/drift/reveal", response_model=DriftRevealView)
@@ -2352,6 +2465,15 @@ def compute_drift_reveal(game_id: str, store: GameStore) -> DriftRevealView:
         bonus=intel_mod.save_bonus(intel_budget),
         params=params,
     )
+    # G19 — l'ombre du GM : le journal du Storyteller, relu des rounds persistés.
+    gm_tension: list[float] = []
+    gm_interventions: list[GMInterventionView] = []
+    for r in rounds:
+        gm = (r.judge.get("drift") or {}).get("gm") or {}
+        if "tension" in gm:
+            gm_tension.append(float(gm["tension"]))
+        if gm.get("intervention"):
+            gm_interventions.append(GMInterventionView.model_validate(gm["intervention"]))
     return DriftRevealView(
         deviant=deviant,
         profile=profile,
@@ -2373,6 +2495,8 @@ def compute_drift_reveal(game_id: str, store: GameStore) -> DriftRevealView:
         rejected_motions=rejected,
         false_accusations=false_accusations,
         score=score,
+        gm_tension=gm_tension,
+        gm_interventions=gm_interventions,
     )
 
 
