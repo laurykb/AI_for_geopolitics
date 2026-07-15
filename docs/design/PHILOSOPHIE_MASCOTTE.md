@@ -1,16 +1,50 @@
 # « Laury » — philosophie de design
 
 > Nom finalisé le 2026-07-15 par le créateur du jeu : **« Laury »** (nom de travail
-> pendant la conception : « Petit Kairos »).
+> pendant la conception : « Petit Kairos »). **Design v2 adopté le même jour** sur
+> référence fournie par le créateur : le chibi street à la casquette remplace le petit
+> inventeur au globe. Sources maîtres : `web/public/mascotte/mascotte.svg` (pied) et
+> `mascotte-tete.svg` (tête-logo, médaillon orbital conservé).
 
-**Le mouvement.** Laury est l'art de condenser une immensité — le ciel, la machine, le destin des nations — dans une silhouette de poche. C'est le chibi pris au sérieux : des proportions d'enfant (la tête comme un monde, le corps comme son satellite), exécutées avec la rigueur d'un dessinateur industriel. Rien n'y est griffonné ; chaque courbe est une décision, chaque écart de teinte un réglage patient. L'œuvre doit sembler avoir coûté des centaines d'heures à quelqu'un au sommet de son métier — parce que la sympathie, pour être crédible, exige la précision.
+**Le mouvement.** Laury est l'art de condenser une immensité — le ciel, la machine, le
+destin des nations — dans une silhouette de poche. C'est le chibi pris au sérieux : des
+proportions d'enfant (la tête comme un monde, le corps comme son satellite), une tenue
+de tous les jours dessinée avec la rigueur d'un patron de couture. Rien n'y est
+griffonné ; chaque courbe est une décision. La sympathie, pour être crédible, exige la
+précision.
 
-**Espace et forme.** La forme maîtresse est le cercle imparfait : un crâne planétaire, des yeux en hublots, un globe tenu comme une pomme. Autour, le vide travaille — la silhouette doit se lire en une demi-seconde, de loin, en 24 pixels comme en affiche. Les masses s'empilent en poupée russe : grande (tête), moyenne (torse), petites (mains, bottes), et une seule diagonale vivante — la crête de cheveux, flamme blanche penchée par un vent qui n'existe que pour elle — casse la symétrie et donne le mouvement.
+**L'attribut.** L'ancien Laury portait le monde dans sa main ; le nouveau porte un
+**marqueur**. Le sens s'est déplacé sans changer : ce petit personnage n'observe pas
+l'Histoire, il l'écrit — il guide le joueur, annote le théâtre, signe ses propres
+règles. Le marqueur levé près du visage est LE geste de la figure : c'est lui qu'on
+doit reconnaître en 24 pixels.
 
-**Couleur et matière.** Trois matières seulement : la nuit (bleus d'encre profonds, #050710 → #212a47), la lumière solaire (ors #ca8a04 → #eab308, réservés à ce qui est précieux : regard des lentilles, boucles, liserés), et l'atmosphère (cyans #38bdf8, réservés à ce qui respire : écharpe, iris, océans du globe). La peau est un brun chaud et franc ; les cheveux un blanc cassé de vieux papier stellaire. Pas de noir pur, pas de blanc pur, pas de contour charbonneux : les volumes naissent d'ombres posées une à une, comme des vernis successifs — c'est là que se voit la main du maître.
+**Espace et forme.** La forme maîtresse reste le cercle imparfait : le dôme de la
+casquette, les yeux en hublots bruns, les boucles de cheveux en grappes de billes, les
+fleurs à quatre pétales de l'imprimé. Autour, le vide travaille — la silhouette,
+cernée d'un **contour autocollant blanc**, doit se lire en une demi-seconde sur le fond
+de nuit du jeu, en 64 pixels comme en affiche.
 
-**Échelle et rythme.** Le rythme est ternaire : trois mèches majeures, trois éclats de lumière dans chaque œil, trois accents d'or de la tête aux pieds. Les répétitions sont exactes (les spikes de la crête suivent une même loi de croissance) mais jamais mécaniques (chaque pointe dévie d'un degré). Ce battement — régulier, puis à peine faux — est ce qui rend la figure vivante plutôt que vectorielle.
+**Couleur et matière.** Quatre matières seulement : le **noir profond** (casquette,
+sacoche, marqueur, pantalon — jamais un noir pur, toujours nuancé de bleu), le **blanc
+cassé** (t-shirt oversize, fleurs, contour — la page blanche sur laquelle tout
+s'écrit), la **peau brun chaud et franc**, et la **gomme** des semelles. L'or et le
+cyan du théâtre (#eab308 / #38bdf8) sont réservés aux accents qui relient Laury à son
+monde : le médaillon orbital de la tête-logo, la bague du marqueur, les étincelles.
 
-**Composition et hiérarchie.** L'œil du spectateur doit voyager en triangle : d'abord les yeux (les plus grands aplats clairs), puis le globe offert dans la main (le sens : ce petit personnage porte le monde du jeu), enfin la crête (la personnalité). Tout le reste — coutures, semelles, boucle de ceinture — n'existe qu'en soutien, à peine murmuré. En déclinaison « tête-logo », la même hiérarchie se referme dans un médaillon : le visage, un anneau d'orbite, un point-satellite d'or ; rien d'autre.
+**Le motif signature.** Les fleurs monochromes — en patch encadré sur une cuisse, en
+éclats libres sur l'autre, en imprimé vache-fleur sur les sneakers — sont le battement
+régulier-puis-à-peine-faux qui rend la figure vivante plutôt que vectorielle : mêmes
+pétales, jamais la même composition.
 
-**L'interdit.** Aucune citation d'un personnage existant : pas d'arme, pas de relique volée à une autre œuvre. L'inspiration (l'énergie d'un jeune inventeur au cheveu blanc) est digérée, jamais recopiée. Ce qui doit rester au fond de l'œil de celui qui connaît : une familiarité d'esprit — et pour tous les autres, simplement le meilleur petit gardien d'utopie qu'on ait dessiné avec un soin d'orfèvre.
+**Composition et hiérarchie.** L'œil du spectateur voyage en triangle : d'abord les
+yeux (les plus grands aplats clairs), puis le marqueur levé (le sens), enfin la
+casquette griffée (l'identité). Tout le reste — zip de la sacoche, plis du t-shirt,
+languettes des sneakers — n'existe qu'en soutien, à peine murmuré. En déclinaison
+« tête-logo », la même hiérarchie se referme dans le médaillon : le visage sous la
+casquette, un anneau d'orbite cyan, un point-satellite d'or ; rien d'autre.
+
+**L'interdit.** Aucune citation d'un personnage existant : la griffe portée par la
+figure appartient au créateur du jeu, et à personne d'autre. Ce qui doit rester au fond
+de l'œil : le meilleur petit chroniqueur d'utopies qu'on ait dessiné avec un soin
+d'orfèvre.
