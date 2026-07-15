@@ -7,6 +7,9 @@
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
 
+import { EventCard } from "@/components/event-card";
+import { EventTimeline } from "@/components/event-timeline";
+import { CommuniquePanel, VerdictPanel } from "@/components/judge";
 import { RankBadge } from "@/components/rank-badge";
 import { useT } from "@/components/settings-provider";
 import { Banner, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
@@ -14,19 +17,36 @@ import { getGame, humanizeError } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
 import { rankFor } from "@/lib/league";
-import type { GameDetail, GameResult } from "@/lib/types";
+import { stepNotch } from "@/lib/timeline";
+import type { GameDetail, GameResult, RoundView } from "@/lib/types";
 
 export default function FinPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const t = useT();
   const [game, setGame] = useState<GameDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // G15 — cran de la frise ouvert en relecture (0-based) ; null = panneau fermé.
+  const [relecture, setRelecture] = useState<number | null>(null);
 
   useEffect(() => {
     getGame(id)
       .then(setGame)
       .catch((e) => setError(humanizeError(e)));
   }, [id]);
+
+  // G15 — panneau ouvert : flèches ← / → bornées [1, n], Échap ferme.
+  useEffect(() => {
+    if (relecture === null || !game) return;
+    const total = game.rounds.length;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") setRelecture((v) => (v === null ? v : stepNotch(v, -1, total)));
+      else if (e.key === "ArrowRight")
+        setRelecture((v) => (v === null ? v : stepNotch(v, 1, total)));
+      else if (e.key === "Escape") setRelecture(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [relecture, game]);
 
   if (error) return <Banner tone="bad">{error}</Banner>;
   if (!game)
@@ -76,6 +96,26 @@ export default function FinPage({ params }: { params: Promise<{ id: string }> })
         />
         <UCurve history={[r.u_start, ...r.u_history]} />
       </Panel>
+
+      {/* 2 bis. G15 — la frise chronologique : l'écran de fin raconte la partie. */}
+      {game.rounds.length > 0 && (
+        <Panel>
+          <PanelTitle
+            kicker="Chronologie"
+            title="La partie en une ligne"
+            hint="Un cran par round — clique pour relire l'événement et le verdict. Le fil suit l'indice Utopie–Dystopie ; ⚖ motion débattue, ⛔ suspension, ⚡ fait nouveau, 🏛 traité."
+          />
+          <EventTimeline rounds={game.rounds} selected={relecture} onSelect={setRelecture} />
+          {relecture !== null && game.rounds[relecture] && (
+            <RoundReplay
+              round={game.rounds[relecture]}
+              total={game.rounds.length}
+              onStep={(d) => setRelecture(stepNotch(relecture, d, game.rounds.length))}
+              onClose={() => setRelecture(null)}
+            />
+          )}
+        </Panel>
+      )}
 
       {/* 3. Récap des pays */}
       <Panel>
@@ -132,6 +172,65 @@ export default function FinPage({ params }: { params: Promise<{ id: string }> })
           Accueil
         </Link>
       </div>
+    </div>
+  );
+}
+
+/** G15 — le round en relecture sous la frise : événement complet, verdict, communiqué
+ * (composants existants), boutons ← / → bornés (mêmes bornes que les flèches clavier). */
+function RoundReplay({
+  round,
+  total,
+  onStep,
+  onClose,
+}: {
+  round: RoundView;
+  total: number;
+  onStep: (delta: -1 | 1) => void;
+  onClose: () => void;
+}) {
+  const nav =
+    "grid h-7 w-7 cursor-pointer place-items-center rounded-md border border-edge " +
+    "text-sm text-fg-muted transition-colors hover:border-edge-strong hover:text-foreground " +
+    "disabled:cursor-not-allowed disabled:opacity-40";
+  return (
+    <div className="mt-4 space-y-4 border-t border-edge pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-medium">
+          Round {round.round_no}/{total} en relecture
+        </p>
+        <span className="flex items-center gap-2">
+          <button
+            onClick={() => onStep(-1)}
+            disabled={round.round_no <= 1}
+            aria-label="Round précédent"
+            className={nav}
+          >
+            ←
+          </button>
+          <button
+            onClick={() => onStep(1)}
+            disabled={round.round_no >= total}
+            aria-label="Round suivant"
+            className={nav}
+          >
+            →
+          </button>
+          <button
+            onClick={onClose}
+            className="cursor-pointer rounded-md border border-edge px-2.5 py-1 text-xs text-fg-muted transition-colors hover:border-edge-strong hover:text-foreground"
+          >
+            Fermer
+          </button>
+        </span>
+      </div>
+      <EventCard event={round.event} />
+      <VerdictPanel
+        deltas={round.deltas}
+        escalation={round.judge.escalation ?? 0}
+        economicDisruption={round.judge.economic_disruption ?? 0}
+      />
+      {round.judge.communique && <CommuniquePanel text={round.judge.communique} />}
     </div>
   );
 }

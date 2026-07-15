@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 
 import { DriftRevealPanel } from "@/components/drift";
 import { EventCard } from "@/components/event-card";
+import { EventTimeline } from "@/components/event-timeline";
 import { GameNav } from "@/components/game-nav";
 import { CommuniquePanel } from "@/components/judge";
 import {
@@ -154,6 +155,17 @@ export default function ReplayPage() {
 
       {detail && round && (
         <>
+          {/* G15 — la frise chronologique pilote le round affiché (clic cran k →
+              onSelect(k-1), même sémantique que le scrubber StageBand). */}
+          <Panel>
+            <PanelTitle
+              kicker="Chronologie"
+              title="La partie en une ligne"
+              hint="Un cran par round — clique pour sauter à ce round. Le fil suit l'indice Utopie–Dystopie ; ⚖ motion débattue, ⛔ suspension, ⚡ fait nouveau, 🏛 traité."
+            />
+            <EventTimeline rounds={detail.rounds} selected={selected} onSelect={select} />
+          </Panel>
+
           {/* --- La scène, pilotée par le scrubber (pleine largeur) ---------------- */}
           <div className="relative left-1/2 w-screen max-w-[1600px] -translate-x-1/2 space-y-4 px-4 sm:px-6">
           <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]">
