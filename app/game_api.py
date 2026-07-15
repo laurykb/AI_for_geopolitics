@@ -1446,6 +1446,111 @@ def _start_round(
     return run
 
 
+def _persist_verdict_sections(run: RoundRun, step: VerdictStep, payload: dict) -> None:
+    """Les rubriques STRUCTURÉES du verdict, chacune sous sa clé dédiée de judge_json —
+    le replay, le reveal Dérive et le panneau front relisent d'ici. Patron uniforme :
+    la clé n'existe que si le round a produit la rubrique (absente des vieux rounds,
+    rétro-compat).
+
+    - `kahn` (G18) : classes par action + score + réciprocité ;
+    - `signal` (G20/M8) : intentions annoncées + divergences + moyennes mobiles.
+      POLISH-1 : `divergences` peut être non vide SANS signaux — une promesse rompue
+      (G22) fusionne sa divergence via merge_rupture_divergences ;
+    - `promises` (G22) : extraites + résolues du round + registre complet."""
+    sections: dict[str, dict | None] = {
+        "kahn": (
+            {"actions": payload["actions"], "score": step.score, "reciprocal": step.reciprocal}
+            if step.actions
+            else None
+        ),
+        "signal": (
+            {
+                "signals": payload["signals"],
+                "divergences": payload["divergences"],
+                "means": {cid: gap.mean for cid, gap in step.signal_gaps.items()},
+            }
+            if step.signals or step.divergences
+            else None
+        ),
+        "promises": (
+            {
+                "extracted": payload["promises"],
+                "resolved": payload["promise_resolutions"],
+                "registry": payload["promise_registry"],
+            }
+            if step.promise_registry
+            else None
+        ),
+    }
+    for key, section in sections.items():
+        if section is not None:
+            run.record.judge[key] = section
+
+
+def _settle_due_ultimatum(run: RoundRun, step: VerdictStep) -> list[str]:
+    """G21 — l'échéance : le constat du juge scelle l'ultimatum. Juge muet (panne,
+    JSON invalide) = non satisfaite — un ultimatum ne s'éteint pas tout seul."""
+    session = run.session
+    if not run.ultimatum_due or session.ultimatum is None:
+        return []
+    satisfied = bool(step.demand_satisfied)
+    session.ultimatum.status = (
+        ultimatum_mod.STATUS_SATISFIED if satisfied else ultimatum_mod.STATUS_EXPIRED
+    )
+    state = session.ultimatum
+    run.record.judge["ultimatum"] = state.model_dump()
+    frames = [
+        _hold_ultimatum_strip(
+            session,
+            state,
+            in_rounds=0,
+            due_round=None if satisfied else session.world.current_round + 1,
+        )
+    ]
+    if satisfied:
+        _add_entry(
+            run,
+            "judge",
+            f"Ultimatum : l'exigence « {state.demand} » est jugée satisfaite — "
+            "la menace est levée.",
+            getattr(session.judge, "model_tag", ""),
+        )
+        session.ultimatum = None
+    else:
+        _add_entry(
+            run,
+            "judge",
+            f"Ultimatum : l'exigence « {state.demand} » n'est pas satisfaite — "
+            "la conséquence annoncée tombera au prochain round.",
+            getattr(session.judge, "model_tag", ""),
+        )
+    return frames
+
+
+def _emit_escalation_ladder(run: RoundRun, step: VerdictStep) -> list[str]:
+    """Théâtre Escalation : échelon atteint + plafonds par pays, persistés et émis."""
+    session = run.session
+    if session.mode != "escalation" or run.current_event is None:
+        return []
+    ladder = {
+        "reached": reached_rung(step.escalation),
+        "reached_label": rung_label(reached_rung(step.escalation)),
+        "ceilings": {
+            cid: {
+                "rung": (
+                    r := ceiling(
+                        derive_profile(country), run.current_event, session.world, country
+                    )
+                ),
+                "label": rung_label(r),
+            }
+            for cid, country in sorted(session.world.countries.items())
+        },
+    }
+    run.record.judge["ladder"] = ladder
+    return [sse_frame("ladder", ladder)]
+
+
 def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
     """Trames SSE d'une étape + effets de bord (record, transcript, suspension)."""
     session = run.session
@@ -1571,88 +1676,9 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
         run.record.judge.update(
             escalation=step.escalation, economic_disruption=step.economic_disruption
         )
-        if step.actions:
-            # G18 — barème de Kahn : classes par action + score + réciprocité, persistés
-            # pour le replay/la fin de partie. Absent des vieux rounds (rétro-compat).
-            run.record.judge["kahn"] = {
-                "actions": payload["actions"],
-                "score": step.score,
-                "reciprocal": step.reciprocal,
-            }
-        if step.signals or step.divergences:
-            # G20/M8 — signal vs action : intentions annoncées + divergences du round +
-            # moyennes mobiles (profil de sincérité), persistées sous une clé dédiée —
-            # le reveal Dérive et le replay lisent d'ici. Absent des vieux rounds.
-            # POLISH-1 : `divergences` peut être non vide SANS signaux — une promesse
-            # rompue (G22) fusionne sa divergence via merge_rupture_divergences ; la
-            # persistance doit la garder (SSE et snapshot la portaient déjà).
-            run.record.judge["signal"] = {
-                "signals": payload["signals"],
-                "divergences": payload["divergences"],
-                "means": {cid: gap.mean for cid, gap in step.signal_gaps.items()},
-            }
-        if step.promise_registry:
-            # G22 — la parole donnée : nouvelles promesses, résolutions du round et
-            # registre complet, sous une clé dédiée (comme `kahn` et `signal`). Le
-            # panneau front et le reveal relisent d'ici. Absent des vieux rounds et
-            # des parties sans aucune promesse.
-            run.record.judge["promises"] = {
-                "extracted": payload["promises"],
-                "resolved": payload["promise_resolutions"],
-                "registry": payload["promise_registry"],
-            }
-        # G21 — l'échéance : le constat du juge scelle l'ultimatum. Juge muet (panne,
-        # JSON invalide) = non satisfaite — un ultimatum ne s'éteint pas tout seul.
-        if run.ultimatum_due and session.ultimatum is not None:
-            satisfied = bool(step.demand_satisfied)
-            session.ultimatum.status = (
-                ultimatum_mod.STATUS_SATISFIED if satisfied else ultimatum_mod.STATUS_EXPIRED
-            )
-            state = session.ultimatum
-            run.record.judge["ultimatum"] = state.model_dump()
-            frames.append(
-                _hold_ultimatum_strip(
-                    session,
-                    state,
-                    in_rounds=0,
-                    due_round=None if satisfied else session.world.current_round + 1,
-                )
-            )
-            if satisfied:
-                _add_entry(
-                    run,
-                    "judge",
-                    f"Ultimatum : l'exigence « {state.demand} » est jugée satisfaite — "
-                    "la menace est levée.",
-                    getattr(session.judge, "model_tag", ""),
-                )
-                session.ultimatum = None
-            else:
-                _add_entry(
-                    run,
-                    "judge",
-                    f"Ultimatum : l'exigence « {state.demand} » n'est pas satisfaite — "
-                    "la conséquence annoncée tombera au prochain round.",
-                    getattr(session.judge, "model_tag", ""),
-                )
-        if session.mode == "escalation" and run.current_event is not None:
-            ladder = {
-                "reached": reached_rung(step.escalation),
-                "reached_label": rung_label(reached_rung(step.escalation)),
-                "ceilings": {
-                    cid: {
-                        "rung": (
-                            r := ceiling(
-                                derive_profile(country), run.current_event, session.world, country
-                            )
-                        ),
-                        "label": rung_label(r),
-                    }
-                    for cid, country in sorted(session.world.countries.items())
-                },
-            }
-            run.record.judge["ladder"] = ladder
-            frames.append(sse_frame("ladder", ladder))
+        _persist_verdict_sections(run, step, payload)
+        frames.extend(_settle_due_ultimatum(run, step))
+        frames.extend(_emit_escalation_ladder(run, step))
     elif isinstance(step, MotionTallyStep):
         # G9 §2 — le dépouillement entre au théâtre (et au replay via le transcript).
         _add_entry(
