@@ -40,8 +40,8 @@ export type StageBandProps = {
 };
 
 const GAUGES: { key: keyof RiskScore & string; label: string }[] = [
-  { key: "escalation", label: "escalade" },
-  { key: "economic_disruption", label: "éco" },
+  { key: "escalation", label: "tension" },
+  { key: "economic_disruption", label: "économie" },
   { key: "alliance_fracture", label: "alliances" },
 ];
 
@@ -105,9 +105,9 @@ function LadderRail({ ladder, prevRung }: { ladder: LadderView; prevRung?: numbe
   return (
     <div
       className={crossed ? "stage-rung-hit" : undefined}
-      title={`Échelle d'escalade — palier atteint : ${ladder.reached} (${ladder.reached_label})`}
+      title={`Échelle de tension — niveau atteint : ${ladder.reached} (${ladder.reached_label})`}
     >
-      <span className="text-[10px] uppercase tracking-wide text-fg-faint">escalade</span>
+      <span className="text-[10px] uppercase tracking-wide text-fg-faint">tension</span>
       <div className="mt-1 flex gap-0.5">
         {Array.from({ length: 10 }, (_, i) => (
           <span

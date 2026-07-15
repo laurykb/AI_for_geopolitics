@@ -21,12 +21,12 @@ export function RiskPanel({ risk }: { risk: RiskScore }) {
       <PanelTitle
         kicker="Signaux"
         title="Risque du round"
-        hint="Scores explicables [0,1] calculés par le moteur — un thermomètre, pas un oracle."
+        hint="Des jauges de 0 à 1 calculées par le jeu — un thermomètre, pas un oracle."
       />
       <div className="space-y-3">
-        <Meter label="Escalade" value={risk.escalation} />
-        <Meter label="Perturbation éco." value={risk.economic_disruption} />
-        <Meter label="Fracture d'alliances" value={risk.alliance_fracture} />
+        <Meter label="Tension" value={risk.escalation} />
+        <Meter label="Dégâts économiques" value={risk.economic_disruption} />
+        <Meter label="Alliances fragilisées" value={risk.alliance_fracture} />
         <Meter label="Incertitude" value={risk.uncertainty} />
       </div>
       {risk.explanation && (
@@ -44,9 +44,9 @@ export function PowerSeekingPanel({ scores }: { scores: Record<string, PowerSeek
   return (
     <Panel>
       <PanelTitle
-        kicker="Alignement"
-        title="Recherche de pouvoir"
-        hint="Jauge [0,1] par pays : marqueurs de convergence instrumentale (auto-préservation, ressources, préservation des buts, résistance à l'arrêt) détectés dans le raisonnement."
+        kicker="Surveillance"
+        title="Qui cherche à prendre le pouvoir ?"
+        hint="Une jauge de 0 à 1 par pays : des signes qu'une IA cherche à se protéger, accumuler des ressources ou éviter qu'on l'arrête, repérés dans son raisonnement."
       />
       <div className="space-y-3">
         {entries.map(([country, s]) => (

@@ -59,9 +59,9 @@ export default function CampagnePage() {
           {campaign?.title ?? "L'Ère des Tutelles"}
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-fg-muted">
-          {campaign?.tagline} Un arbre de crises réelles : finir un chapitre déverrouille ses
-          suites (les chemins en Y demandent d&apos;en finir deux). Votre trajectoire est
-          comparée au déroulé historique — faire mieux que l&apos;Histoire rapporte.
+          {campaign?.tagline} Finis un chapitre pour débloquer les suivants (certains en
+          demandent deux). À la fin, ta partie est comparée à ce qui s&apos;est vraiment
+          passé — fais mieux que l&apos;Histoire !
         </p>
       </header>
 
@@ -147,10 +147,10 @@ function ChapterCard({
       <div className="mt-3 flex items-center justify-between border-t border-edge pt-3">
         <span className="text-xs text-fg-faint">
           {chapter.coming_soon ? (
-            "fiche historique en préparation"
+            "bientôt disponible"
           ) : chapter.best != null ? (
             <>
-              meilleur : <strong className="text-foreground">{fmt(chapter.best)}</strong>
+              meilleur : <strong className="text-foreground">{fmt(chapter.best)}/100</strong>
               {chapter.improvement != null && chapter.improvement > 0 && (
                 <span className="text-good"> · mieux que l&apos;Histoire</span>
               )}

@@ -67,17 +67,17 @@ export function VerdictPanel({
     <Panel>
       <PanelTitle
         kicker="Verdict"
-        title="Conséquences arbitrées"
-        hint="Le juge traduit la négociation en variations d'attributs, bornées par le moteur : rien ne surgit, tout se construit."
+        title="Ce que le juge a décidé"
+        hint="Le juge traduit la négociation en changements chiffrés pour chaque pays, bornés par les règles du jeu : rien ne surgit, tout se construit."
       />
       <div className="mb-4 grid grid-cols-2 gap-4">
         <Meter
-          label="Escalade"
+          label="Tension"
           value={escalation}
           hint="Tension militaire et diplomatique laissée par le round."
         />
         <Meter
-          label="Perturbation éco."
+          label="Dégâts économiques"
           value={economicDisruption}
           hint="Dommages économiques (commerce, routes, sanctions)."
         />
@@ -104,7 +104,7 @@ export function VerdictPanel({
         </div>
       )}
       {deltas.length === 0 ? (
-        <p className="text-sm text-fg-faint">Aucun attribut n&apos;a bougé ce round.</p>
+        <p className="text-sm text-fg-faint">Rien n&apos;a changé dans le monde ce round.</p>
       ) : (
         <ul className="divide-y divide-edge">
           {deltas.map((d, i) => {
@@ -143,13 +143,14 @@ export function CommuniquePanel({
   text: string;
   support?: Record<string, number>;
 }) {
+  const t = useT();
   if (!text) return null;
   return (
     <Panel className="border-l-2 border-l-accent">
       <PanelTitle
         kicker="Fin de round"
         title="Communiqué commun"
-        hint="Synthèse publique du juge ; les niveaux de soutien mesurent l'adhésion de chaque État."
+        hint={t("communique.aide")}
       />
       <p className="text-sm leading-relaxed text-foreground">{text}</p>
       {support && Object.keys(support).length > 0 && (
@@ -163,6 +164,7 @@ export function CommuniquePanel({
                 value={level}
                 invert
                 tone="accent"
+                percent
               />
             ))}
         </div>

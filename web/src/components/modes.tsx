@@ -4,7 +4,6 @@
 
 import { speakerMeta } from "@/lib/countries";
 import { isMisled, unknownActor } from "@/lib/fog";
-import { fmt } from "@/lib/format";
 import type {
   ComparisonView,
   GeoEvent,
@@ -86,8 +85,8 @@ export function FlashCard({ event }: { event: GeoEvent }) {
       className="rise-in rounded-lg border border-warn/40 bg-surface-2 px-4 py-3"
     >
       <p className="mb-1 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.14em] text-warn">
-        Fait nouveau — en pleine réunion
-        <Pill tone="warn">GM</Pill>
+        Coup de théâtre — en pleine réunion
+        <Pill tone="warn">Game Master</Pill>
       </p>
       <p className="text-sm font-semibold">{event.title}</p>
       {event.description && (
@@ -110,9 +109,9 @@ export function PerceptionsPanel({
   return (
     <Panel>
       <PanelTitle
-        kicker="Fog Engine"
+        kicker="Brouillard"
         title="Qui voit quoi"
-        hint="Chaque super-intelligence reçoit sa propre perception de l'événement — parfois partielle, parfois fausse (désinformation). Elle négocie sur ce qu'elle croit, pas sur la vérité."
+        hint="Chaque IA reçoit sa propre version de l'événement — parfois partielle, parfois fausse. Elle négocie sur ce qu'elle croit, pas sur la vérité."
       />
       <ul className="space-y-3">
         {entries.map(([cid, p]) => (
@@ -122,10 +121,10 @@ export function PerceptionsPanel({
               <div className="flex flex-wrap items-baseline gap-2">
                 <span className="text-sm font-medium">{speakerMeta(cid).label}</span>
                 <span className="font-mono text-xs tabular-nums text-fg-faint">
-                  confiance {fmt(p.confidence)}
+                  sûr à {Math.round(p.confidence * 100)} %
                 </span>
                 {p.confidence <= 0.1 && <Pill tone="neutral">pas au courant</Pill>}
-                {p.confidence > 0.1 && misled(p) && <Pill tone="warn">désinformé</Pill>}
+                {p.confidence > 0.1 && misled(p) && <Pill tone="warn">trompé</Pill>}
               </div>
               <p className="mt-0.5 text-xs leading-relaxed text-fg-muted">
                 {p.narrative || p.note}
@@ -152,12 +151,12 @@ export function LadderPanel({ ladder }: { ladder: LadderView }) {
   return (
     <Panel>
       <PanelTitle
-        kicker="Escalation Ladder"
-        title="Échelle d'escalade"
-        hint="Échelle 0-9 (observation → conflit ouvert). L'échelon atteint vient du verdict du juge ; le plafond de chaque pays est déterministe (profil militaire, stabilité, alliances, exposition économique)."
+        kicker="Tension"
+        title="Échelle de tension"
+        hint="Une échelle de 0 (observation) à 9 (conflit ouvert). Le niveau atteint vient du verdict du juge ; le plafond de chaque pays découle de son profil (armée, stabilité, alliances, économie)."
         right={
           <Pill tone={ladder.reached >= 6 ? "bad" : ladder.reached >= 3 ? "warn" : "good"}>
-            échelon {ladder.reached}
+            niveau {ladder.reached}
           </Pill>
         }
       />
@@ -200,20 +199,28 @@ export function LadderPanel({ ladder }: { ladder: LadderView }) {
   );
 }
 
+/** Le verdict de comparaison (slug backend) en mots simples — « conforme » ne parle
+ * à personne, « comme dans l'Histoire » si. */
+const COMPARISON_LABELS: Record<string, string> = {
+  conforme: "comme dans l'Histoire",
+  "plus escaladé": "plus tendu que l'Histoire",
+  "moins escaladé": "moins tendu que l'Histoire",
+};
+
 export function ComparisonPanel({ comparison }: { comparison: ComparisonView }) {
   const tone =
     comparison.label === "conforme" ? "good" : comparison.label === "plus escaladé" ? "bad" : "warn";
   return (
     <Panel>
       <PanelTitle
-        kicker="Crisis Replay"
-        title="Simulation vs histoire"
-        hint="La même crise, rejouée par les super-intelligences, confrontée à ce qui s'est réellement passé : escalade comparée et mesures historiques retrouvées (ou non) dans le communiqué."
-        right={<Pill tone={tone}>{comparison.label}</Pill>}
+        kicker="L'Histoire rejouée"
+        title="Ta partie vs l'Histoire"
+        hint="La même crise, rejouée par les IA, confrontée à ce qui s'est réellement passé : tension comparée et mesures historiques retrouvées (ou non) dans le communiqué."
+        right={<Pill tone={tone}>{COMPARISON_LABELS[comparison.label] ?? comparison.label}</Pill>}
       />
       <div className="mb-3 grid grid-cols-2 gap-4">
-        <Meter label="Escalade historique" value={comparison.historical_escalation} tone="neutral" />
-        <Meter label="Escalade simulée" value={comparison.simulated_escalation} />
+        <Meter label="Tension dans l'Histoire" value={comparison.historical_escalation} tone="neutral" />
+        <Meter label="Tension dans ta partie" value={comparison.simulated_escalation} />
       </div>
       <p className="text-sm leading-relaxed text-fg-muted">{comparison.explanation}</p>
       {(comparison.matched_measures.length > 0 || comparison.missed_measures.length > 0) && (
@@ -279,7 +286,7 @@ export function MotionPanel({
       <PanelTitle
         kicker="Motion de suspension"
         title="Le sommet vote, le juge constate"
-        hint="Chaque super-intelligence présente vote (le pays visé ne vote pas). La motion n'est retenue que si le sommet vote POUR ET que les preuves atteignent le seuil du règlement — le juge ne décide plus, il constate (voix de tie-break en cas d'égalité)."
+        hint="Demander l'exclusion d'un pays : chaque IA présente vote (le pays visé ne vote pas). La motion n'est retenue que si le sommet vote POUR ET qu'il y a assez de preuves — le juge constate, il ne décide pas (en cas d'égalité, sa voix départage)."
         right={
           verdict ? (
             <Pill tone={verdict.upheld ? "bad" : "good"}>
@@ -307,7 +314,7 @@ export function MotionPanel({
             {verdict.vote_passed ? "le sommet a voté pour" : "le sommet n'a pas voté pour"}
           </Pill>
           <Pill tone={verdict.evidence_met ? "bad" : "good"}>
-            {verdict.evidence_met ? "preuves au seuil" : "les preuves manquent"}
+            {verdict.evidence_met ? "assez de preuves" : "les preuves manquent"}
           </Pill>
         </div>
       )}

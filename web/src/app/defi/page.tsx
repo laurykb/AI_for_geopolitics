@@ -40,10 +40,9 @@ export default function DefiPage() {
             Le Sommet du jour{daily && ` — ${daily.date}`}
           </h1>
           <p className="mt-1 text-sm text-fg-muted">
-            La même crise pour tout le monde, une tentative classée par jour. Prochain
+            La même crise pour tout le monde — un seul essai compte par jour. Prochain
             défi dans{" "}
-            <span className="font-mono tabular-nums">{countdownLabel(nowMs)}</span> (il
-            tourne à minuit UTC).
+            <span className="font-mono tabular-nums">{countdownLabel(nowMs)}</span>.
           </p>
         </div>
         <Link
@@ -66,7 +65,7 @@ export default function DefiPage() {
           <PanelTitle
             kicker="Aujourd'hui"
             title="Classement du jour"
-            hint="Le score du jour = la trajectoire de TA tentative classée (0-100). Les re-runs en partie libre ne comptent pas."
+            hint="Ton score du jour, de 0 à 100 — un seul essai compte par jour ; les parties rejouées en libre ne comptent pas."
             right={
               daily.my_rank != null ? <Pill tone="accent">ton rang : #{daily.my_rank}</Pill> : undefined
             }
@@ -96,7 +95,7 @@ function Board({ board, highlight }: { board: DailyRank[]; highlight?: string })
   if (board.length === 0) {
     return (
       <p className="text-sm text-fg-faint">
-        Personne n&apos;a encore de score — sois la première signature du jour.
+        Personne n&apos;a encore de score — sois le premier ou la première !
       </p>
     );
   }

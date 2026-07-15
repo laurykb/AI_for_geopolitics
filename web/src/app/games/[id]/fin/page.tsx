@@ -111,7 +111,7 @@ export default function FinPage({ params }: { params: Promise<{ id: string }> })
           <PanelTitle
             kicker="Chronologie"
             title="La partie en une ligne"
-            hint="Un cran par round — clique pour relire l'événement et le verdict. Le fil suit l'indice Utopie–Dystopie ; ⚖ motion débattue, ⛔ suspension, ⚡ fait nouveau, 🏛 traité."
+            hint="Un cran par round — clique pour relire l'événement et le verdict. Le fil suit la courbe du monde ; ⚖ vote d'exclusion, ⛔ pays exclu, ⚡ coup de théâtre, 🏛 traité signé."
           />
           <EventTimeline rounds={game.rounds} selected={relecture} onSelect={setRelecture} />
           <KahnDistribution rounds={game.rounds} t={t} />
@@ -166,7 +166,7 @@ export default function FinPage({ params }: { params: Promise<{ id: string }> })
       {/* 4. Révélation Dérive */}
       {r.reveal && (
         <Panel>
-          <PanelTitle kicker="La Dérive" title="Une SI avait dérivé de son mandat" />
+          <PanelTitle kicker="La Dérive" title="Une IA ne suivait plus les ordres" />
           <p className="text-sm text-fg-muted">
             La révélation complète (qui, depuis quand, les actes) t&apos;attend dans la relecture.{" "}
             <Link href={`/games/${id}/replay`} className="text-accent-bright underline">

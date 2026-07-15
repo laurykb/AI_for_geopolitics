@@ -53,8 +53,8 @@ export const FLOW_MODES: readonly FlowMode[] = [
   },
   {
     value: "escalation",
-    label: "Real World",
-    blurb: "Rounds enchaînés, faits nouveaux en séance, échelle d'escalade 0-9.",
+    label: "Monde réel",
+    blurb: "La crise ne s'arrête pas : les rounds s'enchaînent et la tension monte.",
     learn: "Tenir une crise qui monte sans la laisser déraper.",
   },
   {
@@ -68,7 +68,7 @@ export const FLOW_MODES: readonly FlowMode[] = [
 // --- rôles (S3) -----------------------------------------------------------------
 
 /** Les rôles du flow (§0/S3 + G12 §3). `invent` = « Créer son pays » (forge), `gm` =
- * Game Master (événements + consignes globales), `spectator` = le turfiste (parie, ne
+ * Game Master (événements + consignes globales), `spectator` = le parieur (parie, ne
  * motionne ni ne prompte). */
 export type FlowRole = "player" | "invent" | "gm" | "spectator";
 

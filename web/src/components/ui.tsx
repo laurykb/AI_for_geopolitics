@@ -87,19 +87,22 @@ export function Dot({ tone = "neutral", pulse = false }: { tone?: Tone; pulse?: 
   );
 }
 
-/** Jauge horizontale [0,1] : libellé, barre, valeur. Le ton peut suivre la valeur. */
+/** Jauge horizontale [0,1] : libellé, barre, valeur. Le ton peut suivre la valeur.
+ * `percent` affiche « 62 % » au lieu de « 0,62 » — plus lisible pour un joueur. */
 export function Meter({
   label,
   value,
   tone,
   invert = false,
   hint,
+  percent = false,
 }: {
   label: string;
   value: number;
   tone?: Tone;
   invert?: boolean; // true : une valeur haute est bonne (vert)
   hint?: string;
+  percent?: boolean; // true : valeur affichée en pourcentage
 }) {
   const v = Math.max(0, Math.min(1, value));
   const risk = invert ? 1 - v : v;
@@ -112,7 +115,9 @@ export function Meter({
           {label}
           {hint && <Hint text={hint} />}
         </span>
-        <span className={`font-mono text-xs tabular-nums ${TONE_TEXT[t]}`}>{fmt(v)}</span>
+        <span className={`font-mono text-xs tabular-nums ${TONE_TEXT[t]}`}>
+          {percent ? `${Math.round(v * 100)} %` : fmt(v)}
+        </span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-muted">
         <div

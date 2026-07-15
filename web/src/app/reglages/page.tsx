@@ -70,7 +70,6 @@ export default function ReglagesPage() {
             </button>
           ))}
         </div>
-        <p className="mt-2 text-xs text-fg-faint">{t("reglages.langue-hint")}</p>
       </Panel>
 
       {/* --- 2. Confort & performances --------------------------------------------- */}

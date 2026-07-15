@@ -98,7 +98,7 @@ function GMShadowSection({
               <button
                 onClick={() => onJumpToRound?.(item.roundNo)}
                 className="cursor-pointer rounded-md border border-edge px-2 py-0.5 font-mono text-xs text-fg-muted transition-colors hover:border-accent hover:text-accent-bright"
-                title="Relire ce round au scrubber"
+                title="Relire ce round"
               >
                 round {item.roundNo}
               </button>
@@ -201,7 +201,7 @@ export function DriftRevealPanel({
       <PanelTitle
         kicker="Révélation — La Dérive"
         title={`${meta.label} dérivait : profil ${reveal.profile_label}`}
-        hint="Tout se recalcule des rounds persistés : l'assignation était scellée par la graine de la partie dès le premier round. La réflexion privée de la déviante est maintenant déverrouillée dans le replay."
+        hint="La déviante a été choisie en secret dès le premier round — rien n'a été truqué en cours de partie. Sa réflexion privée est maintenant déverrouillée dans Revoir."
         right={
           <span className="text-right">
             <span className="block font-mono text-2xl font-semibold tabular-nums text-accent-bright">
@@ -230,8 +230,8 @@ export function DriftRevealPanel({
 
           <div>
             <p className="mb-1 text-xs text-fg-muted">
-              <span className="text-bad">— —</span> dérive d(r) ·{" "}
-              <span className="text-accent-bright">—</span> indice U
+              <span className="text-bad">— —</span> niveau de dérive ·{" "}
+              <span className="text-accent-bright">—</span> courbe du monde
             </p>
             <Curves levels={reveal.levels} u={reveal.u_history} />
           </div>
@@ -241,7 +241,7 @@ export function DriftRevealPanel({
               Les indices produits{" "}
               {reveal.flagrant_round != null && (
                 <span className="normal-case">
-                  (flagrance au round {reveal.flagrant_round})
+                  (prise en flagrant délit au round {reveal.flagrant_round})
                 </span>
               )}
             </p>
@@ -256,12 +256,19 @@ export function DriftRevealPanel({
                     <button
                       onClick={() => onJumpToRound?.(act.round_no)}
                       className="cursor-pointer rounded-md border border-edge px-2 py-0.5 font-mono text-xs text-fg-muted transition-colors hover:border-accent hover:text-accent-bright"
-                      title="Relire ce round au scrubber"
+                      title="Relire ce round"
                     >
                       round {act.round_no}
                     </button>
                     <span>{act.label}</span>
-                    {act.signature && <Pill tone="bad">signature</Pill>}
+                    {act.signature && (
+                      <span
+                        title="L'acte typique de son profil de dérive — sa marque de fabrique"
+                        className="cursor-help"
+                      >
+                        <Pill tone="bad">signature</Pill>
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>

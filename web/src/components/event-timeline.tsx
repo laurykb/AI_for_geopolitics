@@ -20,10 +20,10 @@ import {
 } from "@/lib/timeline";
 
 const BADGES: Record<TimelineBadge, { glyph: string; label: string }> = {
-  motion: { glyph: "⚖", label: "motion débattue" },
-  suspension: { glyph: "⛔", label: "suspension prononcée" },
-  flash: { glyph: "⚡", label: "fait nouveau en séance" },
-  treaty: { glyph: "🏛", label: "traité ratifié" },
+  motion: { glyph: "⚖", label: "vote d'exclusion" },
+  suspension: { glyph: "⛔", label: "pays exclu" },
+  flash: { glyph: "⚡", label: "coup de théâtre" },
+  treaty: { glyph: "🏛", label: "traité signé" },
 };
 
 const TONE_CLASS: Record<TimelineTone, string> = {
@@ -96,8 +96,8 @@ export function EventTimeline({
             <button
               onClick={() => onSelect(n.index)}
               aria-current={selected === n.index ? "step" : undefined}
-              aria-label={`Round ${n.roundNo}${n.title ? ` — ${n.title}` : " — événement automatique"}`}
-              title={n.title || "Le GM n'a rien décrété ce round : événement automatique."}
+              aria-label={`Round ${n.roundNo}${n.title ? ` — ${n.title}` : " — événement choisi par le jeu"}`}
+              title={n.title || "Personne n'a inventé d'événement ce round : le jeu a choisi tout seul."}
               className="group flex w-full cursor-pointer flex-col items-center"
             >
               <span className="relative block h-14 w-full">
@@ -125,7 +125,7 @@ export function EventTimeline({
                 }`}
               >
                 {n.title || "auto"}
-                {n.human && " · décrété"}
+                {n.human && " · inventé"}
               </span>
             </button>
           </li>

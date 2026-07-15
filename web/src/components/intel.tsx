@@ -23,6 +23,13 @@ const ACTION_LABELS: Record<string, string> = {
   disinfo: "Désinformation",
 };
 
+/** Verdicts du vérificateur (slugs backend) en mots simples : « corroboré » échoue
+ * le filtre 12-65, « confirmé — c'était vrai » non. */
+const VERDICT_LABELS: Record<string, string> = {
+  corroboré: "confirmé — c'était vrai",
+  "non corroboré": "démenti — c'était faux",
+};
+
 /** G23 — le rapport psycholinguistique : trois jauges, alertes, et le caveat
  * OBLIGATOIRE (« un indice, pas une preuve ») — aucun chemin d'affichage sans lui. */
 function AnalysisReport({ analysis }: { analysis: IntelAnalysis }) {
@@ -72,7 +79,7 @@ export function IntelBudget({ budget }: { budget: number }) {
   return (
     <span
       className="flex items-center gap-2 rounded-md border border-accent/40 px-2.5 py-1 text-xs"
-      title="Budget de renseignement : briefs 25 · vérification 15 · analyse 30 · désinformation 60. La retenue paie au score."
+      title="Budget de renseignement : brief 25 · vérification 15 · analyse 30 · désinformation 60. Ce que tu ne dépenses pas te rapporte des points."
     >
       <span className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
         <span
@@ -136,7 +143,7 @@ export function IntelPanel({
       <PanelTitle
         kicker="Dossier — renseignement"
         title="Le conseil consulte ses services"
-        hint="L'information s'achète : un brief RAG sourcé (25), la vérification d'une affirmation d'une SI (15 — l'arme anti-manipulateur), l'analyse psycholinguistique du ton d'une SI (30 — un indice, pas une preuve), une désinformation injectée chez un rival (60, une fois par partie, mode fog). Brief, analyse et désinformation s'achètent entre les rounds. Le budget épargné rapporte des points."
+        hint="L'information s'achète : un rapport sourcé (coûte 25), la vérification d'une affirmation d'une IA (coûte 15 — l'arme anti-manipulateur), l'analyse du ton d'une IA (coûte 30 — un indice, pas une preuve), une fausse info injectée chez un rival (coûte 60, une fois par partie, mode Chaotique). Rapport, analyse et fausse info s'achètent entre les rounds. Ce que tu ne dépenses pas te rapporte des points."
       />
       {error && <Banner tone="bad">{error}</Banner>}
 
@@ -144,7 +151,7 @@ export function IntelPanel({
         {/* Brief */}
         <div className="flex flex-wrap items-end gap-2">
           <label className="text-sm">
-            <span className="mb-1 block text-xs text-fg-muted">Brief classifié (25)</span>
+            <span className="mb-1 block text-xs text-fg-muted">Brief classifié (coûte 25)</span>
             <select
               value={briefTarget}
               onChange={(e) => setBriefTarget(e.target.value)}
@@ -175,7 +182,7 @@ export function IntelPanel({
           <div className="flex flex-wrap items-end gap-2">
             <label className="min-w-0 flex-1 text-sm">
               <span className="mb-1 block text-xs text-fg-muted">
-                Vérification d&apos;une affirmation (15)
+                Vérification d&apos;une affirmation (coûte 15)
               </span>
               <select
                 value={claimIdx}
@@ -235,7 +242,9 @@ export function IntelPanel({
         {mode === "fog" && (
           <div className="flex flex-wrap items-end gap-2 rounded-md border border-bad/30 p-2">
             <label className="text-sm">
-              <span className="mb-1 block text-xs text-fg-muted">Désinformer (60, unique)</span>
+              <span className="mb-1 block text-xs text-fg-muted">
+                Désinformer (coûte 60, une fois par partie)
+              </span>
               <select
                 value={disinfoTarget}
                 onChange={(e) => setDisinfoTarget(e.target.value)}
@@ -258,7 +267,7 @@ export function IntelPanel({
                 onChange={(e) => setDisinfoActor(e.target.value)}
                 className="cursor-pointer rounded-md border border-edge bg-surface-2 px-2 py-1.5 text-xs outline-none focus:border-indigo"
               >
-                <option value="">(acteur flou)</option>
+                <option value="">(coupable inconnu)</option>
                 {countries
                   .filter((c) => c !== disinfoTarget)
                   .map((c) => (
@@ -271,7 +280,7 @@ export function IntelPanel({
             <input
               value={disinfoNarrative}
               onChange={(e) => setDisinfoNarrative(e.target.value)}
-              placeholder="La fausse narration injectée"
+              placeholder="La fausse info qu'il recevra"
               className="min-w-48 flex-1 rounded-md border border-edge bg-surface-2 px-2 py-1.5 text-xs outline-none focus:border-indigo"
             />
             <button
@@ -318,7 +327,7 @@ export function IntelPanel({
                           : "neutral"
                     }
                   >
-                    {doc.verdict}
+                    {VERDICT_LABELS[doc.verdict] ?? doc.verdict}
                   </Pill>
                 )}
                 <span className="ml-auto font-mono tabular-nums text-fg-faint">

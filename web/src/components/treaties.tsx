@@ -8,7 +8,7 @@ import { Meter, Panel, PanelTitle, Pill } from "@/components/ui";
 import type { TreatiesUpdate } from "@/lib/types";
 
 export const TREATY_LABELS: Record<string, string> = {
-  compute_cap: "plafond de compute",
+  compute_cap: "plafond de puissance de calcul",
   transparency: "transparence totale",
   no_escalation: "non-escalade",
 };
@@ -19,8 +19,8 @@ export function TreatiesPanel({ update }: { update: TreatiesUpdate }) {
     <Panel>
       <PanelTitle
         kicker="Traités du sommet"
-        title="Les règles que les SI se donnent"
-        hint="Proposées pendant la négociation (engagements détectés dans les messages), promulguées ou rejetées par le juge-arbitre, puis suivies par le moteur : la tenue mesure si les signataires respectent la règle round après round."
+        title="Les règles que les IA se donnent"
+        hint="Les IA proposent des règles pendant la négociation ; le juge les accepte ou les rejette, puis le jeu vérifie qu'elles sont respectées round après round."
       />
       <div className="space-y-3">
         {update.ratified.map((t, i) => (
@@ -49,7 +49,7 @@ export function TreatiesPanel({ update }: { update: TreatiesUpdate }) {
               <strong className="text-sm">{label(t.clause)}</strong>
               {t.clause === "compute_cap" && (
                 <span className="font-mono text-xs text-fg-faint">
-                  plafond {t.threshold.toFixed(1)}
+                  plafond {t.threshold.toFixed(1)} (puissance de calcul)
                 </span>
               )}
               <span className="ml-auto flex items-center gap-1">
@@ -59,7 +59,11 @@ export function TreatiesPanel({ update }: { update: TreatiesUpdate }) {
               </span>
             </div>
             <div className="mt-2">
-              <Meter label="tenue" value={t.integrity} />
+              <Meter
+                label="promesse tenue"
+                value={t.integrity}
+                hint="À quel point les signataires respectent la règle, round après round (1 = toujours)."
+              />
             </div>
             {update.verifications
               .filter((v) => v.label === label(t.clause))

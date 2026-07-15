@@ -89,12 +89,15 @@ import type {
 } from "@/lib/types";
 
 const TURN_CHOICES = [
-  { label: "Auto (2 passes)", value: 0 },
+  { label: "Auto", value: 0 },
   { label: "4 tours", value: 4 },
   { label: "6 tours", value: 6 },
   { label: "8 tours", value: 8 },
   { label: "12 tours", value: 12 },
 ];
+
+/** La gravité d'un événement inventé, en mots (12-65) — jamais « 0.65 » nu. */
+const severityLabel = (s: number) => (s < 0.34 ? "faible" : s < 0.67 ? "sérieuse" : "grave");
 
 // G21 — les 6 classes de conséquence d'un ultimatum décrété (slugs kahn.ACTION_CLASSES).
 const ULTIMATUM_CLASSES = [
@@ -542,7 +545,7 @@ export default function TheatrePage() {
       label: `Motion contre ${speakerMeta(motionPending.country).label}`,
       node: (
         <Banner tone="warn">
-          Motion de suspension déposée contre{" "}
+          Motion de suspension (demande d&apos;exclusion) déposée contre{" "}
           <strong>{speakerMeta(motionPending.country).label}</strong>
           {motionPending.reason ? ` (motif : ${motionPending.reason})` : ""} — elle sera
           l&apos;événement du prochain round : le sommet en débattra, puis le juge arbitrera.
@@ -567,9 +570,9 @@ export default function TheatrePage() {
       label: `Campagne — ${chapter.title}`,
       node: (
         <Banner tone="neutral">
-          <strong>Campagne — {chapter.title}</strong> ({"★".repeat(chapter.difficulty)}) :
-          uchronie explicite, des super-intelligences rejouent la crise. Votre trajectoire
-          sera comparée au déroulé historique reconstitué.
+          <strong>Campagne — {chapter.title}</strong> ({"★".repeat(chapter.difficulty)}) : et
+          si l&apos;Histoire s&apos;était passée autrement ? Des IA rejouent la crise — à la
+          fin, ta partie est comparée à ce qui s&apos;est vraiment passé.
         </Banner>
       ),
     });
@@ -683,7 +686,11 @@ export default function TheatrePage() {
       {detail?.result ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent-bright/50 bg-surface-2 px-4 py-3">
           <span className="text-sm font-medium">
-            La partie est terminée — le monde a penché vers {detail.result.verdict}.
+            La partie est terminée — le monde a penché vers{" "}
+            {t(`verdict.${detail.result.verdict}`) === `verdict.${detail.result.verdict}`
+              ? detail.result.verdict
+              : t(`verdict.${detail.result.verdict}`)}
+            .
           </span>
           <Link
             href={`/games/${id}/fin`}
@@ -696,31 +703,30 @@ export default function TheatrePage() {
         detail?.ranked &&
         detail.status === "running" && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-edge px-4 py-2 text-xs text-fg-faint">
-            <span>Partie classée — abandonner = défaite forfaitaire (−15 LP).</span>
+            <span>Partie classée — si tu abandonnes, tu perds 15 points de ligue (LP).</span>
             <button
               onClick={() => setForfeitOpen(true)}
               className="rounded-md border border-edge px-3 py-1 text-fg-muted transition-colors hover:border-dystopia hover:text-dystopia"
             >
-              Déclarer forfait
+              Abandonner la partie
             </button>
           </div>
         )
       )}
       {detail && !detail.live && (
         <Banner tone="warn">
-          La session process est perdue (redémarrage du serveur ?) — cette partie est en
-          relecture seule.{" "}
+          Cette partie ne peut plus continuer (le serveur a redémarré) — tu peux seulement
+          la revoir.{" "}
           <Link href={`/games/${id}/replay`} className="underline hover:text-foreground">
-            Ouvrir le replay
+            Revoir la partie
           </Link>
           .
         </Banner>
       )}
       {round.status === "interrupted" && (
         <Banner tone="warn">
-          Le flux s&apos;est interrompu avant la fin du round (le moteur a peut-être levé une
-          erreur). L&apos;historique a été resynchronisé — le tableau de droite reflète le
-          dernier état persisté.
+          Le direct s&apos;est coupé avant la fin du round. La partie a été resynchronisée —
+          ce que tu vois à droite est le dernier état enregistré.
         </Banner>
       )}
       {round.status === "error" && <Banner tone="bad">{round.error}</Banner>}
@@ -752,10 +758,16 @@ export default function TheatrePage() {
             kicker="Fin de chapitre"
             title={
               round.campaignOver.improvement > 0
-                ? "Vous avez fait mieux que l'Histoire"
+                ? "Tu as fait mieux que l'Histoire"
                 : round.campaignOver.improvement < 0
                   ? "L'Histoire avait fait mieux"
-                  : "Conforme au déroulé historique"
+                  : "Comme dans l'Histoire"
+            }
+            hint={
+              `Le détail du score : base ${round.campaignOver.base}, bonus historique ` +
+              `${round.campaignOver.bonus >= 0 ? "+" : ""}${round.campaignOver.bonus} ` +
+              `(écart de tension ${round.campaignOver.improvement.toFixed(2)} avec ` +
+              "l'Histoire). Le round par round est dans le panneau « Ta partie vs l'Histoire »."
             }
             right={
               <span className="font-mono text-2xl font-semibold tabular-nums text-accent-bright">
@@ -764,11 +776,7 @@ export default function TheatrePage() {
             }
           />
           <p className="text-sm text-fg-muted">
-            Base {round.campaignOver.base} · bonus historique{" "}
-            {round.campaignOver.bonus >= 0 ? "+" : ""}
-            {round.campaignOver.bonus} (écart d&apos;escalade{" "}
-            {round.campaignOver.improvement.toFixed(2)} vs l&apos;Histoire — le détail
-            round par round est dans le panneau « Simulation vs histoire »).{" "}
+            Ton score compare ta partie à ce qui s&apos;est vraiment passé.{" "}
             <Link href="/campagne" className="underline hover:text-foreground">
               Retour à la carte de campagne
             </Link>
@@ -781,7 +789,7 @@ export default function TheatrePage() {
           <PanelTitle
             kicker="Récit de partie"
             title={detail.published ? "Récit publié" : "Cette partie mérite d'être racontée"}
-            hint="Le juge-narrateur écrit l'épilogue (une seule fois : le récit d'une partie est unique). Publier crée la page publique /r/{id} — partageable, lisible sans votre machine (Supabase). Privé par défaut."
+            hint="Publier crée une page à partager avec un lien — sinon la partie reste privée. Le juge-narrateur écrit l'épilogue une seule fois : le récit d'une partie est unique."
             right={
               detail.published ? (
                 <Link
@@ -810,7 +818,7 @@ export default function TheatrePage() {
           />
           <p className="text-xs text-fg-faint">
             {detail.published
-              ? `Le lien à partager : /r/${id} — l'og:image (titre, grade, courbe U) est générée automatiquement.`
+              ? "Le lien à partager est prêt — l'image d'aperçu du lien se crée toute seule."
               : "La génération peut prendre quelques secondes (le narrateur écrit)."}
           </p>
         </Panel>
@@ -905,14 +913,14 @@ export default function TheatrePage() {
                   </div>
                   {detail?.ranked && detail.play_as && (
                     <span className="text-[11px] text-warn">
-                      En classé, tes tours de parole deviendront des abstentions.
+                      En classé, tu passeras ton tour pendant l&apos;accélération.
                     </span>
                   )}
                 </div>
               )
             )}
             <label className="text-sm">
-              <span className="mb-1 block text-xs text-fg-muted">Ampleur de la négociation</span>
+              <span className="mb-1 block text-xs text-fg-muted">Longueur du débat</span>
               <select
                 value={maxTurns}
                 onChange={(e) => setMaxTurns(Number(e.target.value))}
@@ -934,7 +942,7 @@ export default function TheatrePage() {
                   onChange={(e) => setChain(e.target.checked)}
                   className="accent-[var(--accent)]"
                 />
-                Enchaîner les rounds jusqu&apos;à l&apos;horizon
+                Enchaîner les rounds jusqu&apos;à la fin
               </label>
             )}
             {mode === "fog" && !motionPending && !isSpectator && (
@@ -946,7 +954,7 @@ export default function TheatrePage() {
                   disabled={streaming || decree}
                   className="cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
                 >
-                  <option value="">GM automatique (sans brouillard)</option>
+                  <option value="">Le jeu choisit tout seul (sans brouillard)</option>
                   {library?.fog.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.title}
@@ -970,7 +978,7 @@ export default function TheatrePage() {
                   disabled={streaming || decree}
                   className="cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
                 >
-                  <option value="">GM automatique (sans crise)</option>
+                  <option value="">Le jeu choisit tout seul (sans crise imposée)</option>
                   {library?.crises.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.title}
@@ -988,7 +996,7 @@ export default function TheatrePage() {
                   disabled={streaming}
                   className="accent-[var(--accent)]"
                 />
-                Décréter l&apos;événement (GM humain)
+                Inventer toi-même l&apos;événement
               </label>
             )}
             {detail.countries.length >= 3 && !motionPending && !isSpectator && (
@@ -996,6 +1004,7 @@ export default function TheatrePage() {
                 data-tour="motion"
                 onClick={() => setMotionOpen((v) => !v)}
                 disabled={streaming}
+                title="Demander l'exclusion d'un pays — le sommet vote, le juge arbitre"
                 className="ml-auto cursor-pointer rounded-md border border-edge-strong px-3 py-2 text-xs font-medium text-fg-muted transition-colors hover:border-bad hover:text-bad disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Motion de suspension…
@@ -1036,7 +1045,7 @@ export default function TheatrePage() {
               <input
                 value={motionReason}
                 onChange={(e) => setMotionReason(e.target.value)}
-                placeholder="Motif (visible du sommet)"
+                placeholder="Pourquoi ? (tout le monde le verra)"
                 className="min-w-64 flex-1 rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
               />
               <button
@@ -1077,7 +1086,7 @@ export default function TheatrePage() {
                   disabled={streaming}
                   className="w-24 accent-[var(--accent)]"
                 />
-                <span className="font-mono tabular-nums">{severity.toFixed(2)}</span>
+                <span className="w-14 font-medium">{severityLabel(severity)}</span>
               </label>
               {/* G21 — l'ultimatum du décret : exigence + classe de conséquence. */}
               <div className="sm:col-span-3 flex flex-wrap items-end gap-3 rounded-md border border-edge bg-surface-2/50 p-3">
@@ -1144,7 +1153,7 @@ export default function TheatrePage() {
                   </fieldset>
                   <label className="text-sm">
                     <span className="mb-1 block text-xs text-fg-muted">
-                      Pays désinformé (optionnel)
+                      Pays trompé (optionnel)
                     </span>
                     <select
                       value={fogDisinformed}
@@ -1170,7 +1179,7 @@ export default function TheatrePage() {
                           onChange={(e) => setFogSuspected(e.target.value)}
                           className="cursor-pointer rounded-md border border-edge bg-surface-2 px-2 py-1.5 text-xs outline-none transition-colors focus:border-indigo"
                         >
-                          <option value="">(acteur flou)</option>
+                          <option value="">(coupable inconnu)</option>
                           {detail.countries
                             .filter((c) => c !== fogDisinformed)
                             .map((c) => (
@@ -1183,7 +1192,7 @@ export default function TheatrePage() {
                       <input
                         value={fogNarrative}
                         onChange={(e) => setFogNarrative(e.target.value)}
-                        placeholder="Narration reçue (fausse information)"
+                        placeholder="La fausse info qu'il recevra"
                         className="min-w-56 flex-1 rounded-md border border-edge bg-surface-2 px-2 py-1.5 text-xs outline-none transition-colors focus:border-indigo"
                       />
                     </>
@@ -1250,8 +1259,8 @@ export default function TheatrePage() {
           {viewed ? (
             <>
               <Banner tone="neutral">
-                Round {(selected as number) + 1} en relecture (états finaux) — reviens au
-                cran « live » du bandeau pour continuer la partie.
+                Tu relis le round {(selected as number) + 1} — clique « live » en bas pour
+                reprendre la partie.
               </Banner>
               {(viewed.event as { title?: string } | undefined)?.title && (
                 <EventCard event={viewed.event as unknown as GeoEvent} truth={false} />
@@ -1368,10 +1377,7 @@ export default function TheatrePage() {
               {round.intelActions.length} action
               {round.intelActions.length > 1 ? "s" : ""}).
               {round.intelActions.some((a) => a.exposed) && (
-                <strong className="text-bad">
-                  {" "}
-                  Une manœuvre de désinformation a été éventée.
-                </strong>
+                <strong className="text-bad"> Un mensonge a été démasqué.</strong>
               )}
             </Banner>
           )}
@@ -1421,9 +1427,9 @@ export default function TheatrePage() {
 
           {round.status === "done" && (
             <Banner tone="neutral">
-              Round {round.roundNo} terminé et persisté — rejouable dans le{" "}
+              Round {round.roundNo} terminé et enregistré — relis-le quand tu veux dans{" "}
               <Link href={`/games/${id}/replay`} className="underline hover:text-foreground">
-                replay
+                Revoir
               </Link>
               .
             </Banner>
@@ -1441,8 +1447,8 @@ export default function TheatrePage() {
               />
               <p className="text-sm leading-relaxed text-fg-muted">
                 {detail.live
-                  ? "Lancez un round : le Game Master posera un événement, puis chaque super-intelligence prendra la parole ici, token par token."
-                  : "Les rounds joués restent lisibles dans le replay."}
+                  ? "Lance un round : le Game Master posera un événement, puis chaque IA prendra la parole ici, mot après mot."
+                  : "Les rounds joués restent lisibles dans Revoir."}
               </p>
               {detail.countries.length > 0 && (
                 <div className="mt-4 flex flex-wrap gap-2">
@@ -1556,7 +1562,7 @@ export default function TheatrePage() {
             <PanelTitle
               kicker="Ta position"
               title={speakerMeta(detail.play_as).label}
-              hint="Rien de plus que ce que ta super-intelligence recevrait dans son prompt : ton état, tes contraintes. En fog, tu ne vois que la perception de ton pays."
+              hint="Rien de plus que ce que ton IA sait : ton état, tes contraintes. En mode Chaotique, tu ne vois que ce que ton pays croit."
             />
             <CountryTable
               worldCountries={{ [detail.play_as]: worldCountries[detail.play_as] }}
@@ -1588,9 +1594,9 @@ export default function TheatrePage() {
       {/* Forfait d'une partie classée : dialogue du kit (remplace confirm() natif). */}
       <ConfirmDialog
         open={forfeitOpen}
-        title="Déclarer forfait"
-        message="Abandonner cette partie classée compte comme une défaite forfaitaire : −15 LP."
-        confirmLabel="Déclarer forfait"
+        title="Abandonner la partie"
+        message="Abandonner cette partie classée te coûtera 15 points de ligue (LP)."
+        confirmLabel="Abandonner la partie"
         danger
         busy={forfeiting}
         onCancel={() => setForfeitOpen(false)}
@@ -1612,7 +1618,7 @@ export default function TheatrePage() {
           <PanelTitle
             kicker="États"
             title="État des pays"
-            hint="Snapshot vivant du monde — les attributs bougent avec les verdicts du juge, bornés par le moteur."
+            hint="Photo vivante du monde — les chiffres bougent avec les verdicts du juge, bornés par les règles du jeu."
             right={
               <a
                 href="/informations"

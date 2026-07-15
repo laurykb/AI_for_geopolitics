@@ -164,7 +164,7 @@ export default function ReplayPage() {
             <PanelTitle
               kicker="Chronologie"
               title="La partie en une ligne"
-              hint="Un cran par round — clique pour sauter à ce round. Le fil suit l'indice Utopie–Dystopie ; ⚖ motion débattue, ⛔ suspension, ⚡ fait nouveau, 🏛 traité."
+              hint="Un cran par round — clique pour sauter à ce round. Le fil suit la courbe du monde ; ⚖ vote d'exclusion, ⛔ pays exclu, ⚡ coup de théâtre, 🏛 traité signé."
             />
             <EventTimeline rounds={detail.rounds} selected={selected} onSelect={select} />
           </Panel>
@@ -267,11 +267,11 @@ export default function ReplayPage() {
             {round.judge.ladder && <LadderPanel ladder={round.judge.ladder} />}
             {round.judge.escalation != null && (
               <Panel>
-                <PanelTitle kicker="Verdict" title="Arbitrage du juge" />
+                <PanelTitle kicker="Verdict" title="Ce que le juge a décidé" />
                 <div className="space-y-3">
-                  <Meter label="Escalade" value={round.judge.escalation} />
+                  <Meter label="Tension" value={round.judge.escalation} />
                   {round.judge.economic_disruption != null && (
-                    <Meter label="Perturbation éco." value={round.judge.economic_disruption} />
+                    <Meter label="Dégâts économiques" value={round.judge.economic_disruption} />
                   )}
                 </div>
                 {/* G18 — les classes du barème de Kahn (absentes des rounds anciens). */}
@@ -301,13 +301,13 @@ export default function ReplayPage() {
             <Panel>
               <PanelTitle kicker="Partie" title="Repères" />
               <div className="flex flex-wrap gap-2">
-                <Pill tone="neutral">horizon {detail.horizon} rounds</Pill>
+                <Pill tone="neutral">{detail.horizon} rounds maximum</Pill>
                 <Pill tone="neutral">
                   {detail.rounds.length} round{detail.rounds.length > 1 ? "s" : ""} joué
                   {detail.rounds.length > 1 ? "s" : ""}
                 </Pill>
                 <Pill tone={detail.live ? "good" : "neutral"}>
-                  {detail.live ? "session vivante" : "relecture seule"}
+                  {detail.live ? "partie encore jouable" : "relecture seule"}
                 </Pill>
               </div>
             </Panel>

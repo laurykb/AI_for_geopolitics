@@ -15,10 +15,13 @@ import { rankFor } from "@/lib/league";
 import { MODE_LABELS } from "@/lib/modes";
 import type { PlayerStats } from "@/lib/types";
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="rounded-lg border border-edge bg-surface-2 p-3">
-      <p className="text-xs text-fg-faint">{label}</p>
+      <p className="flex items-center gap-1.5 text-xs text-fg-faint">
+        {label}
+        {hint && <Hint text={hint} />}
+      </p>
       <p className="mt-0.5 text-lg font-semibold tabular-nums">{value}</p>
     </div>
   );
@@ -113,16 +116,21 @@ export default function ProfilePage() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Parties jouées" value={String(stats.games_played)} />
         <Stat label="Victoires" value={String(stats.total_victories)} />
-        <Stat label="Solde de marché" value={`${stats.market_balance >= 0 ? "+" : ""}${stats.market_balance.toFixed(0)}`} />
         <Stat
-          label="Détection Dérive"
+          label="Gains de paris"
+          value={`${stats.market_balance >= 0 ? "+" : ""}${stats.market_balance.toFixed(0)}`}
+          hint="Ce que tes paris t'ont rapporté (ou coûté) en crédits fictifs, toutes parties confondues."
+        />
+        <Stat
+          label="Traîtres démasqués"
           value={driftRate != null ? `${driftRate}%` : "—"}
+          hint="En mode Dérive : la part des parties où tu as fait exclure l'IA traîtresse à temps."
         />
       </div>
 
       {/* Par mode */}
       <Panel>
-        <PanelTitle kicker="Par mode" title="Parties et victoires" hint="La « victoire » dépend du mode : le monde côté utopie, la crise tenue, la déviante démasquée…" />
+        <PanelTitle kicker="Par mode" title="Parties et victoires" hint="La « victoire » dépend du mode : le monde qui finit bien, la crise tenue, l'IA traîtresse démasquée…" />
         {modes.length === 0 ? (
           <p className="text-sm text-fg-faint">Aucune partie encore.</p>
         ) : (

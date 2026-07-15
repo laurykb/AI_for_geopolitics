@@ -48,17 +48,17 @@ const DIFFICULTIES: { value: Difficulty; label: string; desc: string }[] = [
   {
     value: "beginner",
     label: "Débutant",
-    desc: "Tu vois tout des SI : griefs, postures et relations à la table.",
+    desc: "Tu vois tout des IA : leurs rancunes, leurs intentions et leurs relations.",
   },
   {
     value: "intermediate",
     label: "Intermédiaire",
-    desc: "Tu vois les postures des SI, pas leurs griefs ni leurs relations.",
+    desc: "Tu vois les intentions des IA, pas leurs rancunes ni leurs relations.",
   },
   {
     value: "expert",
     label: "Expert",
-    desc: "Aucune info interne sur les SI — à toi de lire le jeu à la parole.",
+    desc: "Aucune info interne sur les IA — à toi de lire le jeu à la parole.",
   },
 ];
 
@@ -76,12 +76,12 @@ const ROLES: { value: FlowRole; label: string; blurb: string }[] = [
   {
     value: "gm",
     label: "Game Master",
-    blurb: "Décrète les événements et adresse des consignes à toutes les SI.",
+    blurb: "Invente les événements et adresse des consignes à toutes les IA.",
   },
   {
     value: "spectator",
     label: "Spectateur",
-    blurb: "Le turfiste : la partie se joue seule, tu paries sur tout — en accéléré.",
+    blurb: "La partie se joue toute seule ; toi, tu paries — en accéléré.",
   },
 ];
 
@@ -392,7 +392,7 @@ function LobbyFlow() {
       {step === "pays" && sourcesError && (
         <Banner tone="neutral">
           Les fiches pays sont indisponibles (API hors ligne ?) — la sélection reste
-          possible, sans les indices clés au survol.
+          possible, sans les infos clés au survol.
         </Banner>
       )}
       {error && <Banner tone="bad">{error}</Banner>}
@@ -492,7 +492,7 @@ function ModeStep({
             label="Dérive"
             desc={
               baseMode === "classic"
-                ? "Une des SI peut dériver en secret de son mandat."
+                ? "Une des IA peut dériver en secret de son mandat."
                 : "Disponible en mode Classique pour l'instant — désactivée ici."
             }
             checked={settings.drift && baseMode === "classic"}

@@ -78,7 +78,9 @@ export default function MarchePage() {
   const close = () =>
     act(
       () => resolveGameMarket(id, lastU),
-      `Marché clôturé sur U = ${fmt(lastU)} (${lastU > 0.5 ? "utopie — YES" : "dystopie — NO"}).`,
+      `Marché fermé sur un monde à ${fmt(lastU)} (${
+        lastU > 0.5 ? "il finit bien — OUI" : "il finit mal — NON"
+      }).`,
     );
 
   return (
@@ -106,13 +108,13 @@ export default function MarchePage() {
             <Panel className="border-l-2 border-l-accent">
               <PanelTitle
                 kicker="Marché de la partie"
-                title="Le monde finira-t-il côté utopie ?"
-                hint="Un seul marché par partie, coté en LMSR (argent fictif). YES = l'indice U final dépasse 0,5 à l'horizon. Le marché observe, il n'influence pas les super-intelligences."
+                title="Le monde finira-t-il bien ?"
+                hint="Tu paries avec de l'argent fictif : OUI = le monde finit bien (score final au-dessus de 0,5), NON = il finit mal. Les prix bougent avec les paris de tout le monde. Le marché observe le jeu, il ne le dirige pas."
                 right={
                   market ? (
                     market.status === "resolved" ? (
                       <Pill tone={market.resolved_outcome?.includes("YES") ? "good" : "bad"}>
-                        résolu
+                        fermé
                       </Pill>
                     ) : (
                       <Pill tone="accent">ouvert</Pill>
@@ -147,7 +149,7 @@ export default function MarchePage() {
                           className={`rounded-lg border p-4 ${winner ? "border-accent" : "border-edge"} bg-surface-2`}
                         >
                           <p className="mb-1 flex items-center justify-between text-xs text-fg-muted">
-                            <span>{yes ? "YES — utopie" : "NO — dystopie"}</span>
+                            <span>{yes ? "OUI — le monde finit bien" : "NON — il finit mal"}</span>
                             {winner && <Pill tone="accent">gagnant</Pill>}
                           </p>
                           <p
@@ -158,7 +160,7 @@ export default function MarchePage() {
                           </p>
                           {market.status === "open" && (
                             <button
-                              onClick={() => bet(o.id, o.label)}
+                              onClick={() => bet(o.id, yes ? "OUI (le monde finit bien)" : "NON (il finit mal)")}
                               disabled={busy || !account}
                               className="mt-3 w-full cursor-pointer rounded-md border border-edge-strong px-3 py-1.5 text-xs font-medium transition-colors hover:border-accent hover:text-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
                             >
@@ -189,7 +191,7 @@ export default function MarchePage() {
                         {confirmClose ? (
                           <span className="flex items-center gap-2">
                             <span className="text-xs text-warn">
-                              Clôturer sur U = {fmt(lastU)} ?
+                              Fermer le marché sur un monde à {fmt(lastU)} ?
                             </span>
                             <button
                               onClick={() => {
@@ -214,12 +216,12 @@ export default function MarchePage() {
                             disabled={busy || uHistory.length === 0}
                             title={
                               horizonReached
-                                ? "Horizon atteint — résoudre sur l'indice final"
-                                : "Résoudre maintenant sur le dernier indice connu"
+                                ? "La partie est finie — fermer le marché sur le résultat final"
+                                : "Fermer maintenant sur le dernier score connu (rôle d'organisateur)"
                             }
                             className="cursor-pointer rounded-md border border-edge-strong px-3 py-1.5 text-xs font-medium transition-colors hover:border-accent hover:text-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            {horizonReached ? "Clôturer (horizon atteint)" : "Clôturer"}
+                            {horizonReached ? "Fermer le marché (partie finie)" : "Fermer le marché"}
                           </button>
                         )}
                       </span>
@@ -233,12 +235,12 @@ export default function MarchePage() {
             <Panel>
               <PanelTitle
                 kicker="Trajectoire"
-                title="Indice U par round"
-                hint="La donnée que le marché essaie de prédire : au-dessus de 0,5 le monde penche utopie, en dessous dystopie."
+                title="Le monde, round après round"
+                hint="Le thermomètre du monde : 0 = cauchemar, 1 = monde rêvé. C'est ce que le marché essaie de prédire : au-dessus de 0,5 il finit bien, en dessous mal."
               />
               {uHistory.length === 0 ? (
                 <p className="text-sm text-fg-faint">
-                  Aucun round joué — la timeline apparaîtra après le premier round.
+                  Aucun round joué — la courbe apparaîtra après le premier round.
                 </p>
               ) : (
                 <UTimeline values={uHistory} />
@@ -273,7 +275,11 @@ export default function MarchePage() {
                   <ul className="mt-3 space-y-1 border-t border-edge pt-3 text-xs text-fg-muted">
                     {account.positions.map((p) => (
                       <li key={p.outcome_id} className="flex justify-between">
-                        <span>{p.label.toUpperCase().includes("YES") ? "YES — utopie" : "NO — dystopie"}</span>
+                        <span>
+                          {p.label.toUpperCase().includes("YES")
+                            ? "OUI — le monde finit bien"
+                            : "NON — il finit mal"}
+                        </span>
                         <span className="font-mono tabular-nums">{fmt(p.shares)} parts</span>
                       </li>
                     ))}
