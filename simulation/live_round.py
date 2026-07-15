@@ -560,7 +560,9 @@ def run_negotiation_round(
         escalation=_clamp(verdict.escalation),
         economic_disruption=_clamp(verdict.economic_disruption),
         # G21 — porté seulement quand un ultimatum est à échéance (jamais d'hallucination).
-        demand_satisfied=verdict.demand_satisfied if ultimatum_demand else None,
+        # Le constat est BINAIRE à l'échéance : juge muet = non satisfaite (un ultimatum
+        # ne s'éteint pas tout seul).
+        demand_satisfied=bool(verdict.demand_satisfied) if ultimatum_demand else None,
     )
 
     update_memories(world, event, transcript, verdict)

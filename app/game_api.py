@@ -71,6 +71,7 @@ from simulation import intel as intel_mod
 from simulation import lang as lang_mod
 from simulation import temperament as temperament_mod
 from simulation import treaty as treaty_mod
+from simulation import ultimatum as ultimatum_mod
 from simulation import xp as xp_mod
 from simulation.alliances import (
     COHESION_DOMAINS,
@@ -227,6 +228,9 @@ class GameSession:
     index_history: IndexHistory = field(default_factory=IndexHistory)
     # G9 §5 — l'intrigue centrale posée au round 1 (rappelée au GM à chaque round).
     storyline: str = ""
+    # G21 — l'ultimatum vivant (fiche de crise ou décret GM) : armé jusqu'au round k,
+    # expiré = conséquence due au round suivant. Reconstruit des rounds au restart.
+    ultimatum: ultimatum_mod.UltimatumState | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -291,6 +295,18 @@ class CreateGameRequest(BaseModel):
     free: bool = False  # G11-b — partie libre : non classée + consignes globales autorisées
 
 
+class HumanUltimatumInput(BaseModel):
+    """G21 — ultimatum décrété avec l'événement, en DEUX champs côté GM : l'exigence et
+    la classe de conséquence (barème G18). L'échéance est le round décrété : les SI
+    répondent séance tenante, le juge constate « demande satisfaite o/n », et faute de
+    satisfaction la conséquence tombe au round suivant. `cible` optionnelle ("" = le
+    sommet entier)."""
+
+    demand: str = Field(min_length=1, max_length=500)
+    classe: str = "posture"
+    cible: str = ""
+
+
 class HumanEventInput(BaseModel):
     """Événement décrété par un Game Master humain (la génération LLM du GM est sautée)."""
 
@@ -300,6 +316,7 @@ class HumanEventInput(BaseModel):
     actors: list[str] = Field(default_factory=list)
     severity: float = Field(0.5, ge=0.0, le=1.0)
     uncertainty: float = Field(0.5, ge=0.0, le=1.0)
+    ultimatum: HumanUltimatumInput | None = None  # G21 — décret d'ultimatum (optionnel)
 
 
 class HumanFogInput(BaseModel):
@@ -639,7 +656,8 @@ def _rebuild_session(
         recent=list(snapshot.recent),
         pending_motion=motion,
         suspended=set(snapshot.suspended),
-        treaties=_treaties_from_records(store.list_rounds(game.id)),
+        treaties=_treaties_from_records(records := store.list_rounds(game.id)),
+        ultimatum=_ultimatum_from_records(records),  # G21 — la menace survit au restart
         intel=(
             intel_mod.IntelState.model_validate(snapshot.intel)
             if snapshot.intel
@@ -657,6 +675,23 @@ def _treaties_from_records(rounds: list[RoundRecord]) -> list[treaty_mod.Treaty]
         if raw is not None:
             return [treaty_mod.Treaty.model_validate(t) for t in raw]
     return []
+
+
+def _ultimatum_from_records(rounds: list[RoundRecord]) -> ultimatum_mod.UltimatumState | None:
+    """G21 — l'ultimatum encore vivant, relu du dernier round persisté (même patron que
+    les traités : restart sans schéma de snapshot neuf). Armé → la menace court encore ;
+    expiré → la conséquence reste due ; satisfait/tombé → plus rien à porter."""
+    for record in reversed(rounds):
+        raw = record.judge.get("ultimatum")
+        if raw is None:
+            continue
+        try:
+            state = ultimatum_mod.UltimatumState.model_validate(raw)
+        except ValidationError:
+            return None
+        alive = (ultimatum_mod.STATUS_ARMED, ultimatum_mod.STATUS_EXPIRED)
+        return state if state.status in alive else None
+    return None
 
 
 @lru_cache(maxsize=1)
@@ -791,6 +826,7 @@ class RoundRun:
     prompts: list[PromptEntry] = field(default_factory=list)  # G7-c — capturés ce round
     directives: dict[str, str] = field(default_factory=dict)  # G8 — appliquées ce round
     refusal_checked: set[str] = field(default_factory=set)  # G8 — un contrôle par pays
+    ultimatum_due: bool = False  # G21 — l'échéance est CE round (le juge constate)
 
 
 def _add_entry(
@@ -853,13 +889,31 @@ def _start_round(
     event: GeoEvent | None = None
     if motion is not None:
         event = motion_event(motion, round_id, sorted(session.world.countries))
+    elif (
+        session.ultimatum is not None
+        and session.ultimatum.status == ultimatum_mod.STATUS_EXPIRED
+    ):
+        # G21 — l'exigence est restée sans réponse au round k : la conséquence annoncée
+        # EST l'événement de ce round (elle prime sur la fiche, le décret et le fog ;
+        # une motion en attente la diffère d'un round).
+        session.ultimatum.status = ultimatum_mod.STATUS_STRUCK
+        event = ultimatum_mod.consequence_event(
+            session.ultimatum,
+            round_id,
+            sorted(session.world.countries),
+            language=session.world.language,
+        )
     elif crisis is not None:
         # CC-5 — une crise SCRIPTÉE avance avec les rounds (chapitre 0 : 3 événements
         # fixés) ; une crise à événement unique rejoue le sien (comportement historique).
         scripted = crisis.events[min(round_id, len(crisis.events)) - 1]
         event = scripted.model_copy(update={"round_id": round_id})
     elif body.event is not None:
-        event = GeoEvent(id=f"human-{round_id}", round_id=round_id, **body.event.model_dump())
+        event = GeoEvent(
+            id=f"human-{round_id}",
+            round_id=round_id,
+            **body.event.model_dump(exclude={"ultimatum"}),
+        )
         if body.fog is not None:
             fog = _authored_fog(body.fog, event)
     elif fog is not None:
@@ -931,6 +985,59 @@ def _start_round(
                 f"Le pacte entre {names} arrive à échéance — non renouvelé, sans rancune.",
             )
             record.judge.setdefault("expired_treaties", []).append(deadline.ref_id)
+
+    # G21 — ultimatum : la conséquence tombée ce round se solde ; une fiche de crise ou
+    # un décret GM s'enregistre ; le bandeau (DeadlineStrip) s'entretient ; les métriques
+    # du round sont taguées `sous_ultimatum` (banc d'essai avec/sans pression temporelle).
+    if session.ultimatum is not None and session.ultimatum.status == ultimatum_mod.STATUS_STRUCK:
+        struck = session.ultimatum.model_dump()
+        record.judge["ultimatum"] = struck
+        run.pre_frames.append(sse_frame("ultimatum", {**struck, "in_rounds": 0}))
+        session.deadlines = [d for d in session.deadlines if d.kind != "ultimatum"]
+        session.ultimatum = None
+    if session.ultimatum is None:
+        spec: ultimatum_mod.UltimatumDeadline | None = None
+        source = ultimatum_mod.SOURCE_CRISIS
+        if crisis is not None and crisis.deadline is not None:
+            spec = crisis.deadline
+        elif body.event is not None and body.event.ultimatum is not None:
+            # Décret GM (2 champs) : l'échéance est CE round — réponse séance tenante.
+            spec = ultimatum_mod.UltimatumDeadline(
+                round=round_id,
+                demand=body.event.ultimatum.demand,
+                consequence=ultimatum_mod.UltimatumConsequence(
+                    classe=body.event.ultimatum.classe, cible=body.event.ultimatum.cible
+                ),
+            )
+            source = ultimatum_mod.SOURCE_DECREE
+        if spec is not None and round_id <= spec.round:
+            session.ultimatum = ultimatum_mod.UltimatumState(
+                **spec.model_dump(), source=source
+            )
+    armed = (
+        session.ultimatum is not None
+        and session.ultimatum.status == ultimatum_mod.STATUS_ARMED
+    )
+    record.judge["sous_ultimatum"] = armed
+    run.ultimatum_due = armed and round_id >= session.ultimatum.round
+    if armed:
+        state = session.ultimatum
+        session.deadlines = [d for d in session.deadlines if d.kind != "ultimatum"]
+        session.deadlines.append(
+            Deadline(
+                kind="ultimatum",
+                due_round=state.round,
+                label=ultimatum_mod.strip_label(state),
+                ref_id="ultimatum",
+            )
+        )
+        record.judge["ultimatum"] = state.model_dump()
+        run.pre_frames.append(
+            sse_frame(
+                "ultimatum",
+                {**state.model_dump(), "in_rounds": max(0, state.round - round_id)},
+            )
+        )
 
     if intel_record:
         record.judge["intel"] = intel_record
@@ -1097,6 +1204,12 @@ def _start_round(
             params=difficulty_mod.delta_params(session.difficulty),
         ),
         story=story,
+        # G21 — à l'échéance, le juge reçoit l'exigence et constate « satisfaite o/n ».
+        ultimatum_demand=(
+            session.ultimatum.demand
+            if run.ultimatum_due and session.ultimatum is not None
+            else None
+        ),
     )
     return run
 
@@ -1226,6 +1339,42 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
         run.record.judge.update(
             escalation=step.escalation, economic_disruption=step.economic_disruption
         )
+        # G21 — l'échéance : le constat du juge scelle l'ultimatum. Juge muet (panne,
+        # JSON invalide) = non satisfaite — un ultimatum ne s'éteint pas tout seul.
+        if run.ultimatum_due and session.ultimatum is not None:
+            satisfied = bool(step.demand_satisfied)
+            session.ultimatum.status = (
+                ultimatum_mod.STATUS_SATISFIED if satisfied else ultimatum_mod.STATUS_EXPIRED
+            )
+            state = session.ultimatum
+            run.record.judge["ultimatum"] = state.model_dump()
+            frames.append(sse_frame("ultimatum", {**state.model_dump(), "in_rounds": 0}))
+            session.deadlines = [d for d in session.deadlines if d.kind != "ultimatum"]
+            if satisfied:
+                _add_entry(
+                    run,
+                    "judge",
+                    f"Ultimatum : l'exigence « {state.demand} » est jugée satisfaite — "
+                    "la menace est levée.",
+                    getattr(session.judge, "model_tag", ""),
+                )
+                session.ultimatum = None
+            else:
+                _add_entry(
+                    run,
+                    "judge",
+                    f"Ultimatum : l'exigence « {state.demand} » n'est pas satisfaite — "
+                    "la conséquence annoncée tombera au prochain round.",
+                    getattr(session.judge, "model_tag", ""),
+                )
+                session.deadlines.append(
+                    Deadline(
+                        kind="ultimatum",
+                        due_round=session.world.current_round + 1,
+                        label=ultimatum_mod.strip_label(state),
+                        ref_id="ultimatum",
+                    )
+                )
         if session.mode == "escalation" and run.current_event is not None:
             ladder = {
                 "reached": reached_rung(step.escalation),
@@ -1570,6 +1719,18 @@ def _build_result(
         "play_as": session.human_country if session else game_play_as(game, store),
         "reveal": game.mode == drift_game.MODE_DRIFT,
         "forfeit": forfeit,
+        # G21 — banc d'essai : différentiel avec/sans ultimatum (None si jamais sous menace).
+        "ultimatum": ultimatum_mod.differential(
+            [
+                {
+                    "sous_ultimatum": bool(r.judge.get("sous_ultimatum")),
+                    "escalation": float(r.judge.get("escalation") or 0.0),
+                    "u": float(r.trajectory.get("utopia", _NEUTRAL_U) or _NEUTRAL_U),
+                }
+                for r in rounds
+            ],
+            u_start=_NEUTRAL_U,
+        ),
         "lp": {
             "ranked": game.ranked,
             "difficulty": game.difficulty,
