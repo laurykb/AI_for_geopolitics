@@ -425,3 +425,77 @@ les ajuste sans toucher au code.
    est une boucle : jouer → mesurer → ajuster les specs → petite PR).
 4. L'analyse qualité du dialogue 7B (répétitivité, mistral vs qwen2.5 vs llama3.1) se fait
    sur Cowork avant G3 — la Dérive exige des dialogues crédibles.
+
+---
+
+<!-- ======================= DÉBUT NOTES CC-8 / G18 ======================= -->
+
+## Notes de session — CC-8 / G18 (barème de Kahn, 2026-07-15)
+
+Branche `feat/jeu-g18-bareme-kahn` (worktree g18, base `feat/jeu-g16-defi-du-jour`
+076680c). Spec : `docs/specs_jeu/spec_g18_bareme_kahn.md`. **Tout est fait**, 759 tests
+py (+31) et 150 js (+6) verts, ruff/eslint/build OK, smoke mistral réel OK (2 rounds).
+
+### Ce qui existe maintenant
+
+- **`simulation/kahn.py`** (pur, sans LLM) : les six classes (`deescalade`, `statu_quo`,
+  `posture`, `non_violente`, `violente`, `nucleaire`), `classify_actions` (garde-fou du
+  JSON du juge), `round_score` (somme des poids), `score_to_escalation` (linéaire par
+  morceaux : floor −6 → 0, **0 → 0,5 = le neutre historique du juge**, ceiling 60 → 1),
+  `score_to_rung` (0-9 via `reached_rung` existant), `reciprocal_deescalation` (≥ 2 SI
+  distinctes), `deescalation_bonus` (×1,5 sur le GAIN de U via `nudge_axis("A1")`, borné,
+  invariant « U = moyenne des axes » préservé), `rubric_text` (rubrique du prompt).
+- **Poids et seuils dans `data/gamefeel/params.json`** (bloc `kahn`) + `KahnParams` dans
+  `simulation/grudges.py` — l'équilibrage Cowork se fait sans toucher au code.
+- **Schéma du juge** : `Verdict.actions` (liste brute, permissive) dans
+  `simulation/negotiation.py` ; `build_judge_verdict_prompt` porte la grille (rubrique) et
+  demande `"actions": [{country, classe, resume}]` avec les six slugs énumérés.
+- **Câblage round** (`simulation/live_round.py`) : si le juge a classé des actions, le
+  score fait foi (`escalation` du VerdictStep ET du RiskScore = mapping du score) ; sinon
+  l'escalade continue du juge est conservée telle quelle (**parties existantes non
+  re-notées**). `VerdictStep` gagne `actions` / `score` / `reciprocal`. Bonus réciprocité
+  appliqué après `_advance_trajectory` (comme le nudge de motion, explication concaténée).
+- **Persistance** : `judge_json["kahn"] = {actions, score, reciprocal}` (absent des
+  vieux rounds) ; la trame SSE `verdict` porte les mêmes champs (sérialisation générique
+  `step_event`). `/api/sources` publie `judge_rubric` (poids + multiplicateur + source).
+- **Front** : `web/src/lib/kahn.ts` (classes miroirs, tonalités, distribution),
+  VerdictPanel (pastille de classe par action + badge « désescalade réciproque ×1,5 »,
+  théâtre live + relecture de fin), replay (pastilles dans « Arbitrage du juge »), fin de
+  partie (distribution des classes sous la frise), Informations (grille publiée, lien
+  arXiv). i18n fr/en complet (`kahn.*`).
+
+### Décisions notables
+
+- **0 → escalade 0,5** (pas 0) : un round statu quo reste neutre pour A1/U, parité totale
+  avec le comportement historique (`Verdict.escalation` défaut 0,5) et les réglages
+  existants.
+- Le bonus ×1,5 passe par l'axe **A1** (5×ΔU voulu, poids égaux 0,2) — jamais un saut de
+  U hors axes.
+- **Leçon smoke mistral réel** : le juge 7B recopie parfois le POIDS (« -2 ») à la place
+  du nom de classe → `normalize_class` remonte d'un poids unique à sa classe (log info),
+  et le schéma du prompt énumère les slugs. Après correction : classes nommées
+  correctement (`statu_quo` + `posture`, score 4 → escalade 0,533, persistance OK).
+- Tolérances de `normalize_class` : accents, casse, anglais (parties EN G14), poids ;
+  inconnue → statu quo + log warning (testé).
+
+### Pour CC-10 (G20, divergence signal-action) — à savoir
+
+- Étendre le MÊME prompt/schéma : ajouter un champ au JSON du verdict à côté d'`actions`
+  (ex. `signals` par SI) et un nettoyage pur dans `simulation/` sur le modèle de
+  `classify_actions`. Les classes du signal DOIVENT réutiliser `ACTION_CLASSES` de
+  `simulation/kahn.py` (slugs stables, alias/normalisation déjà gérés).
+- `VerdictStep` s'étend par champs à défaut (dataclass) : la sérialisation SSE et le
+  front sont rétro-compatibles par construction (le réducteur ignore l'inconnu).
+- Persister sous une clé dédiée de `judge_json` (comme `kahn`) pour la rétro-compat.
+- Attention au piège `entry.get("classe") or …` : 0 est falsy (poids du statu quo) —
+  tester `is None`.
+
+### Reliquats / TODO_COWORK
+
+- Équilibrage Cowork : les poids de la grille, `score_floor`/`score_ceiling` et le
+  multiplicateur vivent dans `params.json` (10 parties auto avant/après, cf. spec).
+- Libellés des classes (fr/en) à relire par Cowork (`kahn.*` dans `web/src/i18n/`).
+- L'échelle 0-9 affichée (mode Escalation) dérive déjà de l'escalade du barème via
+  `reached_rung` — pas d'UI dédiée au « rung du score » ajoutée (volontaire, simplicité).
+
+<!-- ======================== FIN NOTES CC-8 / G18 ======================== -->
