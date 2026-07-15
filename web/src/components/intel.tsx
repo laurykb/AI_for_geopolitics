@@ -72,7 +72,7 @@ export function IntelBudget({ budget }: { budget: number }) {
   return (
     <span
       className="flex items-center gap-2 rounded-md border border-accent/40 px-2.5 py-1 text-xs"
-      title="Budget de renseignement (G4) : briefs 25 · vérification 15 · analyse 30 · désinformation 60. La retenue paie au score."
+      title="Budget de renseignement : briefs 25 · vérification 15 · analyse 30 · désinformation 60. La retenue paie au score."
     >
       <span className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
         <span

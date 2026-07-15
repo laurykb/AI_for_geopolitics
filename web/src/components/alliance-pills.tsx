@@ -27,7 +27,7 @@ export function AlliancePills({ alliances }: { alliances: AllianceAtTable[] }) {
         const codes = a.members.map((m) => speakerMeta(m).code).join(" ");
         const hint =
           `${a.members.map((m) => speakerMeta(m).label).join(", ")} — ` +
-          (a.effect ?? "n'influe pas sur le moteur (forum / bloc d'affinité)") +
+          (a.effect ?? "n'influe pas sur la partie (forum / bloc d'affinité)") +
           (a.url ? " · vérifier la source ↗" : "");
         const chip = (
           <span

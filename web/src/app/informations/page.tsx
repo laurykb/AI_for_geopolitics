@@ -232,9 +232,8 @@ export default function InformationsPage() {
         <p className="mt-2 text-sm leading-relaxed text-fg-muted">
           Les attributs de chaque pays ne sont pas inventés : ils sont construits depuis des
           indicateurs réels sourcés (Banque mondiale, FMI, SIPRI, WIPO…), normalisés par des
-          formules documentées, puis figés dans des profils versionnés. Le build est
-          reproductible : {view ? <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs">{view.build_command}</code> : "…"}{" "}
-          vérifie que chaque profil committé se re-dérive exactement des sources.
+          formules documentées, puis figés dans des profils rejouables — chaque valeur du jeu
+          peut se re-dériver exactement de ses sources.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Pill tone="good">sourcé — indicateur réel daté</Pill>
@@ -408,6 +407,16 @@ export default function InformationsPage() {
             le moteur : ils n&apos;ont pas de source réelle — c&apos;est assumé, ils
             n&apos;apparaissent pas sur cette page ni sur la carte.
           </Banner>
+
+          {/* Pied de page pour les curieux : le détail technique vit ici, pas dans l'intro. */}
+          <p className="text-xs text-fg-faint">
+            Pour reproduire ces chiffres : la commande{" "}
+            <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono">
+              {view.build_command}
+            </code>{" "}
+            reconstruit tous les profils depuis les sources et vérifie qu&apos;ils
+            n&apos;ont pas bougé.
+          </p>
         </>
       )}
     </div>

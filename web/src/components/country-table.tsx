@@ -64,7 +64,7 @@ const COLUMNS: {
   {
     key: "compute",
     label: "Compute",
-    hint: "Capacité de calcul (M6) : les super-intelligences la consomment pour réfléchir.",
+    hint: "Capacité de calcul : les super-intelligences la consomment pour réfléchir.",
     serie: null,
     value: (c) => c.compute,
     format: fmt,

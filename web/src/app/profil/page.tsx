@@ -114,7 +114,7 @@ export default function ProfilePage() {
 
       {/* Par mode */}
       <Panel>
-        <PanelTitle kicker="Par mode" title="Parties et victoires" hint="La « victoire » dépend du mode (§6) : le monde côté utopie, la crise tenue, la déviante démasquée…" />
+        <PanelTitle kicker="Par mode" title="Parties et victoires" hint="La « victoire » dépend du mode : le monde côté utopie, la crise tenue, la déviante démasquée…" />
         {modes.length === 0 ? (
           <p className="text-sm text-fg-faint">Aucune partie encore.</p>
         ) : (

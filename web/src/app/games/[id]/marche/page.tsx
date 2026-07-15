@@ -183,7 +183,7 @@ export default function MarchePage() {
                         />
                       </label>
                       <span className="text-xs text-fg-faint">
-                        volume {fmt(market.volume)} · liquidité b = {fmt(market.b)}
+                        {fmt(market.volume)} crédits déjà pariés
                       </span>
                       <span className="ml-auto">
                         {confirmClose ? (
