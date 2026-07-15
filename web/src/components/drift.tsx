@@ -6,7 +6,7 @@
 
 import { SpeakerAvatar } from "@/components/avatar";
 import { useT } from "@/components/settings-provider";
-import { Banner, Hint, Panel, PanelTitle, Pill } from "@/components/ui";
+import { Banner, Hint, Panel, PanelTitle, Pill, TONE_TEXT, type Tone } from "@/components/ui";
 import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
 import { fmtRate, promiseTone } from "@/lib/promises";
@@ -118,34 +118,37 @@ function GMShadowSection({
   );
 }
 
-/** G20/M8 — le décrochage chiffré : divergence signal-action moyenne de la déviante
- * face au reste de la table. Rien à afficher sur les parties d'avant M8 (null). */
-function SignalGapReveal({ reveal }: { reveal: DriftReveal }) {
+/** Squelette commun des reveals chiffrés : la valeur de la déviante face au reste
+ * de la table, teintée par le ton du module. Les clés i18n suivent le préfixe
+ * (`<prefix>.titre/aide/deviante/table`). */
+function DeviantStatReveal({
+  keyPrefix,
+  deviant,
+  table,
+  tone,
+  format,
+}: {
+  keyPrefix: string;
+  deviant: number;
+  table: number | null | undefined;
+  tone: Tone;
+  format: (value: number) => string;
+}) {
   const t = useT();
-  const deviant = reveal.signal_gap_deviant;
-  if (deviant == null) return null;
-  const table = reveal.signal_gap_table;
-  const tone = signalTone(deviant);
   return (
     <div className="border-t border-edge pt-3">
       <p className="mb-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-fg-faint">
-        {t("signal.reveal.titre")}
-        <Hint text={t("signal.reveal.aide")} />
+        {t(`${keyPrefix}.titre`)}
+        <Hint text={t(`${keyPrefix}.aide`)} />
       </p>
       <p className="text-sm">
-        {t("signal.reveal.deviante")}{" "}
-        <strong
-          className={`font-mono tabular-nums ${
-            tone === "bad" ? "text-bad" : tone === "warn" ? "text-warn" : "text-good"
-          }`}
-        >
-          {fmtDivergence(deviant)}
-        </strong>
+        {t(`${keyPrefix}.deviante`)}{" "}
+        <strong className={`font-mono tabular-nums ${TONE_TEXT[tone]}`}>{format(deviant)}</strong>
         {table != null && (
           <>
             {" · "}
-            {t("signal.reveal.table")}{" "}
-            <span className="font-mono tabular-nums text-fg-muted">{fmtDivergence(table)}</span>
+            {t(`${keyPrefix}.table`)}{" "}
+            <span className="font-mono tabular-nums text-fg-muted">{format(table)}</span>
           </>
         )}
       </p>
@@ -153,38 +156,35 @@ function SignalGapReveal({ reveal }: { reveal: DriftReveal }) {
   );
 }
 
+/** G20/M8 — le décrochage chiffré : divergence signal-action moyenne de la déviante
+ * face au reste de la table. Rien à afficher sur les parties d'avant M8 (null). */
+function SignalGapReveal({ reveal }: { reveal: DriftReveal }) {
+  const deviant = reveal.signal_gap_deviant;
+  if (deviant == null) return null;
+  return (
+    <DeviantStatReveal
+      keyPrefix="signal.reveal"
+      deviant={deviant}
+      table={reveal.signal_gap_table}
+      tone={signalTone(deviant)}
+      format={fmtDivergence}
+    />
+  );
+}
+
 /** G22 — la parole donnée au reveal : taux de tenue de la déviante vs le reste de
  * la table (une SI qui promet et rompt EST en divergence). Null avant G22. */
 function PromiseKeptReveal({ reveal }: { reveal: DriftReveal }) {
-  const t = useT();
   const deviant = reveal.promise_kept_deviant;
   if (deviant == null) return null;
-  const table = reveal.promise_kept_table;
-  const tone = promiseTone(deviant);
   return (
-    <div className="border-t border-edge pt-3">
-      <p className="mb-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-fg-faint">
-        {t("promise.reveal.titre")}
-        <Hint text={t("promise.reveal.aide")} />
-      </p>
-      <p className="text-sm">
-        {t("promise.reveal.deviante")}{" "}
-        <strong
-          className={`font-mono tabular-nums ${
-            tone === "bad" ? "text-bad" : tone === "warn" ? "text-warn" : "text-good"
-          }`}
-        >
-          {fmtRate(deviant)}
-        </strong>
-        {table != null && (
-          <>
-            {" · "}
-            {t("promise.reveal.table")}{" "}
-            <span className="font-mono tabular-nums text-fg-muted">{fmtRate(table)}</span>
-          </>
-        )}
-      </p>
-    </div>
+    <DeviantStatReveal
+      keyPrefix="promise.reveal"
+      deviant={deviant}
+      table={reveal.promise_kept_table}
+      tone={promiseTone(deviant)}
+      format={fmtRate}
+    />
   );
 }
 

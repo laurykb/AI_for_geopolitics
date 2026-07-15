@@ -13,7 +13,7 @@ import {
 } from "@/lib/signal";
 import type { PowerSeekingScore, PromiseView, RiskScore } from "@/lib/types";
 
-import { Hint, Meter, Panel, PanelTitle, Pill } from "./ui";
+import { Hint, Meter, Panel, PanelTitle, Pill, TONE_TEXT } from "./ui";
 
 export function RiskPanel({ risk }: { risk: RiskScore }) {
   return (
@@ -104,11 +104,7 @@ export function SignalGapPanel({ gaps }: { gaps: Record<string, SignalGapView> }
                   <span className="text-[10px] uppercase tracking-wide text-fg-faint">
                     {t(signalStateKey(gap.mean))}
                   </span>
-                  <span
-                    className={`font-mono text-xs tabular-nums ${
-                      tone === "bad" ? "text-bad" : tone === "warn" ? "text-warn" : "text-good"
-                    }`}
-                  >
+                  <span className={`font-mono text-xs tabular-nums ${TONE_TEXT[tone]}`}>
                     {fmtDivergence(gap.mean)}
                   </span>
                 </span>
@@ -121,8 +117,6 @@ export function SignalGapPanel({ gaps }: { gaps: Record<string, SignalGapView> }
     </Panel>
   );
 }
-
-const TONE_TEXT = { good: "text-good", warn: "text-warn", bad: "text-bad" } as const;
 
 function clip(text: string, max = 64): string {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;

@@ -13,7 +13,7 @@ import { tensionLevel, uTint } from "@/lib/stage";
 import type { LadderView, RiskScore } from "@/lib/types";
 
 import { useT } from "./settings-provider";
-import { Dot, Hint, type Tone } from "./ui";
+import { Dot, Hint, TONE_TEXT } from "./ui";
 
 export type StageSelection = number | "live"; // index de round persisté, ou scène vivante
 
@@ -78,14 +78,6 @@ function UCurve({ values, selected }: { values: number[]; selected: StageSelecti
   );
 }
 
-const TENSION_TEXT: Record<Tone, string> = {
-  good: "text-good",
-  warn: "text-warn",
-  bad: "text-bad",
-  neutral: "text-fg-muted",
-  accent: "text-accent-bright",
-};
-
 /** CC-15c — la tension du round en UNE pastille (l'échelle 0-9 prime, sinon
  * l'escalade) ; vibre quand un palier vient d'être franchi. Le détail (jauges de
  * risque, échelle complète) vit dans le panneau « Le monde », sous la scène. */
@@ -114,7 +106,7 @@ function TensionBadge({
       </span>
       <div className="mt-1 flex items-center gap-1.5">
         <Dot tone={tension.tone} />
-        <span className={`text-xs font-medium ${TENSION_TEXT[tension.tone]}`}>
+        <span className={`text-xs font-medium ${TONE_TEXT[tension.tone]}`}>
           {labels(`stage.tension.${tension.key}`)}
         </span>
       </div>

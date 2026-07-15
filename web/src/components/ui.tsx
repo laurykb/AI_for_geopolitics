@@ -53,7 +53,9 @@ export function PanelTitle({
 
 export type Tone = "good" | "warn" | "bad" | "neutral" | "accent";
 
-const TONE_TEXT: Record<Tone, string> = {
+/** Classe de texte par ton — LA table tri-états du front (exportée : observables,
+ * drift et stage-band la partagent au lieu de la recopier). */
+export const TONE_TEXT: Record<Tone, string> = {
   good: "text-good",
   warn: "text-warn",
   bad: "text-bad",
