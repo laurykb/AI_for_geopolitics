@@ -1304,6 +1304,8 @@ export default function TheatrePage() {
               deltas={round.verdict.deltas}
               escalation={round.verdict.escalation}
               economicDisruption={round.verdict.economic_disruption}
+              actions={round.verdict.actions}
+              reciprocal={round.verdict.reciprocal}
             />
           )}
           {round.communique && (

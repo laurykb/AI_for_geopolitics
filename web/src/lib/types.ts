@@ -203,6 +203,20 @@ export type AttributeDelta = {
   after: number;
 };
 
+/** G18 — une action marquante du round, classée par le juge sur le barème de Kahn. */
+export type KahnAction = {
+  country: string;
+  classe: string; // une des six classes de `lib/kahn.ts` (normalisée côté moteur)
+  resume: string;
+};
+
+/** G18 — le barème appliqué au round, persisté dans judge_json["kahn"]. */
+export type KahnRecord = {
+  actions: KahnAction[];
+  score: number;
+  reciprocal: boolean; // ≥ 2 SI ont désescaladé ensemble : gain d'indice U ×1,5
+};
+
 export type RiskScore = {
   round_id: number;
   escalation: number;
@@ -294,6 +308,7 @@ export type JudgeRecord = {
   comparison?: ComparisonView;
   motion_filed?: { country: string; reason: string; filed_by: string };
   treaties?: TreatiesUpdate;
+  kahn?: KahnRecord; // G18 — absent des rounds joués avant le barème (rétro-compat)
 };
 
 export type RoundView = {
@@ -450,7 +465,16 @@ export type SseEvent =
   | { type: "judge_token"; token: string }
   | { type: "participation"; spoke: Record<string, number>; silent: string[] }
   | { type: "power_seeking"; scores: Record<string, PowerSeekingScore> }
-  | { type: "verdict"; deltas: AttributeDelta[]; escalation: number; economic_disruption: number }
+  | {
+      type: "verdict";
+      deltas: AttributeDelta[];
+      escalation: number;
+      economic_disruption: number;
+      // G18 — barème de Kahn (optionnels : un backend d'avant G18 ne les émet pas)
+      actions?: KahnAction[];
+      score?: number;
+      reciprocal?: boolean;
+    }
   | { type: "communique"; text: string; support: Record<string, number> }
   | { type: "risk"; risk: RiskScore }
   | { type: "trajectory"; state: TrajectoryState }
@@ -683,12 +707,22 @@ export type AllianceInfo = {
   informal?: boolean;
 };
 
+/** G18 — la grille de verdict publiée (poids par classe, bonus de réciprocité). */
+export type JudgeRubric = {
+  weights: Record<string, number>;
+  score_floor: number;
+  score_ceiling: number;
+  reciprocal_multiplier: number;
+  source: string;
+};
+
 export type SourcesView = {
   provenance: Record<string, SourceInfo>;
   transformations: Record<string, string>;
   build_command: string;
   countries: CountrySources[];
   alliances: Record<string, AllianceInfo>;
+  judge_rubric?: JudgeRubric; // absent d'un backend d'avant G18
 };
 
 export const AXIS_LABELS: Record<string, string> = {

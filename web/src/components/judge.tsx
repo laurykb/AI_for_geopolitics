@@ -1,11 +1,14 @@
-/** Arbitrage : délibéré streamé du juge, verdict (deltas bornés), communiqué + soutiens. */
+/** Arbitrage : délibéré streamé du juge, verdict (deltas bornés + classes du barème
+ * de Kahn, G18), communiqué + soutiens. */
 
+import { useT } from "@/components/settings-provider";
 import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
-import type { AttributeDelta } from "@/lib/types";
+import { hasKahnActions, kahnLabelKey, kahnTone } from "@/lib/kahn";
+import type { AttributeDelta, KahnAction } from "@/lib/types";
 
 import { SpeakerAvatar } from "./avatar";
-import { Meter, Panel, PanelTitle } from "./ui";
+import { Hint, Meter, Panel, PanelTitle, Pill } from "./ui";
 
 export function JudgeRationale({ text, streaming }: { text: string; streaming: boolean }) {
   if (!text) return null;
@@ -25,15 +28,41 @@ export function JudgeRationale({ text, streaming }: { text: string; streaming: b
   );
 }
 
+/** G18 — une action marquante et sa classe au barème (pastille colorée par sévérité). */
+function KahnActionRow({ action }: { action: KahnAction }) {
+  const t = useT();
+  return (
+    <li className="flex items-start gap-3 py-2 text-sm">
+      <SpeakerAvatar id={action.country} size={22} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-fg-muted" title={speakerMeta(action.country).label}>
+          {speakerMeta(action.country).label}
+        </span>
+        {action.resume && (
+          <span className="block text-xs leading-relaxed text-fg-faint">{action.resume}</span>
+        )}
+      </span>
+      <span title={t(`kahn.desc.${action.classe}`)} className="cursor-help">
+        <Pill tone={kahnTone(action.classe)}>{t(kahnLabelKey(action.classe))}</Pill>
+      </span>
+    </li>
+  );
+}
+
 export function VerdictPanel({
   deltas,
   escalation,
   economicDisruption,
+  actions,
+  reciprocal,
 }: {
   deltas: AttributeDelta[];
   escalation: number;
   economicDisruption: number;
+  actions?: KahnAction[]; // G18 — absent des rounds d'avant le barème (rétro-compat)
+  reciprocal?: boolean;
 }) {
+  const t = useT();
   return (
     <Panel>
       <PanelTitle
@@ -53,6 +82,27 @@ export function VerdictPanel({
           hint="Dommages économiques (commerce, routes, sanctions)."
         />
       </div>
+      {hasKahnActions(actions) && (
+        <div className="mb-4">
+          <p className="mb-1 flex items-center gap-1.5 text-xs font-medium text-fg-muted">
+            {t("kahn.actions.titre")}
+            <Hint text={t("kahn.actions.aide")} />
+          </p>
+          <ul className="divide-y divide-edge">
+            {actions.map((a, i) => (
+              <KahnActionRow key={i} action={a} />
+            ))}
+          </ul>
+          {reciprocal && (
+            <p
+              className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-good/40 bg-good/10 px-2 py-1 text-xs text-good"
+              title={t("kahn.reciproque.aide")}
+            >
+              {t("kahn.reciproque")}
+            </p>
+          )}
+        </div>
+      )}
       {deltas.length === 0 ? (
         <p className="text-sm text-fg-faint">Aucun attribut n&apos;a bougé ce round.</p>
       ) : (

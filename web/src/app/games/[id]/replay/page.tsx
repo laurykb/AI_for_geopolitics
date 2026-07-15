@@ -25,10 +25,12 @@ import { StageMap } from "@/components/stage-map";
 import { TrajectoryPanel } from "@/components/trajectory";
 import { EntryBubble } from "@/components/transcript";
 import { TreatiesPanel } from "@/components/treaties";
+import { useT } from "@/components/settings-provider";
 import { Banner, Meter, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
 import { getDriftReveal, getGame, humanizeError } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
 import { isMisled } from "@/lib/fog";
+import { kahnLabelKey, kahnTone } from "@/lib/kahn";
 import { localU } from "@/lib/stage";
 import type { DriftReveal, GameDetail } from "@/lib/types";
 
@@ -36,6 +38,7 @@ const REVEAL_MS = 1400;
 
 export default function ReplayPage() {
   const { id } = useParams<{ id: string }>();
+  const t = useT();
   const [detail, setDetail] = useState<GameDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState(0);
@@ -271,6 +274,21 @@ export default function ReplayPage() {
                     <Meter label="Perturbation éco." value={round.judge.economic_disruption} />
                   )}
                 </div>
+                {/* G18 — les classes du barème de Kahn (absentes des rounds anciens). */}
+                {(round.judge.kahn?.actions?.length ?? 0) > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5 border-t border-edge pt-3">
+                    {round.judge.kahn!.actions.map((a, i) => (
+                      <span key={i} title={a.resume || undefined} className="cursor-help">
+                        <Pill tone={kahnTone(a.classe)}>
+                          {speakerMeta(a.country).label} · {t(kahnLabelKey(a.classe))}
+                        </Pill>
+                      </span>
+                    ))}
+                    {round.judge.kahn!.reciprocal && (
+                      <Pill tone="good">{t("kahn.reciproque")}</Pill>
+                    )}
+                  </div>
+                )}
                 {round.deltas.length > 0 && (
                   <p className="mt-3 border-t border-edge pt-3 text-xs text-fg-faint">
                     {round.deltas.length} attribut{round.deltas.length > 1 ? "s" : ""} pays

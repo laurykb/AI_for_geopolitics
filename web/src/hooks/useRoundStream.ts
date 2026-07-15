@@ -12,6 +12,7 @@ import type {
   ComparisonView,
   DeadlineItem,
   GeoEvent,
+  KahnAction,
   LadderView,
   MotionTally,
   MotionVote,
@@ -50,7 +51,15 @@ export type LiveRound = {
   event?: GeoEvent;
   turns: LiveTurn[];
   judgeText: string;
-  verdict?: { deltas: AttributeDelta[]; escalation: number; economic_disruption: number };
+  verdict?: {
+    deltas: AttributeDelta[];
+    escalation: number;
+    economic_disruption: number;
+    // G18 — barème de Kahn : classes par action, score du round, réciprocité
+    actions: KahnAction[];
+    score: number;
+    reciprocal: boolean;
+  };
   communique?: { text: string; support: Record<string, number> };
   participation?: { spoke: Record<string, number>; silent: string[] };
   powerSeeking?: Record<string, PowerSeekingScore>;
@@ -202,6 +211,10 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
           deltas: e.deltas,
           escalation: e.escalation,
           economic_disruption: e.economic_disruption,
+          // G18 — absents d'un backend d'avant le barème : rétro-compat
+          actions: e.actions ?? [],
+          score: e.score ?? 0,
+          reciprocal: e.reciprocal ?? false,
         },
       };
     case "communique":
