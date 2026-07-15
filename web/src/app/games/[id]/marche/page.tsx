@@ -252,7 +252,7 @@ export default function MarchePage() {
                 <PanelTitle
                   kicker="Portefeuille"
                   title={account.name}
-                  hint="Crédits fictifs. P&L = solde − solde initial (+ gains des marchés résolus)."
+                  hint="Crédits fictifs. Gains = ce que tu as en plus (ou en moins) par rapport au départ."
                 />
                 <div className="mb-2 flex items-baseline justify-between">
                   <span className="text-xs text-fg-muted">Solde</span>
@@ -261,7 +261,7 @@ export default function MarchePage() {
                   </span>
                 </div>
                 <div className="flex items-baseline justify-between">
-                  <span className="text-xs text-fg-muted">P&L</span>
+                  <span className="text-xs text-fg-muted">Gains</span>
                   <span
                     className={`font-mono text-sm font-semibold tabular-nums ${account.pnl >= 0 ? "text-good" : "text-bad"}`}
                   >
@@ -284,9 +284,9 @@ export default function MarchePage() {
 
             <Panel>
               <PanelTitle
-                kicker="Classement"
-                title="Leaderboard"
-                hint="P&L en crédits fictifs ; Brier = calibration des probabilités (plus bas = mieux)."
+                kicker="Parieurs"
+                title="Classement"
+                hint="Gains en crédits fictifs ; la justesse mesure la qualité des pronostics (plus elle est basse, mieux c'est)."
               />
               {board.length === 0 ? (
                 <p className="text-sm text-fg-faint">Personne n&apos;a encore parié.</p>
@@ -306,9 +306,9 @@ export default function MarchePage() {
                       {entry.brier != null && (
                         <span
                           className="font-mono text-[10px] tabular-nums text-fg-faint"
-                          title="Score de Brier"
+                          title="Justesse des pronostics (score de Brier) — plus c'est bas, mieux c'est"
                         >
-                          B {fmt(entry.brier)}
+                          justesse {fmt(entry.brier)}
                         </span>
                       )}
                     </li>

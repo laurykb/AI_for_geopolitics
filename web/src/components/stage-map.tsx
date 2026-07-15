@@ -85,7 +85,7 @@ export function StageMap({
       <svg
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         role="img"
-        aria-label={`Scène du sommet — pays teintés par leur trajectoire (U global ${fmt(utopia)})`}
+        aria-label={`Théâtre du sommet — pays teintés par leur trajectoire (monde à ${fmt(utopia)})`}
         className={`w-full ${frozen ? "stage-frozen" : ""}`}
       >
         <EarthMapDefs height={HEIGHT} />

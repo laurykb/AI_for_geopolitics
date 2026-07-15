@@ -124,7 +124,7 @@ export default function ReplayPage() {
       <header className="flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-fg-faint">
-            Replay · <span className="font-mono normal-case">{id}</span>
+            Revoir · <span className="font-mono normal-case">{id}</span>
           </p>
           <h1 className="text-xl font-semibold tracking-tight">{detail?.scenario ?? "…"}</h1>
         </div>

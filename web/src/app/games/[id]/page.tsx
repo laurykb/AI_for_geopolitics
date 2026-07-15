@@ -1432,7 +1432,7 @@ export default function TheatrePage() {
           {!showLive && detail && (
             <Panel>
               <PanelTitle
-                kicker="Scène vide"
+                kicker="Théâtre vide"
                 title={
                   playedRounds > 0
                     ? `${playedRounds} round${playedRounds > 1 ? "s" : ""} déjà joué${playedRounds > 1 ? "s" : ""}`

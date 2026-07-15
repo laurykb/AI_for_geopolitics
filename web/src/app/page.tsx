@@ -9,12 +9,14 @@ import { useEffect, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
 import { Globe } from "@/components/globe";
+import { useT } from "@/components/settings-provider";
 import { Banner, Spinner } from "@/components/ui";
 import { usePlanetLaunch } from "@/hooks/usePlanetLaunch";
 import { getAuth } from "@/lib/auth";
 
 export default function ConnexionPage() {
   const router = useRouter();
+  const t = useT();
   const { launching, launch } = usePlanetLaunch();
   const { player, loading, offline } = useAuth();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -50,12 +52,10 @@ export default function ConnexionPage() {
   return (
     <div className="relative flex min-h-[calc(100vh-9rem)] flex-col items-center justify-center gap-6 overflow-hidden py-6 text-center">
       <div className={chrome}>
-        <p className="text-[11px] font-medium uppercase tracking-[0.3em] text-fg-faint">
-          AI for Geopolitics
-        </p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
-          World of <span className="text-accent-bright">Super-Intelligence</span>
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+          Théâtre des <span className="text-accent-bright">super-intelligences</span>
         </h1>
+        <p className="mt-3 text-sm text-fg-muted">{t("login.pitch")}</p>
       </div>
 
       <div className={launching ? "intro-zoom" : undefined}>
@@ -91,7 +91,7 @@ export default function ConnexionPage() {
             value={pseudo}
             onChange={(e) => setPseudo(e.target.value)}
             autoComplete="username"
-            placeholder="Ton nom à la table"
+            placeholder={t("login.pseudo-ph")}
             className="w-full rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
             required
           />

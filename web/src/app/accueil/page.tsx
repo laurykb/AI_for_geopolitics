@@ -83,7 +83,7 @@ export default function AccueilPage() {
       <div className="relative flex min-h-[calc(100vh-12rem)] flex-col items-center justify-center gap-6 overflow-hidden text-center">
         <div className={chrome} data-tour="hero">
           <p className="text-[11px] font-medium uppercase tracking-[0.3em] text-fg-faint">
-            World of Super-Intelligence
+            Théâtre des super-intelligences
           </p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-5xl">
             {t("accueil.bienvenue")}{" "}

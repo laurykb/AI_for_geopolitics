@@ -199,7 +199,7 @@ export default function FinPage({ params }: { params: Promise<{ id: string }> })
       {/* 6. Actions */}
       <div className="flex flex-wrap justify-center gap-3">
         <Link href={`/games/${id}/replay`} className="rounded-md border border-edge-strong px-5 py-2.5 text-sm font-medium transition-colors hover:border-accent hover:text-accent-bright">
-          Revoir le théâtre
+          Revoir la partie
         </Link>
         <Link href="/lobby" className="rounded-md border border-edge px-5 py-2.5 text-sm text-fg-muted transition-colors hover:border-edge-strong hover:text-foreground">
           Rejouer

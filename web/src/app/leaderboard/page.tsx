@@ -34,7 +34,7 @@ export default function LeaderboardPage() {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-fg-faint">Ligue</p>
-          <h1 className="text-xl font-semibold tracking-tight">Leaderboard</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Classement</h1>
         </div>
         <Link href="/accueil" className="rounded-md border border-edge px-4 py-2 text-sm text-fg-muted transition-colors hover:border-edge-strong hover:text-foreground">
           ← Accueil
@@ -49,7 +49,7 @@ export default function LeaderboardPage() {
       )}
 
       <Panel>
-        <PanelTitle kicker="Classement" title="Les diplomates de l'ère des SI" hint="Classé aux points de ligue : seules les parties « Jouer un pays » non libres comptent." />
+        <PanelTitle kicker="Classement" title="Les meilleurs joueurs" hint="Classé aux points de ligue (LP) : seules les parties classées où tu joues un pays comptent." />
         {error && <Banner tone="bad">{error}</Banner>}
         {!error && board === null && (
           <p className="flex items-center gap-2 text-sm text-fg-muted">

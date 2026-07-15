@@ -1,21 +1,25 @@
 "use client";
 
-/** Navigation d'une partie : Scène / Marché / Replay. Le monde a fusionné avec la
- * scène (G1 : la carte est le théâtre) — /monde redirige. */
+/** Navigation d'une partie : Théâtre / Marché / Revoir. Le monde a fusionné avec le
+ * théâtre (G1 : la carte est le théâtre) — /monde redirige. Libellés i18n (CC-15b) :
+ * « le théâtre » est LE nom de l'écran de jeu, « Revoir » celui de la relecture. */
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { useT } from "./settings-provider";
+
 const TABS = [
-  { slug: "", label: "Scène" },
-  { slug: "marche", label: "Marché" },
-  { slug: "replay", label: "Replay" },
+  { slug: "", key: "gamenav.theatre" },
+  { slug: "marche", key: "gamenav.marche" },
+  { slug: "replay", key: "gamenav.revoir" },
 ] as const;
 
 export function GameNav({ id }: { id: string }) {
   const pathname = usePathname();
+  const t = useT();
   return (
-    <nav aria-label="Sections de la partie" className="flex gap-1 rounded-lg border border-edge bg-surface p-1">
+    <nav aria-label={t("gamenav.aria")} className="flex gap-1 rounded-lg border border-edge bg-surface p-1">
       {TABS.map((tab) => {
         const href = tab.slug ? `/games/${id}/${tab.slug}` : `/games/${id}`;
         const active = pathname === href;
@@ -30,7 +34,7 @@ export function GameNav({ id }: { id: string }) {
                 : "text-fg-muted hover:bg-surface-2/60 hover:text-foreground"
             }`}
           >
-            {tab.label}
+            {t(tab.key)}
           </Link>
         );
       })}

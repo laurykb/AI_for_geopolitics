@@ -55,8 +55,7 @@ export default function RootLayout({
             </main>
             <footer className="border-t border-edge py-4">
               <p className="mx-auto max-w-6xl px-6 text-xs text-fg-faint">
-                Simulation observable — les indices mesurent, ils n&apos;influencent pas les
-                super-intelligences.
+                Ceci est une simulation : les scores observent le jeu, ils ne le dirigent pas.
               </p>
             </footer>
           </TourProvider>
