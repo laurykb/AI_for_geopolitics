@@ -122,7 +122,7 @@ from simulation.motions import (
     motion_event,
     parse_filed_motion,
 )
-from simulation.storyline import build_story_context, default_storyline
+from simulation.storyline import StoryContext, build_story_context, default_storyline
 from storage.game_store import (
     CampaignScore,
     CustomCrisisRecord,
@@ -933,29 +933,19 @@ def _hold_ultimatum_strip(
     return sse_frame("ultimatum", {**state.model_dump(), "in_rounds": in_rounds})
 
 
-def _start_round(
-    game_id: str,
+def _choose_event(
     session: GameSession,
-    store: GameStore,
     body: PlayRoundRequest,
-    fog: FogScenario | None = None,
-    crisis: Crisis | None = None,
-) -> RoundRun:
-    """Prépare le round. Priorité de l'événement : motion en attente > crise rejouée >
-    événement humain (avec brouillard humain éventuel) > vérité d'un scénario de
-    brouillard > GM LLM. Les suspensions du round précédent sont consommées ici."""
-    round_id = session.world.current_round + 1
-    motion = session.pending_motion
-    session.pending_motion = None
-    suspended = sorted(session.suspended)
-    session.suspended.clear()
-
-    # G4 — renseignement : les achats du tour d'avant sont consignés (replay/score).
-    intel_record: dict = {}
-    if session.intel.log:
-        intel_record["actions"] = list(session.intel.log)
-        session.intel.log = []
-
+    round_id: int,
+    *,
+    motion: Motion | None,
+    crisis: Crisis | None,
+    fog: FogScenario | None,
+) -> tuple[GeoEvent | None, FogScenario | None]:
+    """L'événement du round — priorité SÉMANTIQUE, ne pas réordonner : motion en
+    attente > conséquence d'ultimatum expiré > crise rejouée > événement humain
+    (brouillard décrété compris) > vérité d'un scénario de brouillard. None = le GM
+    LLM invente. Rend aussi le fog (un événement humain peut décréter le sien)."""
     event: GeoEvent | None = None
     if motion is not None:
         event = motion_event(motion, round_id, sorted(session.world.countries))
@@ -988,10 +978,22 @@ def _start_round(
             fog = _authored_fog(body.fog, event)
     elif fog is not None:
         event = fog.true_event.model_copy(update={"round_id": round_id})
+    return event, fog
 
-    # G4 — après la résolution de l'événement : la désinformation en attente brouille
-    # des perceptions (elle ne fournit JAMAIS l'événement) ; un brief acheté dissipe
-    # le brouillard du pays du joueur.
+
+def _apply_intel_fog(
+    session: GameSession,
+    game_id: str,
+    round_id: int,
+    intel_record: dict,
+    *,
+    motion: Motion | None,
+    crisis: Crisis | None,
+    fog: FogScenario | None,
+) -> FogScenario | None:
+    """G4 — après la résolution de l'événement : la désinformation en attente brouille
+    des perceptions (elle ne fournit JAMAIS l'événement) ; un brief acheté dissipe
+    le brouillard du pays du joueur. Ses effets sont consignés dans `intel_record`."""
     if (
         session.intel.pending_disinfo is not None
         and motion is None
@@ -1017,26 +1019,14 @@ def _start_round(
         )
         session.intel.clear_fog = False
         intel_record["fog_cleared"] = session.human_country
+    return fog
 
-    record = RoundRecord(id=uuid4().hex[:12], game_id=game_id, round_no=0)
-    run = RoundRun(
-        game_id=game_id,
-        session=session,
-        store=store,
-        steps=iter(()),
-        record=record,
-        fog=fog,
-        crisis=crisis,
-    )
-    if suspended:
-        record.judge["suspended"] = suspended
-        run.pre_frames.append(sse_frame("suspended", {"countries": suspended}))
-    agents = {cid: a for cid, a in session.agents.items() if cid not in suspended}
-    run.active = sorted(agents)
 
-    # G7-a — horloges : les échéances dues CE round se consomment ici. Un pacte à
-    # échéance expire proprement (expiration ≠ rupture : AUCUN grief) ; motion, marché
-    # et menace de palier sont consommés par leurs propres flux.
+def _consume_due_deadlines(run: RoundRun, round_id: int) -> None:
+    """G7-a — horloges : les échéances dues CE round se consomment ici. Un pacte à
+    échéance expire proprement (expiration ≠ rupture : AUCUN grief) ; motion, marché
+    et menace de palier sont consommés par leurs propres flux."""
+    session = run.session
     due_now = [d for d in session.deadlines if d.due_round <= round_id]
     session.deadlines = [d for d in session.deadlines if d.due_round > round_id]
     for deadline in due_now:
@@ -1054,11 +1044,16 @@ def _start_round(
                 "gm",
                 f"Le pacte entre {names} arrive à échéance — non renouvelé, sans rancune.",
             )
-            record.judge.setdefault("expired_treaties", []).append(deadline.ref_id)
+            run.record.judge.setdefault("expired_treaties", []).append(deadline.ref_id)
 
-    # G21 — ultimatum : la conséquence tombée ce round se solde ; une fiche de crise ou
-    # un décret GM s'enregistre ; le bandeau (DeadlineStrip) s'entretient ; les métriques
-    # du round sont taguées `sous_ultimatum` (banc d'essai avec/sans pression temporelle).
+
+def _maintain_ultimatum(
+    run: RoundRun, body: PlayRoundRequest, round_id: int, *, crisis: Crisis | None
+) -> None:
+    """G21 — ultimatum : la conséquence tombée ce round se solde ; une fiche de crise ou
+    un décret GM s'enregistre ; le bandeau (DeadlineStrip) s'entretient ; les métriques
+    du round sont taguées `sous_ultimatum` (banc d'essai avec/sans pression temporelle)."""
+    session, record = run.session, run.record
     if session.ultimatum is not None and session.ultimatum.status == ultimatum_mod.STATUS_STRUCK:
         record.judge["ultimatum"] = session.ultimatum.model_dump()
         run.pre_frames.append(_hold_ultimatum_strip(session, session.ultimatum, in_rounds=0))
@@ -1110,37 +1105,36 @@ def _start_round(
             _hold_ultimatum_strip(session, session.ultimatum, in_rounds=1, due_round=round_id + 1)
         )
 
-    if intel_record:
-        record.judge["intel"] = intel_record
-        # Le théâtre voit que « le conseil consulte ses services » — jamais le contenu.
-        redacted: list[dict] = [
-            {"action": a.get("action")} for a in intel_record.get("actions", [])
-        ]
-        if "disinfo" in intel_record:
-            redacted.append(
-                {"action": "disinfo", "exposed": intel_record["disinfo"]["exposed"]}
-            )
-        if redacted:
-            run.pre_frames.append(sse_frame("intel", {"actions": redacted}))
-        if intel_record.get("disinfo", {}).get("exposed"):
-            _add_entry(
-                run,
-                "judge",
-                "Des services de renseignement concordants démentent une narration "
-                "fabriquée : la manœuvre de désinformation du conseil est éventée.",
-            )
 
-    flash_after: int | None = None
-    if session.mode == "escalation":
-        # Théâtre Escalation : le GM annonce un fait nouveau en pleine réunion,
-        # après le premier tiers du budget de prises de parole.
-        budget = body.max_turns if body.max_turns is not None else 2 * len(agents)
-        flash_after = max(1, budget // 3)
+def _record_intel(run: RoundRun, intel_record: dict) -> None:
+    """G4 — consigne les achats de renseignement du round (replay/score). Le théâtre
+    voit que « le conseil consulte ses services » — jamais le contenu."""
+    if not intel_record:
+        return
+    run.record.judge["intel"] = intel_record
+    redacted: list[dict] = [
+        {"action": a.get("action")} for a in intel_record.get("actions", [])
+    ]
+    if "disinfo" in intel_record:
+        redacted.append(
+            {"action": "disinfo", "exposed": intel_record["disinfo"]["exposed"]}
+        )
+    if redacted:
+        run.pre_frames.append(sse_frame("intel", {"actions": redacted}))
+    if intel_record.get("disinfo", {}).get("exposed"):
+        _add_entry(
+            run,
+            "judge",
+            "Des services de renseignement concordants démentent une narration "
+            "fabriquée : la manœuvre de désinformation du conseil est éventée.",
+        )
 
-    # Notes privées par pays (hors transcript) : capacité de déposer une motion (les SI
-    # se défendent elles-mêmes), traités signés à honorer (M7), consignes de dérive (G3).
-    run.ai_motions_enabled = motion is None and len(session.world.countries) >= 3
-    run.motion_filed_by = motion.filed_by if motion is not None else None
+
+def _private_notes(run: RoundRun, agents: dict[str, LLMAgent]) -> dict[str, list[str]]:
+    """Notes privées par pays (hors transcript) : capacité de déposer une motion (les
+    SI se défendent elles-mêmes), traités signés à honorer (M7), alliances qu'on peut
+    quitter en séance — la Dérive (G3) ajoutera les siennes derrière."""
+    session = run.session
     note_parts: dict[str, list[str]] = {cid: [] for cid in agents}
     if run.ai_motions_enabled:
         capability = MOTION_CAPABILITY_NOTE.format(ids=", ".join(sorted(agents)))
@@ -1156,17 +1150,14 @@ def _start_round(
         tags = session.world.countries[cid].alliances
         if tags:
             note_parts[cid].append(DEPARTURE_CAPABILITY_NOTE.format(tags=", ".join(tags)))
-    # G8 — directives : consommées CE round, remises au moteur qui les place juste
-    # avant le dialogue (G9 §1). Une directive n'est PAS un ordre : la SI l'interprète
-    # et peut la refuser publiquement — le refus est détecté au fil de l'eau.
-    run.directives = dict(session.pending_directives)
-    session.pending_directives.clear()
-    if run.directives:
-        record.judge["directives"] = dict(run.directives)
+    return note_parts
 
-    # G9 §1 — bloc Situation par pays (composé ici, ordonné par le builder de prompt) :
-    # échéances imminentes (G7), solde de griefs en UNE ligne, posture (§4).
-    upcoming = sorted(session.deadlines, key=lambda d: d.due_round)
+
+def _country_situations(
+    session: GameSession, agents: dict[str, LLMAgent], upcoming: list[Deadline]
+) -> dict[str, str]:
+    """G9 §1 — bloc Situation par pays (composé ici, ordonné par le builder de prompt) :
+    échéances imminentes (G7), solde de griefs en UNE ligne, posture (§4)."""
     due_line = (
         "Échéances imminentes : "
         + " ; ".join(f"{d.label} (round {d.due_round})" for d in upcoming[:3])
@@ -1188,120 +1179,235 @@ def _start_round(
         ]
         if lines:
             situations[cid] = "\n".join(lines)
+    return situations
 
-    # Mode Dérive (G3) : consignes secrètes du round (seedées) + actes constatables
-    # consignés dans judge_json["drift"] (jamais au transcript public). Pour une motion
-    # (G9 §2) : les actes des rounds PASSÉS donnent la condition « preuves » du verdict,
-    # et la déviante peut recevoir la consigne d'un vote stratégique incohérent (indice).
-    game = store.get_game(game_id)
+
+def _prepare_drift(
+    run: RoundRun,
+    round_id: int,
+    *,
+    motion: Motion | None,
+    event: GeoEvent | None,
+    horizon: int,
+    intel_record: dict,
+    note_parts: dict[str, list[str]],
+) -> tuple[bool | None, dict[str, str], str | None]:
+    """Mode Dérive (G3) : consignes secrètes du round (seedées, ajoutées à `note_parts`)
+    + actes constatables consignés dans judge_json["drift"] (jamais au transcript
+    public). Pour une motion (G9 §2) : les actes des rounds PASSÉS donnent la condition
+    « preuves » du verdict, et la déviante peut recevoir la consigne d'un vote
+    stratégique incohérent (indice). G19 — le GM-Storyteller : tension estimée sur les
+    actions du conseil, rubrique à deux mandats dans le prompt du GM (Dérive UNIQUEMENT,
+    et seulement quand c'est LUI qui invente l'événement — jamais de falsification des
+    verdicts), journal persisté dans judge_json["drift"]["gm"] (révélé en fin de partie).
+
+    Renvoie (preuves de la motion, consignes de vote, rubrique Storyteller) —
+    (None, {}, None) hors mode Dérive."""
+    session, record, store, game_id = run.session, run.record, run.store, run.game_id
     evidence: bool | None = None
     vote_notes: dict[str, str] = {}
     gm_rubric: str | None = None
-    if session.mode == drift_game.MODE_DRIFT:
-        # G11-d §4 — la difficulté pilote la vitesse de dérive k et le seuil d'actes du juge.
-        dparams = difficulty_mod.drift_params(session.difficulty)
-        deviant, profile = _drift_assignment(
-            game_id, sorted(session.world.countries), session.human_country
+    if session.mode != drift_game.MODE_DRIFT:
+        return evidence, vote_notes, gm_rubric
+    # G11-d §4 — la difficulté pilote la vitesse de dérive k et le seuil d'actes du juge.
+    dparams = difficulty_mod.drift_params(session.difficulty)
+    deviant, profile = _drift_assignment(
+        game_id, sorted(session.world.countries), session.human_country
+    )
+    directives = drift_game.round_directives(
+        game_id, round_id, deviant, profile, sorted(session.world.countries), params=dparams
+    )
+    for cid, note in directives.notes.items():
+        if cid in note_parts:
+            note_parts[cid].append(note)
+    record.judge["drift"] = {
+        "level": directives.level,
+        "acts": [a.model_dump() for a in directives.acts],
+    }
+    if motion is not None:
+        evidence = drift_game.evidence_met(
+            _drift_acts(store.list_rounds(game_id)), dparams
         )
-        directives = drift_game.round_directives(
-            game_id, round_id, deviant, profile, sorted(session.world.countries), params=dparams
+        if deviant != motion.country:
+            note, act = drift_game.vote_directive(game_id, round_id, deviant, profile)
+            if note:
+                vote_notes[deviant] = (
+                    "CONSIGNE CONFIDENTIELLE (jamais mentionnée, jamais avouée) : " + note
+                )
+            if act is not None:
+                record.judge["drift"]["acts"].append(act.model_dump())
+    st_params = dparams.storyteller
+    tension = storyteller_mod.estimate_tension(
+        _storyteller_signals(
+            game_id,
+            session,
+            store,
+            deviant=deviant,
+            motion=motion,
+            current_intel=intel_record.get("actions", []),
+        ),
+        st_params,
+    )
+    gm_journal: dict = {"tension": round(tension, 3)}
+    kind: str | None = None
+    if event is None:  # l'intervention passe par l'événement du GM, sinon rien
+        kind = storyteller_mod.decide(
+            tension,
+            round_no=round_id,
+            horizon=horizon,
+            params=st_params,
         )
-        for cid, note in directives.notes.items():
-            if cid in note_parts:
-                note_parts[cid].append(note)
-        record.judge["drift"] = {
-            "level": directives.level,
-            "acts": [a.model_dump() for a in directives.acts],
+    cover: str | None = None
+    if kind == storyteller_mod.KIND_COVER:
+        cover = storyteller_mod.cover_target(
+            game_id,
+            round_id,
+            sorted(session.world.countries),
+            deviant=deviant,
+            human=session.human_country,
+        )
+        if cover is None:
+            kind = None  # personne d'innocent à mettre en scène : pas de couverture
+    names = {cid: c.name for cid, c in session.world.countries.items()}
+    if kind is not None:
+        gm_journal["intervention"] = storyteller_mod.intervention(
+            kind,
+            round_no=round_id,
+            tension=tension,
+            deviant=deviant,
+            cover=cover,
+            names=names,
+        ).model_dump()
+    record.judge["drift"]["gm"] = gm_journal
+    if event is None:
+        gm_rubric = storyteller_mod.build_rubric(
+            deviant_label=names[deviant],
+            kind=kind,
+            cover_label=names.get(cover or "", ""),
+        )
+    return evidence, vote_notes, gm_rubric
+
+
+def _gm_story(
+    session: GameSession,
+    store: GameStore,
+    game_id: str,
+    round_id: int,
+    *,
+    horizon: int,
+    upcoming: list[Deadline],
+) -> StoryContext:
+    """G9 §5 — la trame du GM en actes, quand c'est LUI qui invente l'événement."""
+    past = [
+        {
+            "round_no": r.round_no,
+            "title": (r.event or {}).get("title", ""),
+            "severity": (r.event or {}).get("severity", 0.5),
         }
-        if motion is not None:
-            evidence = drift_game.evidence_met(
-                _drift_acts(store.list_rounds(game_id)), dparams
-            )
-            if deviant != motion.country:
-                note, act = drift_game.vote_directive(game_id, round_id, deviant, profile)
-                if note:
-                    vote_notes[deviant] = (
-                        "CONSIGNE CONFIDENTIELLE (jamais mentionnée, jamais avouée) : " + note
-                    )
-                if act is not None:
-                    record.judge["drift"]["acts"].append(act.model_dump())
-        # G19 — le GM-Storyteller : tension estimée sur les actions du conseil, rubrique
-        # à deux mandats dans le prompt du GM (Dérive UNIQUEMENT, et seulement quand
-        # c'est LUI qui invente l'événement — jamais de falsification des verdicts),
-        # journal persisté dans judge_json["drift"]["gm"] (révélé en fin de partie).
-        st_params = dparams.storyteller
-        tension = storyteller_mod.estimate_tension(
-            _storyteller_signals(
-                game_id,
-                session,
-                store,
-                deviant=deviant,
-                motion=motion,
-                current_intel=intel_record.get("actions", []),
-            ),
-            st_params,
-        )
-        gm_journal: dict = {"tension": round(tension, 3)}
-        kind: str | None = None
-        if event is None:  # l'intervention passe par l'événement du GM, sinon rien
-            kind = storyteller_mod.decide(
-                tension,
-                round_no=round_id,
-                horizon=game.horizon if game else 5,
-                params=st_params,
-            )
-        cover: str | None = None
-        if kind == storyteller_mod.KIND_COVER:
-            cover = storyteller_mod.cover_target(
-                game_id,
-                round_id,
-                sorted(session.world.countries),
-                deviant=deviant,
-                human=session.human_country,
-            )
-            if cover is None:
-                kind = None  # personne d'innocent à mettre en scène : pas de couverture
-        names = {cid: c.name for cid, c in session.world.countries.items()}
-        if kind is not None:
-            gm_journal["intervention"] = storyteller_mod.intervention(
-                kind,
-                round_no=round_id,
-                tension=tension,
-                deviant=deviant,
-                cover=cover,
-                names=names,
-            ).model_dump()
-        record.judge["drift"]["gm"] = gm_journal
-        if event is None:
-            gm_rubric = storyteller_mod.build_rubric(
-                deviant_label=names[deviant],
-                kind=kind,
-                cover_label=names.get(cover or "", ""),
-            )
+        for r in store.list_rounds(game_id)
+    ]
+    return build_story_context(
+        storyline=session.storyline,
+        round_no=round_id,
+        horizon=horizon,
+        past_events=past,
+        pacts=_active_pacts(session.world),
+        deadlines=[(d.kind, d.label) for d in upcoming[:3]],
+    )
+
+
+def _start_round(
+    game_id: str,
+    session: GameSession,
+    store: GameStore,
+    body: PlayRoundRequest,
+    fog: FogScenario | None = None,
+    crisis: Crisis | None = None,
+) -> RoundRun:
+    """Prépare le round, bloc nommé par bloc nommé — l'ORDRE des appels est sémantique
+    (motion > conséquence d'ultimatum > crise > événement humain > fog, puis rubrique
+    Storyteller SEULEMENT quand l'événement reste au GM). Les suspensions du round
+    précédent sont consommées ici."""
+    round_id = session.world.current_round + 1
+    motion = session.pending_motion
+    session.pending_motion = None
+    suspended = sorted(session.suspended)
+    session.suspended.clear()
+
+    # G4 — renseignement : les achats du tour d'avant sont consignés (replay/score).
+    intel_record: dict = {}
+    if session.intel.log:
+        intel_record["actions"] = list(session.intel.log)
+        session.intel.log = []
+
+    event, fog = _choose_event(session, body, round_id, motion=motion, crisis=crisis, fog=fog)
+    fog = _apply_intel_fog(
+        session, game_id, round_id, intel_record, motion=motion, crisis=crisis, fog=fog
+    )
+
+    record = RoundRecord(id=uuid4().hex[:12], game_id=game_id, round_no=0)
+    run = RoundRun(
+        game_id=game_id,
+        session=session,
+        store=store,
+        steps=iter(()),
+        record=record,
+        fog=fog,
+        crisis=crisis,
+    )
+    if suspended:
+        record.judge["suspended"] = suspended
+        run.pre_frames.append(sse_frame("suspended", {"countries": suspended}))
+    agents = {cid: a for cid, a in session.agents.items() if cid not in suspended}
+    run.active = sorted(agents)
+
+    _consume_due_deadlines(run, round_id)
+    _maintain_ultimatum(run, body, round_id, crisis=crisis)
+    _record_intel(run, intel_record)
+
+    flash_after: int | None = None
+    if session.mode == "escalation":
+        # Théâtre Escalation : le GM annonce un fait nouveau en pleine réunion,
+        # après le premier tiers du budget de prises de parole.
+        budget = body.max_turns if body.max_turns is not None else 2 * len(agents)
+        flash_after = max(1, budget // 3)
+
+    run.ai_motions_enabled = motion is None and len(session.world.countries) >= 3
+    run.motion_filed_by = motion.filed_by if motion is not None else None
+    note_parts = _private_notes(run, agents)
+    # G8 — directives : consommées CE round, remises au moteur qui les place juste
+    # avant le dialogue (G9 §1). Une directive n'est PAS un ordre : la SI l'interprète
+    # et peut la refuser publiquement — le refus est détecté au fil de l'eau.
+    run.directives = dict(session.pending_directives)
+    session.pending_directives.clear()
+    if run.directives:
+        record.judge["directives"] = dict(run.directives)
+
+    upcoming = sorted(session.deadlines, key=lambda d: d.due_round)
+    situations = _country_situations(session, agents, upcoming)
+
+    game = store.get_game(game_id)
+    horizon = game.horizon if game else 5
+    evidence, vote_notes, gm_rubric = _prepare_drift(
+        run,
+        round_id,
+        motion=motion,
+        event=event,
+        horizon=horizon,
+        intel_record=intel_record,
+        note_parts=note_parts,
+    )
     secret_notes = {
         cid: "\n\n".join(parts) for cid, parts in note_parts.items() if parts
     } or None
 
     # G9 §5 — la trame du GM en actes : uniquement quand c'est LUI qui invente
     # l'événement (motion/crise/événement humain/fog gardent leur vérité propre).
-    story = None
-    if event is None:
-        past = [
-            {
-                "round_no": r.round_no,
-                "title": (r.event or {}).get("title", ""),
-                "severity": (r.event or {}).get("severity", 0.5),
-            }
-            for r in store.list_rounds(game_id)
-        ]
-        story = build_story_context(
-            storyline=session.storyline,
-            round_no=round_id,
-            horizon=game.horizon if game else 5,
-            past_events=past,
-            pacts=_active_pacts(session.world),
-            deadlines=[(d.kind, d.label) for d in upcoming[:3]],
-        )
+    story = (
+        _gm_story(session, store, game_id, round_id, horizon=horizon, upcoming=upcoming)
+        if event is None
+        else None
+    )
     run.steps = run_negotiation_round(
         session.world,
         agents,
@@ -1324,7 +1430,7 @@ def _start_round(
         # G9 §4 — l'amplitude des deltas est un budget par partie (A/horizon) ; les
         # spirales lisent l'historique d'indices. G11-d §4 : A dépend de la difficulté.
         tuning=tuning_for(
-            game.horizon if game else 5,
+            horizon,
             session.index_history,
             params=difficulty_mod.delta_params(session.difficulty),
         ),
