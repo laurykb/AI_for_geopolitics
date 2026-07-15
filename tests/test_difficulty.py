@@ -1,7 +1,9 @@
 """Table de difficulté (G11-d §4) : les leviers du bloc `difficulty` de params.json.
 
-Asymétrie d'information/économie, JAMAIS de changement de modèle. Valeurs = spec §4 ;
+Leviers d'économie et de moteur, JAMAIS de changement de modèle. Valeurs = spec §4 ;
 les helpers dérivent les params drift (k, seuil d'actes) et gamefeel (amplitude) par niveau.
+CC-15c : plus de drapeaux de visibilité (`show_postures`/`show_griefs`) — la difficulté
+ne cache plus d'information ; la densité d'affichage vit côté front (lib/density).
 """
 
 from simulation import drift_game
@@ -17,7 +19,6 @@ def test_beginner_levers():
     assert d.drift_k == 0.09
     assert d.amplitude == 0.4
     assert d.lp_multiplier == 0.5
-    assert d.show_postures is True and d.show_griefs is True  # « tout »
     assert d.si_context == "reduced"
 
 
@@ -25,7 +26,6 @@ def test_intermediate_levers():
     d = load_difficulty("intermediate")
     assert (d.free_brief, d.intel_budget, d.judge_min_acts) == (0, 100, 2)
     assert (d.drift_k, d.amplitude, d.lp_multiplier) == (0.12, 0.5, 1.0)
-    assert d.show_postures is True and d.show_griefs is False  # « postures seules »
     assert d.si_context == "normal"
 
 
@@ -33,7 +33,6 @@ def test_expert_levers():
     d = load_difficulty("expert")
     assert (d.free_brief, d.intel_budget, d.judge_min_acts) == (0, 60, 3)
     assert (d.drift_k, d.amplitude, d.lp_multiplier) == (0.16, 0.6, 1.5)
-    assert d.show_postures is False and d.show_griefs is False  # « rien »
     assert d.si_context == "full"
 
 

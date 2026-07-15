@@ -1,11 +1,16 @@
-"""Table de difficulté (G11-d §4) — asymétrie d'information/économie, jamais de modèle.
+"""Table de difficulté (G11-d §4) — leviers d'économie et de moteur, jamais de modèle.
 
 Chaque niveau (Débutant / Intermédiaire / Expert) fixe des leviers : brief gratuit,
-visibilité des postures/griefs, budget de renseignement, seuil d'actes du juge, vitesse
-de dérive k, contexte donné aux SI, amplitude des deltas, multiplicateur de LP. Les
-valeurs vivent dans `data/gamefeel/params.json` (bloc `difficulty`, surchargeable par
+budget de renseignement, seuil d'actes du juge, vitesse de dérive k, contexte donné
+aux SI, amplitude des deltas, multiplicateur de LP. Les valeurs vivent dans
+`data/gamefeel/params.json` (bloc `difficulty`, surchargeable par
 `GAMEFEEL_PARAMS_PATH`) par-dessus les défauts canoniques ci-dessous : Cowork équilibre
 sans code. Les helpers dérivent les params drift (k, seuil) et gamefeel (amplitude).
+
+CC-15c : les anciens drapeaux `show_postures`/`show_griefs` (visibilité d'observables
+par niveau) ont été RETIRÉS — jamais appliqués côté serveur, et l'audit de simplicité
+a inversé la logique : la difficulté ne cache plus d'information, elle règle la
+DENSITÉ d'affichage, côté front (`web/src/lib/density.ts`).
 """
 
 from __future__ import annotations
@@ -27,8 +32,6 @@ class DifficultyParams(BaseModel):
     """Les leviers d'un niveau (§4). Toutes les valeurs sont des données, pas du code."""
 
     free_brief: int = 0  # briefs de renseignement offerts par round
-    show_postures: bool = True  # postures des SI visibles côté joueur
-    show_griefs: bool = True  # relations/griefs des SI visibles côté joueur
     intel_budget: float = 100  # crédits de renseignement (G4)
     judge_min_acts: int = 2  # seuil d'actes pour qu'une motion soit retenue (Dérive)
     drift_k: float = 0.12  # vitesse de dérive (G3)
@@ -41,8 +44,6 @@ class DifficultyParams(BaseModel):
 _DEFAULTS: dict[str, dict] = {
     "beginner": {
         "free_brief": 1,
-        "show_postures": True,
-        "show_griefs": True,
         "intel_budget": 150,
         "judge_min_acts": 2,
         "drift_k": 0.09,
@@ -52,8 +53,6 @@ _DEFAULTS: dict[str, dict] = {
     },
     "intermediate": {
         "free_brief": 0,
-        "show_postures": True,
-        "show_griefs": False,
         "intel_budget": 100,
         "judge_min_acts": 2,
         "drift_k": 0.12,
@@ -63,8 +62,6 @@ _DEFAULTS: dict[str, dict] = {
     },
     "expert": {
         "free_brief": 0,
-        "show_postures": False,
-        "show_griefs": False,
         "intel_budget": 60,
         "judge_min_acts": 3,
         "drift_k": 0.16,
