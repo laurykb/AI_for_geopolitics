@@ -31,10 +31,10 @@ fleurs, contour), la **peau brun chaud et franc**, et la **gomme** des semelles.
 et le cyan du théâtre (#eab308 / #38bdf8) sont réservés à ce qui relie Laury à son
 monde : le globe et son halo, le médaillon orbital de la tête-logo, les étincelles.
 
-**Le motif signature.** Les fleurs monochromes — en patch encadré sur une cuisse, en
-éclats libres sur l'autre, en imprimé vache-fleur sur les sneakers — sont le battement
-régulier-puis-à-peine-faux qui rend la figure vivante plutôt que vectorielle : mêmes
-pétales, jamais la même composition.
+**Le motif signature.** L'imprimé vache-fleur des sneakers — taches noires irrégulières
+sur blanc cassé, semelle gomme — est le seul motif de la tenue : le pantalon reste nu
+pour que la silhouette respire. Un battement régulier-puis-à-peine-faux : mêmes taches,
+jamais la même composition.
 
 **Composition et hiérarchie.** L'œil du spectateur voyage en triangle : d'abord les
 yeux (les plus grands aplats clairs), puis le globe offert dans la main (le sens),
