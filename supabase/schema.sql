@@ -89,6 +89,16 @@ create table if not exists campaign_scores (
   created_at  timestamptz not null default now()
 );
 
+-- G16 : le défi du jour — LE score du jour d'un joueur (la 1re tentative fait foi).
+create table if not exists daily_scores (
+  date        text not null,              -- date UTC du défi (YYYY-MM-DD)
+  player_id   text not null,
+  game_id     text not null,
+  score       double precision not null,
+  created_at  timestamptz not null default now(),
+  primary key (date, player_id)
+);
+
 create table if not exists transcripts (
   id        text primary key,
   round_id  text not null references rounds(id) on delete cascade,

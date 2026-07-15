@@ -63,6 +63,11 @@ CREATE TABLE IF NOT EXISTS campaign_scores (
     game_id TEXT PRIMARY KEY, chapter_id TEXT NOT NULL, score REAL NOT NULL,
     improvement REAL NOT NULL, created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS daily_scores (
+    date TEXT NOT NULL, player_id TEXT NOT NULL, game_id TEXT NOT NULL,
+    score REAL NOT NULL, created_at TEXT NOT NULL,
+    PRIMARY KEY (date, player_id)
+);
 CREATE TABLE IF NOT EXISTS game_sessions (
     game_id TEXT PRIMARY KEY, world_json TEXT NOT NULL, clock_json TEXT NOT NULL,
     recent_json TEXT NOT NULL, pending_motion_json TEXT, suspended_json TEXT NOT NULL,
@@ -222,6 +227,17 @@ class CampaignScore(BaseModel):
     created_at: str
 
 
+class DailyScore(BaseModel):
+    """Ligne `daily_scores` (G16) : LE score du jour d'un joueur — la première
+    tentative classée fait foi (PK date+player, jamais réécrite)."""
+
+    date: str  # date UTC du défi (YYYY-MM-DD)
+    player_id: str
+    game_id: str
+    score: float
+    created_at: str
+
+
 class GameStore(Protocol):
     """Contrat de persistance dont dépend l'API de jeu (implémenté par SQLite)."""
 
@@ -243,6 +259,9 @@ class GameStore(Protocol):
     def list_session_snapshots(self) -> list[str]: ...
     def add_campaign_score(self, score: CampaignScore) -> None: ...
     def list_campaign_scores(self) -> list[CampaignScore]: ...
+    # G16 — le défi du jour (une tentative classée par joueur et par jour).
+    def add_daily_score(self, score: DailyScore) -> None: ...
+    def list_daily_scores(self) -> list[DailyScore]: ...
     # G11-c — comptes de ligue (LP) : source de vérité backend.
     def get_player(self, player_id: str) -> PlayerRecord | None: ...
     def upsert_player(self, player: PlayerRecord) -> None: ...
@@ -615,6 +634,30 @@ class SQLiteGameStore:
                 chapter_id=r["chapter_id"],
                 score=r["score"],
                 improvement=r["improvement"],
+                created_at=r["created_at"],
+            )
+            for r in rows
+        ]
+
+    # --- défi du jour (G16) ---------------------------------------------------------
+
+    def add_daily_score(self, score: DailyScore) -> None:
+        """Le score du jour — jamais réécrit : la première tentative classée fait foi."""
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO daily_scores (date, player_id, game_id, score, created_at) "
+                "VALUES (?, ?, ?, ?, ?) ON CONFLICT(date, player_id) DO NOTHING",
+                (score.date, score.player_id, score.game_id, score.score, score.created_at),
+            )
+
+    def list_daily_scores(self) -> list[DailyScore]:
+        rows = self._conn.execute("SELECT * FROM daily_scores ORDER BY rowid").fetchall()
+        return [
+            DailyScore(
+                date=r["date"],
+                player_id=r["player_id"],
+                game_id=r["game_id"],
+                score=r["score"],
                 created_at=r["created_at"],
             )
             for r in rows

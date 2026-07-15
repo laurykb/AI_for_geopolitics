@@ -26,6 +26,7 @@ _PRIMARY_KEYS = {
     "transcripts": ("id",),
     "game_sessions": ("game_id",),
     "campaign_scores": ("game_id",),
+    "daily_scores": ("date", "player_id"),
     "market_accounts": ("id",),
     "markets": ("id",),
     "market_outcomes": ("id",),

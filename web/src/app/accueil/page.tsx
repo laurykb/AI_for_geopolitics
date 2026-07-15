@@ -15,11 +15,12 @@ import { RankBadge } from "@/components/rank-badge";
 import { useT } from "@/components/settings-provider";
 import { Banner, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
 import { usePlanetLaunch } from "@/hooks/usePlanetLaunch";
-import { getLeaguePlayer, humanizeError, listGames } from "@/lib/api";
+import { getDaily, getLeaguePlayer, humanizeError, listGames, startDaily } from "@/lib/api";
+import { countdownLabel } from "@/lib/daily";
 import { fmtDateTime } from "@/lib/format";
 import { rankFor } from "@/lib/league";
 import { MODES } from "@/lib/modes";
-import type { GameView } from "@/lib/types";
+import type { DailyView, GameView } from "@/lib/types";
 
 export default function AccueilPage() {
   const { player } = useAuth();
@@ -29,6 +30,29 @@ export default function AccueilPage() {
   const [lp, setLp] = useState<number | null>(null); // LP autoritatif (backend, G11-c)
   const [level, setLevel] = useState<number | null>(null); // niveau de carrière (G12)
   const [error, setError] = useState<string | null>(null);
+  // G16 — le défi du jour : état joué/pas-joué + compte à rebours client (minuit UTC).
+  const [daily, setDaily] = useState<DailyView | null>(null);
+  const [dailyBusy, setDailyBusy] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (player) getDaily(player.id).then(setDaily).catch(() => {});
+  }, [player]);
+  useEffect(() => {
+    const iv = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const playDaily = (free: boolean) => {
+    if (!player) return;
+    setDailyBusy(true);
+    startDaily(player.id, free)
+      .then((g) => launch(`/games/${g.id}`))
+      .catch((err) => {
+        setError(humanizeError(err));
+        setDailyBusy(false);
+      });
+  };
 
   useEffect(() => {
     if (!player) return;
@@ -99,6 +123,59 @@ export default function AccueilPage() {
         {/* Voile de plongée : couvre l'écran pendant le zoom. */}
         {launching && <div className="intro-veil absolute inset-0 z-10 bg-background" />}
       </div>
+
+      {/* G16 — Le Sommet du jour : même crise pour tout le monde, une tentative
+          classée, la crise reste « ??? » jusqu'au premier round. */}
+      <Panel className="border-l-2 border-l-accent">
+        <PanelTitle
+          kicker={t("daily.kicker")}
+          title={`${t("daily.titre")} — ${daily?.date ?? "…"}`}
+          hint={t("daily.hint")}
+          right={
+            <span className="font-mono text-xs tabular-nums text-fg-faint">
+              {t("daily.prochain")} {countdownLabel(nowMs)}
+            </span>
+          }
+        />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-fg-muted">
+            {t("daily.mystere")}{" "}
+            <span className="font-mono text-foreground">« ??? »</span>
+          </p>
+          <span className="flex items-center gap-2">
+            {daily?.attempted ? (
+              <>
+                <Pill tone="good">
+                  {t("daily.deja")}
+                  {daily.my_rank != null && ` · #${daily.my_rank}`}
+                </Pill>
+                <Link
+                  href="/defi"
+                  className="rounded-md border border-edge-strong px-3 py-1.5 text-xs font-medium transition-colors hover:border-accent hover:text-accent-bright"
+                >
+                  {t("daily.classement")}
+                </Link>
+                <button
+                  onClick={() => playDaily(true)}
+                  disabled={dailyBusy || launching}
+                  className="cursor-pointer rounded-md border border-edge px-3 py-1.5 text-xs text-fg-muted transition-colors hover:border-edge-strong hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {t("daily.rejouer")}
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => playDaily(false)}
+                disabled={dailyBusy || launching || !daily}
+                className="flex cursor-pointer items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {dailyBusy && <Spinner />}
+                {dailyBusy ? t("daily.lancement") : t("daily.jouer")}
+              </button>
+            )}
+          </span>
+        </div>
+      </Panel>
 
       {/* Rang de ligue : blason + LP + barre vers le rang suivant */}
       <div data-tour="rang">

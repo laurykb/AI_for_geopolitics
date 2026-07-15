@@ -14,6 +14,7 @@ import os
 from storage.game_store import (
     CampaignScore,
     CustomCrisisRecord,
+    DailyScore,
     GameRecord,
     GameStatus,
     LpHistoryEntry,
@@ -189,6 +190,21 @@ class SupabaseGameStore:
     def list_campaign_scores(self) -> list[CampaignScore]:
         rows = self._db.select("campaign_scores", order="created_at.asc")
         return [CampaignScore.model_validate(r) for r in rows]
+
+    # --- défi du jour (G16) ---------------------------------------------------------
+
+    def add_daily_score(self, score: DailyScore) -> None:
+        # Jamais réécrit (la 1re tentative fait foi) : insert ignoré si la PK existe.
+        if any(
+            r["player_id"] == score.player_id
+            for r in self._db.select("daily_scores", {"date": score.date})
+        ):
+            return
+        self._db.insert("daily_scores", [score.model_dump()])
+
+    def list_daily_scores(self) -> list[DailyScore]:
+        rows = self._db.select("daily_scores", order="created_at.asc")
+        return [DailyScore.model_validate(r) for r in rows]
 
     # --- comptes de ligue (G11-c) -------------------------------------------------
 

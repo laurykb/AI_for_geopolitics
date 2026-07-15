@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.campaign_api import router as campaign_router
+from app.daily_api import router as daily_router
 from app.dashboard import DashboardData, run_red_sea
 from app.game_api import router as game_router
 from app.market_api import router as market_router
@@ -30,6 +31,7 @@ app.include_router(market_router)
 app.include_router(game_router)
 app.include_router(sources_router)
 app.include_router(campaign_router)
+app.include_router(daily_router)
 
 
 @app.get("/")

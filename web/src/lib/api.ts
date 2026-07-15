@@ -5,6 +5,7 @@ import type {
   CreateGameBody,
   CrisisDoc,
   CustomCrisisView,
+  DailyView,
   DriftReveal,
   GameDetail,
   GameView,
@@ -108,6 +109,17 @@ export const publishGame = (gameId: string): Promise<GameView> =>
 
 /** Carte de campagne (G5) : chapitres, meilleurs scores, déblocage. */
 export const getCampaign = (): Promise<CampaignView> => request("/api/campaign");
+
+/** G16 — le défi du jour : même sommet pour tous, classement du jour + 7 derniers. */
+export const getDaily = (player?: string): Promise<DailyView> =>
+  request(`/api/daily${player ? `?player=${encodeURIComponent(player)}` : ""}`);
+
+/** G16 — lance le défi (classé, une tentative/jour ; `free` = re-run non scoré). */
+export const startDaily = (ownerId: string, free = false): Promise<GameView> =>
+  request("/api/daily/start", {
+    method: "POST",
+    body: JSON.stringify({ owner_id: ownerId, free }),
+  });
 
 /** Ouvre un chapitre de campagne : une partie normale, paramétrée par la fiche. */
 export const startChapter = (chapterId: string): Promise<GameView> =>

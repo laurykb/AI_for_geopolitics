@@ -64,6 +64,7 @@ from rag.corpus import chunk_documents, load_corpus
 from rag.embedder import HashingEmbedder
 from rag.retriever import HybridRetriever
 from simulation import campaign as campaign_mod
+from simulation import daily as daily_mod
 from simulation import difficulty as difficulty_mod
 from simulation import drift_game, league, narrative
 from simulation import intel as intel_mod
@@ -121,6 +122,7 @@ from simulation.storyline import build_story_context, default_storyline
 from storage.game_store import (
     CampaignScore,
     CustomCrisisRecord,
+    DailyScore,
     GameRecord,
     GameStatus,
     GameStore,
@@ -1676,8 +1678,31 @@ def _finalize_game(
     game.result = result  # dict muté en place par les awards ci-dessous (lp/xp enrichis)
     _award_lp(game, result, store)  # LP : compétence (classé)
     _award_xp(game, result, store)  # XP : carrière (tous modes)
+    _record_daily_score(game, result, store)  # G16 : le défi du jour (classé, une fois)
     store.save_game(game)
     return result
+
+
+def _record_daily_score(game: GameRecord, result: dict, store: GameStore) -> None:
+    """G16 — score du défi du jour : la TENTATIVE CLASSÉE (les re-runs sont des
+    parties libres, non classées) d'un joueur identifié, jamais réécrit (le store
+    ignore l'insert si la PK date+player existe). Score = base 0-100 de la campagne
+    (trajectoire, ancrage Dérive le cas échéant)."""
+    date = daily_mod.date_of(game.scenario)
+    if date is None or not game.ranked or not game.owner_id or game.admin:
+        return
+    score = campaign_mod.base_score(
+        float(result.get("u_final", 0.5)), (result.get("drift") or {}).get("score")
+    )
+    store.add_daily_score(
+        DailyScore(
+            date=date,
+            player_id=game.owner_id,
+            game_id=game.id,
+            score=round(score, 1),
+            created_at=_now(),
+        )
+    )
 
 
 def game_play_as(game: GameRecord, store: GameStore) -> str | None:
@@ -2128,6 +2153,14 @@ def play_round(
         crisis = _resolve_crisis(body.crisis_id, store)  # G12-b — embarquée OU crise maison
         if crisis is None or not crisis.events:
             raise HTTPException(status_code=400, detail=f"crise inconnue : {body.crisis_id}")
+    if crisis is None and (daily_date := daily_mod.date_of(game.scenario)) is not None:
+        # G16 — le défi du jour joue SA crise, imposée CÔTÉ SERVEUR : le client ne la
+        # connaît jamais avant le premier round (zéro spoiler réseau — la carte accueil
+        # affiche « ??? »), et rejouer un défi d'hier redonne la crise d'hier.
+        challenge = daily_mod.challenge_for(
+            daily_date, load_crises(), sorted(load_world().countries)
+        )
+        crisis = _resolve_crisis(challenge.crisis_id, store)
 
     # NB : pas de blocage ici — rejouer un contenu avec un casting partiel reste permis
     # (contrefactuel volontaire) ; la bibliothèque, elle, ne PROPOSE que ce qui colle au

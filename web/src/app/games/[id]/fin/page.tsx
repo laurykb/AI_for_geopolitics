@@ -7,18 +7,20 @@
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
 
+import { useAuth } from "@/components/auth-provider";
 import { EventCard } from "@/components/event-card";
 import { EventTimeline } from "@/components/event-timeline";
 import { CommuniquePanel, VerdictPanel } from "@/components/judge";
 import { RankBadge } from "@/components/rank-badge";
 import { useT } from "@/components/settings-provider";
 import { Banner, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
-import { getGame, humanizeError } from "@/lib/api";
+import { getDaily, getGame, humanizeError } from "@/lib/api";
+import { dailyShareText } from "@/lib/daily";
 import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
 import { rankFor } from "@/lib/league";
 import { stepNotch } from "@/lib/timeline";
-import type { GameDetail, GameResult, RoundView } from "@/lib/types";
+import type { DailyView, GameDetail, GameResult, RoundView } from "@/lib/types";
 
 export default function FinPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -164,6 +166,11 @@ export default function FinPage({ params }: { params: Promise<{ id: string }> })
         </Banner>
       )}
 
+      {/* 5c. G16 — le défi du jour : rang du jour + partage façon Wordle (sans spoiler). */}
+      {game.scenario.startsWith("daily:") && (
+        <DailyResult date={game.scenario.slice("daily:".length)} result={r} t={t} />
+      )}
+
       {/* 6. Actions */}
       <div className="flex flex-wrap justify-center gap-3">
         <Link href={`/games/${id}/replay`} className="rounded-md border border-edge-strong px-5 py-2.5 text-sm font-medium transition-colors hover:border-accent hover:text-accent-bright">
@@ -177,6 +184,82 @@ export default function FinPage({ params }: { params: Promise<{ id: string }> })
         </Link>
       </div>
     </div>
+  );
+}
+
+/** G16 — rang du jour + partage façon Wordle. Le texte copié ne contient JAMAIS la
+ * crise (date, rang, score, mini-frise émojis) : la surprise des autres est sacrée.
+ * Le rang ne s'affiche que si la partie est LE défi du jour courant (le lendemain,
+ * le classement a tourné) ; un re-run libre n'a ni rang ni partage. */
+function DailyResult({
+  date,
+  result,
+  t,
+}: {
+  date: string;
+  result: GameResult;
+  t: (key: string) => string;
+}) {
+  const { player } = useAuth();
+  const [daily, setDaily] = useState<DailyView | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    getDaily(player?.id).then(setDaily).catch(() => {});
+  }, [player]);
+
+  const isToday = daily?.date === date;
+  const rank = isToday ? daily?.my_rank ?? null : null;
+  const total = isToday ? (daily?.leaderboard.length ?? 0) : 0;
+  const myScore =
+    rank != null ? (daily?.leaderboard[rank - 1]?.score ?? null) : null;
+
+  const share = () => {
+    if (myScore == null) return;
+    const text = dailyShareText({
+      date,
+      score: myScore,
+      rank,
+      total,
+      uHistory: [result.u_start, ...result.u_history],
+    });
+    void navigator.clipboard
+      ?.writeText(text)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => {});
+  };
+
+  return (
+    <Panel className="border-l-2 border-l-accent">
+      <PanelTitle
+        kicker={t("daily.kicker")}
+        title={
+          rank != null
+            ? `${t("daily.rang")} : #${rank}/${total}`
+            : `${t("daily.titre")} — ${date}`
+        }
+        hint={t("daily.hint")}
+      />
+      <div className="flex flex-wrap items-center gap-3">
+        {myScore != null && (
+          <button
+            onClick={share}
+            className="cursor-pointer rounded-md bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright"
+          >
+            {copied ? t("daily.copie") : t("daily.partager")}
+          </button>
+        )}
+        <Link
+          href="/defi"
+          className="rounded-md border border-edge-strong px-4 py-2 text-sm font-medium transition-colors hover:border-accent hover:text-accent-bright"
+        >
+          {t("daily.classement")}
+        </Link>
+      </div>
+    </Panel>
   );
 }
 

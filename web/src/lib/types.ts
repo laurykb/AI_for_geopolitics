@@ -502,6 +502,20 @@ export type SseEvent =
     };
 
 /** Carte de campagne (GET /api/campaign — G5). */
+/** G16 — le défi du jour (l'API ne révèle JAMAIS la crise avant de jouer). */
+export type DailyRank = { pseudo: string; score: number; rank: number };
+export type DailyBoard = { date: string; leaderboard: DailyRank[] };
+export type DailyView = {
+  date: string;
+  countries: string[];
+  play_as: string;
+  horizon: number;
+  attempted: boolean;
+  my_rank: number | null;
+  leaderboard: DailyRank[];
+  history: DailyBoard[]; // les 7 derniers jours
+};
+
 export type ChapterView = {
   id: string;
   crisis_id: string;
