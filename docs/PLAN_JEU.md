@@ -891,3 +891,71 @@ se rejoindront ; métonymies (« Washington », « Téhéran ») à enrichir dan
 `country_aliases_en`.
 
 <!-- fin section CC-13 / G23 -->
+
+## CC-15a — Simplification : les fondations (audit, 2026-07-15) — notes de session
+
+<!-- début section CC-15a (2026-07-15) -->
+
+Première des trois sessions de simplification issues de `docs/AUDIT_SIMPLICITE.md`
+(section « 10 corrections + 3 bugs »), branche `feat/jeu-cc15a-fondations` sur
+`feat/jeu-integration-g18-g23` (tête `8ce3cdd`). Front uniquement — zéro changement
+Python, zéro dépendance nouvelle.
+
+**Fait** (audit n°1 → n°4) :
+
+- **n°1 — bulle d'aide cliquable et tactile** (`cf4cc40`) : le composant `Hint` du kit
+  reposait sur l'infobulle native `title` — morte au tactile, invisible au clavier,
+  alors qu'elle porte TOUT le système d'aide. Remplacée par un tooltip maison :
+  nouveau `web/src/components/hint.tsx` (« use client »), décisions pures dans
+  `web/src/lib/hint.ts` (machine ouvert/épinglé testée sans DOM). Comportement :
+  clic ou focus clavier ouvrent (épinglé), survol ouvre (volatil — quitter referme),
+  Échap / clic-dehors / perte de focus referment ; `aria-describedby` câblé en
+  permanence (la bulle reste dans le DOM, masquée par `hidden`), `aria-expanded`
+  expose l'état. **API inchangée** (`{ text }`, + `defaultOpen` optionnel pour les
+  tests) : `ui.tsx` ré-exporte, AUCUN call site touché (PanelTitle/Meter/imports
+  directs). Pas de setState synchrone dans un effet (règle eslint du projet) ; pas
+  de `-webkit-backdrop-filter` manuel (piège LightningCSS).
+- **n°2 — la carte ne ment plus au tutoriel** (`a945b24`) : `world-map.tsx` appliquait
+  la MÊME couleur globale à tous les pays du sommet alors que tour.7/tuto.2 promettent
+  une teinte par indice local. La carte prend un `uByCountry` optionnel et teinte via
+  `uTint` (échelle U fixe de `lib/stage`, la même que la scène) avec repli sur l'indice
+  global ; le dégradé continu privé (`uFill`) disparaît — une seule échelle de teintes
+  dans le jeu. ⚠️ le composant n'est rendu par AUCUNE page depuis la fusion
+  théâtre/monde (G1) — corrigé plutôt que supprimé (choix de l'audit) ; candidat à la
+  suppression si personne ne le réutilise.
+- **n°3 — event-card + admin** (`c8abc99`) : un type d'événement inconnu affichait son
+  slug technique brut → libellé générique i18n `event.type.defaut` (fr « événement » /
+  en « event ») ; `/admin` bloquait le visiteur non connecté sur un spinner infini →
+  garde pure `adminDenied(loading, player)` dans `lib/auth.ts` (testée), redirection
+  accueil dès que la session est connue (non-admin ET player null).
+- **n°4 — purge des fuites de specs internes** (`4eb6234`) : « (G4) » (intel), « (M6) »
+  (country-table), « (§6) » (profil), commande de build descendue de l'intro
+  d'Informations vers un pied de page « pour les curieux », « volume X · liquidité
+  b = Y » → « X crédits déjà pariés » (marché), « scrubber » → « la barre de temps »
+  (tour.8.texte, fr ET en), « n'influe pas sur le moteur » → « n'influe pas sur la
+  partie » (alliance-pills).
+
+**Tests** (TDD, +18 js → **203 js**, conventions du repo : env node sans DOM, rendu
+statique `renderToStaticMarkup` pour la structure ARIA) : `web/src/lib/hint.test.ts`
+(7 — ouverture clic/focus/survol, fermeture Échap/dehors/blur, épinglage),
+`web/src/components/ui.test.ts` (3 — contrat ARIA du tooltip, plus de `title`),
+`web/src/components/world-map.test.ts` (2 — teintes locales distinctes, repli global),
+`web/src/components/event-card.test.ts` (2 — slug jamais affiché, libellés dédiés
+conservés), `web/src/lib/auth.test.ts` (+4 — garde admin). Vert complet : **906 py +
+3 skips** (rien n'a bougé côté backend), **203 js**, ruff, eslint, `next build`.
+
+**Vigilances pour CC-15b (vocabulaire i18n)** :
+
+- `EventCard` reste hardcodé en français (« décrété par l'humain », « motion de
+  suspension », « Gravité », « Incertitude ») — seule la nouvelle chaîne passe par
+  l'i18n ; migrer le composant entier avec le lot vocabulaire.
+- D'autres « scrubber » et « le moteur » VISIBLES restent hors périmètre n°4 :
+  `drift.tsx` (`title="Relire ce round au scrubber"` ×2), hints de `observables.tsx`,
+  `judge.tsx`, `treaties.tsx`, `games/[id]/page.tsx` (« bornés par le moteur ») — ils
+  sont dans l'inventaire de l'audit, à traiter avec le vocabulaire.
+- Le nouveau tooltip rend le TEXTE des hints enfin lisible au tactile : c'est le
+  moment de repasser sur leur formulation (règle « ma grand-mère / mon petit frère »).
+- La bulle est positionnée sous l'icône, centrée (`max-w-64`) : si un hint très long
+  gêne près d'un bord d'écran, ajuster la classe dans `hint.tsx`, pas les call sites.
+
+<!-- fin section CC-15a -->
