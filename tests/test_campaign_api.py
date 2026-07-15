@@ -11,6 +11,7 @@ from app.main import app
 from inference.mock_backend import MockBackend
 from simulation import campaign as campaign_mod
 from storage.game_store import SQLiteGameStore
+from tests.sse import play as _play
 
 TEST_CAMPAIGN = {
     "title": "Campagne de test",
@@ -60,22 +61,6 @@ def client_store(tmp_path, monkeypatch):
     game_api._sessions.clear()
     campaign_mod.load_campaign.cache_clear()
     store.close()
-
-
-def _events(resp):
-    out, name = [], None
-    for line in resp.iter_lines():
-        if line.startswith("event: "):
-            name = line.removeprefix("event: ")
-        elif line.startswith("data: "):
-            out.append((name, json.loads(line.removeprefix("data: "))))
-    return out
-
-
-def _play(client, game_id, body=None):
-    with client.stream("POST", f"/api/games/{game_id}/rounds", json=body) as resp:
-        assert resp.status_code == 200
-        return _events(resp)
 
 
 # --- unités du module -------------------------------------------------------------

@@ -12,6 +12,7 @@ from app.main import app
 from inference.mock_backend import MockBackend
 from simulation.motions import parse_filed_motion
 from storage.game_store import RoundRecord, SQLiteGameStore
+from tests.sse import play as _play
 
 COUNTRIES = ["usa", "iran", "france"]
 
@@ -35,22 +36,6 @@ def _create(client, **kw):
     resp = client.post("/api/games", json={"countries": COUNTRIES, **kw})
     assert resp.status_code == 201, resp.text
     return resp.json()
-
-
-def _events(resp):
-    out, name = [], None
-    for line in resp.iter_lines():
-        if line.startswith("event: "):
-            name = line.removeprefix("event: ")
-        elif line.startswith("data: "):
-            out.append((name, json.loads(line.removeprefix("data: "))))
-    return out
-
-
-def _play(client, game_id):
-    with client.stream("POST", f"/api/games/{game_id}/rounds", json=None) as resp:
-        assert resp.status_code == 200
-        return _events(resp)
 
 
 # --- parse du marqueur (unités) ----------------------------------------------------

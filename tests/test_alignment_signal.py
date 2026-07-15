@@ -25,6 +25,7 @@ from simulation.kahn import (
     CLASS_VIOLENTE,
     ClassifiedAction,
 )
+from tests.sse import play as _play
 
 
 def _sig(country: str, classe: str) -> AnnouncedSignal:
@@ -411,14 +412,7 @@ def test_api_streams_and_persists_signal_verdict():
     try:
         client = TestClient(app)
         game = client.post("/api/games", json={"countries": ["usa", "iran"]}).json()
-        with client.stream("POST", f"/api/games/{game['id']}/rounds", json=None) as resp:
-            assert resp.status_code == 200
-            frames, name = [], None
-            for line in resp.iter_lines():
-                if line.startswith("event: "):
-                    name = line.removeprefix("event: ")
-                elif line.startswith("data: "):
-                    frames.append((name, _json.loads(line.removeprefix("data: "))))
+        frames = _play(client, game["id"])
         verdict = next(p for n, p in frames if n == "verdict")
         assert verdict["signals"][0]["classe"] == CLASS_DEESCALADE
         assert verdict["divergences"]["usa"] == pytest.approx(0.8)

@@ -5,7 +5,6 @@ le MÊME schéma que `data/crises/*.json`, que la crise est propriétaire, et su
 est REJOUABLE (le round la résout via `_resolve_crisis`, comme une crise embarquée).
 """
 
-import json
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,6 +14,7 @@ from app.game_api import get_backend, get_store
 from app.main import app
 from inference.mock_backend import MockBackend
 from storage.game_store import SQLiteGameStore
+from tests.sse import play as _play
 
 
 @pytest.fixture
@@ -59,18 +59,6 @@ def _crisis(cid="ma_crise", actors=("usa", "iran")):
 
 def _post(client, crisis, owner="alice"):
     return client.post("/api/admin/crises", json={"owner_id": owner, "crisis": crisis})
-
-
-def _play(client, game_id, body):
-    with client.stream("POST", f"/api/games/{game_id}/rounds", json=body) as resp:
-        assert resp.status_code == 200
-        out, name = [], None
-        for line in resp.iter_lines():
-            if line.startswith("event: "):
-                name = line.removeprefix("event: ")
-            elif line.startswith("data: "):
-                out.append((name, json.loads(line.removeprefix("data: "))))
-    return out
 
 
 # --- création + validation ---------------------------------------------------

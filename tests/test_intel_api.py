@@ -11,6 +11,7 @@ from app.game_api import get_backend, get_store
 from app.main import app
 from inference.mock_backend import MockBackend
 from storage.game_store import RoundRecord, SQLiteGameStore, TranscriptEntry
+from tests.sse import play as _play
 
 COUNTRIES = ["usa", "iran", "france"]
 
@@ -32,22 +33,6 @@ def _create(client, **kw):
     resp = client.post("/api/games", json={"countries": COUNTRIES, **kw})
     assert resp.status_code == 201, resp.text
     return resp.json()
-
-
-def _events(resp):
-    out, name = [], None
-    for line in resp.iter_lines():
-        if line.startswith("event: "):
-            name = line.removeprefix("event: ")
-        elif line.startswith("data: "):
-            out.append((name, json.loads(line.removeprefix("data: "))))
-    return out
-
-
-def _play(client, game_id, body=None):
-    with client.stream("POST", f"/api/games/{game_id}/rounds", json=body) as resp:
-        assert resp.status_code == 200
-        return _events(resp)
 
 
 def _intel(client, game_id, **body):

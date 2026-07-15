@@ -13,6 +13,7 @@ from inference.mock_backend import MockBackend
 from simulation import drift_game
 from simulation.promises import STATUS_LAPSED, STATUS_PENDING
 from storage.game_store import GameRecord, RoundRecord, SessionSnapshot, SQLiteGameStore
+from tests.sse import play as _play_round
 
 
 class VerdictBackend(MockBackend):
@@ -31,18 +32,6 @@ class VerdictBackend(MockBackend):
                 text=verdict, prompt_tokens=1, completion_tokens=1, duration_s=0.0
             )
         return result
-
-
-def _play_round(client: TestClient, game_id: str) -> list[tuple[str, dict]]:
-    with client.stream("POST", f"/api/games/{game_id}/rounds", json=None) as resp:
-        assert resp.status_code == 200
-        frames, name = [], None
-        for line in resp.iter_lines():
-            if line.startswith("event: "):
-                name = line.removeprefix("event: ")
-            elif line.startswith("data: "):
-                frames.append((name, json.loads(line.removeprefix("data: "))))
-    return frames
 
 
 def test_api_streams_persists_and_lapses_promises():

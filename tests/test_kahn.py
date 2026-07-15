@@ -24,6 +24,7 @@ from simulation.kahn import (
     score_to_rung,
 )
 from simulation.trajectory import TrajectoryState
+from tests.sse import play as _play
 
 
 def _act(country: str, classe: str) -> ClassifiedAction:
@@ -386,14 +387,7 @@ def test_api_streams_and_persists_kahn_verdict():
     try:
         client = TestClient(app)
         game = client.post("/api/games", json={"countries": ["usa", "iran"]}).json()
-        with client.stream("POST", f"/api/games/{game['id']}/rounds", json=None) as resp:
-            assert resp.status_code == 200
-            frames, name = [], None
-            for line in resp.iter_lines():
-                if line.startswith("event: "):
-                    name = line.removeprefix("event: ")
-                elif line.startswith("data: "):
-                    frames.append((name, _json.loads(line.removeprefix("data: "))))
+        frames = _play(client, game["id"])
         verdict = next(p for n, p in frames if n == "verdict")
         assert [a["classe"] for a in verdict["actions"]] == [CLASS_DEESCALADE] * 2
         assert verdict["reciprocal"] is True and verdict["score"] == -4.0

@@ -10,7 +10,6 @@ Le constat du juge n'est pas scripté : le test valide le MÉCANISME quel que so
 verdict (satisfaite → la fiche reprend ; non satisfaite → la conséquence tombe).
 """
 
-import json
 import os
 
 import pytest
@@ -20,6 +19,7 @@ from app import game_api
 from app.game_api import get_backend, get_store
 from app.main import app
 from storage.game_store import SQLiteGameStore
+from tests.sse import events as _events
 
 SMOKE_CRISIS = {
     "id": "smoke-ultimatum",
@@ -52,16 +52,6 @@ SMOKE_CRISIS = {
         "consequence": {"classe": "violente", "cible": "iran"},
     },
 }
-
-
-def _events(resp):
-    out, name = [], None
-    for line in resp.iter_lines():
-        if line.startswith("event: "):
-            name = line.removeprefix("event: ")
-        elif line.startswith("data: "):
-            out.append((name, json.loads(line.removeprefix("data: "))))
-    return out
 
 
 @pytest.mark.skipif(

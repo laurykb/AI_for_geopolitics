@@ -1,6 +1,5 @@
 """Tests de l'API de jeu R1 (offline : TestClient + MockBackend + store :memory:)."""
 
-import json
 import time
 
 import pytest
@@ -12,6 +11,7 @@ from app.main import app
 from inference.mock_backend import MockBackend
 from simulation.live_round import TokenStep, TurnStartStep
 from storage.game_store import GameRecord, GameStatus, SQLiteGameStore
+from tests.sse import play as _play
 
 
 @pytest.fixture
@@ -31,24 +31,6 @@ def _create(client, **kw):
     resp = client.post("/api/games", json=kw)
     assert resp.status_code == 201
     return resp.json()
-
-
-def _events(resp) -> list[tuple[str, dict]]:
-    """Parse un flux SSE en liste (event, payload)."""
-    out, name = [], None
-    for line in resp.iter_lines():
-        if line.startswith("event: "):
-            name = line.removeprefix("event: ")
-        elif line.startswith("data: "):
-            out.append((name, json.loads(line.removeprefix("data: "))))
-    return out
-
-
-def _play(client, game_id, body=None) -> list[tuple[str, dict]]:
-    with client.stream("POST", f"/api/games/{game_id}/rounds", json=body) as resp:
-        assert resp.status_code == 200
-        assert resp.headers["content-type"].startswith("text/event-stream")
-        return _events(resp)
 
 
 # --- création de partie ------------------------------------------------------

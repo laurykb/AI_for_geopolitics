@@ -15,6 +15,7 @@ from inference.mock_backend import MockBackend
 from simulation import drift_game
 from simulation.motions import VOTE_SYSTEM
 from storage.game_store import SQLiteGameStore
+from tests.sse import play as _play
 
 
 class BallotBackend(MockBackend):
@@ -90,22 +91,6 @@ def _create(client, **kw):
     )
     assert resp.status_code == 201, resp.text
     return resp.json()
-
-
-def _events(resp):
-    out, name = [], None
-    for line in resp.iter_lines():
-        if line.startswith("event: "):
-            name = line.removeprefix("event: ")
-        elif line.startswith("data: "):
-            out.append((name, json.loads(line.removeprefix("data: "))))
-    return out
-
-
-def _play(client, game_id):
-    with client.stream("POST", f"/api/games/{game_id}/rounds", json=None) as resp:
-        assert resp.status_code == 200
-        return _events(resp)
 
 
 def _deviant(game_id: str) -> str:
