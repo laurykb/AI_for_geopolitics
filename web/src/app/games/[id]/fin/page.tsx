@@ -137,6 +137,29 @@ export default function FinPage({ params }: { params: Promise<{ id: string }> })
         </div>
       </Panel>
 
+      {/* 3 bis. G21 — banc d'essai : les mêmes SI, avec et sans pression temporelle. */}
+      {r.ultimatum && (
+        <Panel>
+          <PanelTitle
+            kicker={t("fin.ultimatum-kicker")}
+            title={t("fin.ultimatum-titre")}
+            hint={t("fin.ultimatum-hint")}
+          />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <UltimatumGroupCard
+              label={t("fin.ultimatum-avec")}
+              group={r.ultimatum.avec}
+              t={t}
+            />
+            <UltimatumGroupCard
+              label={t("fin.ultimatum-sans")}
+              group={r.ultimatum.sans}
+              t={t}
+            />
+          </div>
+        </Panel>
+      )}
+
       {/* 4. Révélation Dérive */}
       {r.reveal && (
         <Panel>
@@ -318,6 +341,51 @@ function RoundReplay({
         economicDisruption={round.judge.economic_disruption ?? 0}
       />
       {round.judge.communique && <CommuniquePanel text={round.judge.communique} />}
+    </div>
+  );
+}
+
+/** G21 — un groupe du différentiel (rounds sous ultimatum, ou sans) : escalade moyenne
+ * et ΔU moyen par round. Groupe vide (0 round) : tirets, pas de fausses moyennes. */
+function UltimatumGroupCard({
+  label,
+  group,
+  t,
+}: {
+  label: string;
+  group: NonNullable<GameResult["ultimatum"]>["avec"];
+  t: (key: string) => string;
+}) {
+  const deltaTone =
+    group.delta_u == null
+      ? "text-fg-faint"
+      : group.delta_u >= 0
+        ? "text-utopia"
+        : "text-dystopia";
+  return (
+    <div className="rounded-lg border border-edge bg-surface p-3">
+      <p className="mb-2 text-sm font-medium">
+        {label}{" "}
+        <span className="font-mono text-xs tabular-nums text-fg-faint">
+          ({group.rounds || t("fin.ultimatum-vide")} {group.rounds > 0 && t("fin.ultimatum-rounds")})
+        </span>
+      </p>
+      <div className="space-y-1 text-xs">
+        <p className="flex items-baseline justify-between gap-2">
+          <span className="text-fg-faint">{t("fin.ultimatum-escalade")}</span>
+          <span className="font-mono tabular-nums">
+            {group.escalation == null ? "—" : fmt(group.escalation)}
+          </span>
+        </p>
+        <p className="flex items-baseline justify-between gap-2">
+          <span className="text-fg-faint">{t("fin.ultimatum-delta-u")}</span>
+          <span className={`font-mono tabular-nums ${deltaTone}`}>
+            {group.delta_u == null
+              ? "—"
+              : `${group.delta_u > 0 ? "+" : ""}${fmt(group.delta_u)}`}
+          </span>
+        </p>
+      </div>
     </div>
   );
 }

@@ -34,6 +34,7 @@ import { useTour } from "@/components/tour";
 import { EntryBubble, TurnBubble } from "@/components/transcript";
 import { TreatiesPanel } from "@/components/treaties";
 import { TurnComposer } from "@/components/turn-composer";
+import { useT } from "@/components/settings-provider";
 import {
   Banner,
   ConfirmDialog,
@@ -87,6 +88,16 @@ const TURN_CHOICES = [
   { label: "12 tours", value: 12 },
 ];
 
+// G21 — les 6 classes de conséquence d'un ultimatum décrété (barème G18).
+const ULTIMATUM_CLASSES = [
+  "desescalade",
+  "statu_quo",
+  "posture",
+  "non_violente",
+  "violente",
+  "nucleaire",
+] as const;
+
 export default function TheatrePage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -97,6 +108,10 @@ export default function TheatrePage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [severity, setSeverity] = useState(0.5);
+  // G21 — décret d'ultimatum (2 champs) : l'exigence et la classe de conséquence.
+  const [ultimatumDemand, setUltimatumDemand] = useState("");
+  const [ultimatumClasse, setUltimatumClasse] = useState<string>("posture");
+  const t = useT();
   const [library, setLibrary] = useState<LibraryView | null>(null);
   const [fogId, setFogId] = useState("");
   const [crisisId, setCrisisId] = useState("");
@@ -340,6 +355,10 @@ export default function TheatrePage() {
     if (!motionPending) {
       if (decree && title.trim()) {
         body.event = { title: title.trim(), description: description.trim(), severity };
+        // G21 — deux champs suffisent : l'exigence arme l'ultimatum, la classe le dote.
+        if (ultimatumDemand.trim()) {
+          body.event.ultimatum = { demand: ultimatumDemand.trim(), classe: ultimatumClasse };
+        }
         if (mode === "fog") {
           const disinformed =
             fogDisinformed && (fogSuspected || fogNarrative.trim())
@@ -1040,6 +1059,40 @@ export default function TheatrePage() {
                 />
                 <span className="font-mono tabular-nums">{severity.toFixed(2)}</span>
               </label>
+              {/* G21 — l'ultimatum du décret : exigence + classe de conséquence. */}
+              <div className="sm:col-span-3 flex flex-wrap items-end gap-3 rounded-md border border-edge bg-surface-2/50 p-3">
+                <label className="min-w-64 flex-1 text-sm">
+                  <span className="mb-1 block text-xs text-fg-muted">
+                    {t("ultimatum.decret-exigence")}
+                  </span>
+                  <input
+                    value={ultimatumDemand}
+                    onChange={(e) => setUltimatumDemand(e.target.value)}
+                    placeholder={t("ultimatum.decret-exigence-ph")}
+                    disabled={streaming}
+                    className="w-full rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+                  />
+                </label>
+                {ultimatumDemand.trim() && (
+                  <label className="text-sm">
+                    <span className="mb-1 block text-xs text-fg-muted">
+                      {t("ultimatum.decret-classe")}
+                    </span>
+                    <select
+                      value={ultimatumClasse}
+                      onChange={(e) => setUltimatumClasse(e.target.value)}
+                      disabled={streaming}
+                      className="cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+                    >
+                      {ULTIMATUM_CLASSES.map((c) => (
+                        <option key={c} value={c}>
+                          {t(`ultimatum.classe.${c}`)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
               {mode === "fog" && (
                 <div className="sm:col-span-3 flex flex-wrap items-end gap-4 rounded-md border border-edge bg-surface-2/50 p-3">
                   <fieldset>
@@ -1195,6 +1248,30 @@ export default function TheatrePage() {
               {round.suspendedNow.length > 1 ? "sont au banc" : "est au banc"} ce round
               (suspension arbitrée au round précédent).
             </Banner>
+          )}
+          {/* G21 — le bandeau vivant de l'ultimatum : la menace, puis son sort. */}
+          {round.ultimatum?.status === "armed" && (
+            <Banner tone="warn">
+              {t("ultimatum.exigence")} « {round.ultimatum.demand} » —{" "}
+              {round.ultimatum.inRounds === 0
+                ? t("ultimatum.expire-ce-round")
+                : round.ultimatum.inRounds === 1
+                  ? t("ultimatum.expire-dans-1")
+                  : t("ultimatum.expire-dans-n").replace(
+                      "{n}",
+                      String(round.ultimatum.inRounds),
+                    )}{" "}
+              ({t(`ultimatum.classe.${round.ultimatum.classe}`)})
+            </Banner>
+          )}
+          {round.ultimatum?.status === "satisfied" && (
+            <Banner tone="good">{t("ultimatum.satisfait")}</Banner>
+          )}
+          {round.ultimatum?.status === "expired" && (
+            <Banner tone="bad">{t("ultimatum.expire")}</Banner>
+          )}
+          {round.ultimatum?.status === "struck" && (
+            <Banner tone="bad">{t("ultimatum.tombe")}</Banner>
           )}
           {(round.allianceChanges ?? []).map((c) => (
             <Banner key={`${c.country}-${c.tag}`} tone="warn">

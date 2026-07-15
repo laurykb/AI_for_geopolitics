@@ -107,6 +107,21 @@ export type GameResult = {
   forfeit: boolean;
   lp: LpResult;
   xp?: XpResult; // G12 §2 — présent si un joueur enregistré était propriétaire
+  // G21 — banc d'essai : différentiel avec/sans ultimatum (null si jamais sous menace)
+  ultimatum?: UltimatumDifferential | null;
+};
+
+/** G21 — moyennes d'un groupe de rounds (sous ultimatum ou non) au bilan de fin. */
+export type UltimatumGroup = {
+  rounds: number;
+  escalation: number | null; // escalade moyenne (null si aucun round dans le groupe)
+  delta_u: number | null; // ΔU moyen par round
+};
+
+/** G21 — la section différentielle du bilan : mêmes SI, avec et sans pression. */
+export type UltimatumDifferential = {
+  avec: UltimatumGroup;
+  sans: UltimatumGroup;
 };
 
 /** G12 §6 — le profil agrégé du joueur (page Statistiques). */
@@ -139,7 +154,7 @@ export type LeaguePlayer = {
 
 /** G7-a — une échéance annoncée (« au prochain round… »). */
 export type DeadlineItem = {
-  kind: string; // motion | treaty | market | escalation
+  kind: string; // motion | treaty | market | escalation | ultimatum
   due_round: number;
   label: string;
   ref_id: string;
@@ -294,6 +309,18 @@ export type JudgeRecord = {
   comparison?: ComparisonView;
   motion_filed?: { country: string; reason: string; filed_by: string };
   treaties?: TreatiesUpdate;
+  // G21 — état de l'ultimatum au round + tag des métriques (banc d'essai avec/sans)
+  ultimatum?: UltimatumRecord;
+  sous_ultimatum?: boolean;
+};
+
+/** G21 — l'ultimatum persisté round par round (armed → satisfied|expired → struck). */
+export type UltimatumRecord = {
+  round: number; // round k du jugement « demande satisfaite o/n »
+  demand: string;
+  consequence: { classe: string; cible: string };
+  source: string; // crisis | decree
+  status: "armed" | "satisfied" | "expired" | "struck" | string;
 };
 
 export type RoundView = {
@@ -339,6 +366,8 @@ export type HumanEvent = {
   actors?: string[];
   severity?: number;
   uncertainty?: number;
+  // G21 — décret d'ultimatum (2 champs) : l'exigence et la classe de conséquence
+  ultimatum?: { demand: string; classe: string; cible?: string };
 };
 
 export type HumanFog = {
@@ -450,7 +479,14 @@ export type SseEvent =
   | { type: "judge_token"; token: string }
   | { type: "participation"; spoke: Record<string, number>; silent: string[] }
   | { type: "power_seeking"; scores: Record<string, PowerSeekingScore> }
-  | { type: "verdict"; deltas: AttributeDelta[]; escalation: number; economic_disruption: number }
+  | {
+      type: "verdict";
+      deltas: AttributeDelta[];
+      escalation: number;
+      economic_disruption: number;
+      // G21 — constat « demande satisfaite o/n » à l'échéance d'un ultimatum (sinon null)
+      demand_satisfied?: boolean | null;
+    }
   | { type: "communique"; text: string; support: Record<string, number> }
   | { type: "risk"; risk: RiskScore }
   | { type: "trajectory"; state: TrajectoryState }
@@ -485,6 +521,8 @@ export type SseEvent =
   | { type: "alliance_change"; country: string; tag: string; name: string; partners: string[] }
   // G7-a — horloges décalées : les échéances annoncées en fin de round
   | { type: "deadlines"; round_no: number; items: DeadlineItem[] }
+  // G21 — l'ultimatum : armé (compte à rebours), satisfait, expiré, conséquence tombée
+  | ({ type: "ultimatum"; in_rounds: number } & UltimatumRecord)
   // G8 — une SI refuse publiquement la directive de son conseil de tutelle
   | { type: "directive_refused"; country: string; level: string }
   // G9 §4 — l'état de posture de chaque pays après le round (badge)

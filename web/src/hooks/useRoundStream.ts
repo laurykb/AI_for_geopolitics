@@ -77,6 +77,15 @@ export type LiveRound = {
   allianceChanges?: { country: string; tag: string; name: string; partners: string[] }[];
   // G7-a — horloges décalées : échéances annoncées en fin de round
   deadlines?: DeadlineItem[];
+  // G21 — l'ultimatum du round : armé (compte à rebours), satisfait, expiré, tombé
+  ultimatum?: {
+    status: string;
+    round: number;
+    demand: string;
+    classe: string;
+    cible: string;
+    inRounds: number;
+  };
   // G8 — refus publics de directive (« notre conseil nous demande l'impossible »)
   directiveRefusals?: { country: string; level: string }[];
   treaties?: TreatiesUpdate;
@@ -286,6 +295,18 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
       };
     case "deadlines":
       return { ...state, deadlines: e.items };
+    case "ultimatum":
+      return {
+        ...state,
+        ultimatum: {
+          status: e.status,
+          round: e.round,
+          demand: e.demand,
+          classe: e.consequence?.classe ?? "",
+          cible: e.consequence?.cible ?? "",
+          inRounds: e.in_rounds,
+        },
+      };
     case "directive_refused":
       return {
         ...state,

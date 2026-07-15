@@ -281,3 +281,40 @@ describe("directives (G8)", () => {
     expect(state.directiveRefusals).toEqual([{ country: "france", level: "resists" }]);
   });
 });
+
+describe("ultimatum (G21)", () => {
+  const ARMED = {
+    type: "ultimatum",
+    status: "armed",
+    round: 2,
+    demand: "retrait des missiles",
+    consequence: { classe: "violente", cible: "usa" },
+    source: "crisis",
+    in_rounds: 1,
+  } satisfies Partial<SseEvent>;
+
+  it("la trame ultimatum porte l'état courant (armé puis expiré)", () => {
+    let state = play([ARMED]);
+    expect(state.ultimatum).toMatchObject({
+      status: "armed",
+      demand: "retrait des missiles",
+      inRounds: 1,
+    });
+    state = play([ARMED, { ...ARMED, status: "expired", in_rounds: 0 }]);
+    expect(state.ultimatum?.status).toBe("expired");
+    expect(state.ultimatum?.classe).toBe("violente");
+  });
+
+  it("le verdict transporte le constat « demande satisfaite » sans casser le reste", () => {
+    const state = play([
+      {
+        type: "verdict",
+        deltas: [],
+        escalation: 0.6,
+        economic_disruption: 0.2,
+        demand_satisfied: false,
+      } as Partial<SseEvent>,
+    ]);
+    expect(state.verdict?.escalation).toBe(0.6);
+  });
+});
