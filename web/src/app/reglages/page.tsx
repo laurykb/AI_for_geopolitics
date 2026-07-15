@@ -250,9 +250,14 @@ function DeleteAccount({
     }
   };
 
+  // CC-15c — la zone dangereuse est repliée : on ne montre pas un bouton de
+  // suppression à qui vient changer sa langue.
   return (
-    <div className="mt-6 space-y-3 rounded-lg border border-bad/40 p-4">
-      <p className="text-sm font-medium text-bad">{t("reglages.suppr-titre")}</p>
+    <details className="mt-6">
+      <summary className="cursor-pointer select-none text-sm font-medium text-bad transition-colors hover:text-bad/80">
+        {t("reglages.suppr-titre")}
+      </summary>
+      <div className="mt-3 space-y-3 rounded-lg border border-bad/40 p-4">
       <p className="text-xs text-fg-muted">{t("reglages.suppr-desc")}</p>
       <input
         value={confirmPseudo}
@@ -279,6 +284,7 @@ function DeleteAccount({
         onCancel={() => setOpen(false)}
         onConfirm={doDelete}
       />
-    </div>
+      </div>
+    </details>
   );
 }

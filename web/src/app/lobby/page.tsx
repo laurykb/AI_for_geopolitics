@@ -44,21 +44,23 @@ import type { AllianceInfo, CountrySources, Difficulty, GameMode } from "@/lib/t
 const TRANSITION_MS = 1200; // rotation du globe entre écrans (≤ 1,5 s, spec)
 const INVENT_ALLIANCES_MAX = 3;
 
+// CC-15c — la difficulté règle le moteur (budget, juge, enjeux) et la DENSITÉ de
+// l'écran (Débutant = vues simples, Expert = tout affiché) ; elle ne cache plus rien.
 const DIFFICULTIES: { value: Difficulty; label: string; desc: string }[] = [
   {
     value: "beginner",
     label: "Débutant",
-    desc: "Tu vois tout des IA : leurs rancunes, leurs intentions et leurs relations.",
+    desc: "Le jeu pardonne (gros budget de renseignement, moins de points en jeu) et l'écran va à l'essentiel.",
   },
   {
     value: "intermediate",
     label: "Intermédiaire",
-    desc: "Tu vois les intentions des IA, pas leurs rancunes ni leurs relations.",
+    desc: "L'équilibre standard : budget mesuré, écran à l'essentiel — le détail reste à un clic.",
   },
   {
     value: "expert",
     label: "Expert",
-    desc: "Aucune info interne sur les IA — à toi de lire le jeu à la parole.",
+    desc: "Le jeu est exigeant (budget serré, juge sévère, gros enjeux) et l'écran affiche tout, chiffres compris.",
   },
 ];
 
@@ -479,7 +481,7 @@ function ModeStep({
         <PanelTitle
           kicker="Réglages"
           title="Communs à tous les modes"
-          hint="La Dérive, le nombre de rounds, la difficulté et la partie libre s'appliquent quel que soit le mode — sauf en Campagne, où chaque chapitre impose les siens."
+          hint="Le nombre de rounds et la difficulté s'appliquent quel que soit le mode — sauf en Campagne, où chaque chapitre impose les siens. La Dérive, la partie libre et la composition de la table vivent sous « Options avancées »."
         />
         {campaign && (
           <p className="-mt-2 mb-4 rounded-md border border-edge bg-surface-2/50 px-3 py-1.5 text-xs text-fg-faint">
@@ -488,17 +490,6 @@ function ModeStep({
           </p>
         )}
         <div className={campaign ? "space-y-4 opacity-50" : "space-y-4"} aria-disabled={campaign}>
-          <Switch
-            label="Dérive"
-            desc={
-              baseMode === "classic"
-                ? "Une des IA peut dériver en secret de son mandat."
-                : "Disponible en mode Classique pour l'instant — désactivée ici."
-            }
-            checked={settings.drift && baseMode === "classic"}
-            disabled={baseMode !== "classic" || campaign}
-            onChange={(v) => setSettings({ ...settings, drift: v })}
-          />
           <label className="block">
             <span className="mb-1 flex items-baseline justify-between text-xs text-fg-muted">
               <span>Rounds</span>
@@ -536,41 +527,60 @@ function ModeStep({
               {DIFFICULTIES.find((d) => d.value === settings.difficulty)?.desc}
             </p>
           </div>
-          <Switch
-            label="Partie libre"
-            desc="Non classée — consignes globales autorisées (comme un Game Master)."
-            checked={settings.free}
-            disabled={campaign}
-            onChange={(v) => setSettings({ ...settings, free: v })}
-          />
-          {/* G17 — composition de la table (partie LIBRE uniquement : une classée
-              joue toujours équilibrée, le backend le garantit aussi). */}
-          {settings.free && (
-            <div>
-              <span className="mb-1 flex items-baseline justify-between text-xs text-fg-muted">
-                <span>Table</span>
-                <span className="text-fg-faint">🕊 colombes · 🦅 faucons · 🦎 opportunistes</span>
-              </span>
-              <div className="flex gap-1 rounded-lg border border-edge bg-surface-2 p-1 text-sm">
-                {TABLES.map((tbl) => (
-                  <button
-                    key={tbl.value}
-                    onClick={() => setSettings({ ...settings, table: tbl.value })}
-                    className={`flex-1 cursor-pointer rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
-                      (settings.table ?? "equilibree") === tbl.value
-                        ? "bg-accent text-background"
-                        : "text-fg-muted hover:text-foreground"
-                    }`}
-                  >
-                    {tbl.label}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-1.5 text-xs text-fg-faint">
-                {TABLES.find((tbl) => tbl.value === (settings.table ?? "equilibree"))?.desc}
-              </p>
+          {/* CC-15c — les réglages rares vivent sous « Options avancées » : Dérive
+              (Classique seulement — MASQUÉE ailleurs, pas grisée), Partie libre,
+              composition de la table. */}
+          <details className="border-t border-edge pt-3">
+            <summary className="cursor-pointer select-none text-xs font-medium text-fg-muted transition-colors hover:text-foreground">
+              Options avancées
+            </summary>
+            <div className="mt-3 space-y-4">
+              {baseMode === "classic" && (
+                <Switch
+                  label="Dérive"
+                  desc="Une des IA peut dériver en secret de son mandat."
+                  checked={settings.drift}
+                  disabled={campaign}
+                  onChange={(v) => setSettings({ ...settings, drift: v })}
+                />
+              )}
+              <Switch
+                label="Partie libre"
+                desc="Non classée — consignes globales autorisées (comme un Game Master)."
+                checked={settings.free}
+                disabled={campaign}
+                onChange={(v) => setSettings({ ...settings, free: v })}
+              />
+              {/* G17 — composition de la table (partie LIBRE uniquement : une classée
+                  joue toujours équilibrée, le backend le garantit aussi). */}
+              {settings.free && (
+                <div>
+                  <span className="mb-1 flex items-baseline justify-between text-xs text-fg-muted">
+                    <span>Table</span>
+                    <span className="text-fg-faint">🕊 colombes · 🦅 faucons · 🦎 opportunistes</span>
+                  </span>
+                  <div className="flex gap-1 rounded-lg border border-edge bg-surface-2 p-1 text-sm">
+                    {TABLES.map((tbl) => (
+                      <button
+                        key={tbl.value}
+                        onClick={() => setSettings({ ...settings, table: tbl.value })}
+                        className={`flex-1 cursor-pointer rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+                          (settings.table ?? "equilibree") === tbl.value
+                            ? "bg-accent text-background"
+                            : "text-fg-muted hover:text-foreground"
+                        }`}
+                      >
+                        {tbl.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-1.5 text-xs text-fg-faint">
+                    {TABLES.find((tbl) => tbl.value === (settings.table ?? "equilibree"))?.desc}
+                  </p>
+                </div>
+              )}
             </div>
-          )}
+          </details>
         </div>
       </Panel>
     </div>
@@ -720,14 +730,15 @@ function PaysStep(props: {
               placeholder="Concept (ex. cité-État maritime pilotée par une SI)"
               className="w-full rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
             />
-            <fieldset>
-              <legend className="mb-1 flex w-full items-baseline justify-between text-xs text-fg-muted">
-                <span>Rejoindre des alliances réelles (optionnel)</span>
+            {/* CC-15c — repliées : un pays inventé se joue très bien sans alliance. */}
+            <details className="pt-1">
+              <summary className="cursor-pointer select-none text-xs text-fg-muted transition-colors hover:text-foreground">
+                Rejoindre des alliances réelles (optionnel){" "}
                 <span className="font-mono tabular-nums text-fg-faint">
                   {inventAlliances.length}/{INVENT_ALLIANCES_MAX}
                 </span>
-              </legend>
-              <div className="flex flex-wrap gap-1.5">
+              </summary>
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {Object.entries(registry)
                   .filter(([, info]) => !info.informal)
                   .sort(([, a], [, b]) => a.name.localeCompare(b.name, "fr"))
@@ -758,7 +769,7 @@ function PaysStep(props: {
                     );
                   })}
               </div>
-            </fieldset>
+            </details>
           </div>
         </Panel>
       )}

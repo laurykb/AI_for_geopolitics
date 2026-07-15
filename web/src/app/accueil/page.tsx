@@ -91,13 +91,34 @@ export default function AccueilPage() {
               {player.pseudo}
             </Link>
           </h1>
-          <p className="mt-2 flex items-center justify-center gap-1.5 text-sm text-fg-muted">
-            <span>
-              {progress.rank.name} · {lp ?? player.lp} {t("accueil.points-ligue")}
-              {level != null && ` · ${t("accueil.niveau")} ${level}`}
-            </span>
-            <Hint text={t("lp.aide")} />
-          </p>
+          {/* CC-15c — le panneau « Rang » est fusionné ici : blason, LP, niveau et
+              barre vers le rang suivant vivent dans le hero, pas dans un panneau. */}
+          <div
+            data-tour="rang"
+            className="mx-auto mt-3 flex max-w-xs flex-col items-center gap-1.5"
+          >
+            <div className="flex items-center justify-center gap-2.5">
+              <RankBadge rank={progress.rank} size="sm" />
+              <p className="flex items-center gap-1.5 text-sm text-fg-muted">
+                <span>
+                  {progress.rank.name} · {lp ?? player.lp} {t("accueil.points-ligue")}
+                  {level != null && ` · ${t("accueil.niveau")} ${level}`}
+                </span>
+                <Hint text={t("lp.aide")} />
+              </p>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
+              <div
+                className="h-full rounded-full bg-accent transition-all"
+                style={{ width: `${Math.round(progress.progress * 100)}%` }}
+              />
+            </div>
+            <p className="text-xs text-fg-faint">
+              {progress.next
+                ? `${progress.toNext} ${t("accueil.lp-avant")} ${progress.next.name}`
+                : t("accueil.rang-max")}
+            </p>
+          </div>
         </div>
 
         <div className={launching ? "intro-zoom" : undefined}>
@@ -179,40 +200,6 @@ export default function AccueilPage() {
           </span>
         </div>
       </Panel>
-
-      {/* Rang de ligue : blason + LP + barre vers le rang suivant */}
-      <div data-tour="rang">
-      <Panel>
-        <div className="flex flex-wrap items-center gap-4">
-          <RankBadge rank={progress.rank} />
-          <div className="min-w-0 flex-1">
-            <p className="flex flex-wrap items-baseline gap-2">
-              <span className="text-lg font-semibold">{progress.rank.name}</span>
-              <span className="flex items-center gap-1.5 font-mono text-sm tabular-nums text-fg-muted">
-                {lp ?? player.lp} LP
-                <Hint text={t("lp.aide")} />
-              </span>
-              {level != null && (
-                <span className="rounded-full border border-accent-bright/50 px-2 py-0.5 text-xs font-medium text-accent-bright">
-                  {t("accueil.niveau")} {level}
-                </span>
-              )}
-            </p>
-            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
-              <div
-                className="h-full rounded-full bg-accent transition-all"
-                style={{ width: `${Math.round(progress.progress * 100)}%` }}
-              />
-            </div>
-            <p className="mt-1 text-xs text-fg-faint">
-              {progress.next
-                ? `${progress.toNext} ${t("accueil.lp-avant")} ${progress.next.name}`
-                : t("accueil.rang-max")}
-            </p>
-          </div>
-        </div>
-      </Panel>
-      </div>
 
       {/* Ses dernières parties (remplace l'observatoire public) */}
       <Panel>
