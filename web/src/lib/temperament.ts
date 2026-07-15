@@ -1,6 +1,6 @@
 /** G17 — tempéraments des SI côté client : pastilles et compositions de table.
  * Le tirage et la consigne vivent au backend (simulation/temperament.py) ; ici on ne
- * fait qu'afficher (🕊 / 🦅 / 🦎, soumis à showPostures) et composer la table en
+ * fait qu'afficher (🕊 / 🦅 / 🦎, à toutes les difficultés — CC-15c) et composer la table en
  * partie libre. Les glyphes sont fixés par la spec G17. */
 
 export type Temperament = "colombe" | "faucon" | "opportuniste";
