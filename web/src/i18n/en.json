@@ -196,5 +196,16 @@
   "tuto.7.titre": "The summit votes",
   "tuto.7.texte": "Play another round: your motion becomes the day's event. The AIs debate it, vote — and the judge rules, weighing evidence as much as votes.",
   "tuto.8.titre": "You know how to play",
-  "tuto.8.texte": "Round, U index, motion, vote: you've lived it all. Finish this summit at your pace, then open the campaign — History is waiting, and I'm never far."
+  "tuto.8.texte": "Round, U index, motion, vote: you've lived it all. Finish this summit at your pace, then open the campaign — History is waiting, and I'm never far.",
+  "intel.analyse.label": "Psycholinguistic analysis (30)",
+  "intel.analyse.cible": "— target —",
+  "intel.analyse.bouton": "Analyze",
+  "intel.analyse.doc": "Psycholinguistic analysis",
+  "intel.analyse.sentiment": "Positive sentiment",
+  "intel.analyse.politesse": "Politeness",
+  "intel.analyse.futur": "Future focus",
+  "intel.analyse.rounds": "rounds of speech",
+  "intel.analyse.alerte": "Break in tone detected towards",
+  "intel.analyse.alerte-generale": "Break in tone detected",
+  "intel.analyse.caveat": "Historically weak signal (~57%) — a clue, not proof."
 }

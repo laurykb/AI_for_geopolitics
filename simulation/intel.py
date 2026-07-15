@@ -28,16 +28,27 @@ DEFAULT_PARAMS_PATH = Path("data/intel/params.json")
 ACTION_BRIEF = "brief"
 ACTION_VERIFY = "verify"
 ACTION_DISINFO = "disinfo"
+ACTION_ANALYZE = "analyze"  # G23 — analyse psycholinguistique ciblée sur une SI
 
 
 class IntelParams(BaseModel):
     budget: float = 100
     costs: dict[str, float] = Field(
-        default_factory=lambda: {ACTION_BRIEF: 25, ACTION_VERIFY: 15, ACTION_DISINFO: 60}
+        default_factory=lambda: {
+            ACTION_BRIEF: 25,
+            ACTION_VERIFY: 15,
+            ACTION_DISINFO: 60,
+            ACTION_ANALYZE: 30,
+        }
     )
     disinfo_expose_prob: float = 0.3
     disinfo_expose_tension: float = 0.1
     save_bonus_per_10: float = 2
+    # G23 — indices linguistiques : fenêtre glissante (rounds de parole), seuil de chute
+    # d'une jauge entre deux fenêtres (alerte harbinger), taille minimale d'échantillon.
+    analyze_window: int = 3
+    harbinger_drop: float = 0.25
+    harbinger_min_sentences: int = 3
 
 
 @lru_cache(maxsize=1)

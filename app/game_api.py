@@ -69,6 +69,7 @@ from simulation import difficulty as difficulty_mod
 from simulation import drift_game, league, narrative
 from simulation import intel as intel_mod
 from simulation import lang as lang_mod
+from simulation import psycholinguistics as psy_mod
 from simulation import storyteller as storyteller_mod
 from simulation import temperament as temperament_mod
 from simulation import treaty as treaty_mod
@@ -2672,8 +2673,8 @@ def _intel_retriever() -> HybridRetriever:
 
 
 class IntelRequest(BaseModel):
-    action: Literal["brief", "verify", "disinfo"]
-    target: str | None = None  # brief : id pays (None = dernier événement)
+    action: Literal["brief", "verify", "disinfo", "analyze"]
+    target: str | None = None  # brief : id pays (None = dernier événement) ; analyze : la SI
     claim: str | None = Field(None, max_length=2000)  # verify : l'affirmation à vérifier
     speaker: str | None = None  # verify : qui l'a affirmée
     disinfo: HumanFogInput | None = None  # disinfo : la fausse perception à injecter
@@ -2687,6 +2688,9 @@ class IntelResult(BaseModel):
     verdict: str | None = None  # verify : corroboré / non corroboré / invérifiable
     source: str | None = None  # verify : la source qui corrobore
     note: str | None = None
+    # G23 — analyse psycholinguistique : jauges + alertes harbinger. L'UI qui l'affiche
+    # DOIT porter le caveat « signal historique faible (~57 %) — un indice, pas une preuve ».
+    analysis: psy_mod.HarbingerReport | None = None
 
 
 @router.post("/games/{game_id}/intel", response_model=IntelResult)
@@ -2739,9 +2743,11 @@ def buy_intel(
             status_code=400,
             detail=f"budget de renseignement insuffisant ({session.intel.budget:g} crédits)",
         )
-    if body.action in (intel_mod.ACTION_BRIEF, intel_mod.ACTION_DISINFO) and (
-        session.lock.locked()
-    ):
+    if body.action in (
+        intel_mod.ACTION_BRIEF,
+        intel_mod.ACTION_DISINFO,
+        intel_mod.ACTION_ANALYZE,
+    ) and session.lock.locked():
         raise HTTPException(
             status_code=409, detail="achat entre les rounds seulement (négociation en cours)"
         )
@@ -2791,6 +2797,51 @@ def buy_intel(
         )
         result.verdict = verdict
         result.source = source or None
+
+    elif body.action == intel_mod.ACTION_ANALYZE:
+        # G23 — analyse psycholinguistique : jauges sur les 3 derniers rounds de parole
+        # de la SI ciblée + alertes « rupture de ton envers <pays> ». Lexiques FR/EN
+        # purs (data/intel/lexicons.json) ; le signal est faible par nature (caveat UI).
+        if not body.target:
+            raise HTTPException(status_code=422, detail="target est requis")
+        if body.target not in session.world.countries:
+            raise HTTPException(status_code=400, detail=f"pays inconnu : {body.target}")
+        lexicons = psy_mod.load_lexicons()
+        lexicon = lexicons.for_language(lang_mod.normalize_language(session.world.language))
+        aliases = {
+            cid: psy_mod.country_aliases(cid, c.name, lexicons.country_aliases_en.get(cid))
+            for cid, c in session.world.countries.items()
+            if cid != body.target
+        }
+        speech = [
+            (
+                r.round_no,
+                "\n".join(
+                    e.content
+                    for e in store.list_transcript(r.id)
+                    if e.speaker == body.target
+                ),
+            )
+            for r in store.list_rounds(game_id)
+        ]
+        report = psy_mod.analyze_speech(
+            body.target,
+            speech,
+            lexicon=lexicon,
+            aliases=aliases,
+            window=params.analyze_window,
+            drop_threshold=params.harbinger_drop,
+            min_sentences=params.harbinger_min_sentences,
+        )
+        if report is None:  # avant le débit : un achat impossible ne coûte rien
+            raise HTTPException(
+                status_code=400,
+                detail="aucune parole à analyser — cette SI n'a pas encore parlé",
+            )
+        report.caveat = psy_mod.CAVEATS.get(
+            lang_mod.normalize_language(session.world.language), psy_mod.CAVEATS["fr"]
+        )
+        result.analysis = report
 
     else:  # disinfo (mode fog + unicité déjà vérifiés avant le débit)
         spec = body.disinfo
