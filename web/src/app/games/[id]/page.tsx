@@ -631,7 +631,7 @@ export default function TheatrePage() {
         {detail?.admin && (
           <Link
             href={`/games/${id}/admin`}
-            title="Mode admin (partie non classée) : les prompts complets des SI, capturés et diffés round par round"
+            title="Mode admin (partie non classée) : les instructions complètes des IA, capturées et comparées round par round"
             className="rounded-md border border-warn/50 px-3 py-1.5 text-xs font-medium text-warn transition-colors hover:bg-warn/10"
           >
             Admin — prompts en direct

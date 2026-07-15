@@ -8,7 +8,8 @@ import { useEffect, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
 import { RankBadge } from "@/components/rank-badge";
-import { Banner, Panel, PanelTitle, Spinner } from "@/components/ui";
+import { useT } from "@/components/settings-provider";
+import { Banner, Hint, Panel, PanelTitle, Spinner } from "@/components/ui";
 import { getPlayerStats, humanizeError } from "@/lib/api";
 import { rankFor } from "@/lib/league";
 import { MODE_LABELS } from "@/lib/modes";
@@ -25,6 +26,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 export default function ProfilePage() {
   const { player } = useAuth();
+  const t = useT();
   const [stats, setStats] = useState<PlayerStats | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,7 +75,10 @@ export default function ProfilePage() {
               {p.level}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold">Niveau {p.level}</p>
+              <p className="flex items-center gap-1.5 text-sm font-semibold">
+                Niveau {p.level}
+                <Hint text={t("xp.aide")} />
+              </p>
               <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
                 <div
                   className="h-full rounded-full bg-accent-bright"
@@ -86,7 +91,10 @@ export default function ProfilePage() {
           <div className="flex items-center gap-3">
             <RankBadge rank={rank.rank} />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold">{rank.rank.name}</p>
+              <p className="flex items-center gap-1.5 text-sm font-semibold">
+                {rank.rank.name}
+                <Hint text={t("lp.aide")} />
+              </p>
               <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
                 <div
                   className="h-full rounded-full bg-accent"

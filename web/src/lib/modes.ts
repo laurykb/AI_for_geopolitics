@@ -30,7 +30,7 @@ export const MODES: { value: GameMode; label: string; blurb: string }[] = [
     value: "drift",
     label: "La Dérive",
     blurb:
-      "Une SI dérive en secret de son mandat — démasque-la et fais-la suspendre au bon moment.",
+      "Une IA dérive en secret de son mandat — démasque-la et fais-la suspendre au bon moment.",
   },
 ];
 

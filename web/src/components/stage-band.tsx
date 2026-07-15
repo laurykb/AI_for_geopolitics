@@ -11,6 +11,9 @@ import { fmt } from "@/lib/format";
 import { uTint } from "@/lib/stage";
 import type { LadderView, RiskScore } from "@/lib/types";
 
+import { useT } from "./settings-provider";
+import { Hint } from "./ui";
+
 export type StageSelection = number | "live"; // index de round persisté, ou scène vivante
 
 const SPEEDS = [1, 2, 4];
@@ -53,7 +56,7 @@ function UCurve({ values, selected }: { values: number[]; selected: StageSelecti
   const y = (u: number) => h - 4 - u * (h - 8);
   const points = values.map((u, i) => `${x(i)},${y(u)}`).join(" ");
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="h-11 w-full" aria-label="Courbe de l'indice U">
+    <svg viewBox={`0 0 ${w} ${h}`} className="h-11 w-full" aria-label="La courbe du monde">
       <line x1="4" y1={y(0.5)} x2={w - 4} y2={y(0.5)} stroke="var(--border)" strokeDasharray="3 3" />
       <polyline
         ref={pathRef}
@@ -73,7 +76,7 @@ function UCurve({ values, selected }: { values: number[]; selected: StageSelecti
           stroke={selected !== "live" && selected === i ? "var(--foreground)" : "none"}
           strokeWidth="1"
         >
-          <title>{`Round ${i + 1} — U ${fmt(u)}`}</title>
+          <title>{`Round ${i + 1} — monde à ${fmt(u)}`}</title>
         </circle>
       ))}
     </svg>
@@ -138,6 +141,7 @@ export function StageBand({
   prevRung,
   playback,
 }: StageBandProps) {
+  const t = useT();
   const curve = liveU != null ? [...uHistory, liveU] : uHistory;
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-lg border border-edge bg-surface px-4 py-3">
@@ -148,7 +152,7 @@ export function StageBand({
             role="tab"
             aria-selected={selected === i}
             onClick={() => onSelect(i)}
-            title={`Round ${i + 1} — U ${fmt(u)}`}
+            title={`Round ${i + 1} — monde à ${fmt(u)}`}
             className={`h-7 min-w-7 cursor-pointer rounded-md border px-1.5 font-mono text-[11px] tabular-nums transition-colors ${
               selected === i
                 ? "border-accent bg-surface-2 text-accent-bright"
@@ -203,6 +207,10 @@ export function StageBand({
       )}
 
       <div className="min-w-44 flex-1">
+        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-fg-faint">
+          le monde
+          <Hint text={t("u.thermometre")} />
+        </div>
         <UCurve values={curve} selected={selected} />
       </div>
 

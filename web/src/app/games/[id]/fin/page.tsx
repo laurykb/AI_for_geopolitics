@@ -89,8 +89,9 @@ export default function FinPage({ params }: { params: Promise<{ id: string }> })
         <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
           {t("fin.penche")} <span className={tone}>{verdictLabel}</span>
         </h1>
-        <p className="mt-1 font-mono text-sm text-fg-muted">
+        <p className="mt-1 flex items-center justify-center gap-1.5 font-mono text-sm text-fg-muted">
           {t("fin.u-final")} {fmt(r.u_final)}
+          <Hint text={t("u.thermometre")} />
         </p>
       </header>
 
@@ -99,7 +100,7 @@ export default function FinPage({ params }: { params: Promise<{ id: string }> })
         <PanelTitle
           kicker={t("fin.trajectoire-kicker")}
           title={t("fin.trajectoire-titre")}
-          hint="L'indice Utopie–Dystopie round après round : au-dessus de 0,5, le monde s'améliore."
+          hint={`${t("u.thermometre")} Au-dessus de 0,5, le monde s'améliore.`}
         />
         <UCurve history={[r.u_start, ...r.u_history]} />
       </Panel>
@@ -512,6 +513,7 @@ function Sparkline({ series }: { series: number[] }) {
 
 /** Animation XP (carrière) : compteur qui monte + barre de niveau qui se remplit. */
 function XpAnimation({ xp }: { xp: NonNullable<GameResult["xp"]> }) {
+  const t = useT();
   const [shown, setShown] = useState(xp.old_xp);
   useEffect(() => {
     const start = performance.now();
@@ -532,7 +534,11 @@ function XpAnimation({ xp }: { xp: NonNullable<GameResult["xp"]> }) {
   const promoted = xp.new_level.level > xp.old_level.level;
   return (
     <Panel>
-      <PanelTitle kicker="Carrière" title={promoted ? `Niveau ${lvl.level} !` : "Expérience"} />
+      <PanelTitle
+        kicker="Carrière"
+        title={promoted ? `Niveau ${lvl.level} !` : "Expérience"}
+        hint={t("xp.aide")}
+      />
       <div className="flex flex-wrap items-center gap-4">
         <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-accent-bright bg-surface-2 text-sm font-bold text-accent-bright">
           {lvl.level}
@@ -558,6 +564,7 @@ function XpAnimation({ xp }: { xp: NonNullable<GameResult["xp"]> }) {
 
 /** Animation LP : compteur qui monte/descend + barre de rang qui se remplit. */
 function LpAnimation({ lp, startDelay = 400 }: { lp: Required<GameResult["lp"]>; startDelay?: number }) {
+  const t = useT();
   const [shown, setShown] = useState(lp.old_lp);
   useEffect(() => {
     const start = performance.now();
@@ -580,7 +587,11 @@ function LpAnimation({ lp, startDelay = 400 }: { lp: Required<GameResult["lp"]>;
   const gained = lp.applied;
   return (
     <Panel>
-      <PanelTitle kicker="Points de ligue" title={gained >= 0 ? "Tu progresses" : "Tu recules"} />
+      <PanelTitle
+        kicker="Points de ligue (LP)"
+        title={gained >= 0 ? "Tu progresses" : "Tu recules"}
+        hint={t("lp.aide")}
+      />
       <div className="flex flex-wrap items-center gap-4">
         <RankBadge rank={progress.rank} />
         <div className="min-w-0 flex-1">

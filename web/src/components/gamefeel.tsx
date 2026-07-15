@@ -38,7 +38,7 @@ export function RelationsPanel({
   return (
     <details className="mt-2 border-t border-edge pt-2 text-xs">
       <summary className="cursor-pointer text-fg-faint transition-colors hover:text-fg-muted">
-        Relations entre SI (griefs et dettes — elles pèsent sur la diplomatie)
+        Relations entre IA (rancunes et dettes — elles pèsent sur la diplomatie)
       </summary>
       <div className="mt-2 grid gap-2 sm:grid-cols-2">
         {owners.map((owner) => (

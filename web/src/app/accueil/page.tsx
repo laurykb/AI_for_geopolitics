@@ -13,7 +13,7 @@ import { useAuth } from "@/components/auth-provider";
 import { Globe } from "@/components/globe";
 import { RankBadge } from "@/components/rank-badge";
 import { useT } from "@/components/settings-provider";
-import { Banner, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
+import { Banner, Hint, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
 import { usePlanetLaunch } from "@/hooks/usePlanetLaunch";
 import { getDaily, getLeaguePlayer, humanizeError, listGames, startDaily } from "@/lib/api";
 import { countdownLabel } from "@/lib/daily";
@@ -91,9 +91,12 @@ export default function AccueilPage() {
               {player.pseudo}
             </Link>
           </h1>
-          <p className="mt-2 text-sm text-fg-muted">
-            {progress.rank.name} · {lp ?? player.lp} LP
-            {level != null && ` · ${t("accueil.niveau")} ${level}`}
+          <p className="mt-2 flex items-center justify-center gap-1.5 text-sm text-fg-muted">
+            <span>
+              {progress.rank.name} · {lp ?? player.lp} {t("accueil.points-ligue")}
+              {level != null && ` · ${t("accueil.niveau")} ${level}`}
+            </span>
+            <Hint text={t("lp.aide")} />
           </p>
         </div>
 
@@ -185,8 +188,9 @@ export default function AccueilPage() {
           <div className="min-w-0 flex-1">
             <p className="flex flex-wrap items-baseline gap-2">
               <span className="text-lg font-semibold">{progress.rank.name}</span>
-              <span className="font-mono text-sm tabular-nums text-fg-muted">
+              <span className="flex items-center gap-1.5 font-mono text-sm tabular-nums text-fg-muted">
                 {lp ?? player.lp} LP
+                <Hint text={t("lp.aide")} />
               </span>
               {level != null && (
                 <span className="rounded-full border border-accent-bright/50 px-2 py-0.5 text-xs font-medium text-accent-bright">

@@ -859,7 +859,7 @@ export type SourcesView = {
 
 export const AXIS_LABELS: Record<string, string> = {
   A1: "Coordination",
-  A2: "Agentivité humaine",
+  A2: "Contrôle humain",
   A3: "Distribution du pouvoir",
   A4: "Transparence",
   A5: "Bien-être",

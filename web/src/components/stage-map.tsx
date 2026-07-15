@@ -16,6 +16,8 @@ import { CAPITALS, uTint } from "@/lib/stage";
 import { WORLD_FEATURES } from "@/lib/world";
 
 import { EarthMapDefs } from "./earth-defs";
+import { useT } from "./settings-provider";
+import { Hint } from "./ui";
 
 const WIDTH = 940;
 const HEIGHT = 480;
@@ -57,6 +59,7 @@ export function StageMap({
   breatheKey = 0,
   eventTitle,
 }: StageMapProps) {
+  const t = useT();
   const { path, project } = useMemo(() => {
     const projection = geoNaturalEarth1().fitSize([WIDTH, HEIGHT], { type: "Sphere" });
     return {
@@ -226,11 +229,14 @@ export function StageMap({
                 "linear-gradient(to right, var(--dystopia), var(--warn), var(--utopia))",
             }}
           />
-          teinte = trajectoire du pays (échelle U fixe)
+          vert : le pays va bien · rouge : il va mal
         </span>
         <span>hors sommet en gris</span>
-        <span className="ml-auto font-mono tabular-nums" style={{ color: uTint(utopia) }}>
-          U = {fmt(utopia)}
+        <span className="ml-auto flex items-center gap-1.5">
+          <span className="font-mono tabular-nums" style={{ color: uTint(utopia) }}>
+            Monde : {fmt(utopia)}
+          </span>
+          <Hint text={t("u.thermometre")} />
         </span>
       </figcaption>
     </figure>
