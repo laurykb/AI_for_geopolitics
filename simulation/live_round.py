@@ -402,6 +402,7 @@ def run_negotiation_round(
     deadlines: list[str] | None = None,
     tuning: DeltaTuning | None = None,
     story: StoryContext | None = None,
+    storyteller: str | None = None,
 ) -> Iterator[RoundStep]:
     """Round arbitré : (GM ou événement fourni) -> négociation -> juge -> attributs bornés.
 
@@ -411,6 +412,8 @@ def run_negotiation_round(
     prompt. `motion_evidence` (G9 §2) : la condition « preuves » du verdict de motion
     (None = pas de règlement → réputées suffisantes) ; `vote_notes` : consigne privée
     par pays pour le VOTE seulement (Dérive : vote stratégique incohérent).
+    `storyteller` (G19, Dérive) : rubrique confidentielle du GM-Storyteller, ajoutée au
+    prompt du GM quand c'est lui qui invente l'événement — jamais au transcript.
 
     La négociation est **dynamique** (`TurnDirector`) : l'ordre émerge de l'engagement de
     chaque pays (un pays peut reparler, être interpellé, ou se taire). `max_turns` borne le
@@ -443,6 +446,7 @@ def run_negotiation_round(
                 recent=recent or [],
                 deadlines=deadlines,
                 story=story,  # G9 §5 — la trame en actes (intrigue, acte, référençables)
+                storyteller=storyteller or "",  # G19 — rubrique Dérive (2 mandats)
             )
     world.current_round = round_id
     yield EventStep(event=event)

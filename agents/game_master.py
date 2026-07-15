@@ -76,8 +76,13 @@ class GameMasterAgent:
         recent: list[str] | None = None,
         deadlines: list[str] | None = None,
         story: StoryContext | None = None,
+        storyteller: str = "",
     ) -> GeoEvent:
         prompt = self._prompt(world, date, recent or [], deadlines or [], story)
+        if storyteller:
+            # G19 — la rubrique du GM-Storyteller (mode Dérive) : confidentielle, elle
+            # oriente l'événement (couverture/indice) sans jamais paraître au théâtre.
+            prompt = f"{prompt}\n\n{storyteller}"
         data = self._ask(prompt)
         event = self._coerce(data, world, round_id, date)
         if story is not None and (event is None or not valid_ties(story, event.ties_to)):
