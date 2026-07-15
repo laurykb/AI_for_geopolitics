@@ -416,6 +416,70 @@ Claude Code de phase commence par « Lis docs/PLAN_JEU.md et docs/specs_jeu/spec
 Les paramètres chiffrés (G3, G4) vivent dans `data/*/params.json` : l'équilibrage Cowork
 les ajuste sans toucher au code.
 
+## CC-13 / G23 — Les indices linguistiques (« Harbingers ») — notes de session
+
+<!-- début section CC-13 / G23 (2026-07-15) -->
+
+**Fait** (spec `docs/specs_jeu/spec_g23_indices_linguistiques.md`, branche
+`feat/jeu-g23-indices-linguistiques` sur la tête de pile g16) :
+
+- **Lib pure** `simulation/psycholinguistics.py` : trois jauges ∈ [0,1] par fenêtre de
+  parole (part des phrases portant le trait) — sentiment positif (positifs > négatifs),
+  politesse (polis > impolis), focus-futur (marqueur d'avenir, futur morphologique FR
+  inclus via préfixes) ; découpage en phrases naïf assumé (. ! ? ; … et sauts de ligne) ;
+  fenêtre glissante de **3 rounds de parole** (les rounds muets ne comptent pas), bords
+  gérés (fenêtre partielle en début de partie, 1 seul round → pas de comparaison) ;
+  **alerte harbinger** quand une jauge chute de plus de `harbinger_drop` entre la fenêtre
+  décalée d'un round et la courante — jamais sous `harbinger_min_sentences` phrases
+  (pas d'alerte sur du bruit) ; attribution « envers <pays> » = phrases mentionnant un
+  alias du pays (nom FR du monde + id + alias EN), `towards=None` = ton général.
+- **Lexiques V1** `data/intel/lexicons.json` (FR/EN × positive/negative/polite/impolite/
+  future + `country_aliases_en`) : écrits par Claude Code, **TODO_COWORK** — à remplacer
+  par les lexiques calibrés Cowork SANS toucher au code (`INTEL_LEXICONS_PATH` pour les
+  tests). Convention : entrée finissant par `-` = préfixe (« condamn- »), espaces =
+  locution, sinon mot entier.
+- **Achat intel** : action `analyze` (coût **30**, `data/intel/params.json` ; gratuite en
+  Architecte comme les autres) sur le canal G4 existant — `POST /games/{id}/intel`
+  {action: "analyze", target: <SI>}, entre les rounds seulement (409 pendant la
+  négociation), consignée dans `judge_json['intel']` + trame SSE `intel` rédigée ;
+  aucune parole → 400 **sans débit** ; lit les transcripts persistés (`speaker == target`,
+  parole publique seulement — pas le raisonnement privé) ; lexique choisi par la langue
+  de la partie (`WorldState.language`, G14). Le rapport (`HarbingerReport`) voyage dans
+  `IntelResult.analysis` **avec son caveat** (fr/en selon la partie).
+- **Panneau Dossier (web)** : bloc « Analyse psycholinguistique (30) » (cible +
+  Analyser), rapport = 3 jauges en barres + écart vs fenêtre précédente + alertes
+  « Rupture de ton détectée envers <pays> » + **caveat OBLIGATOIRE** « Signal historique
+  faible (~57 %) — un indice, pas une preuve » ; vue pure `web/src/lib/intel.ts`
+  (`buildAnalysisView` inclut toujours le caveat — testé), i18n fr/en complet
+  (`intel.analyse.*`).
+
+**Décisions** : V1 purement lexicale (zéro dépendance, zéro LLM — le juge pourra
+raffiner en V2 comme prévu par la spec) ; l'alerte compare des fenêtres décalées d'un
+round (une partie type de 5-7 rounds peut donc alerter dès le round 2 de parole) ;
+seuils dans `params.json` (`analyze_window` 3, `harbinger_drop` 0.25,
+`harbinger_min_sentences` 3) — **TODO_COWORK : calibration sur 10 parties Dérive**
+(la fausse alerte doit exister mais rester minoritaire).
+
+**Tests** : `tests/test_psycholinguistics.py` (23 — textes de référence FR/EN → scores
+attendus, bords de fenêtres, alerte sur chute > seuil et silence sur bruit faible ou
+échantillon maigre, alias/mentions) ; `tests/test_intel_api.py` (+7 — coût débité une
+fois, 422/400, pas de débit sans parole, alerte de bout en bout, lexique par langue,
+enregistrement au round, smoke live gaté `OLLAMA_SMOKE=1`) ;
+`web/src/lib/intel.test.ts` (6 — caveat toujours présent et traduit fr/en, jauges
+bornées, dédup des alertes).
+
+**Smoke live (Ollama/mistral, TestClient in-process, `OLLAMA_SMOKE=1`)** : VERT
+(2026-07-15, 4 min 25 s) — 2 rounds réels joués via l'API, analyse achetée sur une SI :
+jauges calculées sur la vraie parole (sentences > 0, bornées [0,1]), fenêtre de
+comparaison présente, caveat « ~57 % » dans la réponse, budget débité.
+
+**Reliquats** : lexiques + calibration Cowork (ci-dessus) ; croisement du faisceau
+Dérive (M8/G20 + tracker G22 + G23 = trois faisceaux indépendants) quand les branches
+se rejoindront ; métonymies (« Washington », « Téhéran ») à enrichir dans
+`country_aliases_en`.
+
+<!-- fin section CC-13 / G23 -->
+
 ## Règles de collaboration (rappel)
 
 1. Une phase = une branche `feat/jeu-gX-…`, PR revue sur Cowork (+ CodeRabbit).
