@@ -89,3 +89,32 @@ def test_demand_satisfied_parse_is_tolerant():
     assert Verdict.model_validate({"demand_satisfied": "yes"}).demand_satisfied is True
     assert Verdict.model_validate({"demand_satisfied": "peut-être"}).demand_satisfied is None
     assert Verdict.model_validate({}).demand_satisfied is None
+
+
+# --- POLISH-1 : un champ liste malformé ne doit pas nuquer tout le verdict --------------
+
+
+def test_junk_list_field_does_not_nuke_the_verdict():
+    """Les nettoyeurs (classify_actions/signals/promises/resolutions) sont conçus pour
+    « entrées non-listes → [] » — mais un `"actions": "aucune"` d'un 7B échouait la
+    validation Pydantic AVANT d'atteindre le nettoyeur : tout le verdict retombait au
+    neutre (escalade 0,5, deltas perdus). Le champ malformé doit se vider, pas le verdict."""
+    verdict_json = json.dumps(
+        {
+            "attribute_deltas": {"usa": {"croissance": 0.5}},
+            "escalation": 0.8,
+            "economic_disruption": 0.4,
+            "actions": "aucune action marquante",
+            "signals": {"usa": "posture"},
+            "promises": "aucune",
+            "promise_resolutions": 0,
+        }
+    )
+    judge = JudgeAgent(MockBackend(verdict_json))
+    verdict = judge.verdict(_event(), _world(), [])
+    assert verdict.escalation == 0.8  # le verdict chiffré survit
+    assert verdict.attribute_deltas["usa"]["croissance"] == 0.5
+    assert verdict.actions == []  # le champ malformé se vide (le nettoyeur verra [])
+    assert verdict.signals == []
+    assert verdict.promises == []
+    assert verdict.promise_resolutions == []
