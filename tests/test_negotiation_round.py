@@ -86,6 +86,57 @@ def test_step_sequence_and_dynamic_turns():
     assert any(isinstance(s, VerdictStep) for s in steps)
 
 
+def test_ultimatum_demand_flows_to_verdict_step():
+    """G21 — à l'échéance, le juge reçoit l'exigence et son constat sort sur le step."""
+    world = _world()
+    judge_backend = MockBackend(
+        [
+            "Le sommet a plié.",
+            json.dumps({"escalation": 0.4, "demand_satisfied": False}),
+            "Communiqué : l'exigence reste lettre morte.",
+        ]
+    )
+    steps = list(
+        run_negotiation_round(
+            world,
+            _agents(world),
+            _gm(),
+            JudgeAgent(judge_backend),
+            SimClock(current_date=date(2025, 1, 1)),
+            max_passes=1,
+            ultimatum_demand="retrait des missiles",
+        )
+    )
+    verdict = next(s for s in steps if isinstance(s, VerdictStep))
+    assert verdict.demand_satisfied is False
+    verdict_prompt = judge_backend.calls[1]["prompt"]
+    assert "retrait des missiles" in verdict_prompt
+
+
+def test_verdict_step_demand_none_without_ultimatum():
+    """Sans ultimatum, le champ reste None même si le juge hallucine le champ (garde)."""
+    world = _world()
+    judge_backend = MockBackend(
+        [
+            "Rien à signaler.",
+            json.dumps({"escalation": 0.5, "demand_satisfied": True}),
+            "Communiqué.",
+        ]
+    )
+    steps = list(
+        run_negotiation_round(
+            world,
+            _agents(world),
+            _gm(),
+            JudgeAgent(judge_backend),
+            SimClock(current_date=date(2025, 1, 1)),
+            max_passes=1,
+        )
+    )
+    verdict = next(s for s in steps if isinstance(s, VerdictStep))
+    assert verdict.demand_satisfied is None
+
+
 def test_ledger_captures_calls_when_provided():
     from inference.metered_backend import MeteredBackend
     from inference.telemetry import BudgetLedger

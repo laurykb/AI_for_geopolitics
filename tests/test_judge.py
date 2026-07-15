@@ -57,3 +57,35 @@ def test_stream_communique():
     judge = JudgeAgent(MockBackend("Les pays condamnent l'attaque et appellent au dialogue."))
     text = "".join(judge.stream_communique(_event(), _world(), []))
     assert "condamnent" in text
+
+
+# --- G21 : champ structuré « demande satisfaite o/n » à l'échéance d'un ultimatum ------
+
+
+def test_verdict_with_demand_asks_and_parses_structured_field():
+    backend = MockBackend(json.dumps({"escalation": 0.6, "demand_satisfied": True}))
+    judge = JudgeAgent(backend)
+    verdict = judge.verdict(_event(), _world(), [], demand="retrait immédiat des missiles")
+    assert verdict.demand_satisfied is True
+    prompt = backend.calls[-1]["prompt"]
+    assert "retrait immédiat des missiles" in prompt  # l'exigence est citée au juge
+    assert "demand_satisfied" in prompt  # le champ structuré est demandé
+
+
+def test_verdict_without_demand_ignores_the_field():
+    backend = MockBackend(json.dumps({"escalation": 0.6}))
+    judge = JudgeAgent(backend)
+    verdict = judge.verdict(_event(), _world(), [])
+    assert verdict.demand_satisfied is None
+    assert "demand_satisfied" not in backend.calls[-1]["prompt"]  # prompt inchangé (rétro-compat)
+
+
+def test_demand_satisfied_parse_is_tolerant():
+    """Un 7B répond parfois « oui »/« non » au lieu de true/false — parse tolérant."""
+    from simulation.negotiation import Verdict
+
+    assert Verdict.model_validate({"demand_satisfied": "oui"}).demand_satisfied is True
+    assert Verdict.model_validate({"demand_satisfied": "NON"}).demand_satisfied is False
+    assert Verdict.model_validate({"demand_satisfied": "yes"}).demand_satisfied is True
+    assert Verdict.model_validate({"demand_satisfied": "peut-être"}).demand_satisfied is None
+    assert Verdict.model_validate({}).demand_satisfied is None

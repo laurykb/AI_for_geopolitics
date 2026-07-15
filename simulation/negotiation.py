@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from core.events import GeoEvent
 from core.world_state import WorldState
@@ -203,6 +203,24 @@ class Verdict(BaseModel):
     new_pacts: list = Field(default_factory=list)  # [[a, b], ...]
     escalation: float = 0.5
     economic_disruption: float = 0.5
+    # G21 — à l'échéance d'un ultimatum SEULEMENT : « demande satisfaite o/n ».
+    # None = pas d'ultimatum ce round (ou juge muet) — le champ est ignoré.
+    demand_satisfied: bool | None = None
+
+    @field_validator("demand_satisfied", mode="before")
+    @classmethod
+    def _tolerant_bool(cls, v: object) -> bool | None:
+        """Un 7B répond parfois « oui »/« non » — parse tolérant, inconnu → None."""
+        if isinstance(v, str):
+            s = v.strip().lower()
+            if s in {"oui", "yes", "true", "vrai", "satisfaite", "satisfied", "o", "y"}:
+                return True
+            if s in {"non", "no", "false", "faux", "n"}:
+                return False
+            return None
+        if isinstance(v, bool) or v is None:
+            return v
+        return None
 
 
 def format_transcript(transcript: list[NegotiationMessage], *, limit: int = 14) -> str:
