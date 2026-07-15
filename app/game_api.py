@@ -69,6 +69,7 @@ from simulation import daily as daily_mod
 from simulation import difficulty as difficulty_mod
 from simulation import intel as intel_mod
 from simulation import lang as lang_mod
+from simulation import promises as promises_mod
 from simulation import temperament as temperament_mod
 from simulation import treaty as treaty_mod
 from simulation import xp as xp_mod
@@ -1243,6 +1244,16 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
                 "divergences": payload["divergences"],
                 "means": {cid: gap.mean for cid, gap in step.signal_gaps.items()},
             }
+        if step.promise_registry:
+            # G22 — la parole donnée : nouvelles promesses, résolutions du round et
+            # registre complet, sous une clé dédiée (comme `kahn` et `signal`). Le
+            # panneau front et le reveal relisent d'ici. Absent des vieux rounds et
+            # des parties sans aucune promesse.
+            run.record.judge["promises"] = {
+                "extracted": payload["promises"],
+                "resolved": payload["promise_resolutions"],
+                "registry": payload["promise_registry"],
+            }
         if session.mode == "escalation" and run.current_event is not None:
             ladder = {
                 "reached": reached_rung(step.escalation),
@@ -1692,6 +1703,13 @@ def _finalize_game(
     """Fige le bilan dans games.result_json, crédite les LP, marque la partie finie."""
     result = _build_result(game, session, store, forfeit=forfeit)
     game.status = GameStatus.FINISHED
+    if session is not None and any(
+        p.status == promises_mod.STATUS_PENDING for p in session.world.promises
+    ):
+        # G22 — partie finie avant échéance → promesses caduques (aucun verdict inventé).
+        # Snapshot immédiat : le registre réglé survit au restart et aux relectures.
+        session.world.promises = promises_mod.settle_at_game_end(session.world.promises)
+        _snapshot_session(game.id, session, store)
     game.result = result  # dict muté en place par les awards ci-dessous (lp/xp enrichis)
     _award_lp(game, result, store)  # LP : compétence (classé)
     _award_xp(game, result, store)  # XP : carrière (tous modes)
@@ -2307,6 +2325,10 @@ class DriftRevealView(BaseModel):
     # (le décrochage chiffré). None sur les parties d'avant M8 (rétro-compat).
     signal_gap_deviant: float | None = None
     signal_gap_table: float | None = None
+    # G22 — taux de tenue de la parole donnée : la déviante vs le reste de la table
+    # (une SI qui promet et rompt EST en divergence). None sans promesse résolue.
+    promise_kept_deviant: float | None = None
+    promise_kept_table: float | None = None
 
 
 @router.get("/games/{game_id}/drift/reveal", response_model=DriftRevealView)
@@ -2367,6 +2389,11 @@ def compute_drift_reveal(game_id: str, store: GameStore) -> DriftRevealView:
     gap_deviant, gap_table = alignment.divergence_summary(
         ((r.judge.get("signal") or {}).get("divergences") or {} for r in rounds), deviant
     )
+    # G22 — la parole donnée au reveal : taux de tenue déviante vs table, relu des
+    # résolutions persistées (judge_json["promises"]["resolved"]). None sans données.
+    kept_deviant, kept_table = promises_mod.kept_rate_summary(
+        ((r.judge.get("promises") or {}).get("resolved") or [] for r in rounds), deviant
+    )
     intel_budget = float((snapshot.intel or {}).get("budget", 0.0) or 0.0)
     score = drift_game.score(
         u_final=u_history[-1] if u_history else 0.5,
@@ -2401,6 +2428,8 @@ def compute_drift_reveal(game_id: str, store: GameStore) -> DriftRevealView:
         score=score,
         signal_gap_deviant=gap_deviant,
         signal_gap_table=gap_table,
+        promise_kept_deviant=kept_deviant,
+        promise_kept_table=kept_table,
     )
 
 
