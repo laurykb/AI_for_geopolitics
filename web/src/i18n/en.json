@@ -69,18 +69,14 @@
   "daily.rang": "Your rank today",
   "daily.partager": "Share",
   "daily.copie": "Copied!",
-
   "fin.kicker": "Game over",
   "fin.forfait": "— forfeit",
   "fin.penche": "The world leans toward",
   "fin.u-final": "Final world score:",
   "fin.pas-finie": "This game is not over yet —",
   "fin.retour-theatre": "back to the theatre",
-  "fin.trajectoire-kicker": "Trajectory",
-  "fin.trajectoire-titre": "The curve of the world",
   "fin.etats-kicker": "The States",
   "fin.etats-titre": "Where each country ended up",
-
   "fin.ultimatum-kicker": "Test bench",
   "fin.ultimatum-titre": "Under ultimatum vs without",
   "fin.ultimatum-hint": "The same AIs, with and without a countdown: average tension and average world gain of the rounds played under the threat, compared to the others.",
@@ -90,7 +86,6 @@
   "fin.ultimatum-escalade": "average tension",
   "fin.ultimatum-delta-u": "world gain / round",
   "fin.ultimatum-vide": "none",
-
   "ultimatum.exigence": "Demand:",
   "ultimatum.expire-ce-round": "expires this round",
   "ultimatum.expire-dans-1": "expires next round",
@@ -107,7 +102,6 @@
   "ultimatum.classe.non_violente": "non-violent retaliation",
   "ultimatum.classe.violente": "military retaliation",
   "ultimatum.classe.nucleaire": "nuclear threat carried out",
-
   "reglages.titre": "Settings",
   "reglages.kicker": "Your space",
   "reglages.langue-titre": "Language",

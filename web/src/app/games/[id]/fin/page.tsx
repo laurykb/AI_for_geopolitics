@@ -95,49 +95,75 @@ export default function FinPage({ params }: { params: Promise<{ id: string }> })
         </p>
       </header>
 
-      {/* 2. Courbe U animée */}
+      {/* 2. CC-15c — courbe et frise FUSIONNÉES : une seule chronologie raconte la
+          partie (la courbe au-dessus, les crans à relire en dessous). */}
       <Panel>
         <PanelTitle
-          kicker={t("fin.trajectoire-kicker")}
-          title={t("fin.trajectoire-titre")}
-          hint={`${t("u.thermometre")} Au-dessus de 0,5, le monde s'améliore.`}
+          kicker="Chronologie"
+          title="La partie en une ligne"
+          hint={`${t("u.thermometre")} Au-dessus de 0,5, le monde s'améliore. Un cran par round — clique pour relire l'événement et le verdict ; ⚖ vote d'exclusion, ⛔ pays exclu, ⚡ coup de théâtre, 🏛 traité signé.`}
         />
         <UCurve history={[r.u_start, ...r.u_history]} />
+        {game.rounds.length > 0 && (
+          <>
+            <div className="mt-4 border-t border-edge pt-3">
+              <EventTimeline
+                rounds={game.rounds}
+                selected={relecture}
+                onSelect={setRelecture}
+              />
+            </div>
+            <KahnDistribution rounds={game.rounds} t={t} />
+            {relecture !== null && game.rounds[relecture] && (
+              <RoundReplay
+                round={game.rounds[relecture]}
+                total={game.rounds.length}
+                onStep={(d) => setRelecture(stepNotch(relecture, d, game.rounds.length))}
+                onClose={() => setRelecture(null)}
+              />
+            )}
+          </>
+        )}
       </Panel>
 
-      {/* 2 bis. G15 — la frise chronologique : l'écran de fin raconte la partie. */}
-      {game.rounds.length > 0 && (
-        <Panel>
-          <PanelTitle
-            kicker="Chronologie"
-            title="La partie en une ligne"
-            hint="Un cran par round — clique pour relire l'événement et le verdict. Le fil suit la courbe du monde ; ⚖ vote d'exclusion, ⛔ pays exclu, ⚡ coup de théâtre, 🏛 traité signé."
-          />
-          <EventTimeline rounds={game.rounds} selected={relecture} onSelect={setRelecture} />
-          <KahnDistribution rounds={game.rounds} t={t} />
-          {relecture !== null && game.rounds[relecture] && (
-            <RoundReplay
-              round={game.rounds[relecture]}
-              total={game.rounds.length}
-              onStep={(d) => setRelecture(stepNotch(relecture, d, game.rounds.length))}
-              onClose={() => setRelecture(null)}
-            />
-          )}
-        </Panel>
-      )}
-
-      {/* 3. Récap des pays */}
+      {/* 3. Récap des pays — CC-15c : seul TON pays est ouvert, les autres sont
+          repliés (sans pays joué, la grille reste ouverte : un repli qui cacherait
+          tout n'aide personne). */}
       <Panel>
         <PanelTitle
           kicker={t("fin.etats-kicker")}
           title={t("fin.etats-titre")}
           hint="Variation de chaque indice clé du début à la fin (vert = mieux, rouge = pire)."
         />
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {r.countries.map((c) => (
-            <CountryCard key={c.id} country={c} isPlayer={c.id === r.play_as} />
-          ))}
-        </div>
+        {r.play_as && r.countries.some((c) => c.id === r.play_as) ? (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {r.countries
+                .filter((c) => c.id === r.play_as)
+                .map((c) => (
+                  <CountryCard key={c.id} country={c} isPlayer />
+                ))}
+            </div>
+            <details className="mt-3">
+              <summary className="cursor-pointer select-none text-xs text-fg-faint transition-colors hover:text-fg-muted">
+                {t("fin.autres-pays")} ({r.countries.length - 1})
+              </summary>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {r.countries
+                  .filter((c) => c.id !== r.play_as)
+                  .map((c) => (
+                    <CountryCard key={c.id} country={c} isPlayer={false} />
+                  ))}
+              </div>
+            </details>
+          </>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {r.countries.map((c) => (
+              <CountryCard key={c.id} country={c} isPlayer={false} />
+            ))}
+          </div>
+        )}
       </Panel>
 
       {/* 3 bis. G21 — banc d'essai : les mêmes SI, avec et sans pression temporelle. */}
@@ -176,15 +202,21 @@ export default function FinPage({ params }: { params: Promise<{ id: string }> })
         </Panel>
       )}
 
-      {/* 5a. Animation XP (carrière) — se remplit AVANT les LP (grammaire LoL exacte). */}
-      {r.xp && <XpAnimation xp={r.xp} />}
-
-      {/* 5b. Animation LP (classé) — démarre après l'XP. */}
-      {r.lp.ranked && r.lp.old_lp !== undefined && r.lp.new_lp !== undefined && (
-        <LpAnimation
-          lp={r.lp as Required<GameResult["lp"]>}
-          startDelay={r.xp ? 1700 : 400}
-        />
+      {/* 5. CC-15c — XP + LP fusionnés en UN panneau « Progression » (l'XP se
+          remplit d'abord, les LP démarrent après — grammaire LoL conservée). */}
+      {(r.xp || (r.lp.ranked && r.lp.old_lp !== undefined && r.lp.new_lp !== undefined)) && (
+        <Panel>
+          <PanelTitle
+            kicker={t("fin.progression-kicker")}
+            title={t("fin.progression-titre")}
+          />
+          <div className="space-y-6">
+            {r.xp && <XpRow xp={r.xp} />}
+            {r.lp.ranked && r.lp.old_lp !== undefined && r.lp.new_lp !== undefined && (
+              <LpRow lp={r.lp as Required<GameResult["lp"]>} startDelay={r.xp ? 1700 : 400} />
+            )}
+          </div>
+        </Panel>
       )}
       {r.lp.ranked && r.lp.new_lp === undefined && (
         <Banner tone="warn">
@@ -511,8 +543,9 @@ function Sparkline({ series }: { series: number[] }) {
   );
 }
 
-/** Animation XP (carrière) : compteur qui monte + barre de niveau qui se remplit. */
-function XpAnimation({ xp }: { xp: NonNullable<GameResult["xp"]> }) {
+/** Rangée XP du panneau « Progression » : compteur qui monte + barre de niveau
+ * qui se remplit (CC-15c — l'ancien panneau « Carrière », fusionné). */
+function XpRow({ xp }: { xp: NonNullable<GameResult["xp"]> }) {
   const t = useT();
   const [shown, setShown] = useState(xp.old_xp);
   useEffect(() => {
@@ -533,12 +566,11 @@ function XpAnimation({ xp }: { xp: NonNullable<GameResult["xp"]> }) {
   const lvl = xp.new_level;
   const promoted = xp.new_level.level > xp.old_level.level;
   return (
-    <Panel>
-      <PanelTitle
-        kicker="Carrière"
-        title={promoted ? `Niveau ${lvl.level} !` : "Expérience"}
-        hint={t("xp.aide")}
-      />
+    <div>
+      <p className="mb-3 flex items-center gap-1.5 text-xs font-medium uppercase tracking-[0.14em] text-fg-faint">
+        {promoted ? `Carrière — niveau ${lvl.level} !` : "Carrière"}
+        <Hint text={t("xp.aide")} />
+      </p>
       <div className="flex flex-wrap items-center gap-4">
         <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-accent-bright bg-surface-2 text-sm font-bold text-accent-bright">
           {lvl.level}
@@ -558,12 +590,13 @@ function XpAnimation({ xp }: { xp: NonNullable<GameResult["xp"]> }) {
           <p className="mt-1 text-xs text-fg-faint">{lvl.to_next} XP avant le niveau {lvl.level + 1}</p>
         </div>
       </div>
-    </Panel>
+    </div>
   );
 }
 
-/** Animation LP : compteur qui monte/descend + barre de rang qui se remplit. */
-function LpAnimation({ lp, startDelay = 400 }: { lp: Required<GameResult["lp"]>; startDelay?: number }) {
+/** Rangée LP du panneau « Progression » : compteur qui monte/descend + barre de
+ * rang qui se remplit (CC-15c — l'ancien panneau « Points de ligue », fusionné). */
+function LpRow({ lp, startDelay = 400 }: { lp: Required<GameResult["lp"]>; startDelay?: number }) {
   const t = useT();
   const [shown, setShown] = useState(lp.old_lp);
   useEffect(() => {
@@ -586,12 +619,11 @@ function LpAnimation({ lp, startDelay = 400 }: { lp: Required<GameResult["lp"]>;
   const progress = rankFor(shown);
   const gained = lp.applied;
   return (
-    <Panel>
-      <PanelTitle
-        kicker="Points de ligue (LP)"
-        title={gained >= 0 ? "Tu progresses" : "Tu recules"}
-        hint={t("lp.aide")}
-      />
+    <div>
+      <p className="mb-3 flex items-center gap-1.5 text-xs font-medium uppercase tracking-[0.14em] text-fg-faint">
+        Points de ligue — {gained >= 0 ? "tu progresses" : "tu recules"}
+        <Hint text={t("lp.aide")} />
+      </p>
       <div className="flex flex-wrap items-center gap-4">
         <RankBadge rank={progress.rank} />
         <div className="min-w-0 flex-1">
@@ -611,6 +643,6 @@ function LpAnimation({ lp, startDelay = 400 }: { lp: Required<GameResult["lp"]>;
           </p>
         </div>
       </div>
-    </Panel>
+    </div>
   );
 }

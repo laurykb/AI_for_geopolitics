@@ -9,7 +9,6 @@ import { useEffect, useState } from "react";
 
 import { DriftRevealPanel } from "@/components/drift";
 import { EventCard } from "@/components/event-card";
-import { EventTimeline } from "@/components/event-timeline";
 import { GameNav } from "@/components/game-nav";
 import { CommuniquePanel } from "@/components/judge";
 import {
@@ -20,6 +19,7 @@ import {
   PerceptionsPanel,
 } from "@/components/modes";
 import { RiskPanel } from "@/components/observables";
+import { TabGroup } from "@/components/observatory";
 import { StageBand, type StageSelection } from "@/components/stage-band";
 import { StageMap } from "@/components/stage-map";
 import { TrajectoryPanel } from "@/components/trajectory";
@@ -158,16 +158,8 @@ export default function ReplayPage() {
 
       {detail && round && (
         <>
-          {/* G15 — la frise chronologique pilote le round affiché (clic cran k →
-              onSelect(k-1), même sémantique que le scrubber StageBand). */}
-          <Panel>
-            <PanelTitle
-              kicker="Chronologie"
-              title="La partie en une ligne"
-              hint="Un cran par round — clique pour sauter à ce round. Le fil suit la courbe du monde ; ⚖ vote d'exclusion, ⛔ pays exclu, ⚡ coup de théâtre, 🏛 traité signé."
-            />
-            <EventTimeline rounds={detail.rounds} selected={selected} onSelect={select} />
-          </Panel>
+          {/* CC-15c — UNE seule timeline au replay : le scrubber du bandeau (il porte
+              la lecture théâtre) ; la frise narrative reste à l'écran de fin. */}
 
           {/* --- La scène, pilotée par le scrubber (pleine largeur) ---------------- */}
           <div className="relative left-1/2 w-screen max-w-[1600px] -translate-x-1/2 space-y-4 px-4 sm:px-6">
@@ -255,49 +247,85 @@ export default function ReplayPage() {
             <DriftRevealPanel reveal={reveal} onJumpToRound={(roundNo) => select(roundNo - 1)} />
           )}
 
-          {/* Salle des observables. */}
-          <div className="grid items-start gap-4 lg:grid-cols-2 xl:grid-cols-3">
-            {round.judge.treaties && <TreatiesPanel update={round.judge.treaties} />}
-            {round.trajectory && Object.keys(round.trajectory).length > 0 && (
-              <TrajectoryPanel
-                state={round.trajectory}
-                history={uHistory.slice(0, selected + 1)}
-              />
-            )}
-            {round.judge.ladder && <LadderPanel ladder={round.judge.ladder} />}
-            {round.judge.escalation != null && (
-              <Panel>
-                <PanelTitle kicker="Verdict" title="Ce que le juge a décidé" />
-                <div className="space-y-3">
-                  <Meter label="Tension" value={round.judge.escalation} />
-                  {round.judge.economic_disruption != null && (
-                    <Meter label="Dégâts économiques" value={round.judge.economic_disruption} />
-                  )}
-                </div>
-                {/* G18 — les classes du barème de Kahn (absentes des rounds anciens). */}
-                {(round.judge.kahn?.actions?.length ?? 0) > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-1.5 border-t border-edge pt-3">
-                    {round.judge.kahn!.actions.map((a, i) => (
-                      <span key={i} title={a.resume || undefined} className="cursor-help">
-                        <Pill tone={kahnTone(a.classe)}>
-                          {speakerMeta(a.country).label} · {t(kahnLabelKey(a.classe))}
-                        </Pill>
-                      </span>
-                    ))}
-                    {round.judge.kahn!.reciprocal && (
-                      <Pill tone="good">{t("kahn.reciproque")}</Pill>
-                    )}
-                  </div>
-                )}
-                {round.deltas.length > 0 && (
-                  <p className="mt-3 border-t border-edge pt-3 text-xs text-fg-faint">
-                    {round.deltas.length} attribut{round.deltas.length > 1 ? "s" : ""} pays
-                    modifié{round.deltas.length > 1 ? "s" : ""} ce round.
-                  </p>
-                )}
-              </Panel>
-            )}
-            {round.risk && Object.keys(round.risk).length > 0 && <RiskPanel risk={round.risk} />}
+          {/* Salle des observables (CC-15c) : même fusion qu'au théâtre — un groupe
+              « Le monde » à onglets, plus les repères de la partie. */}
+          <div className="grid items-start gap-4 lg:grid-cols-2">
+            <TabGroup
+              label={t("obs.monde")}
+              tabs={[
+                {
+                  key: "trajectoire",
+                  label: t("obs.tab.trajectoire"),
+                  content:
+                    round.trajectory && Object.keys(round.trajectory).length > 0 ? (
+                      <TrajectoryPanel
+                        state={round.trajectory}
+                        history={uHistory.slice(0, selected + 1)}
+                      />
+                    ) : null,
+                },
+                {
+                  key: "verdict",
+                  label: t("obs.tab.verdict"),
+                  content:
+                    round.judge.escalation != null ? (
+                      <Panel>
+                        <PanelTitle kicker="Verdict" title="Ce que le juge a décidé" />
+                        <div className="space-y-3">
+                          <Meter label="Tension" value={round.judge.escalation} />
+                          {round.judge.economic_disruption != null && (
+                            <Meter
+                              label="Dégâts économiques"
+                              value={round.judge.economic_disruption}
+                            />
+                          )}
+                        </div>
+                        {/* G18 — classes du barème de Kahn (absentes des rounds anciens). */}
+                        {(round.judge.kahn?.actions?.length ?? 0) > 0 && (
+                          <div className="mt-3 flex flex-wrap gap-1.5 border-t border-edge pt-3">
+                            {round.judge.kahn!.actions.map((a, i) => (
+                              <span key={i} title={a.resume || undefined} className="cursor-help">
+                                <Pill tone={kahnTone(a.classe)}>
+                                  {speakerMeta(a.country).label} · {t(kahnLabelKey(a.classe))}
+                                </Pill>
+                              </span>
+                            ))}
+                            {round.judge.kahn!.reciprocal && (
+                              <Pill tone="good">{t("kahn.reciproque")}</Pill>
+                            )}
+                          </div>
+                        )}
+                        {round.deltas.length > 0 && (
+                          <p className="mt-3 border-t border-edge pt-3 text-xs text-fg-faint">
+                            {round.deltas.length} attribut{round.deltas.length > 1 ? "s" : ""}{" "}
+                            pays modifié{round.deltas.length > 1 ? "s" : ""} ce round.
+                          </p>
+                        )}
+                      </Panel>
+                    ) : null,
+                },
+                {
+                  key: "risque",
+                  label: t("obs.tab.risque"),
+                  content:
+                    round.risk && Object.keys(round.risk).length > 0 ? (
+                      <RiskPanel risk={round.risk} />
+                    ) : null,
+                },
+                {
+                  key: "tension",
+                  label: t("obs.tab.tension"),
+                  content: round.judge.ladder ? <LadderPanel ladder={round.judge.ladder} /> : null,
+                },
+                {
+                  key: "traites",
+                  label: t("obs.tab.traites"),
+                  content: round.judge.treaties ? (
+                    <TreatiesPanel update={round.judge.treaties} />
+                  ) : null,
+                },
+              ]}
+            />
             <Panel>
               <PanelTitle kicker="Partie" title="Repères" />
               <div className="flex flex-wrap gap-2">

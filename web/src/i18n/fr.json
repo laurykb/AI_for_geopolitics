@@ -69,18 +69,14 @@
   "daily.rang": "Ton rang du jour",
   "daily.partager": "Partager",
   "daily.copie": "Copié !",
-
   "fin.kicker": "Fin de partie",
   "fin.forfait": "— abandon",
   "fin.penche": "Le monde penche vers",
   "fin.u-final": "Score final du monde :",
   "fin.pas-finie": "Cette partie n'est pas terminée —",
   "fin.retour-theatre": "retourne au théâtre",
-  "fin.trajectoire-kicker": "Trajectoire",
-  "fin.trajectoire-titre": "La courbe du monde",
   "fin.etats-kicker": "Les États",
   "fin.etats-titre": "Où chaque pays a fini",
-
   "fin.ultimatum-kicker": "Banc d'essai",
   "fin.ultimatum-titre": "Sous ultimatum vs sans",
   "fin.ultimatum-hint": "Les mêmes IA, avec et sans compte à rebours : tension moyenne et gain moyen pour le monde des rounds joués sous la menace, comparés aux autres.",
@@ -90,7 +86,6 @@
   "fin.ultimatum-escalade": "tension moyenne",
   "fin.ultimatum-delta-u": "gain pour le monde / round",
   "fin.ultimatum-vide": "aucun",
-
   "ultimatum.exigence": "Exigence :",
   "ultimatum.expire-ce-round": "expire ce round",
   "ultimatum.expire-dans-1": "expire au prochain round",
@@ -107,7 +102,6 @@
   "ultimatum.classe.non_violente": "représailles non violentes",
   "ultimatum.classe.violente": "représailles militaires",
   "ultimatum.classe.nucleaire": "menace nucléaire exécutée",
-
   "reglages.titre": "Réglages",
   "reglages.kicker": "Ton espace",
   "reglages.langue-titre": "Langue",
