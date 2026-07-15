@@ -1052,3 +1052,110 @@ page /r dépend de Supabase, vérifiée par tests purs + build.
   audit), désormais toujours accompagné d'une bulle.
 
 <!-- fin section CC-15b -->
+
+## CC-15c — Simplification : la structure (fusions et replis, audit n°7/8) — notes de session
+
+<!-- début section CC-15c (2026-07-15) -->
+
+Dernière des trois sessions de simplification, branche `feat/jeu-cc15c-structure`
+sur `feat/jeu-cc15b-vocabulaire` (tête `047e823`). Front + une retouche moteur
+assumée (drapeaux de visibilité retirés de la table de difficulté).
+
+**Décision de design — densité par difficulté (point 7, réconciliation actée) :**
+l'existant (G11-d + lot G18-G23) CACHAIT des observables en Expert (`showPostures`,
+`showGriefs`, `showSignalGauge`, `showPromisePanel`) ; l'audit inverse la logique.
+Réconciliation retenue : **la difficulté ne masque plus AUCUNE information** —
+elle règle (a) le GAMEPLAY côté moteur, inchangé (`simulation/difficulty.py` :
+budget intel, brief gratuit, seuil d'actes du juge, k de dérive, amplitude, ×LP,
+si_context) et (b) la **DENSITÉ d'affichage** côté front
+(`web/src/lib/density.ts`, TDD) : Débutant/Intermédiaire = surface réduite
+(vue simple de la table, replis « Options avancées » fermés), Expert = tout
+affiché d'office (5 colonnes, replis ouverts). Conséquences : postures, griefs,
+tempéraments, jauge signal-action et parole donnée visibles à TOUTES les
+difficultés ; `showSignalGauge`/`showPromisePanel` supprimés (tests adaptés) ;
+`show_postures`/`show_griefs` retirés de `DifficultyParams`, des défauts, de
+`data/gamefeel/params.json` et de `tests/test_difficulty.py` (ils n'étaient
+appliqués nulle part côté serveur) ; descriptions de difficulté du lobby
+réécrites (« l'écran va à l'essentiel » / « l'écran affiche tout »).
+
+**Fait, par commit :**
+
+- **`730315f` — fondations TDD** : `lib/density.ts` (densityFor /
+  tableDetailedByDefault / advancedOpenByDefault), `lib/trend.ts` (countryTrend,
+  vote majoritaire sur la fenêtre des sparklines), `tensionLevel` dans
+  `lib/stage.ts` (échelle 0-9 prioritaire, sinon escalade 0-1 ; bornes 4/7 et
+  0,34/0,67) — tests écrits AVANT, rouges puis verts.
+- **`00fb817` — théâtre (audit n°8)** : la salle des observables passe de ~8
+  panneaux + 2 tables à **3 groupes à onglets** via `TabGroup`
+  (`components/observatory.tsx`, testé rendu statique) : **« Renseignement »**
+  (Elle dit / elle fait · Parole donnée · Qui veut le pouvoir ?, ancre
+  `data-tour="renseignement"`, état vide actionnable pour que l'ancre existe dès
+  la démo), **« Le monde »** (Trajectoire · Risque · Tension · Traités),
+  **« La table »** (État des pays · Prises de parole). Tranche actée : le
+  **Dossier reste la console d'ACHATS** (panneau à part, l'analyse
+  psycholinguistique y demeure — c'est un achat), les jauges d'OBSERVATION vont
+  dans Renseignement. « Ta position » + « État des pays » = **UN tableau**
+  (`CountryTable` : `playAs` en tête + pastille « toi », vue réduite
+  pays/posture/tendance par défaut, « Voir les 5 colonnes » au clic, testé).
+  Header : Boîte de verre + Admin dans un menu « ⋯ ». Panneau de contrôle :
+  Longueur du débat / « Inventer toi-même l'événement » / Motion sous un
+  `<details>` « Options avancées » (ouvert d'office pour l'Architecte et en
+  Expert — astuce : `open={x ? true : undefined}`, React ne re-force pas
+  l'attribut tant que la valeur VDOM ne change pas). StageBand : **UNE pastille
+  tension** (mot + point coloré, vibre au franchissement de palier) remplace les
+  3 micro-jauges ET le rail.
+- **`09a76e8` — replay & fin** : replay = même fusion (groupe « Le monde » à
+  onglets : Trajectoire · Verdict · Risque · Tension · Traités + Repères) et
+  **une seule timeline** — la frise disparaît du replay (le scrubber du bandeau
+  porte la lecture théâtre ; la frise narrative reste à l'écran de fin). Fin :
+  courbe U et frise **fusionnées en UNE chronologie** (courbe au-dessus, crans à
+  relire dessous) ; XP + LP fusionnés en un panneau **« Progression »**
+  (`XpRow`/`LpRow`, animations et ordre LoL conservés) ; récap des pays replié
+  sauf TON pays (grille ouverte si aucun pays joué).
+- **`a4b7592` — accueil, lobby, réglages** : le panneau « Rang » fusionne dans
+  le hero (blason `size="sm"`, LP, niveau, barre — l'ancre `data-tour="rang"`
+  suit) ; lobby : Dérive / Partie libre / Table sous « Options avancées », la
+  Dérive est **masquée** (pas grisée) hors Classique (le garde-fou
+  `drift && baseMode === "classic"` de `onLaunch` existait déjà), alliances
+  d'invention repliées ; réglages : suppression de compte repliée derrière son
+  titre (le hint de langue n'apparaissait déjà plus qu'une fois — soldé par
+  CC-15b).
+- **`12ea085` — visite guidée + tutoriel (responsabilité CC-15c)** : nouvelle
+  étape de visite **« Ton poste de surveillance »** ancrée sur Renseignement
+  (fr : « Ici, tu surveilles ce que les IA disent… et ce qu'elles font
+  vraiment… », en miroir en anglais), insérée après l'étape bandeau (clés
+  `tour.renseignement.*` — pas de renumérotation) ; `tuto.3` parle de la
+  pastille tension (plus de rail) ; `tuto.6` guide « Ouvre “Options avancées”,
+  puis “Motion de suspension…” » (l'ancre `data-tour="motion"` vit désormais
+  sur le repli — cible le conteneur, règle du dispatch) ; + retrait des
+  drapeaux backend (voir décision ci-dessus).
+
+**Vert complet** : 906 py + 3 skips, ruff OK, **236 js** (+23 : 9 densité,
+6 tendance, 4 tension, 5 TabGroup, 6 CountryTable, −7 gates supprimés),
+eslint OK, `next build` OK, verrou lexique OK (nouvelles clés fr/en en parité).
+Pas de smoke navigateur (jeu live sur :3000/:8000, interdits à la session).
+
+**Vigilances pour la suite (passes /code-review et /simplify) :**
+
+- **`TabGroup` remonte au premier onglet** si l'onglet sélectionné perd son
+  contenu entre deux rounds (repli volontaire, pas de persistance de sélection).
+- **Le `<details open>` React** : si un jour la densité devenait dynamique en
+  cours de partie, l'attribut se re-forcerait au changement de valeur — à
+  garder en tête (aujourd'hui la difficulté est figée par partie).
+- **`CountryTable`** ne prend plus `showTemperaments` (tempérament affiché dès
+  que la donnée existe) — si le moteur veut re-masquer une info par difficulté,
+  la décision d'audit dit NON : passer par la densité, pas par la visibilité.
+- Le replay garde son bouton « Boîte de verre » en clair (un menu « ⋯ » à un
+  seul item serait pire) — asymétrie assumée avec le théâtre.
+- La partie du **Spectateur** ne voit dans « Options avancées » que la longueur
+  du débat (décret/motion restent gatés `!isSpectator`, comme avant).
+- Zones que je sais fragiles : le bloc « Options avancées » du théâtre imbrique
+  details + formulaires existants (motion/décret) — vérifier visuellement les
+  marges au premier smoke ; la colonne « Tendance » vote sur TOUTES les séries
+  d'`index_history` (si une série non-indice y entrait un jour, le vote la
+  compterait).
+- Reliquats hérités inchangés : libellés backend FR-only (DeadlineStrip
+  `d.label`, `profile_label`, `act.label` — hors périmètre, décision CC-15b),
+  `si_context` toujours non branché (G11-d), fiches historiques Campagne.
+
+<!-- fin section CC-15c -->
