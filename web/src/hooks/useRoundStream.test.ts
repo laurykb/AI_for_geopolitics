@@ -156,6 +156,97 @@ describe("réducteur de round", () => {
     expect(state.motionVerdict).toMatchObject({ vote_passed: true, evidence_met: false });
   });
 
+  it("le verdict porte les classes du barème de Kahn (G18)", () => {
+    const state = play([
+      {
+        type: "verdict",
+        deltas: [],
+        escalation: 0.33,
+        economic_disruption: 0.2,
+        actions: [{ country: "usa", classe: "deescalade", resume: "Retire ses forces." }],
+        score: -2,
+        reciprocal: false,
+      },
+    ]);
+    expect(state.verdict).toMatchObject({ escalation: 0.33, score: -2, reciprocal: false });
+    expect(state.verdict?.actions).toEqual([
+      { country: "usa", classe: "deescalade", resume: "Retire ses forces." },
+    ]);
+  });
+
+  it("un verdict à l'ancienne (sans actions) reste lisible — rétro-compat G18", () => {
+    const state = play([
+      { type: "verdict", deltas: [], escalation: 0.5, economic_disruption: 0.5 },
+    ]);
+    expect(state.verdict?.actions).toEqual([]);
+    expect(state.verdict?.reciprocal).toBe(false);
+  });
+
+  it("le verdict porte le signal vs action (G20/M8)", () => {
+    const state = play([
+      {
+        type: "verdict",
+        deltas: [],
+        escalation: 0.6,
+        economic_disruption: 0.2,
+        signals: [{ country: "usa", classe: "deescalade", resume: "Promet le retrait." }],
+        divergences: { usa: 0.8 },
+        signal_gaps: { usa: { last: 0.8, mean: 0.8, history: [0.8] } },
+      },
+    ]);
+    expect(state.verdict?.signals).toEqual([
+      { country: "usa", classe: "deescalade", resume: "Promet le retrait." },
+    ]);
+    expect(state.verdict?.divergences).toEqual({ usa: 0.8 });
+    expect(state.verdict?.signalGaps.usa).toMatchObject({ mean: 0.8 });
+  });
+
+  it("un verdict d'avant M8 (sans signals) reste lisible — rétro-compat G20", () => {
+    const state = play([
+      { type: "verdict", deltas: [], escalation: 0.5, economic_disruption: 0.5 },
+    ]);
+    expect(state.verdict?.signals).toEqual([]);
+    expect(state.verdict?.divergences).toEqual({});
+    expect(state.verdict?.signalGaps).toEqual({});
+  });
+
+  it("le verdict porte la parole donnée (G22)", () => {
+    const promise = {
+      id: "p1-1",
+      author: "usa",
+      beneficiary: "iran",
+      type: "soutien",
+      deadline_round: 3,
+      text: "Nous soutiendrons l'Iran au round 3.",
+      round_made: 1,
+      status: "en_cours" as const,
+      resolved_round: null,
+      motif: "",
+    };
+    const state = play([
+      {
+        type: "verdict",
+        deltas: [],
+        escalation: 0.5,
+        economic_disruption: 0.5,
+        promises: [promise],
+        promise_resolutions: [],
+        promise_registry: [promise],
+      },
+    ]);
+    expect(state.verdict?.promises).toHaveLength(1);
+    expect(state.verdict?.promiseRegistry[0]).toMatchObject({ id: "p1-1", author: "usa" });
+    expect(state.verdict?.promiseResolutions).toEqual([]);
+  });
+
+  it("un verdict d'avant G22 (sans promises) reste lisible — rétro-compat", () => {
+    const state = play([
+      { type: "verdict", deltas: [], escalation: 0.5, economic_disruption: 0.5 },
+    ]);
+    expect(state.verdict?.promises).toEqual([]);
+    expect(state.verdict?.promiseRegistry).toEqual([]);
+  });
+
   it("postures et intrigue (G9 §4-§5) entrent dans l'état du round", () => {
     const state = play([
       { type: "postures", states: { iran: "aux_abois", usa: "stable" } },

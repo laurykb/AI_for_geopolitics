@@ -8,37 +8,22 @@ menace sont taguées `sous_ultimatum` — le bilan de fin compare le comportemen
 mêmes SI avec et sans pression temporelle (arXiv 2602.14740 : le cadrage temporel
 transforme radicalement le comportement des modèles).
 
-NOTE G18 (unification au merge) : `classe` référence les 6 classes d'action du barème
-Kahn (spec G18, implémentée en parallèle par CC-8 dans sa branche). Elles sont définies
-ici comme une simple chaîne validée par `CONSEQUENCE_CLASSES` — l'unification avec le
-barème (scores, multiplicateurs) se fera au merge des deux branches.
+NOTE G18 (unifié au merge du lot G18-G23) : `classe` référence les 6 classes d'action
+du barème Kahn — `simulation.kahn.ACTION_CLASSES` est la seule taxonomie (slugs stables),
+`normalize_class` porte les tolérances (accents, casse, anglais, poids recopié). Les
+fiches de crise écrites avec « désescalade »/« desescalade » restent valides (alias).
 """
 
 from __future__ import annotations
 
-import logging
-import re
-import unicodedata
-
 from pydantic import BaseModel, Field, field_validator
 
 from core.events import GeoEvent
-
-logger = logging.getLogger(__name__)
-
-# Les 6 classes d'action du barème G18, de la plus apaisante à la plus grave.
-CONSEQUENCE_CLASSES: tuple[str, ...] = (
-    "desescalade",
-    "statu_quo",
-    "posture",
-    "non_violente",
-    "violente",
-    "nucleaire",
-)
+from simulation.kahn import normalize_class
 
 # Gravité de l'événement-conséquence par classe (déterministe, bornée 0-1, ordonnée).
 _CLASS_SEVERITY: dict[str, float] = {
-    "desescalade": 0.15,
+    "deescalade": 0.15,
     "statu_quo": 0.3,
     "posture": 0.45,
     "non_violente": 0.6,
@@ -48,7 +33,7 @@ _CLASS_SEVERITY: dict[str, float] = {
 
 _CLASS_LABELS: dict[str, dict[str, str]] = {
     "fr": {
-        "desescalade": "un geste de désescalade",
+        "deescalade": "un geste de désescalade",
         "statu_quo": "le maintien du statu quo",
         "posture": "une démonstration de force",
         "non_violente": "des représailles non violentes",
@@ -56,7 +41,7 @@ _CLASS_LABELS: dict[str, dict[str, str]] = {
         "nucleaire": "une menace nucléaire mise à exécution",
     },
     "en": {
-        "desescalade": "a de-escalation gesture",
+        "deescalade": "a de-escalation gesture",
         "statu_quo": "the status quo held",
         "posture": "a show of force",
         "non_violente": "non-violent retaliation",
@@ -76,13 +61,6 @@ SOURCE_CRISIS = "crisis"
 SOURCE_DECREE = "decree"
 
 
-def _normalize_class(value: str) -> str:
-    """Minuscule, sans accents, espaces/tirets → underscore (« Désescalade » passe)."""
-    decomposed = unicodedata.normalize("NFKD", value.strip().lower())
-    flat = "".join(c for c in decomposed if not unicodedata.combining(c))
-    return re.sub(r"[\s\-]+", "_", flat)
-
-
 class UltimatumConsequence(BaseModel):
     """Ce qui tombe si l'exigence n'est pas satisfaite : classe G18 + cible éventuelle."""
 
@@ -92,12 +70,10 @@ class UltimatumConsequence(BaseModel):
     @field_validator("classe", mode="before")
     @classmethod
     def _known_class(cls, v: object) -> str:
-        """Repli G18 : classe inconnue → statu quo + log (jamais de crash sur une fiche)."""
-        normalized = _normalize_class(str(v)) if v else "statu_quo"
-        if normalized not in CONSEQUENCE_CLASSES:
-            logger.warning("classe de conséquence inconnue %r — repli statu_quo", v)
-            return "statu_quo"
-        return normalized
+        """Classe canonique du barème G18 (`kahn.normalize_class`) : accents, casse,
+        anglais et poids recopié tolérés ; inconnue → statu quo + log (jamais de crash
+        sur une fiche)."""
+        return normalize_class(v) if v else "statu_quo"
 
 
 class UltimatumDeadline(BaseModel):

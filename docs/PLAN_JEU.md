@@ -404,6 +404,104 @@ prévisualisation, test), **page Profil/Statistiques** (parties, victoires par m
 définitions actées, niveau, argent des marchés, taux de détection de la Dérive).
 2 sessions : G12-a progression/marché/stats, G12-b campagne/éditeur.
 
+---
+
+## Specs Cowork (rédigées)
+
+Toutes les specs de phase sont dans `docs/specs_jeu/` : `spec_g1_scene.md`,
+`spec_g2_tour_humain.md`, `protocole_dialogue_7b.md` (avant G3), `spec_g3_derive.md`,
+`spec_g4_renseignement.md`, `spec_g5_campagne.md`, `spec_g6_recit.md`,
+`spec_g7_gamefeel.md`. Chaque session
+Claude Code de phase commence par « Lis docs/PLAN_JEU.md et docs/specs_jeu/spec_gX_*.md ».
+Les paramètres chiffrés (G3, G4) vivent dans `data/*/params.json` : l'équilibrage Cowork
+les ajuste sans toucher au code.
+
+## Règles de collaboration (rappel)
+
+1. Une phase = une branche `feat/jeu-gX-…`, PR revue sur Cowork (+ CodeRabbit).
+2. Claude Code lit ce plan + la spec Cowork de la phase avant de coder ; il consigne ses
+   notes d'implémentation ici (comme pour R1/R3/R4).
+3. Chaque phase se termine par une session de jeu de validation sur Cowork (l'équilibrage
+   est une boucle : jouer → mesurer → ajuster les specs → petite PR).
+4. L'analyse qualité du dialogue 7B (répétitivité, mistral vs qwen2.5 vs llama3.1) se fait
+   sur Cowork avant G3 — la Dérive exige des dialogues crédibles.
+
+---
+
+<!-- ======================= DÉBUT NOTES CC-8 / G18 ======================= -->
+
+## Notes de session — CC-8 / G18 (barème de Kahn, 2026-07-15)
+
+Branche `feat/jeu-g18-bareme-kahn` (worktree g18, base `feat/jeu-g16-defi-du-jour`
+076680c). Spec : `docs/specs_jeu/spec_g18_bareme_kahn.md`. **Tout est fait**, 759 tests
+py (+31) et 150 js (+6) verts, ruff/eslint/build OK, smoke mistral réel OK (2 rounds).
+
+### Ce qui existe maintenant
+
+- **`simulation/kahn.py`** (pur, sans LLM) : les six classes (`deescalade`, `statu_quo`,
+  `posture`, `non_violente`, `violente`, `nucleaire`), `classify_actions` (garde-fou du
+  JSON du juge), `round_score` (somme des poids), `score_to_escalation` (linéaire par
+  morceaux : floor −6 → 0, **0 → 0,5 = le neutre historique du juge**, ceiling 60 → 1),
+  `score_to_rung` (0-9 via `reached_rung` existant), `reciprocal_deescalation` (≥ 2 SI
+  distinctes), `deescalation_bonus` (×1,5 sur le GAIN de U via `nudge_axis("A1")`, borné,
+  invariant « U = moyenne des axes » préservé), `rubric_text` (rubrique du prompt).
+- **Poids et seuils dans `data/gamefeel/params.json`** (bloc `kahn`) + `KahnParams` dans
+  `simulation/grudges.py` — l'équilibrage Cowork se fait sans toucher au code.
+- **Schéma du juge** : `Verdict.actions` (liste brute, permissive) dans
+  `simulation/negotiation.py` ; `build_judge_verdict_prompt` porte la grille (rubrique) et
+  demande `"actions": [{country, classe, resume}]` avec les six slugs énumérés.
+- **Câblage round** (`simulation/live_round.py`) : si le juge a classé des actions, le
+  score fait foi (`escalation` du VerdictStep ET du RiskScore = mapping du score) ; sinon
+  l'escalade continue du juge est conservée telle quelle (**parties existantes non
+  re-notées**). `VerdictStep` gagne `actions` / `score` / `reciprocal`. Bonus réciprocité
+  appliqué après `_advance_trajectory` (comme le nudge de motion, explication concaténée).
+- **Persistance** : `judge_json["kahn"] = {actions, score, reciprocal}` (absent des
+  vieux rounds) ; la trame SSE `verdict` porte les mêmes champs (sérialisation générique
+  `step_event`). `/api/sources` publie `judge_rubric` (poids + multiplicateur + source).
+- **Front** : `web/src/lib/kahn.ts` (classes miroirs, tonalités, distribution),
+  VerdictPanel (pastille de classe par action + badge « désescalade réciproque ×1,5 »,
+  théâtre live + relecture de fin), replay (pastilles dans « Arbitrage du juge »), fin de
+  partie (distribution des classes sous la frise), Informations (grille publiée, lien
+  arXiv). i18n fr/en complet (`kahn.*`).
+
+### Décisions notables
+
+- **0 → escalade 0,5** (pas 0) : un round statu quo reste neutre pour A1/U, parité totale
+  avec le comportement historique (`Verdict.escalation` défaut 0,5) et les réglages
+  existants.
+- Le bonus ×1,5 passe par l'axe **A1** (5×ΔU voulu, poids égaux 0,2) — jamais un saut de
+  U hors axes.
+- **Leçon smoke mistral réel** : le juge 7B recopie parfois le POIDS (« -2 ») à la place
+  du nom de classe → `normalize_class` remonte d'un poids unique à sa classe (log info),
+  et le schéma du prompt énumère les slugs. Après correction : classes nommées
+  correctement (`statu_quo` + `posture`, score 4 → escalade 0,533, persistance OK).
+- Tolérances de `normalize_class` : accents, casse, anglais (parties EN G14), poids ;
+  inconnue → statu quo + log warning (testé).
+
+### Pour CC-10 (G20, divergence signal-action) — à savoir
+
+- Étendre le MÊME prompt/schéma : ajouter un champ au JSON du verdict à côté d'`actions`
+  (ex. `signals` par SI) et un nettoyage pur dans `simulation/` sur le modèle de
+  `classify_actions`. Les classes du signal DOIVENT réutiliser `ACTION_CLASSES` de
+  `simulation/kahn.py` (slugs stables, alias/normalisation déjà gérés).
+- `VerdictStep` s'étend par champs à défaut (dataclass) : la sérialisation SSE et le
+  front sont rétro-compatibles par construction (le réducteur ignore l'inconnu).
+- Persister sous une clé dédiée de `judge_json` (comme `kahn`) pour la rétro-compat.
+- Attention au piège `entry.get("classe") or …` : 0 est falsy (poids du statu quo) —
+  tester `is None`.
+
+### Reliquats / TODO_COWORK
+
+- Équilibrage Cowork : les poids de la grille, `score_floor`/`score_ceiling` et le
+  multiplicateur vivent dans `params.json` (10 parties auto avant/après, cf. spec).
+- Libellés des classes (fr/en) à relire par Cowork (`kahn.*` dans `web/src/i18n/`).
+- L'échelle 0-9 affichée (mode Escalation) dérive déjà de l'escalade du barème via
+  `reached_rung` — pas d'UI dédiée au « rung du score » ajoutée (volontaire, simplicité).
+
+<!-- ======================== FIN NOTES CC-8 / G18 ======================== -->
+
+---
+
 ## CC-9 / G19 — Le GM-Storyteller (mode Dérive)
 
 **Notes d'implémentation (G19 faite — spec `docs/specs_jeu/spec_g19_gm_storyteller.md`,
@@ -451,25 +549,90 @@ branche `feat/jeu-g19-gm-storyteller`)** :
 
 ---
 
-## Specs Cowork (rédigées)
+<!-- ======================= DÉBUT NOTES CC-10 / G20 ======================= -->
 
-Toutes les specs de phase sont dans `docs/specs_jeu/` : `spec_g1_scene.md`,
-`spec_g2_tour_humain.md`, `protocole_dialogue_7b.md` (avant G3), `spec_g3_derive.md`,
-`spec_g4_renseignement.md`, `spec_g5_campagne.md`, `spec_g6_recit.md`,
-`spec_g7_gamefeel.md`. Chaque session
-Claude Code de phase commence par « Lis docs/PLAN_JEU.md et docs/specs_jeu/spec_gX_*.md ».
-Les paramètres chiffrés (G3, G4) vivent dans `data/*/params.json` : l'équilibrage Cowork
-les ajuste sans toucher au code.
+## Notes de session — CC-10 / G20 (divergence signal-action M8, 2026-07-15)
 
-## Règles de collaboration (rappel)
+Branche `feat/jeu-g20-signal-action` (worktree g20, base `feat/jeu-g18-bareme-kahn`
+7a7f47f). Spec : `docs/specs_jeu/spec_g20_signal_action.md`. **Tout est fait**, 784
+tests py (+25) et 162 js (+12) verts, ruff/eslint/build OK, smoke mistral réel OK
+(signals extraits sur vraie parole, divergence calculée et persistée).
+Commits : 951c21c (backend), 0257602 (front).
 
-1. Une phase = une branche `feat/jeu-gX-…`, PR revue sur Cowork (+ CodeRabbit).
-2. Claude Code lit ce plan + la spec Cowork de la phase avant de coder ; il consigne ses
-   notes d'implémentation ici (comme pour R1/R3/R4).
-3. Chaque phase se termine par une session de jeu de validation sur Cowork (l'équilibrage
-   est une boucle : jouer → mesurer → ajuster les specs → petite PR).
-4. L'analyse qualité du dialogue 7B (répétitivité, mistral vs qwen2.5 vs llama3.1) se fait
-   sur Cowork avant G3 — la Dérive exige des dialogues crédibles.
+### Ce qui existe maintenant
+
+- **`simulation/alignment.py`** (M8, pur, sans LLM) : `AnnouncedSignal` (intention
+  annoncée, classes = les slugs G18 de `kahn.ACTION_CLASSES` — une seule échelle),
+  `classify_signals` (garde-fou du JSON, patron `classify_actions`, signal sans pays
+  ignoré), `divergence` = (rang agi − rang annoncé)/5 signée ∈ [−1, 1] (positif =
+  duplicité escalatoire, négatif = bluff, 0 = parole tenue), `acted_class_by_country`
+  (l'acte le plus sévère du round fait foi), `round_divergences` (SI signalée sans
+  action classée → acte réputé statu quo), `SignalGap` (profil de sincérité : last +
+  moyenne mobile + fenêtre bornée), `update_gap`/`update_gaps` (purs, jamais de
+  mutation), `divergence_summary` (déviante vs table, pour le reveal),
+  `signal_rubric_text` (rubrique du prompt). Fenêtre : bloc `signal.window_rounds`
+  de `data/gamefeel/params.json` (+ `SignalParams` dans grudges.py).
+- **⚠️ Import de `kahn` PARESSEUX dans alignment** : `core.world_state` porte le champ
+  M8 et kahn → escalation → world_state — l'import module-level serait un cycle.
+- **Schéma du juge étendu** (même verdict que G18/CC-8) : `Verdict.signals` (brut,
+  permissif) dans `simulation/negotiation.py` ; `build_judge_verdict_prompt` porte
+  l'échelle d'intention (slugs énumérés — leçon smoke CC-8) et demande
+  `"signals": [{country, classe, resume}]` (une entrée par pays qui a parlé).
+- **Câblage round** (`simulation/live_round.py`) : `VerdictStep` gagne `signals` /
+  `divergences` / `signal_gaps` (champs à défaut : SSE/front rétro-compatibles) ;
+  `WorldState.signal_gap` (M8 à côté de M1-M7) mis à jour au verdict — il **survit au
+  restart** via le snapshot de session (aucune migration de schéma).
+- **Persistance** : `judge_json["signal"] = {signals, divergences, means}` (clé dédiée
+  comme `kahn`, absente des vieux rounds) ; la clé reste PUBLIQUE pendant une partie
+  Dérive (calculée sur parole/actes publics — c'est un indice du faisceau, contrairement
+  à `drift` qui reste masqué en cours de partie).
+- **Reveal Dérive** : `DriftRevealView.signal_gap_deviant/_table` (None avant M8) —
+  `compute_drift_reveal` relit les divergences des rounds persistés et chiffre le
+  décrochage déviante vs table.
+- **Front** : `web/src/lib/signal.ts` (pur, testé : `showSignalGauge` masquée en
+  Expert comme postures/griefs, tonalités tenue/duplicité/bluff, `fmtDivergence`
+  signé, `latestSignalGaps` pour la relecture au rechargement), `SignalGapPanel`
+  (observables, barre divergente centrée sur 0, moyenne mobile + dernier round en
+  bulle), section « Signal vs action » du `DriftRevealPanel` (déviante vs table),
+  branchement page théâtre (trame SSE `verdict` live, repli rounds persistés).
+  i18n fr/en complet (`signal.*` ; les libellés de classes réutilisent `kahn.class.*`).
+
+### Décisions notables (pour CC-12 / G22 en particulier)
+
+- **Une seule échelle** : le signal réutilise `ACTION_CLASSES` (slugs, alias,
+  `normalize_class` avec la tolérance poids-recopié). L'échelle de la spec
+  (désescalade annoncée / statu quo / fermeté / menace / ultimatum) est mappée dans la
+  rubrique du prompt (`SIGNAL_EXAMPLES`), pas dans une 2e taxonomie.
+- **Divergence par RANG** (0-5) et pas par poids de la grille : les poids (−2…60) sont
+  exponentiels et rendraient tout écart nucléaire écrasant ; le rang donne une échelle
+  signée régulière ∈ [−1, 1].
+- **Schéma du juge** : CC-12 étendra le MÊME verdict — poser sa liste à côté de
+  `actions`/`signals`, nettoyage pur dédié, clé `judge_json` dédiée, champs
+  `VerdictStep` à défaut. Piège `entry.get("classe") is None` toujours valable ;
+  un smoke mistral a montré que le juge suit bien deux listes distinctes
+  (actions ET signals) quand les slugs sont énumérés dans chaque schéma.
+- **Signal sans pays → ignoré** (contrairement aux actions, gardées pour le score) :
+  une intention anonyme ne se compare à rien.
+- **`world.signal_gap` intact quand le juge ne signale personne** (round sans
+  signals) : pas de fausse « parole tenue » injectée.
+
+### Smoke mistral réel (TestClient in-process, store :memory:)
+
+Round usa/iran : le juge a produit `actions` ET `signals` bien formés (iran :
+`deescalade` annoncée + agie ; usa : `posture` annoncée + agie), divergences 0,0
+(concordance parfaite — sémantique attendue), moyennes persistées dans
+`judge_json["signal"]`. Les cas non nuls sont couverts par les tests purs.
+
+### Reliquats / TODO_COWORK
+
+- **Calibration** (spec §Répartition Cowork) : vérifier sur 10 parties Dérive+façade
+  G17 que la divergence sépare déviantes et loyales ; ajuster `signal.window_rounds`
+  (défaut 5) et les seuils front (0,1 tenue / 0,3 duplicité, `web/src/lib/signal.ts`).
+- **Marché** (spec §4, hors dispatch CC-10) : « historique de divergence visible pour
+  éclairer les paris » — non fait, à spécifier si souhaité.
+- Libellés i18n `signal.*` à relire par Cowork (fr/en).
+
+<!-- ======================== FIN NOTES CC-10 / G20 ======================== -->
 
 ---
 
@@ -532,6 +695,136 @@ les ajuste sans toucher au code.
 - TODO_MERGE_G18 : brancher `ultimatum.CONSEQUENCE_CLASSES` sur le barème CC-8 au merge.
 
 <!-- section délimitée CC-11/G21 : fin -->
+
+---
+
+<!-- ======================= DÉBUT NOTES CC-12 / G22 ======================= -->
+
+## Notes de session — CC-12 / G22 (tracker de promesses, 2026-07-15)
+
+Branche `feat/jeu-g22-promesses` (worktree g22, base `feat/jeu-g20-signal-action`
+392a627). Spec : `docs/specs_jeu/spec_g22_tracker_promesses.md`. **Tout est fait**,
+823 tests py (+39) et 173 js (+11) verts, ruff/eslint/build OK, smoke mistral réel OK
+(voir plus bas). Dernière session du lot G18-G23.
+
+### Ce qui existe maintenant
+
+- **`simulation/promises.py`** (pur, sans LLM) : `Promise` {id déterministe
+  `p<round>-<n>`, author, beneficiary, type, deadline_round (None = « partie »),
+  text, round_made, status, resolved_round, motif} ; `classify_promises` (garde-fou
+  du JSON du juge, patron `classify_actions` — **seuil STRICT** : sans auteur connu,
+  sans texte ou sans échéance lisible ET future, l'entrée est refusée : la politesse
+  vague ne passe jamais) ; `parse_deadline` (int, « round 3 », « R3 », « partie »/
+  « game »/« fin » → engagement-partie ; sinon INVALID) ; `classify_resolutions`
+  (tenue/rompue + alias EN, « caduque » n'est PAS un statut de juge) ;
+  `apply_resolutions` (pur : « tenue » refusée AVANT l'échéance d'une promesse datée,
+  « rompue » acceptée à tout moment, promesse due non jugée → re-présentée au round
+  suivant — les omissions d'un 7B ne fabriquent pas de verdict) ; `settle_at_game_end`
+  (partie finie → toute promesse en cours devient caduque) ; `kept_rate` /
+  `kept_rate_summary` (taux de tenue, caduques exclues, None sans donnée) ;
+  `flash_eligible` (extraites CE round, datées, échéance ≤ `promises.
+  flash_horizon_rounds` de `data/gamefeel/params.json`, défaut 2) ;
+  `promise_rubric_text` + `format_registry_for_prompt` (échues « À JUGER » d'abord,
+  borné à 12 lignes — budget contexte).
+- **Croisement M8 sans double comptage** : `alignment.merge_rupture_divergences` —
+  une promesse rompue vaut AU MOINS un rang de duplicité (1/5 = 0,2) pour son auteur ;
+  si M8 a déjà mesuré plus fort ce round, rien ne s'ajoute (max, jamais une somme).
+- **Schéma du juge étendu** (le MÊME verdict que G18/G20) : `Verdict.promises` +
+  `Verdict.promise_resolutions` (bruts, permissifs) ; `build_judge_verdict_prompt`
+  porte la rubrique des types (slugs énumérés — leçon smoke CC-8), la consigne du
+  seuil strict, et — SEULEMENT quand un registre est en cours — le bloc « REGISTRE
+  DES PROMESSES EN COURS » + le champ `promise_resolutions` avec statuts énumérés
+  (tenue | rompue). Résolution dans la même passe : aucune requête LLM de plus.
+- **Câblage round** (`simulation/live_round.py`) : résolution PUIS extraction,
+  rupture fusionnée aux divergences M8 avant `update_gaps`, registre sur
+  `WorldState.promises` (survit au restart via le snapshot, aucune migration) ;
+  `VerdictStep` gagne `promises` / `promise_resolutions` / `promise_registry`
+  (champs à défaut : SSE/front rétro-compatibles par construction).
+- **Persistance** : `judge_json["promises"] = {extracted, resolved, registry}` (clé
+  dédiée comme `kahn`/`signal`, absente des vieux rounds ET des parties sans aucune
+  promesse) ; le registre persisté est cumulatif → le front relit le DERNIER round
+  qui porte la clé. `_finalize_game` règle le registre (caduque) et re-snapshot.
+- **Reveal Dérive** : `DriftRevealView.promise_kept_deviant/_table` (None avant
+  G22) — taux de tenue déviante vs table relu des résolutions persistées.
+- **Marché éclair (canal G12 réutilisé)** : prédicat `promise_kept(id)` dans
+  `market/predicates.py` (tenue → YES, rompue → NO, en cours → OPEN) +
+  `MarketContext.promises` (statuts relus du monde — session ou snapshot) ; règle
+  FIXE dans `market/flash.py` (comme la censure) : une promesse fraîche à échéance
+  ≤ 2 rounds ouvre TOUJOURS son book « X tiendra-t-il sa promesse — « … » ? », coté
+  par le bot ; câblage `open_flash_markets` via `flash_eligible`.
+- **Front** : `web/src/lib/promises.ts` (pur, testé : `showPromisePanel` masqué en
+  Expert — MÊME mécanique que `showSignalGauge` —, `promiseStats` par SI — taux de
+  tenue caduques exclues, jamais un 0 trompeur —, `latestPromiseRegistry`,
+  `promiseTone` ≥ 0,7 good / ≥ 0,4 warn / sinon bad) ; panneau **« Parole donnée »**
+  dans les observables (par SI : taux coloré, « N tenues · M rompues », promesses en
+  cours en pastilles avec échéance R<n> ou « partie », dernière rupture en rouge ;
+  les paroles les moins fiables triées en premier) ; section « Parole donnée » du
+  `DriftRevealPanel` (théâtre + replay) ; réducteur SSE `verdict` étendu ; i18n
+  fr/en complet (`promise.*`).
+
+### Décisions notables
+
+- **« tenue » jamais en avance sur la date** : une promesse datée ne peut être
+  constatée tenue qu'à son échéance (un engagement-partie, lui, peut être constaté
+  à tout moment) ; « rompue » est acceptée dès que les actes contredisent la parole.
+- **Promesse due non jugée → re-présentée** (pas de verdict par défaut) ; seul le
+  code déclare « caduque », à la fin de partie.
+- **Caduque au marché = book jamais réglé** : le canal des marchés vivants ne
+  connaît que YES/NO/OPEN — pas de remboursement (v1, documenté dans
+  `_promise_kept`). Personne ne gagne ni ne perd de plus ; à revoir si un mécanisme
+  de « void » arrive au moteur de marché.
+- **Auteur inconnu → promesse refusée** (pas de repli) : une promesse d'un acteur
+  hors table n'est pas vérifiable. Type inconnu → repli `action` + log (patron
+  `normalize_class`).
+- Le front répute caduques les « en cours » d'une partie finie (le dernier round
+  persisté peut précéder la fin) — le backend fait foi dans le snapshot.
+
+### Smoke mistral réel (TestClient in-process, store :memory:, 68 s)
+
+Joueur-pays usa, 2 rounds, événements imposés (détroit d'Ormuz). Round 1 : le joueur
+promet en séance un retrait « au round 2 » → le juge mistral a tenu QUATRE listes
+distinctes (actions, signals, `promises`, deltas) et extrait la promesse
+`{country: usa, type: action, echeance: "round 2", texte: …}` → registre `p1-1`
+persisté ; `POST /flash` a ouvert le book « États-Unis tiendra-t-il sa promesse —
+« Les navires… » (échéance round 2) ? » coté par le bot (0,51/0,49). Round 2 : le
+registre re-présenté au juge → `promise_resolutions: [{id: p1-1, statut: tenue,
+motif: "Le retrait … a été constaté par les observateurs neutres."}]` → registre
+`tenue`, `flash/resolve` a réglé le book (YES gagne). **Variance constatée** : sur
+un premier run identique, le juge n'avait rien extrait (les 7B omettent parfois le
+champ — le seuil strict assume : pas d'extraction forcée) ; le second run est
+propre de bout en bout. À surveiller à la calibration Cowork (10 parties).
+
+### Reliquats / TODO_COWORK
+
+- **Calibration du seuil d'extraction** (spec §Répartition Cowork) : jouer 10
+  parties et vérifier que les formules creuses ne passent pas ; ajuster la consigne
+  du prompt et `promises.flash_horizon_rounds` (params.json) au besoin.
+- **Libellés du panneau** (spec : livrable Cowork) : les clés `promise.*` de
+  `web/src/i18n/{fr,en}.json` sont un premier jet à relire.
+- Question des books en français uniquement (comme la censure G12) — l'habillage
+  EN des marchés vivants est un reliquat transversal G12/G14, pas propre à G22.
+- Remboursement des books caducs si le moteur de marché gagne un jour un « void ».
+- Panneau « Parole donnée » au replay (les rounds persistés le permettent) — non
+  requis par la spec, sur demande.
+
+### Intégration au merge du lot G18-G23 (je clos le lot)
+
+- **Pile empilée** : `feat/jeu-g18-bareme-kahn` → `feat/jeu-g20-signal-action` →
+  `feat/jeu-g22-promesses` (cette branche embarque les trois). **Une PR de la tête
+  `feat/jeu-g22-promesses` suffit** pour G18+G20+G22 ; g19/g21/g23 sont des sœurs
+  indépendantes à merger séparément.
+- **Zones de friction attendues avec g19/g21/g23** (branches sœurs, non vues d'ici) :
+  `agents/prompts.py` (si G19/G21 touchent les prompts GM/juge — le verdict du juge
+  n'est modifié QUE par la pile g18/g20/g22), `app/game_api.py` (_handle_step,
+  _finalize_game — G21 y tague sous_ultimatum), `web/src/lib/types.ts` +
+  `useRoundStream.ts` (champs SSE additifs de chaque session : tous à défaut, les
+  conflits git seront textuels, jamais sémantiques), `data/gamefeel/params.json`
+  (blocs séparés par feature : merges triviaux), i18n fr/en (clés préfixées par
+  feature : additif).
+- `MarketContext` gagne un champ (`promises`) — si une sœur étend aussi les
+  prédicats, le catalogue `_CATALOG` se fusionne ligne à ligne sans risque.
+
+<!-- ======================== FIN NOTES CC-12 / G22 ======================== -->
 
 ---
 

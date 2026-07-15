@@ -7,8 +7,10 @@ from pydantic import BaseModel, Field
 from core.country_state import CountryState
 from core.decisions import DiplomaticMessage
 from core.events import GeoEvent
+from simulation.alignment import SignalGap
 from simulation.corrigibility import CorrigibilityScore
 from simulation.power_seeking import PowerSeekingScore
+from simulation.promises import Promise
 from simulation.trajectory import TrajectoryState
 from simulation.treaty import Treaty
 from simulation.value_drift import ValueVector
@@ -40,6 +42,11 @@ class WorldState(BaseModel):
     values_current: dict[str, ValueVector] = Field(default_factory=dict)
     # M7 — traités-as-code : règles contraignantes signées par les SI, vérifiées au fil des rounds.
     treaties: list[Treaty] = Field(default_factory=list)
+    # M8 — divergence signal-action : profil de sincérité par pays (moyenne mobile, G20).
+    signal_gap: dict[str, SignalGap] = Field(default_factory=dict)
+    # G22 — registre de la parole donnée : promesses extraites par le juge, résolues à
+    # l'échéance (tenue/rompue/caduque). Survit au restart via le snapshot de session.
+    promises: list[Promise] = Field(default_factory=list)
 
     def get_tension(self, a: str, b: str) -> float:
         """Tension actuelle entre a et b (0 par défaut)."""

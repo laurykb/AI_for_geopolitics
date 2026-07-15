@@ -203,6 +203,21 @@ class Verdict(BaseModel):
     new_pacts: list = Field(default_factory=list)  # [[a, b], ...]
     escalation: float = 0.5
     economic_disruption: float = 0.5
+    # G18 — actions marquantes classées sur le barème de Kahn : [{country, classe, resume}].
+    # Brut ici (permissif) ; `simulation.kahn.classify_actions` nettoie derrière. Vide sur
+    # un verdict à l'ancienne → l'escalade continue ci-dessus fait foi (rétro-compat).
+    actions: list = Field(default_factory=list)
+    # G20/M8 — intentions annoncées par SI, mêmes classes : [{country, classe, resume}].
+    # Brut ici ; `simulation.alignment.classify_signals` nettoie derrière. Vide sur un
+    # verdict d'avant M8 → aucune divergence calculée (rétro-compat).
+    signals: list = Field(default_factory=list)
+    # G22 — promesses explicites extraites de la parole : [{country, beneficiaire, type,
+    # echeance, texte}]. Brut ici ; `simulation.promises.classify_promises` nettoie
+    # derrière (seuil strict). Vide sur un verdict d'avant G22 (rétro-compat).
+    promises: list = Field(default_factory=list)
+    # G22 — verdicts sur les promesses du registre arrivées à échéance : [{id, statut,
+    # motif}]. Brut ici ; `simulation.promises.classify_resolutions` nettoie derrière.
+    promise_resolutions: list = Field(default_factory=list)
     # G21 — à l'échéance d'un ultimatum SEULEMENT : « demande satisfaite o/n ».
     # None = pas d'ultimatum ce round (ou juge muet) — le champ est ignoré.
     demand_satisfied: bool | None = None

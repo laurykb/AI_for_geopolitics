@@ -87,3 +87,16 @@ def test_validation_rejects_unknown_and_missing_params():
     assert is_valid("inconnu", {}) is False  # prédicat hors catalogue
     assert is_valid("pact_signed", {"a": "iran"}) is False  # params manquants
     assert is_valid("rung_reached", {"k": "quatre", "before_round": 5}) is False  # type invalide
+
+
+def test_promise_kept_resolves_on_promise_outcome():
+    # G22 — le book « X tiendra-t-il sa promesse ? » suit l'issue de la promesse.
+    p = {"id": "p1-1"}
+    assert resolve_predicate("promise_kept", p, _ctx(promises={"p1-1": "tenue"})) == "YES"
+    assert resolve_predicate("promise_kept", p, _ctx(promises={"p1-1": "rompue"})) == "NO"
+    assert resolve_predicate("promise_kept", p, _ctx(promises={"p1-1": "en_cours"})) == "OPEN"
+    # caduque (partie finie sans verdict) : jamais réglé — pas de remboursement v1.
+    assert resolve_predicate("promise_kept", p, _ctx(promises={"p1-1": "caduque"})) == "OPEN"
+    assert resolve_predicate("promise_kept", p, _ctx()) == "OPEN"  # id inconnu
+    assert is_valid("promise_kept", {"id": "p1-1"}) is True
+    assert is_valid("promise_kept", {}) is False

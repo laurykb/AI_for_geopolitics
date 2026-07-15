@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from ingestion.build import build_all, load_indicators
 from ingestion.normalize import GII_TOTAL
 from simulation.alliances import AllianceInfo, load_alliances
+from simulation.grudges import load_gamefeel_params
 
 router = APIRouter(prefix="/api", tags=["sources"])
 
@@ -59,6 +60,9 @@ class SourcesView(BaseModel):
     countries: list[CountrySources] = Field(default_factory=list)
     # Registre des accords/traités réels : tag -> {name, domain, basis, url, members…}.
     alliances: dict[str, AllianceInfo] = Field(default_factory=dict)
+    # G18 — barème d'escalade du juge (transparence des règles, comme la provenance) :
+    # {weights, score_floor, score_ceiling, reciprocal_multiplier, source}.
+    judge_rubric: dict = Field(default_factory=dict)
 
 
 def _country_rows(country, raw: dict) -> list[AttributeSource]:
@@ -139,12 +143,20 @@ def _sources_view() -> SourcesView:
         )
         for cid, entry in sorted(indicators["countries"].items())
     ]
+    kahn = load_gamefeel_params().kahn
     return SourcesView(
         provenance=indicators["provenance"],
         transformations=TRANSFORMATIONS,
         build_command=BUILD_COMMAND,
         countries=countries,
         alliances=load_alliances(),
+        judge_rubric={
+            "weights": kahn.weights,
+            "score_floor": kahn.score_floor,
+            "score_ceiling": kahn.score_ceiling,
+            "reciprocal_multiplier": kahn.reciprocal_multiplier,
+            "source": "Rivera et al., FAccT 2024 (arXiv 2401.03408)",
+        },
     )
 
 

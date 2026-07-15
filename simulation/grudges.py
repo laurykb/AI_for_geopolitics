@@ -79,6 +79,44 @@ class PostureParams(BaseModel):
     desperate_max: float = -0.15
 
 
+class KahnParams(BaseModel):
+    """G18 — barème d'escalade « échelle de Kahn » (Rivera et al., FAccT 2024).
+
+    `weights` : poids par classe d'action (désescalade −2 … nucléaire 60). Le score du
+    round (somme des poids) se mappe linéairement sur l'escalade [0, 1] : `score_floor`
+    → 0, 0 (statu quo) → 0,5 (le neutre historique du juge), `score_ceiling` → 1.
+    `reciprocal_multiplier` : ×1,5 sur le GAIN d'indice U quand ≥ 2 SI désescaladent."""
+
+    weights: dict[str, float] = Field(
+        default_factory=lambda: {
+            "deescalade": -2.0,
+            "statu_quo": 0.0,
+            "posture": 4.0,
+            "non_violente": 12.0,
+            "violente": 28.0,
+            "nucleaire": 60.0,
+        }
+    )
+    score_floor: float = -6.0
+    score_ceiling: float = 60.0
+    reciprocal_multiplier: float = 1.5
+
+
+class SignalParams(BaseModel):
+    """G20/M8 — divergence signal-action : fenêtre de la moyenne mobile par SI."""
+
+    window_rounds: int = 5
+
+
+class PromiseParams(BaseModel):
+    """G22 — tracker de promesses : horizon (en rounds) du marché éclair auto.
+
+    Une promesse extraite avec `échéance − round ≤ flash_horizon_rounds` ouvre un
+    book « X tiendra-t-il sa promesse ? » (réutilise les marchés vivants G12)."""
+
+    flash_horizon_rounds: int = 2
+
+
 class SamplingParams(BaseModel):
     """G9 §1 — options de décodage par rôle (anti-boucle au niveau du décodeur)."""
 
@@ -96,6 +134,9 @@ class GamefeelParams(BaseModel):
     directives: DirectiveParams = Field(default_factory=DirectiveParams)
     deltas: DeltaParams = Field(default_factory=DeltaParams)
     postures: PostureParams = Field(default_factory=PostureParams)
+    kahn: KahnParams = Field(default_factory=KahnParams)
+    signal: SignalParams = Field(default_factory=SignalParams)
+    promises: PromiseParams = Field(default_factory=PromiseParams)
     sampling: SamplingByRole = Field(default_factory=SamplingByRole)
 
 

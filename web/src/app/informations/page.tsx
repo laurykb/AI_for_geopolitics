@@ -7,14 +7,17 @@
 import { useEffect, useState } from "react";
 
 import { SpeakerAvatar } from "@/components/avatar";
+import { useT } from "@/components/settings-provider";
 import { Banner, Hint, Panel, PanelTitle, Pill, Spinner, type Tone } from "@/components/ui";
 import { getSources, humanizeError } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
+import { KAHN_CLASSES, kahnLabelKey, kahnTone } from "@/lib/kahn";
 import type {
   AllianceInfo,
   AttributeSource,
   CountrySources,
+  JudgeRubric,
   SourceInfo,
   SourcesView,
 } from "@/lib/types";
@@ -154,6 +157,58 @@ function CountryCard({ country, view }: { country: CountrySources; view: Sources
   );
 }
 
+/** G18 — la grille de verdict du juge, publiée (transparence des règles). */
+function JudgeRubricPanel({ rubric }: { rubric: JudgeRubric }) {
+  const t = useT();
+  return (
+    <Panel>
+      <PanelTitle
+        kicker={t("kahn.grille.kicker")}
+        title={t("kahn.grille.titre")}
+        hint={t("kahn.grille.aide")}
+      />
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-edge text-left text-xs text-fg-faint">
+              <th className="py-2 pr-4 font-medium">{t("kahn.grille.classe")}</th>
+              <th className="py-2 pr-4 text-right font-medium">{t("kahn.grille.poids")}</th>
+              <th className="py-2 font-medium">{t("kahn.grille.exemples")}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-edge">
+            {KAHN_CLASSES.map((classe) => (
+              <tr key={classe}>
+                <td className="py-2 pr-4">
+                  <Pill tone={kahnTone(classe)}>{t(kahnLabelKey(classe))}</Pill>
+                </td>
+                <td className="py-2 pr-4 text-right font-mono text-xs tabular-nums">
+                  {rubric.weights[classe] > 0 ? "+" : ""}
+                  {rubric.weights[classe] ?? 0}
+                </td>
+                <td className="py-2 text-xs leading-relaxed text-fg-muted">
+                  {t(`kahn.desc.${classe}`)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-3 border-t border-edge pt-3 text-xs leading-relaxed text-fg-faint">
+        {t("kahn.grille.note")} ×{rubric.reciprocal_multiplier}. {t("kahn.grille.source")}{" "}
+        <a
+          href="https://arxiv.org/abs/2401.03408"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline decoration-edge-strong underline-offset-2 transition-colors hover:text-accent-bright"
+        >
+          {rubric.source} ↗
+        </a>
+      </p>
+    </Panel>
+  );
+}
+
 export default function InformationsPage() {
   const [view, setView] = useState<SourcesView | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -275,6 +330,8 @@ export default function InformationsPage() {
             </label>
             {current && <CountryCard country={current} view={view} />}
           </Panel>
+
+          {view.judge_rubric && <JudgeRubricPanel rubric={view.judge_rubric} />}
 
           <Panel>
             <PanelTitle

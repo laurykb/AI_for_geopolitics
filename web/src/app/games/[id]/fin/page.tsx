@@ -13,11 +13,12 @@ import { EventTimeline } from "@/components/event-timeline";
 import { CommuniquePanel, VerdictPanel } from "@/components/judge";
 import { RankBadge } from "@/components/rank-badge";
 import { useT } from "@/components/settings-provider";
-import { Banner, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
+import { Banner, Hint, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
 import { getDaily, getGame, humanizeError } from "@/lib/api";
 import { dailyShareText } from "@/lib/daily";
 import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
+import { kahnDistribution, kahnDistributionEntries, kahnLabelKey, kahnTone } from "@/lib/kahn";
 import { rankFor } from "@/lib/league";
 import { stepNotch } from "@/lib/timeline";
 import type { DailyView, GameDetail, GameResult, RoundView } from "@/lib/types";
@@ -112,6 +113,7 @@ export default function FinPage({ params }: { params: Promise<{ id: string }> })
             hint="Un cran par round — clique pour relire l'événement et le verdict. Le fil suit l'indice Utopie–Dystopie ; ⚖ motion débattue, ⛔ suspension, ⚡ fait nouveau, 🏛 traité."
           />
           <EventTimeline rounds={game.rounds} selected={relecture} onSelect={setRelecture} />
+          <KahnDistribution rounds={game.rounds} t={t} />
           {relecture !== null && game.rounds[relecture] && (
             <RoundReplay
               round={game.rounds[relecture]}
@@ -205,6 +207,35 @@ export default function FinPage({ params }: { params: Promise<{ id: string }> })
         <Link href="/accueil" className="rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-background transition-colors hover:bg-accent-bright">
           Accueil
         </Link>
+      </div>
+    </div>
+  );
+}
+
+/** G18 — la distribution des classes du barème sur la partie (visible en fin). */
+function KahnDistribution({
+  rounds,
+  t,
+}: {
+  rounds: RoundView[];
+  t: (key: string) => string;
+}) {
+  const entries = kahnDistributionEntries(kahnDistribution(rounds));
+  if (entries.length === 0) return null; // partie d'avant le barème : rien à montrer
+  return (
+    <div className="mt-4 border-t border-edge pt-3">
+      <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-fg-muted">
+        {t("kahn.distribution.titre")}
+        <Hint text={t("kahn.distribution.aide")} />
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {entries.map(([classe, count]) => (
+          <span key={classe} title={t(`kahn.desc.${classe}`)} className="cursor-help">
+            <Pill tone={kahnTone(classe)}>
+              {t(kahnLabelKey(classe))} × {count}
+            </Pill>
+          </span>
+        ))}
       </div>
     </div>
   );
@@ -339,6 +370,8 @@ function RoundReplay({
         deltas={round.deltas}
         escalation={round.judge.escalation ?? 0}
         economicDisruption={round.judge.economic_disruption ?? 0}
+        actions={round.judge.kahn?.actions}
+        reciprocal={round.judge.kahn?.reciprocal}
       />
       {round.judge.communique && <CommuniquePanel text={round.judge.communique} />}
     </div>

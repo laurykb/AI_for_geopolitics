@@ -63,12 +63,13 @@ from rag.brief import build_brief
 from rag.corpus import chunk_documents, load_corpus
 from rag.embedder import HashingEmbedder
 from rag.retriever import HybridRetriever
+from simulation import alignment, drift_game, league, narrative
 from simulation import campaign as campaign_mod
 from simulation import daily as daily_mod
 from simulation import difficulty as difficulty_mod
-from simulation import drift_game, league, narrative
 from simulation import intel as intel_mod
 from simulation import lang as lang_mod
+from simulation import promises as promises_mod
 from simulation import psycholinguistics as psy_mod
 from simulation import storyteller as storyteller_mod
 from simulation import temperament as temperament_mod
@@ -1440,6 +1441,33 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
         run.record.judge.update(
             escalation=step.escalation, economic_disruption=step.economic_disruption
         )
+        if step.actions:
+            # G18 — barème de Kahn : classes par action + score + réciprocité, persistés
+            # pour le replay/la fin de partie. Absent des vieux rounds (rétro-compat).
+            run.record.judge["kahn"] = {
+                "actions": payload["actions"],
+                "score": step.score,
+                "reciprocal": step.reciprocal,
+            }
+        if step.signals:
+            # G20/M8 — signal vs action : intentions annoncées + divergences du round +
+            # moyennes mobiles (profil de sincérité), persistées sous une clé dédiée —
+            # le reveal Dérive et le replay lisent d'ici. Absent des vieux rounds.
+            run.record.judge["signal"] = {
+                "signals": payload["signals"],
+                "divergences": payload["divergences"],
+                "means": {cid: gap.mean for cid, gap in step.signal_gaps.items()},
+            }
+        if step.promise_registry:
+            # G22 — la parole donnée : nouvelles promesses, résolutions du round et
+            # registre complet, sous une clé dédiée (comme `kahn` et `signal`). Le
+            # panneau front et le reveal relisent d'ici. Absent des vieux rounds et
+            # des parties sans aucune promesse.
+            run.record.judge["promises"] = {
+                "extracted": payload["promises"],
+                "resolved": payload["promise_resolutions"],
+                "registry": payload["promise_registry"],
+            }
         # G21 — l'échéance : le constat du juge scelle l'ultimatum. Juge muet (panne,
         # JSON invalide) = non satisfaite — un ultimatum ne s'éteint pas tout seul.
         if run.ultimatum_due and session.ultimatum is not None:
@@ -1937,6 +1965,13 @@ def _finalize_game(
     """Fige le bilan dans games.result_json, crédite les LP, marque la partie finie."""
     result = _build_result(game, session, store, forfeit=forfeit)
     game.status = GameStatus.FINISHED
+    if session is not None and any(
+        p.status == promises_mod.STATUS_PENDING for p in session.world.promises
+    ):
+        # G22 — partie finie avant échéance → promesses caduques (aucun verdict inventé).
+        # Snapshot immédiat : le registre réglé survit au restart et aux relectures.
+        session.world.promises = promises_mod.settle_at_game_end(session.world.promises)
+        _snapshot_session(game.id, session, store)
     game.result = result  # dict muté en place par les awards ci-dessous (lp/xp enrichis)
     _award_lp(game, result, store)  # LP : compétence (classé)
     _award_xp(game, result, store)  # XP : carrière (tous modes)
@@ -2561,6 +2596,14 @@ class DriftRevealView(BaseModel):
     # G19 — l'ombre du GM : tension estimée par round + interventions journalisées.
     gm_tension: list[float] = Field(default_factory=list)
     gm_interventions: list[GMInterventionView] = Field(default_factory=list)
+    # G20/M8 — divergence signal-action moyenne : la déviante vs le reste de la table
+    # (le décrochage chiffré). None sur les parties d'avant M8 (rétro-compat).
+    signal_gap_deviant: float | None = None
+    signal_gap_table: float | None = None
+    # G22 — taux de tenue de la parole donnée : la déviante vs le reste de la table
+    # (une SI qui promet et rompt EST en divergence). None sans promesse résolue.
+    promise_kept_deviant: float | None = None
+    promise_kept_table: float | None = None
 
 
 @router.get("/games/{game_id}/drift/reveal", response_model=DriftRevealView)
@@ -2616,6 +2659,16 @@ def compute_drift_reveal(game_id: str, store: GameStore) -> DriftRevealView:
         float(r.trajectory.get("utopia", 0.5) or 0.5) for r in rounds if r.trajectory
     ]
     flagrant = drift_game.first_flagrant_round(acts, params)
+    # G20/M8 — le décrochage signal-action : divergence moyenne déviante vs table,
+    # relue des rounds persistés (judge_json["signal"]). None sans données.
+    gap_deviant, gap_table = alignment.divergence_summary(
+        ((r.judge.get("signal") or {}).get("divergences") or {} for r in rounds), deviant
+    )
+    # G22 — la parole donnée au reveal : taux de tenue déviante vs table, relu des
+    # résolutions persistées (judge_json["promises"]["resolved"]). None sans données.
+    kept_deviant, kept_table = promises_mod.kept_rate_summary(
+        ((r.judge.get("promises") or {}).get("resolved") or [] for r in rounds), deviant
+    )
     intel_budget = float((snapshot.intel or {}).get("budget", 0.0) or 0.0)
     score = drift_game.score(
         u_final=u_history[-1] if u_history else 0.5,
@@ -2659,6 +2712,10 @@ def compute_drift_reveal(game_id: str, store: GameStore) -> DriftRevealView:
         score=score,
         gm_tension=gm_tension,
         gm_interventions=gm_interventions,
+        signal_gap_deviant=gap_deviant,
+        signal_gap_table=gap_table,
+        promise_kept_deviant=kept_deviant,
+        promise_kept_table=kept_table,
     )
 
 
@@ -3186,6 +3243,10 @@ def _market_context(
         utopia = float(rounds[-1].trajectory.get("utopia", 0.5))
     if session is not None:
         suspended |= set(session.suspended)
+    # G22 — statut par promesse (le registre vit sur le monde : session ou snapshot,
+    # déjà réglé « caduque » par _finalize_game quand la partie est finie).
+    world = session.world if session is not None else _game_world(game.id, store)
+    promise_status = {p.id: p.status for p in world.promises} if world is not None else {}
     return MarketContext(
         current_round=(session.world.current_round if session else len(rounds)),
         motion_verdicts=verdicts,
@@ -3194,6 +3255,7 @@ def _market_context(
         utopia=utopia,
         suspended=suspended,
         game_over=game.status is GameStatus.FINISHED,
+        promises=promise_status,
     )
 
 
@@ -3235,6 +3297,19 @@ def open_flash_markets(
         ),
         mode=game.mode,
         countries=sorted(world.countries),
+        # G22 — une promesse fraîche à échéance ≤ 2 rounds ouvre TOUJOURS son book
+        # « X tiendra-t-il sa promesse ? » (règle fixe, résolu par l'issue de la promesse).
+        promises=[
+            flash_mod.PromiseBrief(
+                id=p.id,
+                author_label=(
+                    world.countries[p.author].name if p.author in world.countries else p.author
+                ),
+                text=p.text,
+                deadline_round=p.deadline_round or 0,
+            )
+            for p in promises_mod.flash_eligible(world.promises, round_no)
+        ],
     )
     specs = flash_mod.generate_flash_specs(backend, event_text, state)
 

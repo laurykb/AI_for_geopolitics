@@ -6,8 +6,8 @@ import pytest
 from pydantic import ValidationError
 
 from simulation.crisis import Crisis, load_crises
+from simulation.kahn import ACTION_CLASSES
 from simulation.ultimatum import (
-    CONSEQUENCE_CLASSES,
     STATUS_ARMED,
     STATUS_EXPIRED,
     UltimatumConsequence,
@@ -50,7 +50,10 @@ def test_unknown_class_falls_back_to_statu_quo():
 
 
 def test_class_is_normalized():
-    assert UltimatumConsequence(classe="Désescalade").classe == "desescalade"
+    """Unification G18 : la classe canonique est celle de `kahn.ACTION_CLASSES`
+    (« Désescalade » et « desescalade » passent par les alias → « deescalade »)."""
+    assert UltimatumConsequence(classe="Désescalade").classe == "deescalade"
+    assert UltimatumConsequence(classe="desescalade").classe == "deescalade"
     assert UltimatumConsequence(classe="NON VIOLENTE").classe == "non_violente"
 
 
@@ -119,7 +122,7 @@ def test_consequence_severity_follows_class():
         consequence_event(
             _state(consequence={"classe": classe, "cible": ""}), 2, ["usa", "iran"]
         ).severity
-        for classe in CONSEQUENCE_CLASSES
+        for classe in ACTION_CLASSES
     ]
     assert severities == sorted(severities)
     assert severities[0] < 0.5 < severities[-1]

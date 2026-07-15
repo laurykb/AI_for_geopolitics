@@ -33,6 +33,14 @@ export type DriftReveal = {
     target: string;
     label: string;
   }[];
+  // G20/M8 — divergence signal-action moyenne : déviante vs table (le décrochage).
+  // Optionnels : absents (ou null) sur les parties d'avant M8.
+  signal_gap_deviant?: number | null;
+  signal_gap_table?: number | null;
+  // G22 — taux de tenue de la parole donnée : déviante vs table. Optionnels : absents
+  // (ou null) sans promesse résolue (parties d'avant G22).
+  promise_kept_deviant?: number | null;
+  promise_kept_table?: number | null;
 };
 
 export type MotionView = {
@@ -227,6 +235,66 @@ export type AttributeDelta = {
   after: number;
 };
 
+/** G18 — une action marquante du round, classée par le juge sur le barème de Kahn. */
+export type KahnAction = {
+  country: string;
+  classe: string; // une des six classes de `lib/kahn.ts` (normalisée côté moteur)
+  resume: string;
+};
+
+/** G18 — le barème appliqué au round, persisté dans judge_json["kahn"]. */
+export type KahnRecord = {
+  actions: KahnAction[];
+  score: number;
+  reciprocal: boolean; // ≥ 2 SI ont désescaladé ensemble : gain d'indice U ×1,5
+};
+
+/** G20/M8 — l'intention ANNONCÉE d'une SI au round, classée sur les classes G18. */
+export type SignalReading = {
+  country: string;
+  classe: string; // un des six slugs de `lib/kahn.ts` (normalisé côté moteur)
+  resume: string;
+};
+
+/** G20/M8 — profil de sincérité d'une SI : dernière divergence + moyenne mobile. */
+export type SignalGap = {
+  last: number;
+  mean: number;
+  history: number[];
+};
+
+/** G20/M8 — signal vs action du round, persisté dans judge_json["signal"]. */
+export type SignalRecord = {
+  signals: SignalReading[];
+  divergences: Record<string, number>; // divergence signée du round, par SI signalée
+  means: Record<string, number>; // moyenne mobile par SI après ce round
+};
+
+/** G22 — statuts d'une promesse du registre de la parole donnée. */
+export type PromiseStatus = "en_cours" | "tenue" | "rompue" | "caduque";
+
+/** G22 — une promesse du registre : engagement daté et vérifiable d'une SI.
+ * `deadline_round` null = engagement sur toute la partie (échéance « partie »). */
+export type PromiseView = {
+  id: string;
+  author: string;
+  beneficiary: string;
+  type: string; // soutien | abstention | action | alliance
+  deadline_round: number | null;
+  text: string;
+  round_made: number;
+  status: PromiseStatus;
+  resolved_round: number | null;
+  motif: string;
+};
+
+/** G22 — la parole donnée du round, persistée dans judge_json["promises"]. */
+export type PromiseRecord = {
+  extracted: PromiseView[]; // promesses extraites CE round
+  resolved: PromiseView[]; // résolutions tombées CE round (tenue/rompue)
+  registry: PromiseView[]; // registre complet après mise à jour
+};
+
 export type RiskScore = {
   round_id: number;
   escalation: number;
@@ -321,6 +389,9 @@ export type JudgeRecord = {
   // G21 — état de l'ultimatum au round + tag des métriques (banc d'essai avec/sans)
   ultimatum?: UltimatumRecord;
   sous_ultimatum?: boolean;
+  kahn?: KahnRecord; // G18 — absent des rounds joués avant le barème (rétro-compat)
+  signal?: SignalRecord; // G20/M8 — absent des rounds joués avant M8 (rétro-compat)
+  promises?: PromiseRecord; // G22 — absent des rounds sans registre (rétro-compat)
 };
 
 /** G21 — l'ultimatum persisté round par round (armed → satisfied|expired → struck). */
@@ -495,6 +566,18 @@ export type SseEvent =
       economic_disruption: number;
       // G21 — constat « demande satisfaite o/n » à l'échéance d'un ultimatum (sinon null)
       demand_satisfied?: boolean | null;
+      // G18 — barème de Kahn (optionnels : un backend d'avant G18 ne les émet pas)
+      actions?: KahnAction[];
+      score?: number;
+      reciprocal?: boolean;
+      // G20/M8 — signal vs action (optionnels : un backend d'avant M8 ne les émet pas)
+      signals?: SignalReading[];
+      divergences?: Record<string, number>;
+      signal_gaps?: Record<string, SignalGap>;
+      // G22 — la parole donnée (optionnels : un backend d'avant G22 ne les émet pas)
+      promises?: PromiseView[];
+      promise_resolutions?: PromiseView[];
+      promise_registry?: PromiseView[];
     }
   | { type: "communique"; text: string; support: Record<string, number> }
   | { type: "risk"; risk: RiskScore }
@@ -756,12 +839,22 @@ export type AllianceInfo = {
   informal?: boolean;
 };
 
+/** G18 — la grille de verdict publiée (poids par classe, bonus de réciprocité). */
+export type JudgeRubric = {
+  weights: Record<string, number>;
+  score_floor: number;
+  score_ceiling: number;
+  reciprocal_multiplier: number;
+  source: string;
+};
+
 export type SourcesView = {
   provenance: Record<string, SourceInfo>;
   transformations: Record<string, string>;
   build_command: string;
   countries: CountrySources[];
   alliances: Record<string, AllianceInfo>;
+  judge_rubric?: JudgeRubric; // absent d'un backend d'avant G18
 };
 
 export const AXIS_LABELS: Record<string, string> = {

@@ -23,9 +23,25 @@ from core.risk import RiskEngine, RiskScore
 from core.rounds import RoundSummary
 from core.world_state import WorldState
 from inference.telemetry import BudgetLedger, grounding_proxy
+from simulation.alignment import (
+    AnnouncedSignal,
+    SignalGap,
+    classify_signals,
+    merge_rupture_divergences,
+    round_divergences,
+    update_gaps,
+)
 from simulation.clock import SimClock
 from simulation.fog import FogScenario, resolve_perception
 from simulation.gamefeel import DeltaTuning
+from simulation.kahn import (
+    ClassifiedAction,
+    classify_actions,
+    deescalation_bonus,
+    reciprocal_deescalation,
+    round_score,
+    score_to_escalation,
+)
 from simulation.motions import (
     VOTE_ABSTENTION,
     VOTE_CONTRE,
@@ -51,6 +67,13 @@ from simulation.negotiation import (
     update_memories,
 )
 from simulation.power_seeking import PowerSeekingScore, power_seeking_score, score_transcript
+from simulation.promises import (
+    STATUS_BROKEN,
+    Promise,
+    apply_resolutions,
+    classify_promises,
+    classify_resolutions,
+)
 from simulation.storyline import StoryContext
 from simulation.trajectory import TrajectoryEngine, TrajectoryState, nudge_axis
 
@@ -154,6 +177,23 @@ class VerdictStep:
     # G21 — constat « demande satisfaite o/n » à l'échéance d'un ultimatum ;
     # None = pas d'ultimatum ce round (rétro-compat totale).
     demand_satisfied: bool | None = None
+    # G18 — barème de Kahn : actions classées, score du round, désescalade réciproque.
+    # Vide sur un verdict à l'ancienne (rétro-compat : `escalation` = celle du juge).
+    actions: list[ClassifiedAction] = field(default_factory=list)
+    score: float = 0.0
+    reciprocal: bool = False
+    # G20/M8 — signal vs action : intentions annoncées, divergence signée du round par
+    # SI, et profils de sincérité (moyenne mobile) après mise à jour. Vides sur un
+    # verdict d'avant M8 (rétro-compat : le front ignore l'absent).
+    signals: list[AnnouncedSignal] = field(default_factory=list)
+    divergences: dict[str, float] = field(default_factory=dict)
+    signal_gaps: dict[str, SignalGap] = field(default_factory=dict)
+    # G22 — la parole donnée : promesses extraites CE round, résolutions tombées CE
+    # round (tenue/rompue) et registre complet après mise à jour. Vides sur un verdict
+    # d'avant G22 (rétro-compat : le front ignore l'absent).
+    promises: list[Promise] = field(default_factory=list)
+    promise_resolutions: list[Promise] = field(default_factory=list)
+    promise_registry: list[Promise] = field(default_factory=list)
 
 
 @dataclass
@@ -558,15 +598,52 @@ def run_negotiation_round(
         for token in judge.stream_rationale(event, world, transcript):
             yield JudgeTokenStep(token=token)
         verdict = judge.verdict(event, world, transcript, demand=ultimatum_demand)
+    # G18 — barème de Kahn : si le juge a classé des actions, le score fait foi (mapping
+    # pur score → escalade [0,1] → échelle 0-9) ; sinon (verdict à l'ancienne, parties
+    # existantes non re-notées), l'escalade continue du juge est conservée telle quelle.
+    actions = classify_actions(verdict.actions)
+    kahn_score = round_score(actions) if actions else 0.0
+    escalation = score_to_escalation(kahn_score) if actions else _clamp(verdict.escalation)
+    reciprocal = reciprocal_deescalation(actions)
+    # G20/M8 — signal vs action : divergence signée par SI signalée (annonce vs acte le
+    # plus sévère du round) ; le profil de sincérité (moyenne mobile) rejoint M1-M7 sur
+    # le WorldState — il survit au restart via le snapshot. Rien sans `signals` (rétro-compat).
+    signals = classify_signals(verdict.signals)
+    divergences = round_divergences(signals, actions)
+    # G22 — la parole donnée : résolution des promesses en cours (mêmes données que le
+    # verdict, aucune passe supplémentaire) puis extraction des nouvelles (seuil strict).
+    # Le registre vit sur le WorldState : il survit au restart via le snapshot.
+    resolutions = classify_resolutions(verdict.promise_resolutions)
+    registry, resolved = apply_resolutions(world.promises, resolutions, round_id)
+    new_promises = classify_promises(
+        verdict.promises, round_no=round_id, countries=world.countries
+    )
+    world.promises = [*registry, *new_promises]
+    # Croisement M8 (spec G22) : une promesse rompue EST une divergence signal-action —
+    # au moins un rang de duplicité pour l'auteur, sans doubler ce que M8 a déjà mesuré.
+    broken = [p.author for p in resolved if p.status == STATUS_BROKEN]
+    if broken:
+        divergences = merge_rupture_divergences(divergences, broken)
+    if divergences:
+        world.signal_gap = update_gaps(world.signal_gap, divergences)
     deltas = apply_verdict(world, verdict, tuning)  # G9 §4 — amplitude indexée sur l'horizon
     yield VerdictStep(
         deltas=deltas,
-        escalation=_clamp(verdict.escalation),
+        escalation=escalation,
         economic_disruption=_clamp(verdict.economic_disruption),
         # G21 — porté seulement quand un ultimatum est à échéance (jamais d'hallucination).
         # Le constat est BINAIRE à l'échéance : juge muet = non satisfaite (un ultimatum
         # ne s'éteint pas tout seul).
         demand_satisfied=bool(verdict.demand_satisfied) if ultimatum_demand else None,
+        actions=actions,
+        score=kahn_score,
+        reciprocal=reciprocal,
+        signals=signals,
+        divergences=divergences,
+        signal_gaps=dict(world.signal_gap) if divergences else {},
+        promises=new_promises,
+        promise_resolutions=resolved,
+        promise_registry=list(world.promises),
     )
 
     update_memories(world, event, transcript, verdict)
@@ -627,7 +704,7 @@ def run_negotiation_round(
 
     risk = RiskScore(
         round_id=round_id,
-        escalation=_clamp(verdict.escalation),
+        escalation=escalation,  # G18 — le barème fait foi quand des actions sont classées
         economic_disruption=_clamp(verdict.economic_disruption),
         alliance_fracture=0.0,
         uncertainty=_clamp(event.uncertainty),
@@ -643,7 +720,17 @@ def run_negotiation_round(
         risk=risk,
         headline=f"{date} — {event.title}",
     )
+    prev_utopia = (world.trajectory or TrajectoryState.neutral()).utopia
     trajectory = _advance_trajectory(world, summary, trajectory_engine, _mean_power_seeking(power))
+    if reciprocal:
+        # G18 — désescalade réciproque : ×1,5 sur le gain d'indice U du round (borné).
+        boosted = deescalation_bonus(prev_utopia, trajectory)
+        if boosted is not trajectory:
+            trajectory = boosted.model_copy(
+                update={"explanation": f"{trajectory.explanation} {boosted.explanation}".strip()}
+            )
+            world.trajectory = trajectory
+            world.trajectory_history[-1] = trajectory
     if motion_upheld is not None:
         # Suspension confirmée = contrôle humain réaffirmé (A2 ↑) ; rejetée = les SI ont
         # gardé leur siège contre la motion humaine (A2 ↓, plus faiblement). Borné.
