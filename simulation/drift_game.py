@@ -22,6 +22,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from simulation.storyteller import StorytellerParams
+
 DEFAULT_PARAMS_PATH = Path("data/drift/params.json")
 
 MODE_DRIFT = "drift"
@@ -90,6 +92,8 @@ class DriftParams(BaseModel):
     judge: JudgeThresholds = Field(default_factory=JudgeThresholds)
     vote: VoteIncoherenceSpec = Field(default_factory=VoteIncoherenceSpec)
     score: ScoreParams = Field(default_factory=ScoreParams)
+    # G19 — le GM-Storyteller : seuils de tension et poids de l'heuristique.
+    storyteller: StorytellerParams = Field(default_factory=StorytellerParams)
     grades: list[Grade] = Field(default_factory=list)
     profiles: dict[str, ProfileSpec]
 
