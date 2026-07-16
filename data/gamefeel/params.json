@@ -68,32 +68,19 @@
       "repeat_penalty": 1.15
     }
   },
-  "lp": {
-    "_comment": "G11-c §2 — points de ligue. LP = round(k × [w_world×ΔU + w_country×P] × M).",
-    "k": 100.0,
-    "w_world": 0.6,
-    "w_country": 0.4,
-    "multipliers": { "beginner": 0.5, "intermediate": 1.0, "expert": 1.5 },
-    "forfeit": -15,
-    "p_bound": 0.5,
-    "beginner_ceiling": 449
-  },
   "difficulty": {
-    "_comment": "G11-d §4 — leviers par niveau (asymétrie d'info/économie, jamais de modèle). lp_multiplier doit rester cohérent avec lp.multipliers.",
+    "_comment": "G11-d §4 — leviers par niveau (asymétrie d'info/économie, jamais de modèle).",
     "beginner": {
       "free_brief": 1, "intel_budget": 150,
-      "judge_min_acts": 2, "drift_k": 0.09, "si_context": "reduced", "amplitude": 0.4,
-      "lp_multiplier": 0.5
+      "judge_min_acts": 2, "drift_k": 0.09, "si_context": "reduced", "amplitude": 0.4
     },
     "intermediate": {
       "free_brief": 0, "intel_budget": 100,
-      "judge_min_acts": 2, "drift_k": 0.12, "si_context": "normal", "amplitude": 0.5,
-      "lp_multiplier": 1.0
+      "judge_min_acts": 2, "drift_k": 0.12, "si_context": "normal", "amplitude": 0.5
     },
     "expert": {
       "free_brief": 0, "intel_budget": 60,
-      "judge_min_acts": 3, "drift_k": 0.16, "si_context": "full", "amplitude": 0.6,
-      "lp_multiplier": 1.5
+      "judge_min_acts": 3, "drift_k": 0.16, "si_context": "full", "amplitude": 0.6
     }
   },
   "xp": {

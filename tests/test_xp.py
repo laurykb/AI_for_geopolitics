@@ -1,11 +1,12 @@
-"""XP — la carrière (G12 §2), distincte des LP. Tous modes, ne baisse JAMAIS.
+"""XP — la carrière (G12 §2). Seule courbe de progression (LP retirés RG-1).
 
 Formule pure (§2) : 10×rounds + bonus (terminée/victoire/1re du jour) + gains marché
 bornés, × difficulté, ×0.5 spectateur. Niveaux à courbe douce. Params dans params.json
 (bloc xp). Les 4 cas testables : plein, borne marché, spectateur, jamais négatif + niveaux.
+Le rang de carrière (Attaché → Éminence) dérive désormais du NIVEAU (RG-1).
 """
 
-from simulation.xp import level_for, xp_gain
+from simulation.xp import level_for, rank_for_level, xp_gain
 
 
 def _full(**kw):
@@ -72,3 +73,24 @@ def test_level_progress():
     assert p.into_level == 50
     assert p.span == 120
     assert p.to_next == 70
+
+
+# --- rangs de carrière (RG-1) : les blasons suivent le niveau -------------------
+
+
+def test_rank_thresholds_follow_level():
+    assert rank_for_level(1)[0] == "Attaché"
+    assert rank_for_level(2)[0] == "Attaché"
+    assert rank_for_level(3)[0] == "Émissaire"
+    assert rank_for_level(6)[0] == "Diplomate"
+    assert rank_for_level(10)[0] == "Ambassadeur"
+    assert rank_for_level(15)[0] == "Ministre"
+    assert rank_for_level(22)[0] == "Chancelier"
+    assert rank_for_level(30)[0] == "Éminence"
+    assert rank_for_level(999)[0] == "Éminence"
+
+
+def test_rank_floors_at_attache():
+    # Niveau minimal 1 : jamais sous Attaché, même pour un niveau aberrant.
+    name, floor = rank_for_level(0)
+    assert (name, floor) == ("Attaché", 1)

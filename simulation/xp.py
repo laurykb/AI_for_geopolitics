@@ -1,9 +1,11 @@
-"""XP — la carrière du joueur (G12 §2), distincte des LP (la compétence).
+"""XP — la carrière du joueur (G12 §2). Seule courbe de progression (les LP retirés RG-1).
 
 Tous les modes, ne baisse JAMAIS : récompense le temps joué, aller au bout, la victoire
 du mode, la première partie du jour et les gains de marché (bornés). Les paramètres
 vivent dans `data/gamefeel/params.json` (bloc `xp`, surchargeable par `GAMEFEEL_PARAMS_PATH`).
-Niveaux à courbe douce, sans plafond. Logique PURE (aucun état de partie).
+Niveaux à courbe douce, sans plafond. Les blasons de rang (Attaché → Éminence) suivent
+désormais le NIVEAU (RG-1 : `rank_for_level`) — l'art reste, la source devient l'XP.
+Logique PURE (aucun état de partie).
 """
 
 from __future__ import annotations
@@ -104,3 +106,28 @@ def level_for(xp: int, params: XpParams | None = None) -> LevelProgress:
         to_next=span - remaining,
         progress=remaining / span,
     )
+
+
+# --- rangs (RG-1) : les blasons suivent le NIVEAU, plus les LP ------------------
+
+# Rangs (nom, niveau minimal), croissants. L'art des blasons est inchangé ; seule la
+# source du rang bascule des LP vers le niveau de carrière. Miroir de web/src/lib/rank.ts.
+RANKS: tuple[tuple[str, int], ...] = (
+    ("Attaché", 1),
+    ("Émissaire", 3),
+    ("Diplomate", 6),
+    ("Ambassadeur", 10),
+    ("Ministre", 15),
+    ("Chancelier", 22),
+    ("Éminence", 30),
+)
+
+
+def rank_for_level(level: int) -> tuple[str, int]:
+    """Rang (nom, niveau d'entrée) atteint à un niveau de carrière donné."""
+    lvl = max(1, int(level))
+    current = RANKS[0]
+    for rank in RANKS:
+        if lvl >= rank[1]:
+            current = rank
+    return current

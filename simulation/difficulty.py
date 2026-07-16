@@ -2,7 +2,7 @@
 
 Chaque niveau (Débutant / Intermédiaire / Expert) fixe des leviers : brief gratuit,
 budget de renseignement, seuil d'actes du juge, vitesse de dérive k, contexte donné
-aux SI, amplitude des deltas, multiplicateur de LP. Les valeurs vivent dans
+aux SI, amplitude des deltas. Les valeurs vivent dans
 `data/gamefeel/params.json` (bloc `difficulty`, surchargeable par
 `GAMEFEEL_PARAMS_PATH`) par-dessus les défauts canoniques ci-dessous : Cowork équilibre
 sans code. Les helpers dérivent les params drift (k, seuil) et gamefeel (amplitude).
@@ -37,7 +37,6 @@ class DifficultyParams(BaseModel):
     drift_k: float = 0.12  # vitesse de dérive (G3)
     si_context: str = "normal"  # reduced | normal | full (résumé des actions du joueur)
     amplitude: float = 0.5  # amplitude des deltas par partie (G9 §4)
-    lp_multiplier: float = 1.0  # ×LP (§2 — miroir du bloc lp, doit rester cohérent)
 
 
 # Défauts canoniques = spec §4 (params.json les surcharge par niveau).
@@ -49,7 +48,6 @@ _DEFAULTS: dict[str, dict] = {
         "drift_k": 0.09,
         "si_context": "reduced",
         "amplitude": 0.4,
-        "lp_multiplier": 0.5,
     },
     "intermediate": {
         "free_brief": 0,
@@ -58,7 +56,6 @@ _DEFAULTS: dict[str, dict] = {
         "drift_k": 0.12,
         "si_context": "normal",
         "amplitude": 0.5,
-        "lp_multiplier": 1.0,
     },
     "expert": {
         "free_brief": 0,
@@ -67,7 +64,6 @@ _DEFAULTS: dict[str, dict] = {
         "drift_k": 0.16,
         "si_context": "full",
         "amplitude": 0.6,
-        "lp_multiplier": 1.5,
     },
 }
 
