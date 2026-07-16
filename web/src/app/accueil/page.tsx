@@ -3,8 +3,8 @@
 /** S1 — Accueil personnalisé (G11 §1, refonte G12). Façon écran de connexion : la
  * planète, « Bienvenue <pseudo> » (pseudo mis en avant), puis deux boutons centrés
  * (Démarrer / Reprendre) — la plongée sur la planète emmène vers l'écran suivant. En
- * dessous : rang de ligue et dernières parties. Les liens Campagne/Leaderboard/
- * Informations vivent dans le header, plus en bas de page. */
+ * dessous : rang de carrière (suit le niveau) et dernières parties. Les liens du header
+ * (Classement du jour, Informations) vivent en haut, plus en bas de page. */
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -18,7 +18,7 @@ import { usePlanetLaunch } from "@/hooks/usePlanetLaunch";
 import { getDaily, getLeaguePlayer, humanizeError, listGames, startDaily } from "@/lib/api";
 import { countdownLabel } from "@/lib/daily";
 import { fmtDateTime } from "@/lib/format";
-import { rankFor } from "@/lib/league";
+import { rankForLevel } from "@/lib/rank";
 import { MODES } from "@/lib/modes";
 import type { DailyView, GameView } from "@/lib/types";
 
@@ -27,8 +27,7 @@ export default function AccueilPage() {
   const t = useT();
   const { launching, launch } = usePlanetLaunch();
   const [games, setGames] = useState<GameView[] | null>(null);
-  const [lp, setLp] = useState<number | null>(null); // LP autoritatif (backend, G11-c)
-  const [level, setLevel] = useState<number | null>(null); // niveau de carrière (G12)
+  const [level, setLevel] = useState<number | null>(null); // niveau de carrière (G12) — porte le rang
   const [error, setError] = useState<string | null>(null);
   // G16 — le défi du jour : état joué/pas-joué + compte à rebours client (minuit UTC).
   const [daily, setDaily] = useState<DailyView | null>(null);
@@ -63,16 +62,13 @@ export default function AccueilPage() {
       })
       .catch((err) => setError(humanizeError(err)));
     getLeaguePlayer(player.id)
-      .then((p) => {
-        setLp(p.lp);
-        setLevel(p.level);
-      })
-      .catch(() => setLp(player.lp)); // repli sur la valeur de session
+      .then((p) => setLevel(p.level))
+      .catch(() => setLevel(1)); // repli : niveau 1 (Attaché) tant que le backend est muet
   }, [player]);
 
   if (!player) return null; // la garde d'auth gère la redirection
 
-  const progress = rankFor(lp ?? player.lp);
+  const progress = rankForLevel(level ?? 1);
   const resumable = games?.find((g) => g.resumable);
   const recent = games ? [...games].reverse() : null;
   const chrome = launching ? "intro-fade-out" : undefined;
@@ -91,8 +87,8 @@ export default function AccueilPage() {
               {player.pseudo}
             </Link>
           </h1>
-          {/* CC-15c — le panneau « Rang » est fusionné ici : blason, LP, niveau et
-              barre vers le rang suivant vivent dans le hero, pas dans un panneau. */}
+          {/* CC-15c — le panneau « Rang » est fusionné ici : blason, niveau et barre
+              vers le rang suivant vivent dans le hero (RG-1 : le rang suit le niveau). */}
           <div
             data-tour="rang"
             className="mx-auto mt-3 flex max-w-xs flex-col items-center gap-1.5"
@@ -101,10 +97,9 @@ export default function AccueilPage() {
               <RankBadge rank={progress.rank} size="sm" />
               <p className="flex items-center gap-1.5 text-sm text-fg-muted">
                 <span>
-                  {progress.rank.name} · {lp ?? player.lp} {t("accueil.points-ligue")}
-                  {level != null && ` · ${t("accueil.niveau")} ${level}`}
+                  {progress.rank.name} · {t("accueil.niveau")} {level ?? 1}
                 </span>
-                <Hint text={t("lp.aide")} />
+                <Hint text={t("rang.aide")} />
               </p>
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
@@ -115,7 +110,7 @@ export default function AccueilPage() {
             </div>
             <p className="text-xs text-fg-faint">
               {progress.next
-                ? `${progress.toNext} ${t("accueil.lp-avant")} ${progress.next.name}`
+                ? `${progress.toNext} ${t("accueil.niveaux-avant")} ${progress.next.name}`
                 : t("accueil.rang-max")}
             </p>
           </div>
@@ -148,8 +143,8 @@ export default function AccueilPage() {
         {launching && <div className="intro-veil absolute inset-0 z-10 bg-background" />}
       </div>
 
-      {/* G16 — Le Sommet du jour : même crise pour tout le monde, une tentative
-          classée, la crise reste « ??? » jusqu'au premier round. */}
+      {/* G16 — Le Sommet du jour : même crise pour tout le monde, une seule tentative
+          qui compte, la crise reste « ??? » jusqu'au premier round. */}
       <Panel className="border-l-2 border-l-accent">
         <PanelTitle
           kicker={t("daily.kicker")}
@@ -230,7 +225,6 @@ export default function AccueilPage() {
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-2 text-sm">
                     <span className="font-medium">{g.scenario}</span>
-                    {g.ranked && <Pill tone="accent">{t("accueil.classee")}</Pill>}
                   </p>
                   <p className="mt-0.5 text-xs text-fg-faint">
                     {fmtDateTime(g.created_at)} · {t("accueil.horizon")} {g.horizon}{" "}

@@ -1,8 +1,8 @@
 "use client";
 
 /** Contexte d'authentification du client WoSI (G11 §1 S0). Porte le joueur connecté
- * (pseudo, rang/LP, is_admin), l'état de chargement et le flag `offline`. Placé haut
- * dans l'arbre (layout) pour que la nav et la garde de routes le lisent. */
+ * (pseudo, is_admin), l'état de chargement et le flag `offline`. Placé haut dans
+ * l'arbre (layout) pour que la nav et la garde de routes le lisent. */
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 
@@ -43,7 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [auth]);
 
-  // Enregistre le compte de ligue au backend (source de vérité des LP, G11-c) dès qu'un
+  // Enregistre le compte joueur au backend (source de vérité de l'XP, G11-c) dès qu'un
   // joueur est connu. Fire-and-forget : sans backend joignable, l'auth reste utilisable.
   useEffect(() => {
     if (player) upsertPlayer(player.id, player.pseudo).catch(() => {});

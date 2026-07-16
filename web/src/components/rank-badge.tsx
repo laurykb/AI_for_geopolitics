@@ -1,7 +1,8 @@
 /** Blason de rang (G11 §2) — un écu sobre dont l'éclat monte avec le palier (0→6).
- * Pas d'emoji : une forme héraldique discrète, cohérente avec le langage de design. */
+ * Pas d'emoji : une forme héraldique discrète, cohérente avec le langage de design.
+ * RG-1 : le rang suit désormais le niveau d'XP (l'art est inchangé). */
 
-import type { Rank } from "@/lib/league";
+import type { Rank } from "@/lib/rank";
 
 const SIZE: Record<"sm" | "md", number> = { sm: 28, md: 44 };
 

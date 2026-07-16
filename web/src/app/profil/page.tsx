@@ -1,7 +1,7 @@
 "use client";
 
 /** Profil / Statistiques (G12 §6) — parties jouées + victoires par mode, niveau + XP,
- * rang + LP, solde de carrière et taux de détection de la Dérive (la stat de fierté). */
+ * rang (RG-1 : dérivé du niveau), solde de carrière et taux de détection de la Dérive. */
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -11,7 +11,7 @@ import { RankBadge } from "@/components/rank-badge";
 import { useT } from "@/components/settings-provider";
 import { Banner, Hint, Panel, PanelTitle, Spinner } from "@/components/ui";
 import { getPlayerStats, humanizeError } from "@/lib/api";
-import { rankFor } from "@/lib/league";
+import { rankForLevel } from "@/lib/rank";
 import { MODE_LABELS } from "@/lib/modes";
 import type { PlayerStats } from "@/lib/types";
 
@@ -50,7 +50,7 @@ export default function ProfilePage() {
     );
 
   const p = stats.player;
-  const rank = rankFor(p.lp);
+  const rank = rankForLevel(p.level);
   const modes = Object.keys(stats.by_mode).sort();
   const driftRate =
     stats.drift_games > 0 ? Math.round((stats.drift_caught / stats.drift_games) * 100) : null;
@@ -70,7 +70,7 @@ export default function ProfilePage() {
         </Link>
       </header>
 
-      {/* Carrière : niveau + XP · rang + LP */}
+      {/* Carrière : niveau + XP · rang (dérivé du niveau) */}
       <Panel>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex items-center gap-3">
@@ -96,7 +96,7 @@ export default function ProfilePage() {
             <div className="min-w-0 flex-1">
               <p className="flex items-center gap-1.5 text-sm font-semibold">
                 {rank.rank.name}
-                <Hint text={t("lp.aide")} />
+                <Hint text={t("rang.aide")} />
               </p>
               <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
                 <div
@@ -105,7 +105,9 @@ export default function ProfilePage() {
                 />
               </div>
               <p className="mt-1 text-xs text-fg-faint">
-                {p.lp} LP{rank.next ? ` · ${rank.toNext} avant ${rank.next.name}` : ""}
+                {rank.next
+                  ? `${rank.toNext} ${t("accueil.niveaux-avant")} ${rank.next.name}`
+                  : t("accueil.rang-max")}
               </p>
             </div>
           </div>

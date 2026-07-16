@@ -3,7 +3,7 @@
  * Deux backends derrière une même interface :
  *  - **Supabase** quand `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`
  *    sont présents. L'utilisateur ne voit jamais d'email : on en dérive un technique
- *    (`<pseudo>@wosi.local`). La fiche `players` (pseudo, is_admin, lp) porte le rang.
+ *    (`<pseudo>@wosi.local`). La fiche `players` (pseudo, is_admin) porte le compte.
  *  - **offline** (repli local, flag `offline`) quand ces variables manquent : mêmes
  *    gestes, session dans le `localStorage`. Pour le déploiement Supabase, penser à
  *    désactiver la confirmation d'email (les `@wosi.local` ne reçoivent rien).
@@ -15,7 +15,6 @@ export type Player = {
   id: string;
   pseudo: string;
   is_admin: boolean;
-  lp: number;
 };
 
 export type AuthResult = { ok: true; player: Player } | { ok: false; error: string };
@@ -113,7 +112,6 @@ function stripHash(account: StoredAccount): Player {
     id: account.id,
     pseudo: account.pseudo,
     is_admin: account.is_admin,
-    lp: account.lp,
   };
 }
 
@@ -143,7 +141,6 @@ class OfflineAuth implements AuthApi {
       id: `offline_${key}`,
       pseudo: pseudo.trim(),
       is_admin: OFFLINE_ADMINS.has(key),
-      lp: 0,
       hash: cheapHash(password),
     };
     accounts[key] = account;
@@ -227,7 +224,7 @@ class SupabaseAuth implements AuthApi {
     if (!user) return null;
     const { data: rows } = await sb
       .from("players")
-      .select("id,pseudo,is_admin,lp")
+      .select("id,pseudo,is_admin")
       .eq("id", user.id)
       .limit(1);
     const row = rows?.[0] as Player | undefined;
@@ -237,7 +234,6 @@ class SupabaseAuth implements AuthApi {
         id: user.id,
         pseudo: (user.user_metadata?.pseudo as string) ?? user.email ?? "joueur",
         is_admin: false,
-        lp: 0,
       }
     );
   }
@@ -259,10 +255,10 @@ class SupabaseAuth implements AuthApi {
     if (error) return { ok: false, error: friendly(error.message) };
     const user = data.user;
     if (!user) return { ok: false, error: "Compte créé — connectez-vous." };
-    const player: Player = { id: user.id, pseudo: pseudo.trim(), is_admin: false, lp: 0 };
-    // La fiche de ligue : le client n'écrit QUE id + pseudo — is_admin/lp prennent leurs
-    // défauts DB (false/0) et restent réservés au service_role (cf. supabase/schema.sql,
-    // sinon auto-promotion admin). RLS insert : auth.uid() = id.
+    const player: Player = { id: user.id, pseudo: pseudo.trim(), is_admin: false };
+    // La fiche joueur : le client n'écrit QUE id + pseudo — is_admin prend son défaut DB
+    // (false) et reste réservé au service_role (cf. supabase/schema.sql, sinon
+    // auto-promotion admin). RLS insert : auth.uid() = id.
     await sb
       .from("players")
       .upsert({ id: user.id, pseudo: pseudo.trim() }, { onConflict: "id" });

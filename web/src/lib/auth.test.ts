@@ -40,7 +40,7 @@ describe("validateCredentials", () => {
 });
 
 describe("adminDenied (garde de la vue admin)", () => {
-  const player = (is_admin: boolean): Player => ({ id: "p1", pseudo: "laury", is_admin, lp: 0 });
+  const player = (is_admin: boolean): Player => ({ id: "p1", pseudo: "laury", is_admin });
 
   it("renvoie le visiteur non connecté (player null) — pas de spinner infini", () => {
     expect(adminDenied(false, null)).toBe(true);

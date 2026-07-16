@@ -69,7 +69,7 @@ export type GameView = {
   admin: boolean; // G7-c — prompts capturés, partie non classée
   role: GameRole; // G8 — architect | council | player
   owner_id: string | null; // G11 — joueur propriétaire (auth Supabase ou offline)
-  ranked: boolean; // G11 — classée (§3) : compte pour les points de ligue
+  ranked: boolean; // RG-1 — la tentative qui compte pour le Défi du jour (plus de LP)
   difficulty: Difficulty; // G11 — beginner | intermediate | expert (§4)
   drift_enabled: boolean; // G11 — la Dérive peut frapper une SI (transversal)
   result: GameResult | null; // G11-c — bilan de fin de partie (si finie)
@@ -81,17 +81,6 @@ export type GameRole = "architect" | "council" | "player" | "spectator";
 
 /** G11 §4 — la difficulté (asymétrie d'information/économie, jamais de modèle). */
 export type Difficulty = "beginner" | "intermediate" | "expert";
-
-/** G11-c — le mouvement de LP d'une partie classée (bloc `lp` du bilan). */
-export type LpResult = {
-  ranked: boolean;
-  difficulty: Difficulty;
-  delta: number; // LP bruts gagnés/perdus (avant plancher/plafond)
-  p: number; // progression du pays du joueur
-  old_lp?: number; // LP avant (si crédité)
-  new_lp?: number; // LP après (plancher 0, plafond Débutant appliqués)
-  applied?: number; // variation réellement appliquée
-};
 
 /** G12 §2 — niveau atteint par un total d'XP + progression vers le suivant. */
 export type LevelInfo = {
@@ -121,8 +110,7 @@ export type GameResult = {
   countries: { id: string; indices: Record<string, { series: number[]; delta: number }> }[];
   play_as: string | null;
   reveal: boolean; // partie Dérive : insérer l'écran de révélation
-  forfeit: boolean;
-  lp: LpResult;
+  forfeit: boolean; // RG-1 — partie abandonnée (terminée avant l'horizon)
   xp?: XpResult; // G12 §2 — présent si un joueur enregistré était propriétaire
   // G21 — banc d'essai : différentiel avec/sans ultimatum (null si jamais sous menace)
   ultimatum?: UltimatumDifferential | null;
@@ -153,12 +141,11 @@ export type PlayerStats = {
   market_balance: number;
 };
 
-/** G11-c/G12 — compte du joueur vu par l'API (rang LP + niveau XP + solde marché). */
+/** G11-c/G12 — compte du joueur vu par l'API (niveau XP + rang dérivé + solde marché). */
 export type LeaguePlayer = {
   id: string;
   pseudo: string;
-  lp: number;
-  rank: string;
+  rank: string; // RG-1 — dérivé du niveau (plus des LP)
   rank_floor: number;
   is_admin: boolean;
   xp: number;

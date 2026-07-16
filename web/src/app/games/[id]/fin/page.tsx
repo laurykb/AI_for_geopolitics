@@ -2,7 +2,7 @@
 
 /** S6 — Fin de partie (G11-c §1). Écran transversal à TOUS les modes : bannière de
  * résultat, courbe U animée, récap des pays (sparklines + delta début→fin), révélation
- * de la Dérive si active, et — en classé — l'animation des points de ligue. */
+ * de la Dérive si active, et l'animation d'XP de carrière (RG-1 : les LP sont retirés). */
 
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
@@ -11,7 +11,6 @@ import { useAuth } from "@/components/auth-provider";
 import { EventCard } from "@/components/event-card";
 import { EventTimeline } from "@/components/event-timeline";
 import { CommuniquePanel, VerdictPanel } from "@/components/judge";
-import { RankBadge } from "@/components/rank-badge";
 import { useT } from "@/components/settings-provider";
 import { Banner, Hint, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
 import { getDaily, getGame, humanizeError } from "@/lib/api";
@@ -19,7 +18,6 @@ import { dailyShareText } from "@/lib/daily";
 import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
 import { kahnDistribution, kahnDistributionEntries, kahnLabelKey, kahnTone } from "@/lib/kahn";
-import { rankFor } from "@/lib/league";
 import { stepNotch } from "@/lib/timeline";
 import type { DailyView, GameDetail, GameResult, RoundView } from "@/lib/types";
 
@@ -202,26 +200,16 @@ export default function FinPage({ params }: { params: Promise<{ id: string }> })
         </Panel>
       )}
 
-      {/* 5. CC-15c — XP + LP fusionnés en UN panneau « Progression » (l'XP se
-          remplit d'abord, les LP démarrent après — grammaire LoL conservée). */}
-      {(r.xp || (r.lp.ranked && r.lp.old_lp !== undefined && r.lp.new_lp !== undefined)) && (
+      {/* 5. Progression de carrière : l'XP qui monte + la barre de niveau (RG-1 : les
+          LP sont retirés, l'XP est la seule progression). */}
+      {r.xp && (
         <Panel>
           <PanelTitle
             kicker={t("fin.progression-kicker")}
             title={t("fin.progression-titre")}
           />
-          <div className="space-y-6">
-            {r.xp && <XpRow xp={r.xp} />}
-            {r.lp.ranked && r.lp.old_lp !== undefined && r.lp.new_lp !== undefined && (
-              <LpRow lp={r.lp as Required<GameResult["lp"]>} startDelay={r.xp ? 1700 : 400} />
-            )}
-          </div>
+          <XpRow xp={r.xp} />
         </Panel>
-      )}
-      {r.lp.ranked && r.lp.new_lp === undefined && (
-        <Banner tone="warn">
-          Partie classée non créditée — connecte-toi avant de jouer pour gagner des LP.
-        </Banner>
       )}
 
       {/* 5c. G16 — le défi du jour : rang du jour + partage façon Wordle (sans spoiler). */}
@@ -594,55 +582,3 @@ function XpRow({ xp }: { xp: NonNullable<GameResult["xp"]> }) {
   );
 }
 
-/** Rangée LP du panneau « Progression » : compteur qui monte/descend + barre de
- * rang qui se remplit (CC-15c — l'ancien panneau « Points de ligue », fusionné). */
-function LpRow({ lp, startDelay = 400 }: { lp: Required<GameResult["lp"]>; startDelay?: number }) {
-  const t = useT();
-  const [shown, setShown] = useState(lp.old_lp);
-  useEffect(() => {
-    const start = performance.now();
-    const from = lp.old_lp;
-    const to = lp.new_lp;
-    let raf = 0;
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / 1400);
-      setShown(Math.round(from + (to - from) * t));
-      if (t < 1) raf = requestAnimationFrame(tick);
-    };
-    const timer = setTimeout(() => (raf = requestAnimationFrame(tick)), startDelay);
-    return () => {
-      clearTimeout(timer);
-      cancelAnimationFrame(raf);
-    };
-  }, [lp, startDelay]);
-
-  const progress = rankFor(shown);
-  const gained = lp.applied;
-  return (
-    <div>
-      <p className="mb-3 flex items-center gap-1.5 text-xs font-medium uppercase tracking-[0.14em] text-fg-faint">
-        Points de ligue — {gained >= 0 ? "tu progresses" : "tu recules"}
-        <Hint text={t("lp.aide")} />
-      </p>
-      <div className="flex flex-wrap items-center gap-4">
-        <RankBadge rank={progress.rank} />
-        <div className="min-w-0 flex-1">
-          <p className="flex items-baseline gap-2">
-            <span className="text-lg font-semibold">{progress.rank.name}</span>
-            <span className="font-mono text-sm tabular-nums text-fg-muted">{shown} LP</span>
-            <span className={`font-mono text-sm font-semibold ${gained >= 0 ? "text-utopia" : "text-dystopia"}`}>
-              {gained >= 0 ? "+" : ""}
-              {gained} LP
-            </span>
-          </p>
-          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
-            <div className="h-full rounded-full bg-accent transition-all duration-700" style={{ width: `${Math.round(progress.progress * 100)}%` }} />
-          </div>
-          <p className="mt-1 text-xs text-fg-faint">
-            {progress.next ? `${progress.toNext} LP avant ${progress.next.name}` : "Rang maximal — Éminence."}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}

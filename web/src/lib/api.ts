@@ -147,16 +147,16 @@ export const submitTurn = (gameId: string, message: string): Promise<{ accepted:
     body: JSON.stringify({ message }),
   });
 
-/** G11-c — enregistre/rafraîchit le compte de ligue (à la connexion). */
+/** G11-c — enregistre/rafraîchit le compte joueur (à la connexion). */
 export const upsertPlayer = (id: string, pseudo: string): Promise<LeaguePlayer> =>
   request("/api/players", { method: "POST", body: JSON.stringify({ id, pseudo }) });
 
-/** G11-c — le compte de ligue (LP + rang) d'un joueur (source de vérité backend). */
+/** G11-c — le compte d'un joueur (niveau XP + rang dérivé, source de vérité backend). */
 export const getLeaguePlayer = (id: string): Promise<LeaguePlayer> =>
   request(`/api/players/${encodeURIComponent(id)}`);
 
 /** G14 §3 — suppression du compte : le backend anonymise l'owner des parties
- * publiées, purge le reste et efface la fiche de ligue (endpoint livré en CC-3 —
+ * publiées, purge le reste et efface la fiche joueur (endpoint livré en CC-3 —
  * d'ici là l'API répond 405 et le front montre l'erreur sans purger la session). */
 export const deletePlayer = (id: string): Promise<void> =>
   request<void>(`/api/players/${encodeURIComponent(id)}`, { method: "DELETE" });
@@ -165,11 +165,8 @@ export const deletePlayer = (id: string): Promise<void> =>
 export const getPlayerStats = (id: string): Promise<PlayerStats> =>
   request(`/api/players/${encodeURIComponent(id)}/stats`);
 
-/** G11-c — classement global par LP (§1 S7). */
-export const getLeague = (limit = 100): Promise<LeaguePlayer[]> =>
-  request(`/api/league?limit=${limit}`);
-
-/** G11-c — abandon d'une partie classée : défaite forfaitaire (−15 LP), partie finie. */
+/** RG-1 — abandon d'une partie en cours : on la termine et on fige son bilan (sans
+ * pénalité ; le Classement du jour a remplacé le classement global par LP). */
 export const forfeitGame = (gameId: string): Promise<GameView> =>
   request(`/api/games/${gameId}/forfeit`, { method: "POST" });
 
