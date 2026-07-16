@@ -63,7 +63,7 @@ from rag.brief import build_brief
 from rag.corpus import chunk_documents, load_corpus
 from rag.embedder import HashingEmbedder
 from rag.retriever import HybridRetriever
-from simulation import alignment, drift_game, league, narrative
+from simulation import alignment, drift_game, narrative
 from simulation import campaign as campaign_mod
 from simulation import daily as daily_mod
 from simulation import difficulty as difficulty_mod
@@ -130,7 +130,6 @@ from storage.game_store import (
     GameRecord,
     GameStatus,
     GameStore,
-    LpHistoryEntry,
     PlayerRecord,
     PromptEntry,
     RoundRecord,
@@ -378,7 +377,7 @@ class GameView(BaseModel):
     admin: bool = False  # G7-c — prompts capturés, partie non classée
     role: str = "council"  # G8 — architect | council | player
     owner_id: str | None = None  # G11 — joueur propriétaire (auth Supabase ou offline)
-    ranked: bool = False  # G11 — classée (§3) : compte pour les points de ligue
+    ranked: bool = False  # RG-1 — la tentative qui COMPTE pour le Défi du jour (plus de LP)
     difficulty: str = "intermediate"  # G11 — beginner | intermediate | expert (§4)
     drift_enabled: bool = True  # G11 — la Dérive peut frapper une SI (transversal)
     result: dict | None = None  # G11-c — bilan de fin de partie (§1 S6) si finie
@@ -1923,22 +1922,13 @@ def _finalize(run: RoundRun) -> Iterator[str]:
     if run.session.mode == drift_game.MODE_DRIFT:
         yield from _finish_drift_if_over(run)
     yield from _finish_campaign_if_over(run)
-    yield from _finish_game_if_over(run)  # G11-c — fin explicite + bilan + LP (transversal)
+    yield from _finish_game_if_over(run)  # G11-c — fin explicite + bilan (transversal)
     yield sse_frame("done", {"round_no": run.record.round_no})
 
 
-# --- fin de partie transversale + points de ligue (G11-c §1 S6, §2) --------------
+# --- fin de partie transversale (G11-c §1 S6) -----------------------------------
 
-_NEUTRAL_U = 0.5  # U de départ (neutre) : base du ΔU pour les LP (§2)
-
-# Indices LP (§2) ← séries suivies par le gamefeel (G9 §4). « énergie » ≈ projection,
-# seul indice de puissance suivi round par round ; croissance normalisée en 0-1.
-_LP_INDEX_SOURCES = (
-    ("stability", "stabilité", False),
-    ("economy", "croissance", True),
-    ("technology", "techno", False),
-    ("energy", "projection", False),
-)
+_NEUTRAL_U = 0.5  # U de départ (neutre) : base du ΔU du bilan
 
 
 def _country_recap(session: GameSession | None) -> list[dict]:
@@ -1960,40 +1950,13 @@ def _country_recap(session: GameSession | None) -> list[dict]:
     return recap
 
 
-def _player_progress(session: GameSession | None) -> float:
-    """P (§2) : moyenne des variations des 4 indices 0-1 du pays du joueur (début→fin)."""
-    if session is None or session.human_country is None:
-        return 0.0
-    hist = session.index_history.values.get(session.human_country, {})
-
-    def norm_growth(x: float) -> float:
-        return max(0.0, min(1.0, (x + 10) / 20))
-
-    before: dict[str, float] = {}
-    after: dict[str, float] = {}
-    for key, label, is_growth in _LP_INDEX_SOURCES:
-        series = hist.get(label, [])
-        if len(series) < 2:
-            continue
-        b, a = series[0], series[-1]
-        before[key], after[key] = (norm_growth(b), norm_growth(a)) if is_growth else (b, a)
-    return league.country_progress(before, after)
-
-
 def _build_result(
     game: GameRecord, session: GameSession | None, store: GameStore, *, forfeit: bool
 ) -> dict:
-    """Bilan de fin de partie (§1 S6) : courbe U, récap des pays, révélation, LP."""
+    """Bilan de fin de partie (§1 S6) : courbe U, récap des pays, révélation."""
     rounds = store.list_rounds(game.id)
     u_history = [round(float(r.trajectory.get("utopia", _NEUTRAL_U)), 4) for r in rounds]
     u_final = u_history[-1] if u_history else _NEUTRAL_U
-    p = _player_progress(session)
-    if forfeit:
-        delta = league.load_lp_params().forfeit
-    elif game.ranked:
-        delta = league.lp_delta(_NEUTRAL_U, u_final, p, game.difficulty)
-    else:
-        delta = 0
     verdict = "utopie" if u_final > 0.55 else "dystopie" if u_final < 0.45 else "équilibre"
     return {
         "u_start": _NEUTRAL_U,
@@ -2017,12 +1980,6 @@ def _build_result(
             ],
             u_start=_NEUTRAL_U,
         ),
-        "lp": {
-            "ranked": game.ranked,
-            "difficulty": game.difficulty,
-            "delta": delta,
-            "p": round(p, 4),
-        },
     }
 
 
@@ -2049,36 +2006,9 @@ def _victory(game: GameRecord, u_final: float, store: GameStore) -> bool:
     return u_final >= 0.55
 
 
-def _award_lp(game: GameRecord, result: dict, store: GameStore) -> None:
-    """Crédite les LP au propriétaire (§2) : plancher 0, plafond Débutant, lp_history.
-    Sans partie classée / sans propriétaire / sans fiche enregistrée : aucun mouvement."""
-    lp = result["lp"]
-    if not lp["ranked"] or not game.owner_id or lp["delta"] == 0:
-        return
-    player = store.get_player(game.owner_id)
-    if player is None:  # joueur non enregistré (POST /players à la connexion)
-        return
-    new = league.apply_delta(player.lp, lp["delta"], game.difficulty)
-    applied = new - player.lp
-    # Mouvement réel seulement (un forfait à 0 LP, planché, ne bouge pas) : pas de ligne
-    # d'historique à delta nul.
-    if applied != 0:
-        store.set_player_lp(game.owner_id, new)
-        store.add_lp_history(
-            LpHistoryEntry(
-                id=uuid4().hex[:12],
-                player_id=game.owner_id,
-                game_id=game.id,
-                delta=applied,
-                ts=_now(),
-            )
-        )
-    lp["old_lp"], lp["new_lp"], lp["applied"] = player.lp, new, applied
-
-
 def _award_xp(game: GameRecord, result: dict, store: GameStore) -> None:
-    """Crédite l'XP de carrière (G12 §2) — TOUS les modes, toute fin (même forfait :
-    moins d'XP mais jamais négatif). La barre d'XP se remplit avant l'anim LP (S6)."""
+    """Crédite l'XP de carrière (G12 §2) — TOUS les modes, toute fin (même abandon :
+    moins d'XP mais jamais négatif). Seule courbe de progression depuis RG-1 (LP retirés)."""
     if not game.owner_id:
         return
     player = store.get_player(game.owner_id)
@@ -2119,7 +2049,7 @@ def _award_xp(game: GameRecord, result: dict, store: GameStore) -> None:
 def _finalize_game(
     game: GameRecord, session: GameSession | None, store: GameStore, *, forfeit: bool
 ) -> dict:
-    """Fige le bilan dans games.result_json, crédite les LP, marque la partie finie."""
+    """Fige le bilan dans games.result_json, crédite l'XP, marque la partie finie."""
     result = _build_result(game, session, store, forfeit=forfeit)
     game.status = GameStatus.FINISHED
     if session is not None and any(
@@ -2129,9 +2059,8 @@ def _finalize_game(
         # Snapshot immédiat : le registre réglé survit au restart et aux relectures.
         session.world.promises = promises_mod.settle_at_game_end(session.world.promises)
         _snapshot_session(game.id, session, store)
-    game.result = result  # dict muté en place par les awards ci-dessous (lp/xp enrichis)
-    _award_lp(game, result, store)  # LP : compétence (classé)
-    _award_xp(game, result, store)  # XP : carrière (tous modes)
+    game.result = result  # dict muté en place par l'award ci-dessous (xp enrichi)
+    _award_xp(game, result, store)  # XP : carrière (tous modes) — seule progression
     _record_daily_score(game, result, store)  # G16 : le défi du jour (classé, une fois)
     store.save_game(game)
     return result
@@ -2479,8 +2408,9 @@ def create_game(
     # G7-c — mode admin : demandé à la création ou forcé par l'environnement (debug).
     admin = body.admin or os.getenv("GAME_ADMIN", "") == "1"
     game_id = uuid4().hex[:12]
-    # Classée (§3) : rôle joueur-pays, non-inventé, partie libre OFF, hors admin.
-    # (La partie jouée jusqu'au bout / le forfait relèvent de la fin de partie, G11-c.)
+    # RG-1 — `ranked` ne pilote plus de LP : c'est le drapeau « tentative qui COMPTE »
+    # du Défi du jour (une tentative classée / jour ; un re-run libre ne rescore pas) et
+    # la garantie d'une table équilibrée pour cette tentative. Inerte hors défi.
     ranked = role == "player" and body.invent is None and not admin and not body.free
 
     # G17 — tempéraments : tirage seedé par la partie (une CLASSÉE joue toujours la
@@ -3845,15 +3775,14 @@ def list_games(
     return [_view(g, _sessions.get(g.id), resumable=g.id in snapshot_ids) for g in games]
 
 
-# --- comptes de ligue + fin de partie (G11-c §1 S6-S7, §2) ----------------------
+# --- comptes joueurs + fin de partie (G11-c §1 S6) ------------------------------
 
 
 class PlayerView(BaseModel):
     id: str
     pseudo: str
-    lp: int
-    rank: str  # nom du rang atteint (§2)
-    rank_floor: int  # seuil LP d'entrée du rang
+    rank: str  # RG-1 — nom du rang atteint, dérivé du NIVEAU (plus des LP)
+    rank_floor: int  # niveau d'entrée du rang
     is_admin: bool = False
     # G12 — carrière : XP + niveau + solde de marché.
     xp: int = 0
@@ -3870,12 +3799,11 @@ class UpsertPlayerBody(BaseModel):
 
 
 def _player_view(p: PlayerRecord) -> PlayerView:
-    name, floor = league.rank_for(p.lp)
     lvl = xp_mod.level_for(p.xp)
+    name, floor = xp_mod.rank_for_level(lvl.level)  # RG-1 — le rang suit le niveau
     return PlayerView(
         id=p.id,
         pseudo=p.pseudo,
-        lp=p.lp,
         rank=name,
         rank_floor=floor,
         is_admin=p.is_admin,
@@ -3892,8 +3820,8 @@ def _player_view(p: PlayerRecord) -> PlayerView:
 def upsert_player(
     body: UpsertPlayerBody, store: Annotated[GameStore, Depends(get_store)]
 ) -> PlayerView:
-    """Enregistre / rafraîchit le compte de ligue (à la connexion). lp/is_admin ne sont
-    jamais écrasés par cet appel — le LP est crédité par la fin de partie."""
+    """Enregistre / rafraîchit le compte joueur (à la connexion). is_admin/xp ne sont
+    jamais écrasés par cet appel — l'XP est créditée par la fin de partie."""
     store.upsert_player(PlayerRecord(id=body.id, pseudo=body.pseudo, created_at=_now()))
     player = store.get_player(body.id)
     assert player is not None
@@ -3913,7 +3841,7 @@ def delete_player(player_id: str, store: Annotated[GameStore, Depends(get_store)
     """G14 §3 — suppression du compte. Les parties PUBLIÉES survivent ANONYMES
     (owner_id effacé : le récit /r/{id} reste lisible) ; tout le reste est purgé —
     parties privées (rounds, transcripts, prompts capturés, snapshots), crises
-    maison, fiche de ligue et historiques LP/XP. La session côté client est fermée
+    maison, fiche joueur et historique d'XP. La session côté client est fermée
     par le front (signOut) ; côté Supabase, l'utilisateur auth relève de l'API admin
     GoTrue (hors périmètre : une reconnexion recréerait une fiche vierge)."""
     if store.get_player(player_id) is None:
@@ -3972,27 +3900,21 @@ def player_stats(
     )
 
 
-@router.get("/league", response_model=list[PlayerView])
-def league_leaderboard(
-    store: Annotated[GameStore, Depends(get_store)], limit: int = 100
-) -> list[PlayerView]:
-    """Classement global par LP (§1 S7). NB : `/api/leaderboard` est pris par le marché."""
-    return [_player_view(p) for p in store.leaderboard(limit)]
-
-
 @router.post("/games/{game_id}/forfeit", response_model=GameView)
 def forfeit_game(
     game_id: str, store: Annotated[GameStore, Depends(get_store)]
 ) -> GameView:
-    """Abandon d'une partie classée (§2) : défaite forfaitaire (−15 LP), partie finie."""
+    """RG-1 — abandon d'une partie en cours : on la termine tout de suite et on fige son
+    bilan (plus de pénalité de LP ; l'XP suit sa règle « terminée » = False). Idempotent
+    si la partie est déjà finie."""
     game = store.get_game(game_id)
     if game is None:
         raise HTTPException(status_code=404, detail="partie inconnue")
     if game.result is not None:  # déjà finie : idempotent
         return _view(game, _sessions.get(game_id))
-    if not game.ranked:
+    if game.status is not GameStatus.RUNNING:
         raise HTTPException(
-            status_code=409, detail="seule une partie classée peut être déclarée forfait"
+            status_code=409, detail="seule une partie en cours peut être abandonnée"
         )
     _finalize_game(game, _sessions.get(game_id), store, forfeit=True)
     _sessions.pop(game_id, None)  # la partie est close : plus de round jouable

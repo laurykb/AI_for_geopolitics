@@ -17,7 +17,6 @@ from storage.game_store import (
     DailyScore,
     GameRecord,
     GameStatus,
-    LpHistoryEntry,
     PlayerRecord,
     PromptEntry,
     RoundRecord,
@@ -206,27 +205,25 @@ class SupabaseGameStore:
         rows = self._db.select("daily_scores", order="created_at.asc")
         return [DailyScore.model_validate(r) for r in rows]
 
-    # --- comptes de ligue (G11-c) -------------------------------------------------
+    # --- comptes joueurs (G11-c) --------------------------------------------------
 
     def get_player(self, player_id: str) -> PlayerRecord | None:
         rows = self._db.select("players", {"id": player_id})
         return _player(rows[0]) if rows else None
 
     def upsert_player(self, player: PlayerRecord) -> None:
-        # N'écrit QUE id + pseudo : is_admin/lp gardent leurs valeurs en base (posés par
-        # le service_role / l'admin), jamais écrasés par une reconnexion.
+        # N'écrit QUE id + pseudo : is_admin/xp gardent leurs valeurs en base (posés par
+        # le service_role / la fin de partie), jamais écrasés par une reconnexion.
         self._db.upsert("players", {"id": player.id, "pseudo": player.pseudo})
 
     def delete_player(self, player_id: str) -> None:
-        """G14 §3 — efface la fiche de ligue et ses traces (LP/XP). NB : l'utilisateur
-        auth.users de Supabase n'est PAS supprimé ici (API admin GoTrue, hors du
-        périmètre PostgREST) — une reconnexion recréerait une fiche vierge."""
+        """G14 §3 — efface la fiche joueur et son historique d'XP. Purge aussi les lignes
+        lp_history dormantes (RG-1). NB : l'utilisateur auth.users de Supabase n'est PAS
+        supprimé ici (API admin GoTrue, hors du périmètre PostgREST) — une reconnexion
+        recréerait une fiche vierge."""
         self._db.delete("lp_history", {"player_id": player_id})
         self._db.delete("xp_history", {"player_id": player_id})
         self._db.delete("players", {"id": player_id})
-
-    def set_player_lp(self, player_id: str, lp: int) -> None:
-        self._db.update("players", {"id": player_id}, {"lp": lp})
 
     def set_player_xp(self, player_id: str, xp: int) -> None:
         self._db.update("players", {"id": player_id}, {"xp": xp})
@@ -239,9 +236,6 @@ class SupabaseGameStore:
         self._db.update(
             "players", {"id": player_id}, {"market_balance": player.market_balance + delta}
         )
-
-    def add_lp_history(self, entry: LpHistoryEntry) -> None:
-        self._db.insert("lp_history", [entry.model_dump()])
 
     def add_xp_history(self, entry: XpHistoryEntry) -> None:
         self._db.insert("xp_history", [entry.model_dump()])
@@ -281,17 +275,6 @@ class SupabaseGameStore:
             return False
         self._db.delete("custom_crises", {"id": crisis_id, "owner_id": owner_id})
         return True
-
-    def list_lp_history(self, player_id: str) -> list[LpHistoryEntry]:
-        rows = self._db.select("lp_history", {"player_id": player_id}, order="ts.asc")
-        return [LpHistoryEntry.model_validate(r) for r in rows]
-
-    def leaderboard(self, limit: int = 100) -> list[PlayerRecord]:
-        # Même tri que SQLite : LP décroissant, pseudo croissant en cas d'égalité (sinon
-        # l'ordre des ex æquo diverge entre les backends). LIMIT poussé côté serveur.
-        rows = self._db.select("players", order="lp.desc,pseudo.asc", limit=limit)
-        return [_player(r) for r in rows]
-
 
 # --- mapping lignes <-> modèles ---------------------------------------------------
 
@@ -343,7 +326,6 @@ def _player(row: dict) -> PlayerRecord:
         id=row["id"],
         pseudo=row["pseudo"],
         is_admin=bool(row.get("is_admin", False)),
-        lp=int(row.get("lp", 0)),
         created_at=str(row.get("created_at") or ""),
         xp=int(row.get("xp", 0)),
         market_balance=float(row.get("market_balance", 0.0)),

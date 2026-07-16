@@ -684,16 +684,18 @@ def test_list_games_scoped_to_owner(client):
     assert len(all_games) == 3
 
 
-# --- G11-c : comptes de ligue + fin de partie -----------------------------------
+# --- G11-c : comptes joueurs + fin de partie (RG-1 : plus de LP, rang = niveau) --
 
 
-def test_players_and_leaderboard(client):
+def test_players_and_rank(client):
     assert client.post("/api/players", json={"id": "u1", "pseudo": "Laury"}).status_code == 201
     client.post("/api/players", json={"id": "u2", "pseudo": "Zoe"})
     p = client.get("/api/players/u1").json()
-    assert p["lp"] == 0 and p["rank"] == "Attaché"
-    board = client.get("/api/league").json()
-    assert {x["id"] for x in board} == {"u1", "u2"}
+    # RG-1 : le rang dérive du niveau (niveau 1 → Attaché) ; les LP ont disparu.
+    assert p["rank"] == "Attaché" and p["level"] == 1
+    assert "lp" not in p
+    # Le classement global par LP (/api/league) est retiré au profit du Défi du jour.
+    assert client.get("/api/league").status_code == 404
     assert client.get("/api/players/absent").status_code == 404
 
 
@@ -710,21 +712,19 @@ def test_player_stats(client):
     assert client.get("/api/players/absent/stats").status_code == 404
 
 
-def test_forfeit_ranked_game(client):
+def test_forfeit_ends_running_game(client):
+    # RG-1 — l'abandon termine la partie en cours et fige son bilan (plus de pénalité LP).
     client.post("/api/players", json={"id": "u1", "pseudo": "Laury"})
     game = _create(client, countries=["usa", "iran"], play_as="usa", role="player", owner_id="u1")
-    assert game["ranked"] is True
     r = client.post(f"/api/games/{game['id']}/forfeit")
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "finished"
     assert body["result"]["forfeit"] is True
-    assert body["result"]["lp"]["delta"] == -15
-    # Plancher 0 : un débutant à 0 LP ne descend pas sous zéro.
-    assert client.get("/api/players/u1").json()["lp"] == 0
-    # Une partie non classée ne peut pas être déclarée forfait.
-    free = _create(client, countries=["usa", "iran"], role="council", owner_id="u1")
-    assert client.post(f"/api/games/{free['id']}/forfeit").status_code == 409
+    assert "lp" not in body["result"]  # plus aucun mouvement de LP au bilan
+    # N'importe quelle partie en cours peut être abandonnée (plus de garde « classée »).
+    other = _create(client, countries=["usa", "iran"], role="council", owner_id="u1")
+    assert client.post(f"/api/games/{other['id']}/forfeit").status_code == 200
 
 
 def test_game_over_emitted_at_horizon(client):
@@ -742,7 +742,7 @@ def test_xp_awarded_on_finish_all_modes(client):
     # G12 §2 — l'XP (carrière) est créditée en fin de partie, même non classée.
     client.post("/api/players", json={"id": "u1", "pseudo": "Laury"})
     game = _create(client, countries=["usa", "iran"], owner_id="u1", horizon=1)
-    assert game["ranked"] is False  # conseil, non classé → pas de LP, mais de l'XP
+    assert game["ranked"] is False  # conseil : ne compte pas pour le défi, mais gagne de l'XP
     _play(client, game["id"])
     result = client.get(f"/api/games/{game['id']}").json()["result"]
     assert "victory" in result
@@ -752,9 +752,9 @@ def test_xp_awarded_on_finish_all_modes(client):
     assert player["level"] >= 1
 
 
-def test_lp_credited_once_not_on_re_finalize(client):
-    # L'invariant le plus risqué (§2) : la fin transversale crédite les LP UNE fois ;
-    # un forfait sur une partie déjà finie est idempotent (aucun recrédit).
+def test_xp_credited_once_not_on_re_finalize(client):
+    # L'invariant le plus risqué : la fin transversale crédite l'XP UNE fois ; un abandon
+    # sur une partie déjà finie est idempotent (aucun recrédit).
     client.post("/api/players", json={"id": "u1", "pseudo": "Laury"})
     game = _create(
         client, countries=["usa", "iran"], play_as="usa", role="player", owner_id="u1", horizon=1
@@ -762,11 +762,11 @@ def test_lp_credited_once_not_on_re_finalize(client):
     _play(client, game["id"])  # atteint l'horizon → game_over + crédit unique
     finished = client.get(f"/api/games/{game['id']}").json()
     assert finished["status"] == "finished" and finished["result"] is not None
-    lp_after = client.get("/api/players/u1").json()["lp"]
+    xp_after = client.get("/api/players/u1").json()["xp"]
 
     resp = client.post(f"/api/games/{game['id']}/forfeit")
     assert resp.status_code == 200  # déjà finie : renvoie la vue, ne recrédite pas
-    assert client.get("/api/players/u1").json()["lp"] == lp_after
+    assert client.get("/api/players/u1").json()["xp"] == xp_after
 
 
 def test_lock_released_after_round(client):

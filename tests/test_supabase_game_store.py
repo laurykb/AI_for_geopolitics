@@ -6,11 +6,11 @@ from storage.game_store import (
     CustomCrisisRecord,
     GameRecord,
     GameStatus,
-    LpHistoryEntry,
     PlayerRecord,
     RoundRecord,
     SessionSnapshot,
     TranscriptEntry,
+    XpHistoryEntry,
 )
 from storage.supabase_store import SupabaseGameStore
 
@@ -73,18 +73,16 @@ def test_ownership_fields_roundtrip(store):
     )
 
 
-def test_player_and_lp_history_roundtrip(store):
-    # G11-c — comptes de ligue via PostgREST simulé.
+def test_player_and_xp_history_roundtrip(store):
+    # G11-c/RG-1 — comptes joueurs via PostgREST simulé : XP + historique d'XP.
     store.upsert_player(PlayerRecord(id="u1", pseudo="Laury"))
-    store.set_player_lp("u1", 23)
-    store.add_lp_history(LpHistoryEntry(id="h1", player_id="u1", game_id="g1", delta=23, ts="t1"))
+    store.set_player_xp("u1", 84)
+    store.add_xp_history(
+        XpHistoryEntry(id="x1", player_id="u1", game_id="g1", delta=84, reason="classic", ts="t1")
+    )
     got = store.get_player("u1")
-    assert (got.pseudo, got.lp) == ("Laury", 23)
-    assert [h.delta for h in store.list_lp_history("u1")] == [23]
-
-    store.upsert_player(PlayerRecord(id="u2", pseudo="Zoe"))
-    store.set_player_lp("u2", 300)
-    assert [p.id for p in store.leaderboard()] == ["u2", "u1"]
+    assert (got.pseudo, got.xp) == ("Laury", 84)
+    assert [h.delta for h in store.list_xp_history("u1")] == [84]
 
 
 def test_custom_crises_roundtrip(store):

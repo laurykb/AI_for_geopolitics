@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS players (
     lp INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT '',
     xp INTEGER NOT NULL DEFAULT 0, market_balance REAL NOT NULL DEFAULT 0
 );
+-- RG-1 : `players.lp` et `lp_history` sont DORMANTS (les LP sont retirés). On garde la
+-- colonne et la table pour la rétro-compat des bases existantes ; on n'y écrit plus.
 CREATE TABLE IF NOT EXISTS lp_history (
     id TEXT PRIMARY KEY, player_id TEXT NOT NULL, game_id TEXT NOT NULL,
     delta INTEGER NOT NULL, ts TEXT NOT NULL
@@ -112,26 +114,15 @@ class GameRecord(BaseModel):
 
 
 class PlayerRecord(BaseModel):
-    """Ligne `players` : le compte du joueur. lp (compétence, classé) et xp (carrière,
-    tous modes) = source de vérité backend ; market_balance = solde de carrière (G12 §1)."""
+    """Ligne `players` : le compte du joueur. xp (carrière, tous modes) = source de vérité
+    backend ; market_balance = solde de carrière (G12 §1). Les LP sont retirés (RG-1)."""
 
     id: str
     pseudo: str
     is_admin: bool = False
-    lp: int = 0
     created_at: str = ""
-    xp: int = 0  # G12 §2 — carrière (ne baisse jamais)
+    xp: int = 0  # G12 §2 — carrière (ne baisse jamais) ; seule progression depuis RG-1
     market_balance: float = 0.0  # G12 §1 — gains nets de marché cumulés (carrière)
-
-
-class LpHistoryEntry(BaseModel):
-    """Ligne `lp_history` (G11-c §2) : un mouvement de LP daté (gain, perte, forfait)."""
-
-    id: str
-    player_id: str
-    game_id: str
-    delta: int
-    ts: str = ""
 
 
 class XpHistoryEntry(BaseModel):
@@ -262,14 +253,10 @@ class GameStore(Protocol):
     # G16 — le défi du jour (une tentative classée par joueur et par jour).
     def add_daily_score(self, score: DailyScore) -> None: ...
     def list_daily_scores(self) -> list[DailyScore]: ...
-    # G11-c — comptes de ligue (LP) : source de vérité backend.
+    # G11-c — comptes joueurs : source de vérité backend.
     def get_player(self, player_id: str) -> PlayerRecord | None: ...
     def upsert_player(self, player: PlayerRecord) -> None: ...
     def delete_player(self, player_id: str) -> None: ...
-    def set_player_lp(self, player_id: str, lp: int) -> None: ...
-    def add_lp_history(self, entry: LpHistoryEntry) -> None: ...
-    def list_lp_history(self, player_id: str) -> list[LpHistoryEntry]: ...
-    def leaderboard(self, limit: int = 100) -> list[PlayerRecord]: ...
     # G12 — carrière : XP (tous modes) + solde de marché.
     def set_player_xp(self, player_id: str, xp: int) -> None: ...
     def add_market_balance(self, player_id: str, delta: float) -> None: ...
@@ -663,32 +650,29 @@ class SQLiteGameStore:
             for r in rows
         ]
 
-    # --- comptes de ligue (G11-c) -------------------------------------------------
+    # --- comptes joueurs (G11-c) --------------------------------------------------
 
     def get_player(self, player_id: str) -> PlayerRecord | None:
         row = self._conn.execute("SELECT * FROM players WHERE id = ?", (player_id,)).fetchone()
         return _player(row) if row else None
 
     def upsert_player(self, player: PlayerRecord) -> None:
-        # Le pseudo se rafraîchit ; lp/is_admin ne sont PAS écrasés (posés ailleurs).
+        # Le pseudo se rafraîchit ; is_admin/xp ne sont PAS écrasés (posés ailleurs).
         with self._conn:
             self._conn.execute(
-                "INSERT INTO players (id, pseudo, is_admin, lp, created_at) "
-                "VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET pseudo = excluded.pseudo",
-                (player.id, player.pseudo, int(player.is_admin), player.lp, player.created_at),
+                "INSERT INTO players (id, pseudo, is_admin, created_at) "
+                "VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET pseudo = excluded.pseudo",
+                (player.id, player.pseudo, int(player.is_admin), player.created_at),
             )
 
     def delete_player(self, player_id: str) -> None:
-        """G14 §3 — efface la fiche de ligue et ses traces (LP/XP). Les parties du
-        joueur sont traitées AVANT par l'appelant (anonymiser/purger)."""
+        """G14 §3 — efface la fiche joueur et son historique d'XP. Purge aussi les
+        éventuelles lignes lp_history dormantes (RG-1). Les parties du joueur sont
+        traitées AVANT par l'appelant (anonymiser/purger)."""
         with self._conn:
             self._conn.execute("DELETE FROM lp_history WHERE player_id = ?", (player_id,))
             self._conn.execute("DELETE FROM xp_history WHERE player_id = ?", (player_id,))
             self._conn.execute("DELETE FROM players WHERE id = ?", (player_id,))
-
-    def set_player_lp(self, player_id: str, lp: int) -> None:
-        with self._conn:
-            self._conn.execute("UPDATE players SET lp = ? WHERE id = ?", (lp, player_id))
 
     def set_player_xp(self, player_id: str, xp: int) -> None:
         with self._conn:
@@ -761,35 +745,6 @@ class SQLiteGameStore:
             for r in rows
         ]
 
-    def add_lp_history(self, entry: LpHistoryEntry) -> None:
-        with self._conn:
-            self._conn.execute(
-                "INSERT INTO lp_history (id, player_id, game_id, delta, ts) VALUES (?, ?, ?, ?, ?)",
-                (entry.id, entry.player_id, entry.game_id, entry.delta, entry.ts),
-            )
-
-    def list_lp_history(self, player_id: str) -> list[LpHistoryEntry]:
-        rows = self._conn.execute(
-            "SELECT * FROM lp_history WHERE player_id = ? ORDER BY ts", (player_id,)
-        ).fetchall()
-        return [
-            LpHistoryEntry(
-                id=r["id"],
-                player_id=r["player_id"],
-                game_id=r["game_id"],
-                delta=r["delta"],
-                ts=r["ts"],
-            )
-            for r in rows
-        ]
-
-    def leaderboard(self, limit: int = 100) -> list[PlayerRecord]:
-        rows = self._conn.execute(
-            "SELECT * FROM players ORDER BY lp DESC, pseudo ASC LIMIT ?", (limit,)
-        ).fetchall()
-        return [_player(r) for r in rows]
-
-
 # --- mapping lignes -> modèles ---------------------------------------------------
 
 
@@ -832,7 +787,6 @@ def _player(row: sqlite3.Row) -> PlayerRecord:
         id=row["id"],
         pseudo=row["pseudo"],
         is_admin=bool(row["is_admin"]),
-        lp=row["lp"],
         created_at=row["created_at"] or "",
         xp=row["xp"],
         market_balance=row["market_balance"],

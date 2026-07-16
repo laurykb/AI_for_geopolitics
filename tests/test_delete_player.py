@@ -1,6 +1,6 @@
 """Tests G14 backend (§3 Compte) : DELETE /api/players/{id} — les parties publiées
 sont conservées ANONYMES (owner_id effacé), tout le reste est purgé (parties privées,
-fiche de ligue, historiques LP/XP, crises maison)."""
+fiche joueur, historique d'XP, crises maison)."""
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,8 +11,8 @@ from app.main import app
 from inference.mock_backend import MockBackend
 from storage.game_store import (
     CustomCrisisRecord,
-    LpHistoryEntry,
     SQLiteGameStore,
+    XpHistoryEntry,
 )
 
 
@@ -51,8 +51,10 @@ def test_delete_player_anonymizes_published_and_purges_the_rest(client_store):
     published.published = True
     store.save_game(published)
 
-    store.add_lp_history(
-        LpHistoryEntry(id="h1", player_id="p1", game_id=private_id, delta=12, ts="t")
+    store.add_xp_history(
+        XpHistoryEntry(
+            id="x1", player_id="p1", game_id=private_id, delta=12, reason="classic", ts="t"
+        )
     )
     store.upsert_custom_crisis(
         CustomCrisisRecord(
@@ -66,9 +68,9 @@ def test_delete_player_anonymizes_published_and_purges_the_rest(client_store):
     resp = client.delete("/api/players/p1")
     assert resp.status_code == 204
 
-    # La fiche de ligue et ses traces disparaissent.
+    # La fiche joueur et ses traces disparaissent.
     assert client.get("/api/players/p1").status_code == 404
-    assert store.list_lp_history("p1") == []
+    assert store.list_xp_history("p1") == []
     assert all(c.owner_id != "p1" for c in store.list_custom_crises())
 
     # La partie publiée survit, anonyme ; la privée est purgée (record + session).
