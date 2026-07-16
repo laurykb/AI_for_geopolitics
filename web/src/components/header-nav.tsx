@@ -1,9 +1,10 @@
 "use client";
 
-/** Navigation du haut : Leaderboard + Informations (+ Admin si is_admin), le pseudo
- * (→ Réglages, G14) et la déconnexion. L'observatoire public a disparu (G11) : chacun
- * voit SES parties à l'accueil, l'admin voit tout via /admin. Campagne n'est plus un
- * lien : c'est un mode de jeu à part entière (choisi au lancement d'une partie). */
+/** Navigation du haut : Classement du jour + Informations (+ Admin si is_admin), le
+ * pseudo (→ Réglages, G14) et la déconnexion. RG-1 : le classement global par LP a
+ * disparu — le lien pointe vers le Défi du jour (/defi), seul classement conservé.
+ * L'observatoire public a disparu (G11) : chacun voit SES parties à l'accueil, l'admin
+ * voit tout via /admin. Campagne est un mode de jeu (choisi au lancement d'une partie). */
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -14,7 +15,7 @@ import { useTour } from "@/components/tour";
 
 const LINKS = [
   { href: "/accueil", key: "header.accueil" },
-  { href: "/leaderboard", key: "header.leaderboard" },
+  { href: "/defi", key: "header.leaderboard" },
   { href: "/informations", key: "header.informations" },
 ];
 

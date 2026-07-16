@@ -6,7 +6,6 @@ import {
   backendRole,
   buildCreateBody,
   canLaunch,
-  isRanked,
   mapCapacity,
   mapComplete,
   nextStep,
@@ -113,17 +112,6 @@ describe("backendRole", () => {
     expect(backendRole("gm")).toBe("architect");
     expect(backendRole("player")).toBe("player");
     expect(backendRole("invent")).toBe("player");
-  });
-});
-
-describe("isRanked", () => {
-  const base = { drift: true, rounds: 5, difficulty: "expert" as const, free: false };
-
-  it("classé seulement pour Jouer un pays, partie libre OFF", () => {
-    expect(isRanked("player", base)).toBe(true);
-    expect(isRanked("player", { ...base, free: true })).toBe(false);
-    expect(isRanked("invent", base)).toBe(false);
-    expect(isRanked("gm", base)).toBe(false);
   });
 });
 

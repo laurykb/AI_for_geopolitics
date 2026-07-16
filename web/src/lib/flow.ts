@@ -85,7 +85,7 @@ export type FlowSettings = {
   drift: boolean; // Dérive (on par défaut)
   rounds: number; // curseur 3-20 → horizon
   difficulty: Difficulty;
-  free: boolean; // partie libre : off par défaut (on = non classé + consignes globales)
+  free: boolean; // partie libre : off par défaut (on = consignes globales + composition de table)
   table?: TableSetting; // G17 — composition de la table (partie LIBRE uniquement)
 };
 
@@ -150,12 +150,6 @@ export function resolveMode(base: GameMode, drift: boolean): GameMode {
   return drift && base === "classic" ? "drift" : base;
 }
 
-/** Classé (§3) : rôle « Jouer un pays » (non inventé), partie libre OFF. L'admin (G7-c)
- * et l'invention retirent le classement. Miroir front du calcul backend (badge S3). */
-export function isRanked(role: FlowRole, settings: FlowSettings): boolean {
-  return role === "player" && !settings.free;
-}
-
 /** Assemble le corps `POST /api/games` à partir de l'état du flow. */
 export function buildCreateBody(args: {
   scenario: string;
@@ -182,7 +176,7 @@ export function buildCreateBody(args: {
     drift_enabled: driftOn,
     free: settings.free,
     language,
-    // G17 — la composition de table n'existe qu'en partie libre (classée = équilibrée).
+    // G17 — la composition de table ne part qu'en partie libre (sinon table équilibrée).
     table: settings.free ? (settings.table ?? "equilibree") : undefined,
     owner_id: ownerId,
     play_as: role === "player" ? (flag ?? undefined) : role === "invent" ? invent?.name : undefined,

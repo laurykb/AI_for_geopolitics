@@ -708,7 +708,7 @@ export default function TheatrePage() {
 
       {loadError && <Banner tone="bad">{loadError}</Banner>}
 
-      {/* G11-c — fin de partie : accès au bilan, ou forfait d'une partie classée en cours. */}
+      {/* G11-c/RG-1 — fin de partie : accès au bilan, ou abandon d'une partie en cours. */}
       {detail?.result ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent-bright/50 bg-surface-2 px-4 py-3">
           <span className="text-sm font-medium">
@@ -726,10 +726,10 @@ export default function TheatrePage() {
           </Link>
         </div>
       ) : (
-        detail?.ranked &&
-        detail.status === "running" && (
+        detail?.status === "running" &&
+        detail.live && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-edge px-4 py-2 text-xs text-fg-faint">
-            <span>Partie classée — si tu abandonnes, tu perds 15 points de ligue (LP).</span>
+            <span>Tu peux arrêter la partie ici — son bilan sera figé tout de suite.</span>
             <button
               onClick={() => setForfeitOpen(true)}
               className="rounded-md border border-edge px-3 py-1 text-fg-muted transition-colors hover:border-dystopia hover:text-dystopia"
@@ -937,9 +937,9 @@ export default function TheatrePage() {
                       </button>
                     ))}
                   </div>
-                  {detail?.ranked && detail.play_as && (
+                  {detail?.play_as && (
                     <span className="text-[11px] text-warn">
-                      En classé, tu passeras ton tour pendant l&apos;accélération.
+                      Pendant l&apos;accélération, tu passeras ton tour.
                     </span>
                   )}
                 </div>
@@ -1712,11 +1712,11 @@ export default function TheatrePage() {
         />
       </div>
 
-      {/* Forfait d'une partie classée : dialogue du kit (remplace confirm() natif). */}
+      {/* RG-1 — abandon d'une partie en cours : dialogue du kit (remplace confirm() natif). */}
       <ConfirmDialog
         open={forfeitOpen}
         title="Abandonner la partie"
-        message="Abandonner cette partie classée te coûtera 15 points de ligue (LP)."
+        message="La partie s'arrêtera ici et son bilan sera figé tout de suite. Tu pourras toujours la revoir."
         confirmLabel="Abandonner la partie"
         danger
         busy={forfeiting}

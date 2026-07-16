@@ -6,10 +6,10 @@
  * Débutant/Intermédiaire = SURFACE réduite (vues simples, replis fermés, 3 panneaux
  * d'observables au plus), Expert = tout affiché par défaut.
  *
- * La difficulté GAMEPLAY ne bouge pas : budget de renseignement, seuils du juge,
- * amplitude des deltas et multiplicateur de LP restent dans le moteur
- * (`simulation/difficulty.py`). Ici, on ne décide QUE de la densité de l'écran —
- * plus aucun observable n'est masqué par la difficulté. */
+ * La difficulté GAMEPLAY ne bouge pas : budget de renseignement, seuils du juge et
+ * amplitude des deltas restent dans le moteur (`simulation/difficulty.py`). Ici, on ne
+ * décide QUE de la densité de l'écran — plus aucun observable n'est masqué par la
+ * difficulté. */
 
 import type { Difficulty } from "./types";
 

@@ -7,9 +7,9 @@
  * proposition à la première connexion, le compagnon de coin d'écran et la partie de
  * démonstration jetable. Les pages ne portent QUE des attributs `data-tour`.
  *
- * Démo jetable : `POST /api/games` SANS owner_id (spectateur, non classée) — elle
- * n'apparaît donc ni dans « Tes dernières parties » (filtrées par owner) ni au
- * leaderboard (aucun LP/XP sans propriétaire), sans changement backend.
+ * Démo jetable : `POST /api/games` SANS owner_id (spectateur) — elle n'apparaît donc
+ * ni dans « Tes dernières parties » (filtrées par owner) ni au Classement du jour
+ * (aucune XP sans propriétaire), sans changement backend.
  */
 
 import { usePathname, useRouter } from "next/navigation";

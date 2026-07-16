@@ -29,7 +29,6 @@ import {
   type FlowRole,
   type FlowSettings,
   type FlowStep,
-  isRanked,
   mapCapacity,
   nextStep,
   prevStep,
@@ -367,9 +366,7 @@ function LobbyFlow() {
           </p>
         </>
       )}
-      {step === "role" && (
-        <RoleStep role={role} setRole={setRoleTrimming} settings={settings} />
-      )}
+      {step === "role" && <RoleStep role={role} setRole={setRoleTrimming} />}
       {step === "pays" && (
         <PaysStep
           {...{
@@ -546,13 +543,13 @@ function ModeStep({
               )}
               <Switch
                 label="Partie libre"
-                desc="Non classée — consignes globales autorisées (comme un Game Master)."
+                desc="Consignes globales autorisées (comme un Game Master) et composition de table."
                 checked={settings.free}
                 disabled={campaign}
                 onChange={(v) => setSettings({ ...settings, free: v })}
               />
-              {/* G17 — composition de la table (partie LIBRE uniquement : une classée
-                  joue toujours équilibrée, le backend le garantit aussi). */}
+              {/* G17 — composition de la table (partie LIBRE uniquement : sinon la table
+                  reste équilibrée, le backend le garantit aussi). */}
               {settings.free && (
                 <div>
                   <span className="mb-1 flex items-baseline justify-between text-xs text-fg-muted">
@@ -592,44 +589,28 @@ function ModeStep({
 function RoleStep({
   role,
   setRole,
-  settings,
 }: {
   role: FlowRole;
   setRole: (r: FlowRole) => void;
-  settings: FlowSettings;
 }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" data-tour="roles">
-      {ROLES.map((r) => {
-        const ranked = r.value === "player" && isRanked(r.value, settings);
-        return (
-          <button
-            key={r.value}
-            onClick={() => setRole(r.value)}
-            className={`rounded-lg border p-4 text-left transition-colors ${
-              role === r.value ? "border-accent-bright bg-surface-2" : "border-edge hover:border-edge-strong"
-            }`}
+      {ROLES.map((r) => (
+        <button
+          key={r.value}
+          onClick={() => setRole(r.value)}
+          className={`rounded-lg border p-4 text-left transition-colors ${
+            role === r.value ? "border-accent-bright bg-surface-2" : "border-edge hover:border-edge-strong"
+          }`}
+        >
+          <p
+            className={`text-sm font-semibold ${role === r.value ? "text-accent-bright" : "text-foreground"}`}
           >
-            <p className="flex items-center gap-2">
-              <span
-                className={`text-sm font-semibold ${role === r.value ? "text-accent-bright" : "text-foreground"}`}
-              >
-                {r.label}
-              </span>
-              {ranked ? (
-                <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[10px] font-semibold text-accent-bright">
-                  Classé
-                </span>
-              ) : (
-                <span className="rounded-full border border-edge px-2 py-0.5 text-[10px] text-fg-faint">
-                  Libre
-                </span>
-              )}
-            </p>
-            <p className="mt-1 text-xs text-fg-muted">{r.blurb}</p>
-          </button>
-        );
-      })}
+            {r.label}
+          </p>
+          <p className="mt-1 text-xs text-fg-muted">{r.blurb}</p>
+        </button>
+      ))}
     </div>
   );
 }

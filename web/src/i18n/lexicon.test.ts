@@ -39,10 +39,21 @@ const BANNED_FR_DICT = [
   "Fog Engine",
   "Escalation Ladder",
   "Crisis Replay",
+  // RG-1 — les LP / la ligue / le cadrage « classé » sont retirés du jeu.
+  "points de ligue",
+  "ligue",
 ];
 
 /** Termes interdits dans les VALEURS du dictionnaire anglais. */
-const BANNED_EN_DICT = ["ΔU", "scrubber", "UTC", "LMSR", "purged", "Real World"];
+const BANNED_EN_DICT = [
+  "ΔU",
+  "scrubber",
+  "UTC",
+  "LMSR",
+  "purged",
+  "Real World",
+  "league point", // RG-1 — les LP sont retirés
+];
 
 /** Les sigles « SI »/« SIs » nus (les IA) — bannis des dictionnaires (décision : « IA »).
  * En regex bornée : « crisis » ou « SIPRI » ne comptent pas. */
