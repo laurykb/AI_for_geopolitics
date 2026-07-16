@@ -1436,3 +1436,74 @@ reveal complet — SMOKE OK (52 s / 55 s), comportement identique aux passes 1-2
    CC-15c, non touchée ici mais voisine du point 2).
 
 <!-- fin section POLISH-3 -->
+
+<!-- début section RG-1 : suppression des LP / ligue (dispatch DISPATCH_REFONTE_GAMEPLAY.md) -->
+
+## RG-1 — Suppression des LP / ligue (2026-07-17)
+
+Refonte « resserrement » (`docs/JEU_VS_MOTEUR.md` §3) : **les LP disparaissent, XP +
+niveaux restent la seule progression.** Branche `feat/jeu-rg1-suppr-lp` (base `4b58383`).
+
+**Supprimé.**
+- Backend : `simulation/league.py` (formule LP, `FORFEIT_LP`, `rank_for`, plafond débutant),
+  le bloc `lp` de `data/gamefeel/params.json`, le levier `lp_multiplier` de la table de
+  difficulté, l'endpoint `GET /api/league`, `store.leaderboard()`, `PlayerRecord.lp`,
+  `LpHistoryEntry`, `set_player_lp` / `add_lp_history` / `list_lp_history`. Le bloc `lp` du
+  bilan de fin (`_build_result`) et `_award_lp` sont retirés — l'XP est le seul crédit.
+- Front : `web/src/lib/league.ts` (+ test), le panneau d'animation des LP en fin de partie,
+  les affichages LP (accueil hero, profil), la pastille « classée » des dernières parties,
+  les pastilles « Classé/Libre » des rôles + le helper `isRanked`, la pénalité « −15 LP » du
+  théâtre. Types : `LpResult`, `GameResult.lp`, `LeaguePlayer.lp`, `Player.lp`, `getLeague`.
+- i18n : `lp.aide`, `accueil.points-ligue`, `accueil.lp-avant`, `accueil.classee` (fr+en).
+
+**Rebranché sur le NIVEAU (l'art des blasons est intact).**
+- `simulation/xp.py` : `RANKS` + `rank_for_level(level)` (Attaché 1 → Éminence 30). Le
+  `PlayerView.rank`/`rank_floor` dérive du niveau.
+- Front `web/src/lib/rank.ts` (miroir) : `rankForLevel` + `RANKS`. `RankBadge`, accueil et
+  profil branchés dessus. Nouvelle clé `rang.aide`, `accueil.niveaux-avant`.
+
+**Leaderboard → Classement du jour.** Décision (§3 : « on garde un classement du jour ») :
+`/leaderboard` **redirige vers `/defi`** (le Défi du jour a déjà son classement du jour :
+`daily_scores`, `GET /api/daily`) — le plus simple, zéro duplication. Le lien du header
+pointe désormais sur `/defi` (« Classement du jour » / « Daily ranking »).
+
+**Rétro-compat.** Colonne `players.lp` et table `lp_history` **conservées mais dormantes**
+(SQLite `_SCHEMA` + `supabase/schema.sql` inchangés) : les bases existantes restent lisibles,
+on cesse simplement d'y écrire ; `delete_player` purge encore `lp_history`. Un `result_json`
+ancien contenant un bloc `lp` reste affichable (le champ n'est plus lu ni requis côté type).
+
+**Garde-fous « ranked » neutralisés sans casse.** `ranked` reste calculé (`role == player ET
+non inventé ET hors admin ET non libre`) mais ne pilote **plus de LP** : il ne sert plus qu'au
+**Défi du jour** (« 1 tentative qui compte / jour » via `_record_daily_score` / `_has_attempted`)
+et à forcer la **table équilibrée** de cette tentative. Le Défi n'est pas cassé (test
+`test_one_ranked_attempt_per_day_then_free_reruns` vert). `POST /forfeit` n'exige plus une
+partie « classée » : il abandonne **toute partie en cours** (sans pénalité).
+
+**Tests.** `simulation` : `test_league.py` supprimé, rangs testés dans `test_xp.py`
+(`test_rank_thresholds_follow_level`), `test_difficulty.py` nettoyé (plus de `lp_multiplier`).
+`app`/`storage` : `test_players_and_rank`, `test_forfeit_ends_running_game`,
+`test_xp_credited_once_not_on_re_finalize`, `test_player_upsert_preserves_xp`,
+`test_player_and_xp_history_roundtrip` remplacent leurs équivalents LP ; `test_leaderboard_
+sorted_by_lp` supprimé ; `test_delete_player` purge l'historique d'XP. Front : `rank.test.ts`
+remplace `league.test.ts` ; le test `isRanked` de `flow.test.ts` retiré ; verrou
+`lexicon.test.ts` durci (`ligue`, `points de ligue`, `league point` bannis).
+
+**Vert (tout relancé) :** pytest full suite, ruff, vitest (235), eslint, `next build` — OK.
+
+**Vigilances pour RG-2 (modes → réglages, s'empile sur cette branche).**
+- `web/src/lib/flow.ts` : `isRanked` retiré ; `FlowSettings.free` conservé (consignes
+  globales + composition de table), reformulé sans « non classé ». RG-2 remaniera `free`.
+- `web/src/app/lobby/page.tsx` : `RoleStep` ne prend plus `settings` (badge Classé/Libre
+  retiré) ; la « Partie libre » et sa composition de table restent sous « Options avancées ».
+- Théâtre `games/[id]/page.tsx` : le bandeau/dialogue « Abandonner » est reformulé et vaut
+  pour toute partie en cours+live (plus seulement « classée ») — à revoir si RG-2/UX veut le
+  restreindre aux rôles qui jouent.
+- Backend : `ranked` (champ `GameView`/`CreateGameRequest`/`GameRecord`) toujours présent,
+  usage réduit au Défi du jour (documenté dans le code).
+- Tour/tuto : **structure de `tour.json`/`tutorial.json` non touchée** ; seule la clé
+  `tour.2` (« Ta ligue » → « Ta progression ») a été neutralisée dans les dictionnaires.
+  **À réécrire côté structure par RG-5** : l'étape `tour.2` (encore intitulée pédagogiquement
+  autour de la progression, à réaligner sur le nouveau jeu). Aucune autre étape tour/tuto ne
+  mentionnait les LP.
+
+<!-- fin section RG-1 -->
