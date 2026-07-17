@@ -1507,3 +1507,90 @@ remplace `league.test.ts` ; le test `isRanked` de `flow.test.ts` retiré ; verro
   mentionnait les LP.
 
 <!-- fin section RG-1 -->
+
+<!-- début section RG-2 : modes → réglages (dispatch DISPATCH_REFONTE_GAMEPLAY.md) -->
+
+## RG-2 — Modes → réglages de partie (2026-07-17)
+
+Refonte « resserrement » (`docs/JEU_VS_MOTEUR.md` §2) : **cinq modes deviennent DEUX**
+(Classique + Campagne) ; le **Brouillard** (fog) et le **Réel/escalade** (escalation)
+deviennent des **réglages cochables composables** ; la **Dérive** reste transversale
+(drapeau, pas un choix — RG-3 la formalisera). Branche `feat/jeu-rg2-modes-reglages`
+(base `c5d1ea3`, s'empile sur RG-1).
+
+**Backend.**
+- Nouveau module pur `simulation/game_mode.py` (`from_legacy_mode`, `normalize_stored`,
+  `GameFlags`) : porte la rétro-compat des 5 anciens libellés. `tests/test_game_mode.py`
+  (8 tests). Mapping : `classic`→classic ; `drift`→classic + Dérive ; `fog`→classic +
+  Brouillard ; `escalation`→classic + Réel ; **`crisis`→classic** (c'était un simple
+  LIBELLÉ — la comparaison « Crisis Replay » se déclenche via `crisis_id`, pas le mode ;
+  pas de drapeau à poser, la capacité est préservée) ; `campaign`→campaign.
+- `GameMode = Literal["classic","campaign"]`. `CreateGameRequest` gagne `fog`/`escalation`
+  (bool). Tous les `session.mode == MODE_DRIFT` → `session.drift_enabled` ; les
+  `mode == "escalation"` → `session.escalation` ; `mode != "fog"` (désinfo) →
+  `not session.fog`. `_victory` : la branche « crisis » devient « campaign » (score ≥ 50
+  pour TOUS les chapitres, plus seulement les crises — la branche escalade garde sa
+  précédence). `player_stats.drift_games/drift_caught` comptent via `drift_enabled`.
+- Store : colonnes `fog`/`escalation` (schéma + migration ALTER + INSERT/UPDATE, SQLite
+  **et** Supabase). `_game` (lignes→GameRecord) passe par `normalize_stored` : **lecture
+  tolérante** des parties EN BASE, sans migration destructive. Garde-fou : un ancien mode
+  explicitement non-Dérive (`fog`/`escalation`/`crisis`) NE réveille JAMAIS la Dérive au
+  restart (la colonne `drift_enabled` bruitée des bases héritées est ignorée dans ce cas).
+- `campaign_api.start_chapter` : mappe `chapter.mode` (libellé de fiche) → `mode="campaign"`
+  + drapeaux (la Dérive suit la pédagogie du chapitre, §2). `test_admin_crisis` : la partie
+  de test devient `classic` (rejoue via `crisis_id`). Défi du jour : déjà `classic`.
+
+**⚠️ `drift_enabled` — état à connaître pour RG-3 (qui s'empile ici).**
+- **`CreateGameRequest.drift_enabled` : défaut passé de `True` → `False`.** Raison : gater
+  le mécanisme Dérive sur ce drapeau + garder défaut True aurait armé la traîtresse sur
+  CHAQUE partie classique (≥3 pays imposés, réflexion cachée, fin « caught »…) — donc
+  cassé des dizaines de tests non-Dérive ET « forcé » la Dérive, ce que le dispatch
+  interdit ici (« NE le force pas ici, c'est RG-3 »). L'API ne force donc PAS la Dérive.
+- **`GameRecord.drift_enabled` : défaut resté `True`** (drapeau nominal, verrou
+  `test_game_store`), mais `create_game` écrit toujours la valeur explicite du corps.
+- **Le mécanisme Dérive est désormais gaté sur `drift_enabled`** (plus sur `mode`). RG-3
+  doit : (1) pour `mode == "classic"`, rendre la Dérive **toujours active** (forcer
+  `drift_enabled=True` à la création classique, côté back ET front — le front ne l'envoie
+  plus du tout aujourd'hui) ; (2) ajouter le nombre caché 1-2 + le score mixte. Le chemin
+  `classic` est propre : `session.drift_enabled` pilote tout (`_prepare_drift`,
+  `_finish_drift_if_over`, reveal, `hide`, intel suspect, epilogue, victoire).
+
+**Front.**
+- `lib/types.ts` : `GameMode = "classic"|"campaign"` ; `GameView`/`CreateGameBody` gagnent
+  `fog`/`escalation` ; `ChapterView.mode` devient `string` (la fiche garde son libellé).
+- `lib/modes.ts` : `MODES` réduit à 2 (Classique, Campagne) — noms des anciens modes
+  retirés (Monde réel / Chaotique / La Dérive).
+- `lib/flow.ts` : `FLOW_MODES` → 2 cartes ; `FlowSettings` perd `drift`, gagne
+  `fog`/`escalation` ; **`resolveMode` supprimé** ; `buildCreateBody` envoie
+  `mode/fog/escalation` (plus de `drift_enabled`). `flow.test.ts` réécrit (les 2 tests
+  `resolveMode` retirés → vitest 235 → 233).
+- `app/lobby/page.tsx` : 2 cartes de mode + **interrupteurs Brouillard / « Crise qui
+  monte »** (kit `Switch` existant, réutilisé pour la cohérence) au-dessus d'« Options
+  avancées » ; toggle « Dérive » retiré ; désactivés en Campagne (comme rounds/difficulté).
+  Ancre `data-tour="modes"` conservée sur la grille 2-cartes.
+- Théâtre `games/[id]/page.tsx` : les gates `mode === "fog"/"escalation"/"crisis"` →
+  `detail.fog` / `detail.escalation` / `canReplayCrisis` (dérivé : classique LIBRE, hors
+  Campagne/Défi/test) ; pilules de saveur (Brouillard / Crise qui monte) affichées.
+  `intel.tsx` : prop `mode` → `fog`. `replay/page.tsx` : `mode === "drift"` →
+  `drift_enabled`.
+
+**Textes tour/tuto (mandat permanent).** Seule mention d'un mode supprimé = `tour.3.texte`
+(« commence par Classique, tu découvriras les autres ») → neutralisée fr+en (2 modes, plus
+d'« autres »). Ancune autre clé `tour.*`/`tuto.*` ne nommait Real World / Chaotique / Fog
+Engine / Escalation Ladder / Crisis Replay (verrou `lexicon.test.ts` déjà vert). **À
+réécrire côté structure par RG-5** : `tour.3` (« Les modes ») devrait présenter les 2 modes
++ les 2 interrupteurs de saveur — l'étape existe et s'ancre toujours sur `data-tour="modes"`.
+
+**Vigilances pour RG-3 (Dérive au cœur, s'empile ici).** Voir le bloc ⚠️ ci-dessus :
+`drift_enabled` défaut API = False (à basculer/forcer pour « toujours active en
+Classique ») ; mécanisme entièrement gaté sur `drift_enabled` (chemin `classic` propre) ;
+le front n'envoie plus AUCUN signal Dérive → RG-3 doit décider comment armer la Dérive
+en Classique (forcer côté back à la création `classic` est le plus simple).
+
+**Vert (tout relancé et CONSTATÉ).** pytest **917 passed, 3 skipped** (909 base + 8
+`test_game_mode`, zéro régression) ; ruff **All checks passed** ; vitest **233 passed**
+(235 − 2 `resolveMode`) ; eslint **0** ; `next build` OK (TypeScript clean). Revue de diff
+(auto + skill `code-review`) : 0 Critical ; changement de victoire Campagne (score ≥ 50
+pour tous les chapitres) noté et jugé plus cohérent, aucun test cassé.
+
+<!-- fin section RG-2 -->
