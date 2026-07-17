@@ -2148,3 +2148,54 @@ comportement du jeu** (branche `chore/cleanup-a-hygiene`, base `e1ec82a`). Bilan
 
 <!-- fin section CLEANUP-A -->
 
+## CLEANUP-C — Frontend : simplification, découpe & lisibilité (2026-07-17)
+
+Passe « vitrine GitHub » côté `web/` **uniquement** (branche `chore/cleanup-c`, base `f898274`) :
+découper le monolithe front, dédupliquer, retirer le mort — **comportement et rendu strictement
+préservés** (filet = vitest + eslint + `next build` ; la page théâtre n'a pas de test de rendu, donc
+extractions verbatim vérifiées par tsc + revue). Barrière verte à chaque commit.
+
+### Ce qui a été fait
+- **Code mort retiré** (`f01c6f2`, `chore:`) : `fmtDate` (lib/format, 0 référence) + le bus
+  d'événements de scène spéculatif (`StageEventName`/`onStageEvent`/`emitStageEvent`/`stageListener`
+  dans lib/stage — « point d'extension pour plus tard » jamais câblé). `StageQueue`/`uTint`/`localU`…
+  restent (utilisés + testés). Vérifié par grep : 0 appelant hors tests.
+- **Champs de saisie partagés** (`8edeea0`, `refactor(ui)`) : `TextInput`/`SelectField` dans le kit
+  (`ui.tsx`, base `FIELD_BASE`) remplacent 9 `<input>`/`<select>` recopiés à l'identique dans
+  page.tsx. Rendu identique (mêmes utilitaires Tailwind ; l'ordre sans conflit ne change rien). Les 2
+  petits selects du bloc brouillard + `fogNarrative` (padding `px-2 py-1.5`) **non** convertis (base
+  différente) — conversion aurait été une régression.
+- **Monolithe `games/[id]/page.tsx` découpé : 1768 → 1286 lignes (−27 %)**, en composants/hook
+  cohérents sous `web/src/components/theatre/` + `web/src/lib/` :
+  - `490cf1f` : `TheatreSkeleton`, `CampaignScorePanel`, `StoryPublishPanel` (ce dernier porte
+    désormais l'état `publishing`).
+  - `f4d2f01` : `ObservablesGrid` (~135 l. — Dossier + « Le monde » + « Renseignement » + « La table » ;
+    le gate `showEngine` mode Expert préservé à l'identique).
+  - `2b038f2` : `deriveStageView` (lib/stage-view) — dérivation **pure** « direct vs relecture » sortie
+    du composant, consommée par destructuration (0 site d'appel JSX modifié) + **nouveau test**
+    `stage-view.test.ts` (4 cas) qui verrouille le comportement.
+  - `6d9f919` : `RoundTranscript` (~207 l. — colonne de droite ; splice exact ; le cadre `<aside>`
+    ref/scroll/annonce a11y reste dans page.tsx).
+  - `2ac3a97` : `MotionForm` (le seul sous-bloc du panneau de contrôle à frontière propre).
+- **Tests** : 247 → **251** (les 4 de `stage-view`). eslint 0, `next build` OK à chaque étape.
+- **Revue** (`superpowers:requesting-code-review` + `vercel:react-best-practices`) : **0 Critical /
+  0 Important** — refactor jugé byte-fidèle (props threadées = usage original, gates `showEngine`/fog/
+  ultimatum inchangés, className superset-égal, code mort à 0 référence).
+
+### Dette laissée (par prudence — « stop quand risqué »)
+- **Le panneau de contrôle** (« Jouer un round » + décret d'événement à état multiple : titre/desc/
+  gravité + ultimatum + champs brouillard) reste dans page.tsx. Le découper entièrement demanderait
+  ~21-30 props état+setter interdépendants (ou un refactor d'état groupé/reducer) — sans filet de
+  rendu, ça **déplacerait le fouillis** sans le réduire et risquerait une régression silencieuse. À
+  reprendre avec un test de rendu (RTL) ou un regroupement d'état assumé. `MotionForm` en a été sorti ;
+  le reste est bien commenté et intact.
+- **`ui.test.ts:40`** : une erreur `tsc --noEmit` **préexistante** (quirk d'overload
+  `createElement(Banner, …)`) — hors périmètre (fichier non modifié, `Banner` non touché ; `next build`
+  et vitest passent car les tests ne sont pas type-checkés par le build).
+
+### Fusion
+Périmètre `web/` **disjoint** de B (backend `app/`, `simulation/`…) et D (docs) → fusion triviale
+attendue. 7 commits atomiques, tête = `2ac3a97`.
+
+<!-- fin section CLEANUP-C -->
+
