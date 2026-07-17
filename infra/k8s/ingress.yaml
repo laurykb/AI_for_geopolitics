@@ -1,6 +1,6 @@
 # Point d'entrée HTTP unique du jeu.
 #   http://localhost/      -> front Next.js (theatre-web:3000)
-#   http://localhost/api/* -> API FastAPI (theatre-api:8000), préfixe /api retiré
+#   http://localhost/api/* -> API FastAPI (theatre-api:8000), préfixe /api conservé
 #
 # Prérequis : le contrôleur ingress-nginx doit être installé dans le cluster.
 # Pour kind (variante avec le label ingress-ready posé par kind-cluster.yaml) :
