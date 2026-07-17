@@ -117,11 +117,22 @@ def _temperaments_of(client, game_id: str) -> dict[str, str]:
     return {cid: c["temperament"] for cid, c in world["countries"].items()}
 
 
+# RG-3 — le Classique arme la Dérive, dont la FAÇADE (le traître peut recevoir un masque
+# « colombe » seedé) modifie 1-2 tempéraments. Pour tester la mécanique de TABLE en
+# isolation (le réglage `table`, sans le masque), on prend une partie hors-Dérive (Campagne).
+
+
 def test_ranked_game_ignores_the_table_setting(client_store):
     client, _ = client_store
     game = client.post(
         "/api/games",
-        json={"countries": SEVEN, "play_as": "usa", "role": "player", "table": "faucons"},
+        json={
+            "countries": SEVEN,
+            "mode": "campaign",
+            "play_as": "usa",
+            "role": "player",
+            "table": "faucons",
+        },
     ).json()
     temps = _temperaments_of(client, game["id"])
     counts = {t: sum(1 for v in temps.values() if v == t) for t in TEMPERAMENTS}
@@ -131,7 +142,8 @@ def test_ranked_game_ignores_the_table_setting(client_store):
 def test_free_game_honors_the_table_setting_and_it_survives_restart(client_store):
     client, _ = client_store
     game = client.post(
-        "/api/games", json={"countries": SEVEN, "free": True, "table": "faucons"}
+        "/api/games",
+        json={"countries": SEVEN, "mode": "campaign", "free": True, "table": "faucons"},
     ).json()
     assert set(_temperaments_of(client, game["id"]).values()) == {"faucon"}
     # Restart : le tempérament vit dans le snapshot du monde, pas de re-tirage.
@@ -160,7 +172,12 @@ def test_crisis_sheet_can_impose_temperaments(client_store):
     )
     game = client.post(
         "/api/games",
-        json={"countries": SEVEN, "free": True, "scenario": "crise:table-imposee"},
+        json={
+            "countries": SEVEN,
+            "mode": "campaign",  # hors-Dérive : la façade ne recouvre pas les tempéraments imposés
+            "free": True,
+            "scenario": "crise:table-imposee",
+        },
     ).json()
     temps = _temperaments_of(client, game["id"])
     assert temps["usa"] == "colombe" and temps["iran"] == "faucon"
