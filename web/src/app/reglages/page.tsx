@@ -11,7 +11,7 @@ import { useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { useSettings } from "@/components/settings-provider";
 import { useTour } from "@/components/tour";
-import { Banner, ConfirmDialog, Panel, PanelTitle, Spinner, Switch } from "@/components/ui";
+import { Banner, ConfirmDialog, Eyebrow, Panel, PanelTitle, Spinner, Switch } from "@/components/ui";
 import { deletePlayer, humanizeError } from "@/lib/api";
 import { getAuth } from "@/lib/auth";
 import type { Lang } from "@/lib/i18n";
@@ -41,9 +41,7 @@ export default function ReglagesPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <header>
-        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-fg-faint">
-          {t("reglages.kicker")}
-        </p>
+        <Eyebrow>{t("reglages.kicker")}</Eyebrow>
         <h1 className="text-2xl font-semibold tracking-tight">{t("reglages.titre")}</h1>
       </header>
 

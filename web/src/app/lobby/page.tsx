@@ -16,7 +16,7 @@ import { SpeakerAvatar } from "@/components/avatar";
 import { useSettings, useT } from "@/components/settings-provider";
 import { Globe } from "@/components/globe";
 import { SelectMap, type Fiche } from "@/components/select-map";
-import { Banner, Panel, PanelTitle, Spinner, Switch } from "@/components/ui";
+import { Banner, Eyebrow, Panel, PanelTitle, Spinner, Switch } from "@/components/ui";
 import { createGame, getCampaign, getSources, humanizeError, startChapter } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
@@ -293,9 +293,9 @@ function LobbyFlow() {
 
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-fg-faint">
+          <Eyebrow>
             {t("lobby.kicker")} {stepIndex + 1}/3
-          </p>
+          </Eyebrow>
           <h1 className="text-2xl font-semibold tracking-tight">
             {step === "mode"
               ? t("lobby.titre-mode")

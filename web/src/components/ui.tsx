@@ -9,6 +9,25 @@ import { Hint } from "./hint";
 // Ré-exportée ici : tous les call sites importent la bulle d'aide depuis le kit.
 export { Hint };
 
+/** Surtitre (« eyebrow ») du kit : le petit intitulé capitalisé, espacé, gris discret
+ * qui coiffe titres de panneaux et d'écrans. UN seul réglage typographique partagé
+ * (taille, graisse, interlettrage) — avant, chaque écran le recopiait avec un
+ * interlettrage légèrement différent (0,14 / 0,20 / 0,30 em) — on retient la valeur
+ * dominante (0,14 em) : les surtitres de panneaux ne bougent pas d'un pixel. */
+export function Eyebrow({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <p className={`text-[11px] font-medium uppercase tracking-[0.14em] text-fg-faint ${className}`}>
+      {children}
+    </p>
+  );
+}
+
 export function Panel({ children, className = "" }: { children: ReactNode; className?: string }) {
   // Verre spatial : surface translucide + flou d'arrière-plan (le ciel étoilé transparaît),
   // liseré clair en haut (lumière rasante) + ombre douce pour l'élévation.
@@ -36,11 +55,7 @@ export function PanelTitle({
   return (
     <header className="mb-4 flex items-start justify-between gap-3">
       <div>
-        {kicker && (
-          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-fg-faint">
-            {kicker}
-          </p>
-        )}
+        {kicker && <Eyebrow>{kicker}</Eyebrow>}
         <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
           {title}
           {hint && <Hint text={hint} />}

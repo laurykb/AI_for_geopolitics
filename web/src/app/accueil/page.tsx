@@ -78,10 +78,10 @@ export default function AccueilPage() {
       {/* Hero façon connexion : la planète + bienvenue + les deux actions centrées. */}
       <div className="relative flex min-h-[calc(100vh-12rem)] flex-col items-center justify-center gap-6 overflow-hidden text-center">
         <div className={chrome} data-tour="hero">
-          <p className="text-[11px] font-medium uppercase tracking-[0.3em] text-fg-faint">
-            Théâtre des super-intelligences
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-5xl">
+          {/* RG-6 — le surtitre « Théâtre des super-intelligences » doublonnait la marque
+              de l'en-tête juste au-dessus : le hero commence directement sur l'accueil
+              nommé (le blason de rang porte le contexte). */}
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-5xl">
             {t("accueil.bienvenue")}{" "}
             <Link href="/profil" className="text-accent-bright hover:underline" title="Voir mon profil">
               {player.pseudo}

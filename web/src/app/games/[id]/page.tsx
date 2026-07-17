@@ -46,6 +46,7 @@ import {
   Banner,
   ConfirmDialog,
   Dot,
+  Eyebrow,
   Panel,
   PanelTitle,
   Pill,
@@ -634,12 +635,12 @@ export default function TheatrePage() {
       )}
       <header className="flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-fg-faint">
+          <Eyebrow>
             Théâtre live ·{" "}
             <span className="font-mono normal-case" title={id}>
               {id.slice(0, 8)}
             </span>
-          </p>
+          </Eyebrow>
           <h1 className="text-xl font-semibold tracking-tight">
             {detail?.scenario ?? "…"}
             <span className="ml-3 text-sm font-normal text-fg-muted">
