@@ -11,6 +11,7 @@ Référence complète : `AI_for_Geopolitics_Etat_de_lart.pdf` (état de l'art & 
 
 Au fond, le projet met en scène un **futur peuplé de super-intelligences** (plus intelligentes que les humains) dont les **États se servent pour négocier** à la plus haute instance ; on **mesure** si ce monde penche vers l'**utopie ou la dystopie**, et un **marché de prédiction** (argent fictif, façon Polymarket) laisse le public **parier sur ce que feront ces IA** — *prédire une super-intelligence* est le cœur intellectuel.
 → Nord détaillé : **`docs/vision.md`**. Feuille de route des mécaniques (ancrage réel + découpage Cowork/Claude Code) : **`docs/roadmap_features.md`**.
+→ **Cap gameplay courant (resserrement RG, 2026-07) : `docs/JEU_VS_MOTEUR.md`** — le *jeu* livré est **démasquer l'IA qui trahit (1 ou 2, nombre caché) tout en gardant le monde debout** ; **2 modes** (Classique + Campagne), Brouillard/Réel = réglages ; progression **XP + niveaux** (**les LP / la ligue sont supprimés**) ; l'instrumentation M1-M7 vit en **mode Expert / Informations**, pas en façade. La vision reste le moteur ; lire ce doc avant toute reprise gameplay.
 
 ## Contrainte matérielle (toujours en tête)
 

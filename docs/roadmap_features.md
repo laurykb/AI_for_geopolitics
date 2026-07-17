@@ -2,6 +2,15 @@
 
 > Décline la vision (`docs/vision.md`) en mécaniques concrètes. Chaque brique est **ancrée dans un cadre réel** (recherché) et **découpée** entre Cowork et Claude Code, dans le process habituel du projet.
 
+> **⚠️ Cap gameplay courant : `docs/JEU_VS_MOTEUR.md` (resserrement RG, 2026-07).** Cette
+> feuille de route reste le catalogue d'ambitions « banc d'essai IA ». Mais le *jeu* livré
+> s'est **resserré** : cœur = démasquer l'IA qui trahit + garder le monde debout ; **2 modes**
+> (Classique + Campagne) au lieu de la plateforme multi-modes ; **plus de LP / ligue** (XP +
+> niveaux seuls) ; l'instrumentation fine est réservée au **mode Expert**. Le lot G18-G24
+> (barème Kahn en façade, signal-action, promesses…) est **abandonné en façade** (idées
+> gardées ici seulement si l'axe « plateforme d'éval » redevient prioritaire — cf.
+> JEU_VS_MOTEUR §5). Ne pas planifier de nouvelle mécanique de surface sans relire ce cap.
+
 **Légende.** 🎯 sur-thème (« prédire l'IA ») · 💻 quasi gratuit sur RTX 2060 Super (8 Go) · 💰 plus lourd/coûteux.
 **Découpage.** **[CW] Cowork** = recherche, design, spéc, données sourcées, docs. **[CC] Claude Code** = implémentation, GPU, tests, commits (sur ta machine).
 **Règle VRAM (rappel).** 8 Go = **un seul modèle génératif à la fois**. Tout ce qui est « 2ᵉ LLM » (forecaster, commentateur, juge) tourne **en séquentiel** avec le négociateur, ou via **petit modèle** (llama3.2 3B) / **API**. Jamais en concurrence sur le GPU.
