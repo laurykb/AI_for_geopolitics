@@ -71,17 +71,14 @@ import {
   type FlashMarket,
 } from "@/lib/market";
 import { FlashMarketsPopup } from "@/components/flash-markets";
-import { localU } from "@/lib/stage";
+import { deriveStageView } from "@/lib/stage-view";
 import type {
   AccountView,
-  AttributeDelta,
   ChapterView,
   DriftReveal,
   GameDetail,
   GeoEvent,
-  LadderView,
   LibraryView,
-  Perception,
 } from "@/lib/types";
 
 const TURN_CHOICES = [
@@ -489,64 +486,35 @@ export default function TheatrePage() {
   // Scrub d'un round passé : états finaux seulement, sans animations de streaming (spec).
   const viewed = selected !== "live" ? detail?.rounds[selected] : undefined;
 
-  const stageU = viewed
-    ? (viewed.trajectory?.utopia ?? 0.5)
-    : (round.trajectory?.utopia ?? persistedU.at(-1) ?? 0.5);
-  const stageDeltas = ((viewed ? viewed.deltas : round.verdict?.deltas) ??
-    []) as AttributeDelta[];
-  const uByCountry = Object.fromEntries(summit.map((c) => [c, localU(stageU, c, stageDeltas)]));
-  const stageSpeaking = viewed
-    ? null
-    : streaming
-      ? ([...round.turns].reverse().find((t) => !t.done)?.country ?? null)
-      : awaitingHuman
-        ? (detail?.play_as ?? null)
-        : null;
-  const stagePerceptions = viewed
-    ? ((viewed.judge?.perceptions ?? undefined) as Record<string, Perception> | undefined)
-    : round.perceptions;
-  const stageEventActors = viewed
-    ? (viewed.event as { actors?: string[] } | undefined)?.actors
-    : round.event?.actors;
-  const stageMisled = Object.fromEntries(
-    Object.entries(stagePerceptions ?? {})
-      .filter(([, p]) => isMisled(p, stageEventActors))
-      .map(([c, p]) => [c, p.narrative ?? p.suspected_actor ?? "perception brouillée"]),
-  );
-  const stageSuspended = viewed
-    ? ((viewed.judge?.suspended ?? []) as string[])
-    : (round.suspendedNow ?? []);
-  const stageEventTitle = viewed
-    ? (viewed.event as { title?: string } | undefined)?.title
-    : round.event?.title;
-  const breatheKey = round.status === "done" ? (round.roundNo ?? 0) : 0;
-
-  // a11y — annonce du direct pour les lecteurs d'écran (région sr-only, pas le stream
-  // token par token qui serait illisible : on annonce les jalons).
-  const lastDoneTurn = [...round.turns].filter((t) => t.done).at(-1);
-  const liveAnnouncement =
-    round.status === "done"
-      ? `Round ${round.roundNo ?? playedRounds} terminé.`
-      : round.verdict
-        ? "Le juge a rendu son verdict."
-        : lastDoneTurn
-          ? `${speakerMeta(lastDoneTurn.country).label} a parlé.`
-          : round.event
-            ? `Événement : ${round.event.title}.`
-            : "";
-
-  const bandLiveU =
-    showLive && round.status !== "done" && round.trajectory ? round.trajectory.utopia : undefined;
-  const bandRisk = (viewed ? viewed.risk : round.risk) ?? detail?.rounds.at(-1)?.risk;
-  const bandLadder = viewed
-    ? ((viewed.judge?.ladder ?? undefined) as LadderView | undefined)
-    : round.ladder;
-  const prevRungIndex = viewed ? (selected as number) - 1 : (detail?.rounds.length ?? 0) - 1;
-  const prevRung =
-    ((detail?.rounds[prevRungIndex]?.judge?.ladder ?? undefined) as LadderView | undefined)
-      ?.reached ?? null;
-  const treatiesUpdate =
-    (viewed ? viewed.judge.treaties : round.treaties) ?? detail?.rounds.at(-1)?.judge.treaties;
+  // Modèle de vue de la scène (direct vs relecture d'un round passé) — dérivation
+  // pure et testée (lib/stage-view). La page ne tranche plus « live vs viewed »
+  // ligne à ligne : elle consomme le modèle.
+  const {
+    stageU,
+    uByCountry,
+    stageSpeaking,
+    stageMisled,
+    stageSuspended,
+    stageEventTitle,
+    breatheKey,
+    liveAnnouncement,
+    bandLiveU,
+    bandRisk,
+    bandLadder,
+    prevRung,
+    treatiesUpdate,
+  } = deriveStageView({
+    round,
+    detail: detail ?? null,
+    viewed,
+    summit,
+    streaming,
+    awaitingHuman,
+    playedRounds,
+    persistedU,
+    showLive,
+    selected,
+  });
 
   // Les avis persistants (motion, suspensions, campagne, dérive) s'empilaient au-dessus
   // de la scène ; à partir de 2, ils se compactent en une ligne de pastilles dépliable
