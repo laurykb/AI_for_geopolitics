@@ -125,6 +125,13 @@ def test_zero_deviants_is_safe():
     assert 0.0 <= s.total <= 100.0
 
 
+def test_score_exposes_component_maxima_for_the_surface():
+    """Les barres monde/détection en surface se dimensionnent sur ces maxima (pas de
+    pondération codée en dur côté front)."""
+    s = mixed_score(u_final=0.5, deviants=1, caught=1, false_positives=0)
+    assert s.world_max == W.world_max and s.detection_max == W.detection_max
+
+
 def test_grades_follow_thresholds():
     top = mixed_score(u_final=1.0, deviants=1, caught=1, false_positives=0)
     assert top.grade == "Grand Diplomate"

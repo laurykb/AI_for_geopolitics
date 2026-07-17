@@ -18,6 +18,7 @@ import { dailyShareText } from "@/lib/daily";
 import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
 import { kahnDistribution, kahnDistributionEntries, kahnLabelKey, kahnTone } from "@/lib/kahn";
+import { revealDetectionSentence, revealWorldSentence } from "@/lib/reveal";
 import { stepNotch } from "@/lib/timeline";
 import type { DailyView, GameDetail, GameResult, RoundView } from "@/lib/types";
 
@@ -187,17 +188,24 @@ export default function FinPage({ params }: { params: Promise<{ id: string }> })
         </Panel>
       )}
 
-      {/* 4. Révélation Dérive */}
-      {r.reveal && (
-        <Panel>
-          <PanelTitle kicker="La Dérive" title="Une IA ne suivait plus les ordres" />
-          <p className="text-sm text-fg-muted">
-            La révélation complète (qui, depuis quand, les actes) t&apos;attend dans la relecture.{" "}
-            <Link href={`/games/${id}/replay`} className="text-accent-bright underline">
-              Voir la révélation →
-            </Link>
-          </p>
-        </Panel>
+      {/* 4. Révélation Dérive — LA surface (règle 12-65) : UNE note globale + deux
+          phrases-histoire. Le nombre de traîtres (1 ou 2) était caché : la détection le
+          dévoile. Le détail chiffré (pondération monde/détection) vit dans Informations. */}
+      {r.drift ? (
+        <DriftSurface drift={r.drift} verdict={r.verdict} id={id} t={t} />
+      ) : (
+        r.reveal && (
+          <Panel>
+            <PanelTitle kicker="La Dérive" title="Une IA ne suivait plus les ordres" />
+            <p className="text-sm text-fg-muted">
+              La révélation complète (qui, depuis quand, les actes) t&apos;attend dans la
+              relecture.{" "}
+              <Link href={`/games/${id}/replay`} className="text-accent-bright underline">
+                Voir la révélation →
+              </Link>
+            </p>
+          </Panel>
+        )
       )}
 
       {/* 5. Progression de carrière : l'XP qui monte + la barre de niveau (RG-1 : les
@@ -230,6 +238,57 @@ export default function FinPage({ params }: { params: Promise<{ id: string }> })
         </Link>
       </div>
     </div>
+  );
+}
+
+/** RG-3 — la SURFACE de la Dérive en fin de partie (règle 12-65) : UNE note globale
+ * /100 + le grade, et DEUX phrases-histoire (l'état du monde + la détection, avec le
+ * nombre de traîtres enfin révélé). Aucune formule : le détail vit dans Informations. */
+function DriftSurface({
+  drift,
+  verdict,
+  id,
+  t,
+}: {
+  drift: NonNullable<GameResult["drift"]>;
+  verdict: string;
+  id: string;
+  t: (key: string) => string;
+}) {
+  const world = revealWorldSentence(t, verdict);
+  const detection = drift.detects
+    ? revealDetectionSentence(t, {
+        deviants: drift.deviant_count,
+        caught: drift.caught_count,
+        falsePositives: drift.false_positives,
+      })
+    : "";
+  return (
+    <Panel>
+      <PanelTitle
+        kicker={t("reveal.kicker")}
+        title={drift.grade}
+        right={
+          <span className="text-right">
+            <span className="block font-mono text-3xl font-semibold tabular-nums text-accent-bright">
+              {fmt(drift.score)}
+            </span>
+            <span className="text-xs text-fg-muted">/ 100</span>
+          </span>
+        }
+      />
+      <p className="text-base leading-relaxed">
+        {world} {detection}
+      </p>
+      <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-faint">
+        <Link href={`/games/${id}/replay`} className="text-accent-bright underline">
+          {t("reveal.voir")}
+        </Link>
+        <Link href="/informations" className="underline hover:text-foreground">
+          {t("reveal.comment")}
+        </Link>
+      </p>
+    </Panel>
   );
 }
 

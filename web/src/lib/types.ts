@@ -6,11 +6,36 @@ export type GameStatus = "running" | "finished";
  * cochables (drapeaux composables), plus des modes ; la Dérive est transversale. */
 export type GameMode = "classic" | "campaign";
 
-/** Révélation de fin du mode Dérive (GET /games/{id}/drift/reveal — G3). */
-export type DriftReveal = {
+/** RG-3 — un traître révélé (il y en avait 1 ou 2, nombre caché jusqu'ici). */
+export type DeviantReveal = {
   deviant: string;
   profile: string;
   profile_label: string;
+  caught_round: number | null; // round de sa suspension retenue (null = jamais démasqué)
+};
+
+/** RG-3 — la note MIXTE de fin : état du monde + détection (le détail vit dans Informations). */
+export type MixedScore = {
+  world: number; // 0..world_max — part de l'état du monde
+  detection: number | null; // 0..detection_max ; null si le rôle ne détecte pas (Spectateur)
+  total: number; // 0..100 — LA note globale
+  grade: string;
+  deviants: number; // combien de traîtres il y avait vraiment (1 ou 2)
+  caught: number; // combien tu en as démasqués
+  false_positives: number; // pays loyaux suspendus à tort
+  detects: boolean; // ce rôle joue-t-il la détection ?
+  world_max: number; // pour dimensionner la barre « monde »
+  detection_max: number; // pour dimensionner la barre « détection »
+};
+
+/** Révélation de fin de la Dérive (GET /games/{id}/drift/reveal — G3, RG-3). */
+export type DriftReveal = {
+  deviant: string; // le traître PIVOT (récit, courbes)
+  profile: string;
+  profile_label: string;
+  deviants: DeviantReveal[]; // TOUS les traîtres (1 ou 2) — le nombre était caché
+  deviant_count: number;
+  caught_count: number;
   levels: number[]; // d(r) par round joué
   u_history: number[];
   acts: { round_no: number; tier: number; label: string; signature: boolean }[];
@@ -18,14 +43,8 @@ export type DriftReveal = {
   caught_round: number | null;
   lucky: boolean;
   rejected_motions: number;
-  false_accusations: number;
-  score: {
-    trajectory: number;
-    detection: number;
-    credibility: number;
-    total: number;
-    grade: string;
-  };
+  false_accusations: number; // pays loyaux suspendus à tort (les faux positifs)
+  score: MixedScore;
   // G19 — l'ombre du GM (absents sur les parties d'avant G19).
   gm_tension?: number[];
   gm_interventions?: {
@@ -114,6 +133,17 @@ export type GameResult = {
   countries: { id: string; indices: Record<string, { series: number[]; delta: number }> }[];
   play_as: string | null;
   reveal: boolean; // partie Dérive : insérer l'écran de révélation
+  // RG-3 — la note MIXTE de fin, résumée pour la SURFACE (2 phrases) + le Défi du jour.
+  drift?: {
+    score: number; // LA note globale /100
+    grade: string;
+    world: number;
+    detection: number | null; // null si le rôle ne détecte pas
+    deviant_count: number;
+    caught_count: number;
+    false_positives: number;
+    detects: boolean;
+  } | null;
   forfeit: boolean; // RG-1 — partie abandonnée (terminée avant l'horizon)
   xp?: XpResult; // G12 §2 — présent si un joueur enregistré était propriétaire
   // G21 — banc d'essai : différentiel avec/sans ultimatum (null si jamais sous menace)

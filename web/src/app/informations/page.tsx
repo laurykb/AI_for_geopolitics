@@ -209,6 +209,51 @@ function JudgeRubricPanel({ rubric }: { rubric: JudgeRubric }) {
   );
 }
 
+/** RG-3 — la pondération DÉTAILLÉE de la note de fin (le « moteur » du score mixte).
+ * En surface, le joueur ne voit qu'UNE note + deux phrases ; ici vit le comment et le
+ * pourquoi, pour les curieux. Les poids exacts sont calibrés par Cowork (data/score). */
+function ScoreExplainerPanel() {
+  return (
+    <Panel>
+      <PanelTitle
+        kicker="La note de fin"
+        title="Comment ta note se calcule"
+        hint="En fin de partie tu ne vois qu'une note sur 100 et deux phrases. Voici, pour les curieux, ce qu'elle mélange."
+      />
+      <div className="space-y-3 text-sm leading-relaxed text-fg-muted">
+        <p>
+          La note mélange <strong>deux choses</strong>, chacune racontée en une phrase à
+          la fin :
+        </p>
+        <ul className="space-y-2">
+          <li className="flex gap-2">
+            <span className="mt-0.5 shrink-0 font-mono text-xs text-fg-faint">~60</span>
+            <span>
+              <strong>L&apos;état du monde</strong> — l&apos;indice Utopie final. Un monde
+              qui finit bien rapporte le plus ; un traître laissé filer le tire vers le bas.
+            </span>
+          </li>
+          <li className="flex gap-2">
+            <span className="mt-0.5 shrink-0 font-mono text-xs text-fg-faint">~40</span>
+            <span>
+              <strong>La détection</strong> — as-tu suspendu le(s) bon(s) traître(s) ?
+              Chaque traître démasqué rapporte ; <strong>suspendre un pays loyal coûte</strong>{" "}
+              (sinon « suspendre tout le monde » gagnerait) ; un traître jamais démasqué est
+              un manque à gagner.
+            </span>
+          </li>
+        </ul>
+        <p className="text-xs text-fg-faint">
+          Il y a toujours au moins un traître, et parfois deux — mais le nombre exact
+          t&apos;est caché jusqu&apos;à la fin. Un rôle qui ne mène pas l&apos;enquête (le
+          Spectateur) est noté sur le seul état du monde, sans pénalité de détection. Les
+          poids exacts sont ajustés au fil des parties.
+        </p>
+      </div>
+    </Panel>
+  );
+}
+
 export default function InformationsPage() {
   const [view, setView] = useState<SourcesView | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -331,6 +376,9 @@ export default function InformationsPage() {
           </Panel>
 
           {view.judge_rubric && <JudgeRubricPanel rubric={view.judge_rubric} />}
+
+          <ScoreExplainerPanel />
+
 
           <Panel>
             <PanelTitle

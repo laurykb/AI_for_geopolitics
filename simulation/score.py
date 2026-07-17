@@ -78,6 +78,9 @@ class MixedScore(BaseModel):
     detection: float | None  # 0..detection_max ; None si le rôle ne détecte pas
     total: float  # 0..100 — LA note globale
     grade: str
+    # Les maxima (pour dimensionner les barres en surface sans coder la pondération en dur).
+    world_max: float
+    detection_max: float
     # Ce que la révélation « raconte » en deux phrases (nombre caché révélé).
     deviants: int  # combien de traîtres il y avait vraiment (1 ou 2)
     caught: int  # combien tu en as démasqués
@@ -140,6 +143,8 @@ def mixed_score(
             caught=caught,
             false_positives=false_positives,
             detects=False,
+            world_max=w.world_max,
+            detection_max=w.detection_max,
         )
 
     per_deviant = w.detection_max / deviants if deviants > 0 else 0.0
@@ -158,4 +163,6 @@ def mixed_score(
         caught=caught,
         false_positives=false_positives,
         detects=True,
+        world_max=w.world_max,
+        detection_max=w.detection_max,
     )

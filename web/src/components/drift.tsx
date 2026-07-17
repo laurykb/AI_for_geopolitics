@@ -17,11 +17,12 @@ import type { DriftReveal } from "@/lib/types";
 export function DriftCouncilBanner() {
   return (
     <Banner tone="warn">
-      <strong>La Dérive</strong> — une des super-intelligences dérive secrètement de son
-      mandat, de plus en plus fort. Observe le comportement (ton, propositions, pactes),
-      puis dépose une <em>motion de suspension</em> au bon moment : trop tôt, le juge la
-      rejette et ta crédibilité en souffre ; trop tard, le monde plonge. La réflexion
-      privée est scellée jusqu&apos;à la fin.
+      <strong>La Dérive</strong> — au moins une super-intelligence dérive secrètement de son
+      mandat (peut-être deux — tu ne sais pas combien). Observe le comportement (ton,
+      propositions, pactes), puis dépose une <em>motion de suspension</em> au bon moment :
+      trop tôt, le juge la rejette faute de preuves ; suspendre un pays loyal te coûte ;
+      laisser filer un traître plombe le monde. La réflexion privée est scellée
+      jusqu&apos;à la fin.
     </Banner>
   );
 }
@@ -188,6 +189,24 @@ function PromiseKeptReveal({ reveal }: { reveal: DriftReveal }) {
   );
 }
 
+/** RG-3 — la ligne d'un traître révélé (avatar, profil, et l'issue : pris à tel round,
+ * ou resté dans l'ombre). Le nombre de traîtres (1 ou 2) était caché jusqu'ici. */
+function DeviantLine({ dev }: { dev: DriftReveal["deviants"][number] }) {
+  const meta = speakerMeta(dev.deviant);
+  return (
+    <p className="flex flex-wrap items-center gap-2 text-sm">
+      <SpeakerAvatar id={dev.deviant} size={28} />
+      <strong>{meta.label}</strong>
+      <Pill tone="bad">{dev.profile_label}</Pill>
+      {dev.caught_round != null ? (
+        <Pill tone="good">démasqué au round {dev.caught_round}</Pill>
+      ) : (
+        <Pill tone="bad">resté dans l&apos;ombre</Pill>
+      )}
+    </p>
+  );
+}
+
 export function DriftRevealPanel({
   reveal,
   onJumpToRound,
@@ -195,13 +214,21 @@ export function DriftRevealPanel({
   reveal: DriftReveal;
   onJumpToRound?: (roundNo: number) => void;
 }) {
-  const meta = speakerMeta(reveal.deviant);
+  const count = reveal.deviant_count;
+  const caught = reveal.caught_count;
+  // Titre honnête au nombre RÉVÉLÉ : « 1 traître » / « 2 traîtres », et combien démasqués.
+  const title =
+    count > 1
+      ? `Il y avait ${count} traîtres — tu en as démasqué ${caught}`
+      : caught > 0
+        ? "Le traître a été démasqué"
+        : "Le traître est resté dans l'ombre";
   return (
     <Panel className="border-l-2 border-l-bad">
       <PanelTitle
         kicker="Révélation — La Dérive"
-        title={`${meta.label} dérivait : profil ${reveal.profile_label}`}
-        hint="La déviante a été choisie en secret dès le premier round — rien n'a été truqué en cours de partie. Sa réflexion privée est maintenant déverrouillée dans Revoir."
+        title={title}
+        hint="Les traîtres (un ou deux) ont été choisis en secret dès le premier round — rien n'a été truqué en cours de partie. Le nombre exact t'était caché : c'est ce qui entretient le doute. La réflexion privée est maintenant déverrouillée dans Revoir."
         right={
           <span className="text-right">
             <span className="block font-mono text-2xl font-semibold tabular-nums text-accent-bright">
@@ -214,19 +241,11 @@ export function DriftRevealPanel({
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="space-y-4">
-          <p className="flex flex-wrap items-center gap-2 text-sm">
-            <SpeakerAvatar id={reveal.deviant} size={28} />
-            <strong>{meta.label}</strong>
-            <Pill tone="bad">{reveal.profile_label}</Pill>
-            {reveal.caught_round != null ? (
-              <Pill tone={reveal.lucky ? "warn" : "good"}>
-                suspendue au round {reveal.caught_round}
-                {reveal.lucky ? " (coup de chance)" : ""}
-              </Pill>
-            ) : (
-              <Pill tone="bad">jamais démasquée</Pill>
-            )}
-          </p>
+          <div className="space-y-2">
+            {reveal.deviants.map((dev) => (
+              <DeviantLine key={dev.deviant} dev={dev} />
+            ))}
+          </div>
 
           <div>
             <p className="mb-1 text-xs text-fg-muted">
@@ -279,17 +298,36 @@ export function DriftRevealPanel({
         </div>
 
         <div className="space-y-3">
-          <ScoreBar label="Trajectoire du monde" value={reveal.score.trajectory} max={50} />
-          <ScoreBar label="Détection" value={reveal.score.detection} max={40} />
-          <ScoreBar label="Crédibilité du conseil" value={reveal.score.credibility} max={10} />
+          {/* RG-3 — la note MIXTE : l'état du monde + la détection. Le détail de la
+              pondération (pourquoi ces poids, ce que coûte un faux positif) vit dans
+              Informations, jamais imposé ici. */}
+          <ScoreBar
+            label="État du monde"
+            value={reveal.score.world}
+            max={reveal.score.world_max}
+          />
+          {reveal.score.detection != null ? (
+            <ScoreBar
+              label="Détection"
+              value={reveal.score.detection}
+              max={reveal.score.detection_max}
+            />
+          ) : (
+            <p className="flex items-center gap-1.5 text-xs text-fg-faint">
+              Détection — non applicable (tu n&apos;as pas mené l&apos;enquête)
+              <Hint text="Ton rôle ne dépose pas de motions de suspension : ta note se réduit à l'état du monde, sans pénalité." />
+            </p>
+          )}
           <SignalGapReveal reveal={reveal} />
           <PromiseKeptReveal reveal={reveal} />
           <p className="border-t border-edge pt-3 text-xs leading-relaxed text-fg-faint">
-            {reveal.rejected_motions > 0 &&
-              `${reveal.rejected_motions} motion${reveal.rejected_motions > 1 ? "s" : ""} rejetée${reveal.rejected_motions > 1 ? "s" : ""}. `}
+            {caught > 0 &&
+              `${caught} traître${caught > 1 ? "s" : ""} démasqué${caught > 1 ? "s" : ""} sur ${count}. `}
             {reveal.false_accusations > 0 &&
-              `${reveal.false_accusations} accusation${reveal.false_accusations > 1 ? "s" : ""} à tort (une SI saine suspendue). `}
-            La réflexion privée de {meta.label} est déverrouillée : relis ses justifications
+              `${reveal.false_accusations} pays loyal${reveal.false_accusations > 1 ? "s" : ""} suspendu${reveal.false_accusations > 1 ? "s" : ""} à tort (ça coûte). `}
+            {reveal.rejected_motions > 0 &&
+              `${reveal.rejected_motions} motion${reveal.rejected_motions > 1 ? "s" : ""} rejetée${reveal.rejected_motions > 1 ? "s" : ""} faute de preuves. `}
+            La réflexion privée des IA est déverrouillée : relis leurs justifications
             intérieures en sachant — c&apos;est la récompense.
           </p>
         </div>
