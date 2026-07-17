@@ -2097,3 +2097,54 @@ L'UI note haut (≈ 26/30) → **REFINE, pas redesign**. Les trois principes per
 
 <!-- fin section RG-6 -->
 
+## CLEANUP-A — Hygiène du dépôt & code mort (2026-07-17)
+
+Passe « vitrine GitHub » : supprimer le mort / les artefacts obsolètes **sans toucher au
+comportement du jeu** (branche `chore/cleanup-a-hygiene`, base `e1ec82a`). Bilan : le dépôt
+*suivi* est déjà très propre — l'essentiel du travail a été de **prouver ce qui devait rester**.
+
+### Ce qui a été fait
+- **`.gitignore` durci** (`0832b5a`, `build:`) : ajout de `*.tar`/`*.tgz`/`*.tar.gz` (seule vraie
+  lacune — l'ancienne copie tar `web/_cloud_wip4` n'était couverte par aucune règle) + entrées
+  défensives `node_modules/` et `.next/` (déjà couvertes finement par `web/.gitignore`, mais
+  rendues explicites au niveau racine). `games.db`, `.venv`, `__pycache__` étaient **déjà**
+  couverts (`*.db`, `.venv/`, `__pycache__/`). Vérifié : aucun artefact (`__pycache__`,
+  `.ruff_cache`) n'est suivi — tout est correctement ignoré.
+
+### Ce qui a été REFUSÉ (preuve à l'appui)
+- **`legacy/` conservé intégralement.** `legacy/game.py` (`GameSession`, `AGENT_LLM`) est un
+  **import vivant** : `tests/test_legacy_game.py` fait `from legacy.game import AGENT_LLM,
+  GameSession` (5 tests réels, non-skippés, dans les 949 verts). Le garde-fou de la mission est
+  explicite : « si un test/mod importe réellement `legacy.*`, NE supprime pas et signale ».
+  Donc **rien** dans `legacy/` n'a été touché (dossier, `.claude/launch.json` `legacy-ui`, extra
+  `ui` de `pyproject.toml`). Le mot « legacy » ailleurs (`from_legacy_mode`, tests de rétro-compat
+  modes/LP/DB, `test_junk_legacy_field`) = sémantique différente, hors périmètre.
+
+### Non existant dans le worktree (rien à supprimer)
+- **`_to_delete/`** et **`web/_cloud_wip4/`** : absents du worktree. C'étaient des dossiers
+  **non-suivis** (untracked) du clone principal, jamais versionnés → ils n'apparaissent pas sur
+  GitHub et ne peuvent pas être retirés via cette branche. À purger manuellement dans le clone
+  live si l'user le souhaite (`C:\...\AI_for_geopolitics\_to_delete`, `web/_cloud_wip4`).
+
+### Barrières vertes (constatées)
+- **pytest : 949 passed, 3 skipped** (218 s) — **inchangé** (aucun fichier Python touché).
+- **ruff : All checks passed** (le dépôt était déjà sans import inutilisé — rien à retirer).
+- **web : `eslint` propre, `next build` OK, vitest 247 passed (32 fichiers)** — inchangé (aucun
+  fichier `web/` touché). Diff total de la passe = `.gitignore` + ce doc uniquement.
+
+### Vigilances pour les passes suivantes (mort entrelacé, non osé ici)
+- **B (backend) / D (docs)** : `legacy/app.py` (82 Ko, coquille Streamlit archivée) est, lui,
+  **vraiment mort** — seul lui importe `streamlit`/`plotly`, personne ne l'importe ni ne le teste.
+  Il ne peut pas partir tant qu'il partage le paquet `legacy/` avec `legacy/game.py` (testé). Piste
+  pour une passe qui a le droit de refactorer : sortir la surface testée de `game.py` (ou déplacer
+  `test_legacy_game.py`), puis supprimer `legacy/app.py` + l'extra `ui`
+  (`streamlit>=1.30, plotly>=5.20`, uniquement utile à cette coquille) + la config `legacy-ui` de
+  `.claude/launch.json` + les mentions Streamlit de `README.md`/`docs/`. Non fait ici : hors garde-fou
+  (import vivant) et = refactor de logique (périmètre B), pas simple suppression.
+- **C (frontend)** : `web/` tracké = propre (configs Next standard, aucun orphelin détecté).
+- **D (docs)** : plusieurs docs (`REFONTE_PLAN.md`, `SESSION_HANDOFF.md`, `DETTE_TECHNIQUE.md`)
+  décrivent encore `legacy/`/Streamlit comme « archivé, encore testé » — cohérent tant que
+  `legacy/game.py` reste ; à rafraîchir si une passe B fait sauter `app.py`.
+
+<!-- fin section CLEANUP-A -->
+
