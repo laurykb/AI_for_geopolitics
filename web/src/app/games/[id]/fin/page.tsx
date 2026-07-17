@@ -326,7 +326,11 @@ function ScoreSplit({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(w + d)}
-        aria-label={`${t("drift.reveal.monde-label")} + ${t("drift.reveal.detection-label")}`}
+        aria-label={
+          hasDetection
+            ? `${t("drift.reveal.monde-label")} + ${t("drift.reveal.detection-label")}`
+            : t("drift.reveal.monde-label")
+        }
         className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted"
       >
         <div
