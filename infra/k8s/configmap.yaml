@@ -1,0 +1,23 @@
+# Configuration NON secrète, partagée par l'API et le front.
+# (Les valeurs sensibles — clés Supabase — vivent dans le Secret, cf. secret.example.yaml.)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: theatre-config
+  namespace: theatre
+data:
+  # --- Backend (API) ---
+  # Store des parties/marché : sqlite (défaut, éphémère dans le pod) | supabase.
+  # En SQLite, la base est pod-locale et disparaît au redéploiement — la
+  # persistance (PVC ou Postgres) est un chantier futur (voir optional/).
+  STORE_BACKEND: "sqlite"
+  # Inférence : pointe le Service ExternalName qui relaie vers l'Ollama de l'HÔTE.
+  OLLAMA_HOST: "http://ollama.theatre.svc.cluster.local:11434"
+  # Origines CORS autorisées en plus de localhost:3000 (le front servi par l'Ingress).
+  CORS_ORIGINS: "http://localhost"
+
+  # --- Front (web) ---
+  # ⚠️ NEXT_PUBLIC_* est inliné au BUILD par Next.js. Cette valeur runtime sert
+  # de documentation/rappel ; la valeur EFFECTIVE est celle passée en --build-arg
+  # à `docker build web/` (voir web/Dockerfile et infra/README.md).
+  NEXT_PUBLIC_API_BASE: "http://localhost/api"

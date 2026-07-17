@@ -1,0 +1,55 @@
+# Front Next.js 16 — lobby, théâtre live (SSE), monde, marché, replay, informations.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: theatre-web
+  namespace: theatre
+  labels:
+    app.kubernetes.io/name: theatre-web
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: theatre-web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: theatre-web
+        app.kubernetes.io/component: frontend
+    spec:
+      containers:
+        - name: web
+          image: theatre-web:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            # ⚠️ Rappel : NEXT_PUBLIC_API_BASE est inliné au BUILD (voir web/Dockerfile).
+            # Le passer ici ne recompile pas le bundle ; on le laisse par cohérence
+            # (utile aux éventuels appels côté serveur Next).
+            - name: NEXT_PUBLIC_API_BASE
+              valueFrom:
+                configMapKeyRef:
+                  name: theatre-config
+                  key: NEXT_PUBLIC_API_BASE
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"

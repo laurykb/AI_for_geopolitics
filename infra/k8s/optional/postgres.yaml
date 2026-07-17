@@ -1,0 +1,86 @@
+# FUTUR — PostgreSQL (état + event store), cf. CLAUDE.md « Données ».
+# ========================================================================
+# NON activé : le jeu tourne aujourd'hui en SQLite (pod-local). Ce manifeste
+# esquisse la bascule Postgres quand la persistance/multi-répliques deviendra
+# nécessaire. Pour l'activer : basculer STORE_BACKEND et câbler l'API dessus
+# (chantier applicatif hors de cette passe infra).
+#
+# Esquisse volontairement simple (mono-instance + PVC). Une vraie prod
+# utiliserait un opérateur (CloudNativePG, Zalando) pour HA/backups/failover.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: theatre
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: theatre
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres
+        app.kubernetes.io/component: database
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - name: pg
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: theatre
+            - name: POSTGRES_USER
+              value: theatre
+            # FUTUR : passer par un Secret, jamais en clair (valeur d'esquisse).
+            - name: POSTGRES_PASSWORD
+              value: CHANGE_ME
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: theatre
+  labels:
+    app.kubernetes.io/name: postgres
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: postgres
+  ports:
+    - name: pg
+      port: 5432
+      targetPort: pg

@@ -14,6 +14,8 @@ dist/
 .env
 *.env
 .mcp.local.json
+# Secret K8s réel dérivé de infra/k8s/secret.example.yaml (jamais committé)
+infra/k8s/secret.yaml
 
 # Modèles & données lourdes
 *.gguf

@@ -1,0 +1,53 @@
+# FUTUR — Redis (cache + broker léger), cf. CLAUDE.md « Données ».
+# ================================================================
+# NON activé. Esquisse d'un cache/broker pour, plus tard : file d'attente des
+# rounds, cache de résultats d'inférence, pub/sub SSE multi-répliques.
+# Éphémère ici (pas de PVC) — un cache se reconstruit.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: theatre
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/component: cache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: redis
+        app.kubernetes.io/component: cache
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - name: redis
+              containerPort: 6379
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: theatre
+  labels:
+    app.kubernetes.io/name: redis
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
