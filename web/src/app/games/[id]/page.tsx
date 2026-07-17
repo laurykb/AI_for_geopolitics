@@ -1611,7 +1611,7 @@ export default function TheatrePage() {
           « Le monde » (jauges risque/escalade/trajectoire/traités détaillées) — ne
           s'affiche qu'en Expert ; il est expliqué dans l'onglet Informations. Rien
           n'est supprimé : tout est routé. */}
-      <div className="grid items-start gap-4 lg:grid-cols-2">
+      <div className={`grid items-start gap-4 ${showEngine ? "lg:grid-cols-2" : ""}`}>
         {detail?.live && detail.status === "running" && (
           <IntelPanel
             gameId={id}

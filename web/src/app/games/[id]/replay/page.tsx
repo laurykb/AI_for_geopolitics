@@ -258,7 +258,7 @@ export default function ReplayPage() {
           {/* Salle des observables (RG-4) : le groupe « Le monde » (jauges détaillées
               risque/escalade/trajectoire/traités) est du MOTEUR — Expert seulement, et
               expliqué dans Informations ; les repères de la partie restent en façade. */}
-          <div className="grid items-start gap-4 lg:grid-cols-2">
+          <div className={`grid items-start gap-4 ${showEngine ? "lg:grid-cols-2" : ""}`}>
             {showEngine && (
               <TabGroup
                 label={t("obs.monde")}

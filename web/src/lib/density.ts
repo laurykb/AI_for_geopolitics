@@ -31,7 +31,11 @@ export function densityFor(difficulty: Difficulty | undefined): Density {
  * fine (« elle dit / elle fait », « parole donnée », « l'ombre du GM ») — ne
  * s'affiche qu'en Expert, et n'est expliqué que dans l'onglet Informations.
  *
- * Rien n'est SUPPRIMÉ : le lot G18-G23 et M1-M7 sont ROUTÉS, pas retirés. */
+ * Rien n'est SUPPRIMÉ : le lot G18-G23 et M1-M7 sont ROUTÉS, pas retirés.
+ *
+ * Couplé à `densityFor` par choix : aujourd'hui Expert ⟺ densité pleine ⟺ moteur
+ * visible. Si un niveau voulait un jour la densité pleine SANS le moteur (ou
+ * l'inverse), c'est ici qu'on découplerait les deux règles. */
 export function engineVisible(difficulty: Difficulty | undefined): boolean {
   return densityFor(difficulty) === "full";
 }
