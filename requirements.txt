@@ -1,8 +1,10 @@
-# Dependances CORE pour lancer et tester le backend.
+# Dependances CORE pour LANCER le backend (`python serve.py`).
 #
 # `pyproject.toml` reste la SOURCE CANONIQUE (ce fichier en est un miroir pratique
-# pour `pip install -r requirements.txt`). Il installe le necessaire pour demarrer
-# (`python serve.py`) et faire tourner la suite de tests.
+# pour `pip install -r requirements.txt`).
+#
+# Pour TESTER (pytest + ruff), ajouter les deps de dev :
+#   pip install -r requirements-dev.txt
 #
 # Extra RAG (embeddings/reranking reels, tire torch) — non requis pour les tests
 # offline ni pour jouer :  pip install sentence-transformers>=2.2

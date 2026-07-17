@@ -20,4 +20,7 @@ data:
   # ⚠️ NEXT_PUBLIC_* est inliné au BUILD par Next.js. Cette valeur runtime sert
   # de documentation/rappel ; la valeur EFFECTIVE est celle passée en --build-arg
   # à `docker build web/` (voir web/Dockerfile et infra/README.md).
-  NEXT_PUBLIC_API_BASE: "http://localhost/api"
+  # Origine seule : les chemins du front portent déjà `/api` (ex. `/api/games`),
+  # et l'Ingress route `/api/*` vers l'API en conservant le préfixe. Miroir du
+  # défaut local `http://127.0.0.1:8000`.
+  NEXT_PUBLIC_API_BASE: "http://localhost"

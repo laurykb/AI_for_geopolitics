@@ -5,7 +5,7 @@
 #
 # Build (contexte = web/) :
 #   docker build -t theatre-web:dev \
-#     --build-arg NEXT_PUBLIC_API_BASE=http://localhost/api web/
+#     --build-arg NEXT_PUBLIC_API_BASE=http://localhost web/
 #
 # ⚠️ Next.js inline les variables NEXT_PUBLIC_* au moment du `next build`.
 # Elles doivent donc être passées en --build-arg ICI (pas seulement via la
@@ -28,7 +28,8 @@ FROM node:20-slim AS build
 WORKDIR /app
 
 # Valeur inlinée dans le bundle client (voir avertissement en tête de fichier).
-ARG NEXT_PUBLIC_API_BASE=http://localhost/api
+# Origine seule : les chemins du front portent déjà `/api`.
+ARG NEXT_PUBLIC_API_BASE=http://localhost
 ENV NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE}
 ENV NEXT_TELEMETRY_DISABLED=1
 

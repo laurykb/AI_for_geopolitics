@@ -7,18 +7,18 @@
 #   kubectl apply -f https://kismatic... voir infra/README.md pour la commande exacte
 #   (manifeste officiel « deploy/static/provider/kind »).
 #
-# Le rewrite retire le préfixe /api : le backend expose /health, /game, /market…
-# SANS préfixe. Les NEXT_PUBLIC_API_BASE=http://localhost/api du front tombent
-# donc juste sur ces routes. (Seule l'ancienne route de démo /api/run devient
-# /api/api/run — négligeable, non utilisée par le front.)
+# Routage (miroir du fonctionnement local) : les routers FastAPI sont montés sous
+# le préfixe `/api` (routes réelles `/api/games`, `/api/markets`…). Le front met
+# `NEXT_PUBLIC_API_BASE=http://localhost` (l'origine) et ses chemins portent déjà
+# `/api`, d'où des appels `http://localhost/api/games`. L'Ingress route `/api/*`
+# vers l'API en CONSERVANT le préfixe (pas de rewrite). Le `/health` (sans préfixe)
+# n'est pas exposé par l'Ingress : il sert aux sondes readiness/liveness du pod.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: theatre-ingress
   namespace: theatre
   annotations:
-    # Retire le segment capturé (le préfixe /api) avant de transmettre à l'API.
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
     # SSE : pas de buffering, timeouts longs (un round de négociation dure ~1 min).
     nginx.ingress.kubernetes.io/proxy-buffering: "off"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
@@ -28,9 +28,9 @@ spec:
   rules:
     - http:
         paths:
-          # /api et /api/... -> API (le $2 capture le reste et alimente le rewrite).
-          - path: /api(/|$)(.*)
-            pathType: ImplementationSpecific
+          # /api et /api/... -> API, préfixe CONSERVÉ (les routers sont sous /api).
+          - path: /api
+            pathType: Prefix
             backend:
               service:
                 name: theatre-api

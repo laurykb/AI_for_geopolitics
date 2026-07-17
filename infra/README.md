@@ -72,7 +72,7 @@ kind create cluster --config infra/kind-cluster.yaml
 
 # 2. Construire les images (⚠️ NEXT_PUBLIC_* est inliné au BUILD côté web)
 docker build -t theatre-api:dev .
-docker build -t theatre-web:dev --build-arg NEXT_PUBLIC_API_BASE=http://localhost/api web/
+docker build -t theatre-web:dev --build-arg NEXT_PUBLIC_API_BASE=http://localhost web/
 
 # 3. Charger les images dans le cluster kind (pas de registry externe)
 kind load docker-image theatre-api:dev --name theatre
@@ -91,8 +91,9 @@ kubectl apply -k infra/k8s
 kubectl -n theatre get pods -w
 
 # 7. Ouvrir le jeu
-#    http://localhost/         (front)
-#    http://localhost/api/health  → {"status": "ok"}
+#    http://localhost/       → le front (théâtre)
+#    http://localhost/api/daily  → JSON du défi du jour (l'API répond via l'Ingress)
+#    (Le /health sans préfixe sert aux sondes du pod, pas à l'Ingress.)
 ```
 
 Pour tout retirer : `kind delete cluster --name theatre`.
@@ -136,10 +137,11 @@ kubectl apply -k infra/k8s/optional     # activer (plus tard)
 
 ### Un seul point d'entrée (Ingress)
 
-`http://localhost/` sert le front ; `http://localhost/api/*` route vers l'API, le préfixe
-`/api` étant **retiré** par le `rewrite-target` nginx (le backend expose `/health`, `/game`,
-`/market`… sans préfixe). Annotations SSE (`proxy-buffering: off`, timeouts longs) parce
-qu'un round de négociation dure ~1 min en streaming.
+`http://localhost/` sert le front ; `http://localhost/api/*` route vers l'API en
+**conservant** le préfixe `/api` (les routers FastAPI sont montés sous `/api`, exactement
+comme en local). Le front utilise `NEXT_PUBLIC_API_BASE=http://localhost` (l'origine) et
+ses chemins portent déjà `/api`. Annotations SSE (`proxy-buffering: off`, timeouts longs)
+parce qu'un round de négociation dure ~1 min en streaming.
 
 ### Secrets
 

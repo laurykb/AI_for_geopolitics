@@ -1,0 +1,9 @@
+# Dépendances de DÉVELOPPEMENT (tests + lint) — en plus de requirements.txt.
+#
+#   pip install -r requirements.txt -r requirements-dev.txt
+#
+# Puis : python -m pytest -q   et   ruff check .
+# (Non requis pour jouer : `python serve.py` n'a besoin que de requirements.txt.)
+
+pytest>=8        # suite de tests (unit + intégration, hors-ligne)
+ruff>=0.6        # format + lint

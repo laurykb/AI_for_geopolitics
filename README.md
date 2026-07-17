@@ -137,8 +137,8 @@ Options utiles :
 ## Développement & qualité
 
 ```bash
-# Backend
-pip install -r requirements.txt
+# Backend (tests + lint : ajoute les deps de dev)
+pip install -r requirements.txt -r requirements-dev.txt
 python -m pytest -q          # suite complète, hors-ligne (repli déterministe)
 ruff check .
 
