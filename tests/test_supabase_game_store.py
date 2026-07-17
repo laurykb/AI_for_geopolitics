@@ -3,11 +3,14 @@
 import pytest
 
 from storage.game_store import (
+    CustomCrisisRecord,
     GameRecord,
     GameStatus,
+    PlayerRecord,
     RoundRecord,
     SessionSnapshot,
     TranscriptEntry,
+    XpHistoryEntry,
 )
 from storage.supabase_store import SupabaseGameStore
 
@@ -17,9 +20,10 @@ def store(fake_postgrest):
     return SupabaseGameStore(fake_postgrest.client())
 
 
-def _game(game_id: str = "g1", mode: str = "fog") -> GameRecord:
+def _game(game_id: str = "g1", mode: str = "classic", **kw) -> GameRecord:
     return GameRecord(
-        id=game_id, scenario="red_sea", horizon=5, mode=mode, created_at="2026-07-05T00:00:00"
+        id=game_id, scenario="red_sea", horizon=5, mode=mode,
+        created_at="2026-07-05T00:00:00", **kw,
     )
 
 
@@ -39,10 +43,11 @@ def test_auth_headers_and_path(store, fake_postgrest):
 
 
 def test_game_roundtrip(store):
-    store.add_game(_game())
+    # RG-2 — mode classic|campaign + drapeaux composables (Brouillard) survivent au store.
+    store.add_game(_game(fog=True))
     got = store.get_game("g1")
     assert got is not None
-    assert (got.mode, got.status) == ("fog", GameStatus.RUNNING)
+    assert (got.mode, got.fog, got.status) == ("classic", True, GameStatus.RUNNING)
     assert store.get_game("absent") is None
 
     got.status = GameStatus.FINISHED
@@ -51,6 +56,55 @@ def test_game_roundtrip(store):
 
     store.add_game(_game("g2", mode="classic"))
     assert [g.id for g in store.list_games()] == ["g1", "g2"]
+
+
+def test_ownership_fields_roundtrip(store):
+    # G11 — owner_id / ranked / difficulty / drift_enabled survivent au store Supabase.
+    game = _game("g7")
+    game.owner_id = "u_laury"
+    game.ranked = True
+    game.difficulty = "beginner"
+    game.drift_enabled = False
+    store.add_game(game)
+    got = store.get_game("g7")
+    assert (got.owner_id, got.ranked, got.difficulty, got.drift_enabled) == (
+        "u_laury",
+        True,
+        "beginner",
+        False,
+    )
+
+
+def test_player_and_xp_history_roundtrip(store):
+    # G11-c/RG-1 — comptes joueurs via PostgREST simulé : XP + historique d'XP.
+    store.upsert_player(PlayerRecord(id="u1", pseudo="Laury"))
+    store.set_player_xp("u1", 84)
+    store.add_xp_history(
+        XpHistoryEntry(id="x1", player_id="u1", game_id="g1", delta=84, reason="classic", ts="t1")
+    )
+    got = store.get_player("u1")
+    assert (got.pseudo, got.xp) == ("Laury", 84)
+    assert [h.delta for h in store.list_xp_history("u1")] == [84]
+
+
+def test_custom_crises_roundtrip(store):
+    # G12-b §5 — crises maison via PostgREST simulé (upsert merge, delete filtré owner_id).
+    store.upsert_custom_crisis(
+        CustomCrisisRecord(id="c1", owner_id="alice", crisis={"id": "c1", "title": "V1"})
+    )
+    store.upsert_custom_crisis(
+        CustomCrisisRecord(id="c1", owner_id="alice", crisis={"id": "c1", "title": "V2"})
+    )
+    store.upsert_custom_crisis(
+        CustomCrisisRecord(id="c2", owner_id="bob", crisis={"id": "c2", "title": "B"})
+    )
+    got = {c.id: c for c in store.list_custom_crises()}
+    assert set(got) == {"c1", "c2"}  # upsert a remplacé, pas dupliqué
+    assert got["c1"].crisis["title"] == "V2"
+
+    assert store.delete_custom_crisis("c1", "bob") is False  # pas propriétaire
+    assert store.delete_custom_crisis("c1", "alice") is True
+    assert {c.id for c in store.list_custom_crises()} == {"c2"}
 
 
 def test_round_and_transcript_roundtrip(store):

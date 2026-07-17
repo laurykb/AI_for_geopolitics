@@ -52,6 +52,19 @@ def test_stream_negotiation_message():
     assert agent.model_tag  # badge modèle non vide
 
 
+def test_stream_negotiation_message_uses_role_sampling():
+    # G9 §1 — anti-boucle au décodeur : repeat_penalty et température du rôle « country »
+    # (data/gamefeel/params.json) sont transmis au backend.
+    backend = MockBackend("ok")
+    agent = LLMAgent("usa", backend)
+    from core.events import GeoEvent
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    list(agent.stream_negotiation_message(event, _world(), []))
+    assert backend.calls[-1]["repeat_penalty"] == 1.15
+    assert backend.calls[-1]["temperature"] == 0.8
+
+
 def test_stream_negotiation_message_respects_think_depth():
     # la profondeur de réflexion = budget de tokens passé au backend
     backend = MockBackend("ok")
@@ -138,6 +151,19 @@ def test_apply_verdict_clamps_and_applies():
     assert world.share_alliance("usa", "iran")  # pacte ajouté
     labels = {d.label for d in deltas}
     assert {"croissance", "stabilité"} <= labels
+
+
+def test_apply_verdict_bounds_growth_over_a_long_spiral():
+    # La croissance cumulée est BORNÉE : une longue spirale négative ne la fait pas dériver
+    # à l'absurde (avant : bornes None → aucune limite basse).
+    world = _world()
+    for _ in range(30):  # 30 × −1.5 = −45 sans borne ; plancher à −15
+        apply_verdict(world, Verdict(attribute_deltas={"usa": {"croissance": -9.0}}))
+    assert world.countries["usa"].economy.growth == -15.0
+
+    for _ in range(30):  # remonte et plafonne à +15
+        apply_verdict(world, Verdict(attribute_deltas={"usa": {"croissance": 9.0}}))
+    assert world.countries["usa"].economy.growth == 15.0
 
 
 def test_apply_verdict_ignores_unknown_ids_and_labels():

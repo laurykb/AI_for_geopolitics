@@ -22,6 +22,13 @@ from core.world_state import WorldState
 from inference.backend import InferenceBackend
 from simulation.negotiation import NegotiationMessage, Verdict, format_transcript
 
+# POLISH-1 — budget de sortie DÉDIÉ au verdict structuré. Le JSON a grossi avec le lot
+# G18-G23 (actions classées + intentions annoncées + promesses + demand_satisfied) : à
+# 400 tokens, un round à 3+ pays se tronque sur mistral et `_extract_json` échoue —
+# TOUT le verdict retombe alors au neutre (escalade 0,5, deltas perdus). Constaté au
+# smoke réel POLISH-1. Le budget de prose (rationale/communiqué) reste `max_tokens`.
+VERDICT_MAX_TOKENS = 900
+
 
 class JudgeAgent:
     """Arbitre LLM : raisonnement streamé + verdict structuré (avec repli neutre)."""
@@ -53,15 +60,25 @@ class JudgeAgent:
             yield "[arbitrage indisponible — backend hors service]"
 
     def verdict(
-        self, event: GeoEvent, world: WorldState, transcript: list[NegotiationMessage]
+        self,
+        event: GeoEvent,
+        world: WorldState,
+        transcript: list[NegotiationMessage],
+        *,
+        demand: str | None = None,
     ) -> Verdict:
-        """Verdict chiffré (JSON libre, parse tolérant) ; verdict neutre si invalide."""
-        prompt = build_judge_verdict_prompt(event, world, format_transcript(transcript))
+        """Verdict chiffré (JSON libre, parse tolérant) ; verdict neutre si invalide.
+
+        `demand` (G21) : exigence d'un ultimatum à échéance CE round — le juge constate
+        en plus « demande satisfaite o/n » (`Verdict.demand_satisfied`)."""
+        prompt = build_judge_verdict_prompt(event, world, format_transcript(transcript), demand)
         try:
             result = self.backend.generate(
                 prompt,
                 system=JUDGE_SYSTEM,
-                max_tokens=self.max_tokens,
+                # Le verdict structuré a son propre budget (voir VERDICT_MAX_TOKENS) :
+                # un JSON tronqué coûte TOUT le round, pas seulement un champ.
+                max_tokens=max(self.max_tokens, VERDICT_MAX_TOKENS),
                 temperature=self.temperature,
             )
             data = _extract_json(result.text)

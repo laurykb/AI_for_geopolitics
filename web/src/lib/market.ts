@@ -44,6 +44,8 @@ export function openGameMarket(gameId: string): Promise<MarketView> {
     body: JSON.stringify({
       round_id: marketRoundId(gameId), // compat résolution par round
       game_id: gameId,
+      // ⚠️ DOIT rester identique à GAME_MARKET_QUESTION (app/game_api.py) : le backend
+      // (bot) et le front ouvrent le MÊME marché — deux libellés = deux marchés divergents.
       question: `Le monde finira-t-il côté utopie (indice > 0,5) ? — partie ${gameId}`,
       b: 100,
       labels: ["YES", "NO"],
@@ -91,6 +93,27 @@ export function placeBet(
       shares,
     }),
   });
+}
+
+// --- marchés vivants (G12 §1) : books contextuels ouverts au fil du théâtre ----
+
+export type FlashOutcome = { id: string; label: string; price: number };
+export type FlashMarket = {
+  id: string;
+  question: string;
+  predicate: string | null;
+  status: string; // "open" | "resolved"
+  outcomes: FlashOutcome[];
+};
+
+/** Ouvre (ou récupère) les marchés vivants du round courant — idempotent par round. */
+export function openFlashMarkets(gameId: string): Promise<FlashMarket[]> {
+  return request<FlashMarket[]>(`/api/games/${gameId}/flash`, { method: "POST" });
+}
+
+/** Résout et règle les marchés vivants dont l'échéance est atteinte (fin de round). */
+export function resolveFlashMarkets(gameId: string): Promise<FlashMarket[]> {
+  return request<FlashMarket[]>(`/api/games/${gameId}/flash/resolve`, { method: "POST" });
 }
 
 export function fetchLeaderboard(): Promise<LeaderboardEntry[]> {

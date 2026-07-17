@@ -183,7 +183,16 @@ class MarketEngine:
     def place_bet(
         self, account_id: str, market_id: str, outcome_id: str, shares: float
     ) -> Trade:
-        """Exécute un pari : débite le compte du coût LMSR, déplace `q` et la position."""
+        """Exécute un pari : débite le compte du coût LMSR, déplace `q` et la position.
+
+        ⚠️ Les quatre écritures finales (marché, compte, position, trade) NE sont PAS
+        atomiques (pas de transaction inter-tables). L'ordre est volontaire : le marché
+        d'abord — un échec en cours laisse au pire une oscillation de prix non facturée
+        (`q` déplacé) mais JAMAIS une position/trade sans le mouvement de marché associé,
+        donc jamais de gain fantôme au règlement (les payouts suivent les positions). Argent
+        fictif + mono-processus : ce compromis est accepté (une vraie transaction serait la
+        seule correction complète).
+        """
         if shares == 0:
             raise InvalidBet("shares ne peut pas être nul")
         market = self._require_market(market_id)

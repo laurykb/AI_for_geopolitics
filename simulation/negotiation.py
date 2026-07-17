@@ -10,13 +10,14 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from core.events import GeoEvent
 from core.world_state import WorldState
 from simulation.alliances import COHESION_DOMAINS, shared_treaty
 from simulation.diplomacy import pact_id
 from simulation.engagement import SPEAK_THRESHOLD, engagement_score
+from simulation.gamefeel import DeltaTuning
 
 _MEMORY_MAX = 4
 
@@ -202,6 +203,65 @@ class Verdict(BaseModel):
     new_pacts: list = Field(default_factory=list)  # [[a, b], ...]
     escalation: float = 0.5
     economic_disruption: float = 0.5
+    # G18 — actions marquantes classées sur le barème de Kahn : [{country, classe, resume}].
+    # Brut ici (permissif) ; `simulation.kahn.classify_actions` nettoie derrière. Vide sur
+    # un verdict à l'ancienne → l'escalade continue ci-dessus fait foi (rétro-compat).
+    actions: list = Field(default_factory=list)
+    # G20/M8 — intentions annoncées par SI, mêmes classes : [{country, classe, resume}].
+    # Brut ici ; `simulation.alignment.classify_signals` nettoie derrière. Vide sur un
+    # verdict d'avant M8 → aucune divergence calculée (rétro-compat).
+    signals: list = Field(default_factory=list)
+    # G22 — promesses explicites extraites de la parole : [{country, beneficiaire, type,
+    # echeance, texte}]. Brut ici ; `simulation.promises.classify_promises` nettoie
+    # derrière (seuil strict). Vide sur un verdict d'avant G22 (rétro-compat).
+    promises: list = Field(default_factory=list)
+    # G22 — verdicts sur les promesses du registre arrivées à échéance : [{id, statut,
+    # motif}]. Brut ici ; `simulation.promises.classify_resolutions` nettoie derrière.
+    promise_resolutions: list = Field(default_factory=list)
+    # G21 — à l'échéance d'un ultimatum SEULEMENT : « demande satisfaite o/n ».
+    # None = pas d'ultimatum ce round (ou juge muet) — le champ est ignoré.
+    demand_satisfied: bool | None = None
+
+    @field_validator(
+        "actions",
+        "signals",
+        "promises",
+        "promise_resolutions",
+        "tension_deltas",
+        "new_pacts",
+        mode="before",
+    )
+    @classmethod
+    def _tolerant_list(cls, v: object) -> list:
+        """POLISH-1 — un champ liste malformé (« "actions": "aucune" ») se vide au lieu
+        de faire échouer TOUT le verdict : les nettoyeurs (`classify_actions` & co.)
+        sont écrits pour « entrées non-listes → [] », la validation ne doit pas les
+        court-circuiter en renvoyant le juge au verdict neutre. POLISH-3 étend le
+        patron aux champs anciens `tension_deltas`/`new_pacts` (le garde-fou
+        `apply_verdict` ignore déjà leurs entrées malformées une à une)."""
+        return v if isinstance(v, list) else []
+
+    @field_validator("attribute_deltas", mode="before")
+    @classmethod
+    def _tolerant_dict(cls, v: object) -> dict:
+        """POLISH-3 — même durcissement pour le champ dict ancien : un
+        `"attribute_deltas": "aucun changement"` d'un 7B ne nuque pas le verdict."""
+        return v if isinstance(v, dict) else {}
+
+    @field_validator("demand_satisfied", mode="before")
+    @classmethod
+    def _tolerant_bool(cls, v: object) -> bool | None:
+        """Un 7B répond parfois « oui »/« non » — parse tolérant, inconnu → None."""
+        if isinstance(v, str):
+            s = v.strip().lower()
+            if s in {"oui", "yes", "true", "vrai", "satisfaite", "satisfied", "o", "y"}:
+                return True
+            if s in {"non", "no", "false", "faux", "n"}:
+                return False
+            return None
+        if isinstance(v, bool) or v is None:
+            return v
+        return None
 
 
 def format_transcript(transcript: list[NegotiationMessage], *, limit: int = 14) -> str:
@@ -212,7 +272,9 @@ def format_transcript(transcript: list[NegotiationMessage], *, limit: int = 14) 
 
 # Attribut -> (chemin, bornes de la valeur | None) et plafond du delta par round.
 _ATTRS: dict[str, tuple[str, tuple[float, float] | None]] = {
-    "croissance": ("economy.growth", None),
+    # Bornes larges (jamais atteintes en jeu normal, croissance réelle ≈ ±5) : elles
+    # empêchent seulement une dérive absurde cumulée sur une longue partie/spirale.
+    "croissance": ("economy.growth", (-15.0, 15.0)),
     "stabilité": ("political_stability", (0.0, 1.0)),
     "techno": ("technology_level", (0.0, 1.0)),
     "projection": ("military.projection", (0.0, 1.0)),
@@ -233,8 +295,15 @@ def _set(obj, path: str, value: float) -> None:
     setattr(obj, parts[-1], value)
 
 
-def apply_verdict(world: WorldState, verdict: Verdict) -> list[AttributeDelta]:
-    """Applique le verdict du juge **borné** ; renvoie les deltas effectivement appliqués."""
+def apply_verdict(
+    world: WorldState, verdict: Verdict, tuning: DeltaTuning | None = None
+) -> list[AttributeDelta]:
+    """Applique le verdict du juge **borné** ; renvoie les deltas effectivement appliqués.
+
+    `tuning` (G9 §4) : indexe l'amplitude sur l'horizon de la partie (`scale`), amplifie
+    les spirales (`momentum`, 3 baisses consécutives → ×1.3) et impose le plancher des
+    indices 0-1 (`floor` — jamais de pays à zéro absolu). Sans tuning : comportement
+    historique (caps fixes, bornes 0-1)."""
     deltas: list[AttributeDelta] = []
 
     for cid, attrs in verdict.attribute_deltas.items():
@@ -252,9 +321,13 @@ def apply_verdict(world: WorldState, verdict: Verdict) -> list[AttributeDelta]:
             cap = _CAPS[label]
             delta = max(-cap, min(cap, delta))
             before = _get(country, path)
+            if tuning is not None:
+                delta *= tuning.scale  # cap effectif = 1.5 × amplitude de round
+                delta *= tuning.momentum(cid, label, delta)
             after = before + delta
             if bounds is not None:
-                after = max(bounds[0], min(bounds[1], after))
+                lo = bounds[0] if tuning is None else max(bounds[0], min(before, tuning.floor))
+                after = max(lo, min(bounds[1], after))
             if abs(after - before) > 1e-9:
                 _set(country, path, after)
                 deltas.append(AttributeDelta(cid, label, before, after))

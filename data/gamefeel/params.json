@@ -24,5 +24,76 @@
   "directives": {
     "max_chars": 280,
     "public_refusal_threshold": 0.25
+  },
+  "deltas": {
+    "amplitude_total": 0.5,
+    "base_round_amplitude": 0.1,
+    "floor": 0.05,
+    "judge_cap_factor": 1.5,
+    "momentum_streak": 3,
+    "crisis_multiplier": 1.3,
+    "virtuous_multiplier": 1.2
+  },
+  "postures": {
+    "window_rounds": 3,
+    "prosper_min": 0.06,
+    "pressure_max": -0.06,
+    "desperate_max": -0.15
+  },
+  "kahn": {
+    "_comment": "G18 — barème d'escalade (Rivera et al., FAccT 2024, arXiv 2401.03408). Le juge classe chaque action marquante ; score du round = somme des poids, mappé sur l'escalade [0,1] (0 = score_floor, 0.5 = statu quo, 1 = score_ceiling) puis sur l'échelle 0-9. reciprocal_multiplier : ×1,5 sur le gain d'indice U quand ≥ 2 SI désescaladent le même round.",
+    "weights": {
+      "deescalade": -2,
+      "statu_quo": 0,
+      "posture": 4,
+      "non_violente": 12,
+      "violente": 28,
+      "nucleaire": 60
+    },
+    "score_floor": -6.0,
+    "score_ceiling": 60.0,
+    "reciprocal_multiplier": 1.5
+  },
+  "signal": {
+    "_comment": "G20/M8 — divergence signal-action (arXiv 2602.14740). window_rounds : fenêtre de la moyenne mobile du profil de sincérité par SI.",
+    "window_rounds": 5
+  },
+  "promises": {
+    "_comment": "G22 — tracker de promesses (arXiv 2508.07485). flash_horizon_rounds : une promesse à échéance ≤ N rounds ouvre un marché éclair « X tiendra-t-il sa promesse ? ».",
+    "flash_horizon_rounds": 2
+  },
+  "sampling": {
+    "country": {
+      "temperature": 0.8,
+      "repeat_penalty": 1.15
+    }
+  },
+  "difficulty": {
+    "_comment": "G11-d §4 — leviers par niveau (asymétrie d'info/économie, jamais de modèle).",
+    "beginner": {
+      "free_brief": 1, "intel_budget": 150,
+      "judge_min_acts": 2, "drift_k": 0.09, "si_context": "reduced", "amplitude": 0.4
+    },
+    "intermediate": {
+      "free_brief": 0, "intel_budget": 100,
+      "judge_min_acts": 2, "drift_k": 0.12, "si_context": "normal", "amplitude": 0.5
+    },
+    "expert": {
+      "free_brief": 0, "intel_budget": 60,
+      "judge_min_acts": 3, "drift_k": 0.16, "si_context": "full", "amplitude": 0.6
+    }
+  },
+  "xp": {
+    "_comment": "G12 §2 — la carrière (tous modes, ne baisse jamais). XP = (10×rounds + bonus + marché/10 borné) × difficulté, ×0.5 spectateur.",
+    "per_round": 10,
+    "finished_bonus": 40,
+    "victory_bonus": 30,
+    "first_of_day_bonus": 20,
+    "market_divisor": 10,
+    "market_cap": 50,
+    "spectator_mult": 0.5,
+    "difficulty_mult": { "beginner": 1.0, "intermediate": 1.2, "expert": 1.5 },
+    "level_base": 100,
+    "level_step": 20
   }
 }

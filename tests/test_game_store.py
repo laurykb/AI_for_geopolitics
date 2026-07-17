@@ -3,10 +3,13 @@
 import sqlite3
 
 from storage.game_store import (
+    CustomCrisisRecord,
     GameRecord,
     GameStatus,
+    PlayerRecord,
     SessionSnapshot,
     SQLiteGameStore,
+    XpHistoryEntry,
 )
 
 
@@ -34,14 +37,161 @@ def _snapshot(game_id: str = "g1", **kw) -> SessionSnapshot:
 
 
 def test_game_mode_roundtrip():
+    # RG-2 — deux modes (classic | campaign) + Brouillard/Réel en drapeaux composables ;
+    # les anciens libellés en base sont mappés à la lecture (lecture tolérante).
     store = SQLiteGameStore(":memory:")
-    store.add_game(_game(mode="escalation"))
+    campaign = GameRecord(
+        id="g1", scenario="campaign:c1", horizon=5, mode="campaign", fog=True,
+        created_at="2026-07-05T00:00:00",
+    )
+    store.add_game(campaign)
     got = store.get_game("g1")
-    assert got is not None and got.mode == "escalation"
+    assert got is not None and got.mode == "campaign"
+    assert got.fog is True and got.escalation is False
 
-    got.mode = "fog"
+    # Une partie héritée « escalation » se relit en classic + réglage Réel/escalade.
+    store.add_game(_game("g2", mode="escalation"))
+    legacy = store.get_game("g2")
+    assert legacy.mode == "classic" and legacy.escalation is True and legacy.fog is False
+
+    # Un ancien mode « drift » se relit en classic + Dérive armée.
+    store.add_game(_game("g3", mode="drift"))
+    assert store.get_game("g3").drift_enabled is True
+
+
+def test_ownership_fields_roundtrip():
+    # G11 — propriété + classement : owner_id / ranked / difficulty / drift_enabled.
+    store = SQLiteGameStore(":memory:")
+    game = _game("g5")
+    game.owner_id = "u_laury"
+    game.ranked = True
+    game.difficulty = "expert"
+    game.drift_enabled = False
+    store.add_game(game)
+
+    got = store.get_game("g5")
+    assert got is not None
+    assert (got.owner_id, got.ranked, got.difficulty, got.drift_enabled) == (
+        "u_laury",
+        True,
+        "expert",
+        False,
+    )
+
+    got.owner_id = "u_other"
     store.save_game(got)
-    assert store.get_game("g1").mode == "fog"
+    assert store.get_game("g5").owner_id == "u_other"
+
+
+def test_ownership_defaults():
+    store = SQLiteGameStore(":memory:")
+    store.add_game(_game("g6"))
+    got = store.get_game("g6")
+    assert got.owner_id is None
+    assert got.ranked is False
+    assert got.difficulty == "intermediate"
+    assert got.drift_enabled is True
+
+
+def test_result_json_roundtrip():
+    # G11-c — le bilan de fin de partie survit au store.
+    store = SQLiteGameStore(":memory:")
+    game = _game("gr")
+    store.add_game(game)
+    game.result = {"u_final": 0.68, "verdict": "utopie"}
+    game.status = GameStatus.FINISHED
+    store.save_game(game)
+    got = store.get_game("gr")
+    assert got.status is GameStatus.FINISHED
+    assert got.result == {"u_final": 0.68, "verdict": "utopie"}
+
+
+def test_player_upsert_preserves_xp():
+    # G11-c/RG-1 — compte joueur : upsert rafraîchit le pseudo sans clobber l'XP.
+    store = SQLiteGameStore(":memory:")
+    store.upsert_player(PlayerRecord(id="u1", pseudo="Laury"))
+    assert store.get_player("u1").xp == 0
+
+    store.set_player_xp("u1", 84)
+    store.upsert_player(PlayerRecord(id="u1", pseudo="Laury2", xp=999))  # ne clobbe pas l'xp
+
+    got = store.get_player("u1")
+    assert (got.pseudo, got.xp) == ("Laury2", 84)  # pseudo rafraîchi, xp intact
+    assert store.get_player("absent") is None
+
+
+def test_xp_and_market_balance_roundtrip():
+    # G12 — carrière : xp (ne baisse jamais), solde de marché (incrément), xp_history.
+    store = SQLiteGameStore(":memory:")
+    store.upsert_player(PlayerRecord(id="u1", pseudo="Laury"))
+    assert store.get_player("u1").xp == 0 and store.get_player("u1").market_balance == 0.0
+
+    store.set_player_xp("u1", 84)
+    store.add_market_balance("u1", 12.5)
+    store.add_market_balance("u1", -4.0)
+    store.add_xp_history(
+        XpHistoryEntry(id="x1", player_id="u1", game_id="g1", delta=84, reason="classic", ts="t1")
+    )
+    got = store.get_player("u1")
+    assert got.xp == 84
+    assert got.market_balance == 8.5
+    assert [h.delta for h in store.list_xp_history("u1")] == [84]
+    # upsert ne clobbe ni xp ni le solde.
+    store.upsert_player(PlayerRecord(id="u1", pseudo="Laury2", xp=999))
+    assert store.get_player("u1").xp == 84
+
+
+def test_custom_crises_roundtrip():
+    # G12-b §5 — crises maison : upsert (remplace même id), listing, delete propriétaire.
+    store = SQLiteGameStore(":memory:")
+    assert store.list_custom_crises() == []
+
+    store.upsert_custom_crisis(
+        CustomCrisisRecord(id="c1", owner_id="alice", crisis={"id": "c1", "title": "V1"})
+    )
+    store.upsert_custom_crisis(
+        CustomCrisisRecord(id="c2", owner_id="bob", crisis={"id": "c2", "title": "B"})
+    )
+    # upsert sur le même id remplace (pas de doublon).
+    store.upsert_custom_crisis(
+        CustomCrisisRecord(id="c1", owner_id="alice", crisis={"id": "c1", "title": "V2"})
+    )
+    got = {c.id: c for c in store.list_custom_crises()}
+    assert set(got) == {"c1", "c2"}
+    assert got["c1"].crisis["title"] == "V2" and got["c1"].owner_id == "alice"
+
+    # delete propriétaire uniquement : bob ne supprime pas la crise d'alice.
+    assert store.delete_custom_crisis("c1", "bob") is False
+    assert store.delete_custom_crisis("c1", "alice") is True
+    assert {c.id for c in store.list_custom_crises()} == {"c2"}
+    assert store.delete_custom_crisis("absent", "alice") is False
+
+
+def test_migration_adds_ownership_columns(tmp_path):
+    """Une base d'avant G11 (games sans owner_id) s'ouvre, se migre, garde ses défauts."""
+    path = str(tmp_path / "pre_g11.db")
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        "CREATE TABLE games (id TEXT PRIMARY KEY, scenario TEXT NOT NULL, "
+        "horizon INTEGER NOT NULL, mode TEXT NOT NULL DEFAULT 'classic', "
+        "status TEXT NOT NULL, created_at TEXT NOT NULL, role TEXT NOT NULL "
+        "DEFAULT 'council');"
+    )
+    conn.execute(
+        "INSERT INTO games (id, scenario, horizon, status, created_at) "
+        "VALUES ('old', 'red_sea', 5, 'running', '2026-01-01T00:00:00')"
+    )
+    conn.commit()
+    conn.close()
+
+    store = SQLiteGameStore(path)
+    got = store.get_game("old")
+    assert got is not None
+    assert got.owner_id is None  # partie héritée : sans propriétaire (admin seul la voit)
+    assert got.ranked is False
+    assert got.difficulty == "intermediate"
+    assert got.drift_enabled is True
+    store.close()
 
 
 def test_migration_adds_mode_to_legacy_db(tmp_path):

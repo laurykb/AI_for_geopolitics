@@ -2,6 +2,15 @@
 
 > Fusion du « pourquoi » (monde de super-intelligences, utopie/dystopie) et du « comment le rendre vivant » (mécaniques ludiques + réalistes), avec le **marché de prédiction** comme clé de voûte.
 
+> **Cap gameplay courant (2026-07, resserrement RG) : `docs/JEU_VS_MOTEUR.md`.** Cette
+> vision reste le *pourquoi* et le moteur ; le *jeu*, lui, s'est resserré. Concrètement :
+> le cœur jouable est **démasquer l'IA qui trahit (1 ou 2, nombre caché) tout en gardant
+> le monde debout** ; **deux modes seulement** (Classique + Campagne), Brouillard et Réel
+> devenus des réglages ; progression = **XP + niveaux** (les **LP / la ligue sont
+> supprimés**, blasons rebranchés sur le niveau) ; l'instrumentation (M1-M7, jauges fines)
+> vit en **mode Expert / onglet Informations**, pas en façade. Lire JEU_VS_MOTEUR avant
+> toute reprise gameplay pour ne pas redériver vers l'ancienne plateforme.
+
 ## Le pitch en un paragraphe
 
 Un futur proche où les États ont délégué leur diplomatie de sommet à des **super-intelligences** (plus intelligentes que les humains). Le simulateur **met en scène** ce monde à la plus haute instance étatique, **mesure** s'il penche vers l'**utopie** (coordination, abondance, désescalade) ou la **dystopie** (domination, opacité, humains hors de la boucle), et laisse un public **parier sur ce que feront ces IA** — un *Polymarket des super-intelligences*. Chaque partie est un futur possible ; la question n'est pas tranchée, elle est **explorée**.

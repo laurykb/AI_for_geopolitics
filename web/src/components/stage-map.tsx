@@ -9,13 +9,15 @@
 
 import { geoNaturalEarth1, geoPath } from "d3-geo";
 import { useMemo } from "react";
-import { feature } from "topojson-client";
-import type { Topology, GeometryCollection } from "topojson-specification";
-import world from "world-atlas/countries-110m.json";
 
 import { ISO_NUM, speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
 import { CAPITALS, uTint } from "@/lib/stage";
+import { WORLD_FEATURES } from "@/lib/world";
+
+import { EarthMapDefs } from "./earth-defs";
+import { useT } from "./settings-provider";
+import { Hint } from "./ui";
 
 const WIDTH = 940;
 const HEIGHT = 480;
@@ -57,10 +59,7 @@ export function StageMap({
   breatheKey = 0,
   eventTitle,
 }: StageMapProps) {
-  const features = useMemo(() => {
-    const topo = world as unknown as Topology<{ countries: GeometryCollection }>;
-    return feature(topo, topo.objects.countries).features;
-  }, []);
+  const t = useT();
   const { path, project } = useMemo(() => {
     const projection = geoNaturalEarth1().fitSize([WIDTH, HEIGHT], { type: "Sphere" });
     return {
@@ -89,16 +88,17 @@ export function StageMap({
       <svg
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         role="img"
-        aria-label={`Scène du sommet — pays teintés par leur trajectoire (U global ${fmt(utopia)})`}
+        aria-label={`Théâtre du sommet — pays teintés par leur trajectoire (monde à ${fmt(utopia)})`}
         className={`w-full ${frozen ? "stage-frozen" : ""}`}
       >
+        <EarthMapDefs height={HEIGHT} />
         <g key={`breathe-${breatheKey}`} className={breatheKey ? "stage-breathe" : undefined}>
           <path
             d={path({ type: "Sphere" }) ?? undefined}
-            fill="var(--surface)"
+            fill="url(#map-ocean)"
             stroke="var(--border)"
           />
-          {features.map((f, i) => {
+          {WORLD_FEATURES.map((f, i) => {
             const slug = active.get(String(f.id));
             const isSuspended = slug ? suspendedSet.has(slug) : false;
             const isSpeaking = slug != null && slug === speaking;
@@ -108,15 +108,15 @@ export function StageMap({
                 : isSuspended
                   ? SUSPENDED_FILL
                   : uTint(uByCountry[slug] ?? utopia)
-              : "var(--muted)";
+              : "url(#map-land)";
             return (
               <path
                 key={`${String(f.id)}-${i}`} // certains territoires n'ont pas d'id ISO unique
                 d={path(f) ?? undefined}
                 fill={fill}
-                stroke={isSpeaking ? "var(--accent-bright)" : "var(--background)"}
+                stroke={isSpeaking ? "var(--accent-bright)" : "var(--ocean-night)"}
                 strokeWidth={isSpeaking ? 1.2 : 0.5}
-                opacity={slug ? (isSuspended ? 0.7 : 0.95) : 0.55}
+                opacity={slug ? (isSuspended ? 0.7 : 0.95) : 0.7}
                 className={
                   slug
                     ? isSpeaking
@@ -141,7 +141,7 @@ export function StageMap({
           {/* Voile de brouillard : les pays désinformés voient un autre monde. */}
           {Object.keys(misled).map((slug) => {
             const iso = ISO_NUM[slug];
-            const f = features.find((x) => String(x.id) === iso);
+            const f = WORLD_FEATURES.find((x) => String(x.id) === iso);
             if (!f) return null;
             return (
               <path
@@ -151,7 +151,7 @@ export function StageMap({
                 opacity={0.3}
                 className="stage-veil"
               >
-                <title>{`${speakerMeta(slug).label} — désinformé : « ${misled[slug]} »`}</title>
+                <title>{`${speakerMeta(slug).label} — trompé : « ${misled[slug]} »`}</title>
               </path>
             );
           })}
@@ -229,11 +229,14 @@ export function StageMap({
                 "linear-gradient(to right, var(--dystopia), var(--warn), var(--utopia))",
             }}
           />
-          teinte = trajectoire du pays (échelle U fixe)
+          vert : le pays va bien · rouge : il va mal
         </span>
         <span>hors sommet en gris</span>
-        <span className="ml-auto font-mono tabular-nums" style={{ color: uTint(utopia) }}>
-          U = {fmt(utopia)}
+        <span className="ml-auto flex items-center gap-1.5">
+          <span className="font-mono tabular-nums" style={{ color: uTint(utopia) }}>
+            Monde : {fmt(utopia)}
+          </span>
+          <Hint text={t("u.thermometre")} />
         </span>
       </figcaption>
     </figure>

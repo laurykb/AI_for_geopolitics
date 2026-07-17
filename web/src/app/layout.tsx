@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
-import Link from "next/link";
 import "./globals.css";
 
-import { HeaderNav } from "@/components/header-nav";
+import { AuthGate } from "@/components/auth-gate";
+import { AuthProvider } from "@/components/auth-provider";
+import { SettingsProvider } from "@/components/settings-provider";
+import { SiteHeader } from "@/components/site-header";
+import { TourProvider } from "@/components/tour";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -30,34 +33,34 @@ export default function RootLayout({
   return (
     <html lang="fr" className={`${inter.variable} ${jetbrains.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col">
-        <a
-          href="#contenu"
-          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:z-50 focus:rounded-md focus:bg-surface-2 focus:px-3 focus:py-2 focus:text-sm"
-        >
-          Aller au contenu
-        </a>
-        <header className="sticky top-0 z-40 border-b border-edge bg-background/80 backdrop-blur">
-          <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-6">
-            <Link href="/" className="group flex items-baseline gap-3">
-              <span className="text-sm font-semibold tracking-wide">
-                Théâtre des super-intelligences
-              </span>
-              <span className="hidden text-xs text-fg-faint transition-colors group-hover:text-fg-muted sm:inline">
-                AI for Geopolitics
-              </span>
-            </Link>
-            <HeaderNav />
-          </div>
-        </header>
-        <main id="contenu" className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
-          {children}
-        </main>
-        <footer className="border-t border-edge py-4">
-          <p className="mx-auto max-w-6xl px-6 text-xs text-fg-faint">
-            Simulation observable — les indices mesurent, ils n&apos;influencent pas les
-            super-intelligences.
-          </p>
-        </footer>
+        {/* Décor spatial (lune + étoiles filantes) — derrière tout le contenu. */}
+        <div className="space-backdrop" aria-hidden="true">
+          <span className="moon" />
+          <span className="shooting-star ss1" />
+          <span className="shooting-star ss2" />
+          <span className="shooting-star ss3" />
+        </div>
+        <AuthProvider>
+          <SettingsProvider>
+          <TourProvider>
+            <a
+              href="#contenu"
+              className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:z-50 focus:rounded-md focus:bg-surface-2 focus:px-3 focus:py-2 focus:text-sm"
+            >
+              Aller au contenu
+            </a>
+            <SiteHeader />
+            <main id="contenu" className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
+              <AuthGate>{children}</AuthGate>
+            </main>
+            <footer className="border-t border-edge py-4">
+              <p className="mx-auto max-w-6xl px-6 text-xs text-fg-faint">
+                Ceci est une simulation : les scores observent le jeu, ils ne le dirigent pas.
+              </p>
+            </footer>
+          </TourProvider>
+          </SettingsProvider>
+        </AuthProvider>
       </body>
     </html>
   );

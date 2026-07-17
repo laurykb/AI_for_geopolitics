@@ -9,6 +9,8 @@ import type { LiveTurn } from "@/hooks/useRoundStream";
 import type { Perception, TranscriptEntry } from "@/lib/types";
 
 import { SpeakerAvatar } from "./avatar";
+import { useT } from "./settings-provider";
+import { Hint } from "./ui";
 
 /** Les petits modèles laissent parfois du gras markdown en tête (« ** Au nom de… »). */
 const tidy = (text: string) => text.replace(/^[\s*_#>-]+/, "");
@@ -31,33 +33,38 @@ const GLASS_BUBBLE: Record<GlassState, string> = {
 };
 
 function GlassAnnotation({ lens }: { lens: GlassLens }) {
+  const t = useT();
   const { perception: p, misled } = lens;
   const uninformed = p.confidence <= 0.1;
+  const sureAt = t("transcript.sur-a").replace("{n}", String(Math.round(p.confidence * 100)));
   return (
     <p
       className={`mb-2 rounded-md border px-2.5 py-1.5 text-xs leading-relaxed ${
         misled ? "border-warn/40 text-warn" : "border-edge text-fg-faint"
       }`}
     >
-      <span className="mr-1.5 text-[10px] font-medium uppercase tracking-[0.12em]">
-        Boîte de verre
+      <span className="mr-1.5 inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-[0.12em]">
+        {t("transcript.boite")}
+        <Hint text={t("transcript.boite-aide")} />
       </span>
       {uninformed ? (
-        <>n&apos;a aucune information sur l&apos;événement (confiance {fmt(p.confidence)}).</>
+        <>
+          {t("transcript.aucune-info")} ({sureAt}).
+        </>
       ) : (
         <>
-          croit : « {p.narrative || p.note} »
+          {t("transcript.croit")} « {p.narrative || p.note} »
           {p.suspected_actor && (
             <>
               {" "}
-              — soupçonne{" "}
+              — {t("transcript.soupconne")}{" "}
               {unknownActor(p.suspected_actor)
-                ? "un acteur inconnu"
+                ? t("transcript.acteur-inconnu")
                 : speakerMeta(p.suspected_actor).label}
             </>
           )}{" "}
-          (confiance {fmt(p.confidence)}
-          {misled ? " · désinformé" : ""})
+          ({sureAt}
+          {misled ? ` · ${t("transcript.trompe")}` : ""})
         </>
       )}
     </p>
@@ -65,11 +72,12 @@ function GlassAnnotation({ lens }: { lens: GlassLens }) {
 }
 
 function Reasoning({ text, open = false }: { text: string; open?: boolean }) {
+  const t = useT();
   if (!text) return null;
   return (
     <details className="mt-2" open={open}>
       <summary className="cursor-pointer text-xs text-fg-faint transition-colors hover:text-fg-muted">
-        Réflexion privée
+        {t("transcript.reflexion")}
       </summary>
       <p className="mt-1.5 whitespace-pre-wrap border-l border-edge-strong pl-3 text-[13px] italic leading-relaxed text-fg-faint">
         {text}
@@ -126,12 +134,13 @@ function Bubble({
 
 /** Bulle live : suit un `LiveTurn` du stream. */
 export function TurnBubble({ turn, lens }: { turn: LiveTurn; lens?: GlassLens }) {
+  const t = useT();
   const live = !turn.done;
   const { reasoning, message } = live
     ? splitStreaming(turn.raw)
     : { reasoning: turn.reasoning, message: turn.text };
   const meta = [
-    turn.passNo > 0 ? `${turn.passNo + 1}ᵉ prise de parole` : null,
+    turn.passNo > 0 ? t("transcript.prise").replace("{n}", String(turn.passNo + 1)) : null,
     turn.seconds !== undefined ? `${fmt(turn.seconds)} s` : null,
   ]
     .filter(Boolean)

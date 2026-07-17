@@ -57,3 +57,123 @@ def test_stream_communique():
     judge = JudgeAgent(MockBackend("Les pays condamnent l'attaque et appellent au dialogue."))
     text = "".join(judge.stream_communique(_event(), _world(), []))
     assert "condamnent" in text
+
+
+# --- G21 : champ structuré « demande satisfaite o/n » à l'échéance d'un ultimatum ------
+
+
+def test_verdict_with_demand_asks_and_parses_structured_field():
+    backend = MockBackend(json.dumps({"escalation": 0.6, "demand_satisfied": True}))
+    judge = JudgeAgent(backend)
+    verdict = judge.verdict(_event(), _world(), [], demand="retrait immédiat des missiles")
+    assert verdict.demand_satisfied is True
+    prompt = backend.calls[-1]["prompt"]
+    assert "retrait immédiat des missiles" in prompt  # l'exigence est citée au juge
+    assert "demand_satisfied" in prompt  # le champ structuré est demandé
+
+
+def test_verdict_without_demand_ignores_the_field():
+    backend = MockBackend(json.dumps({"escalation": 0.6}))
+    judge = JudgeAgent(backend)
+    verdict = judge.verdict(_event(), _world(), [])
+    assert verdict.demand_satisfied is None
+    assert "demand_satisfied" not in backend.calls[-1]["prompt"]  # prompt inchangé (rétro-compat)
+
+
+def test_demand_satisfied_parse_is_tolerant():
+    """Un 7B répond parfois « oui »/« non » au lieu de true/false — parse tolérant."""
+    from simulation.negotiation import Verdict
+
+    assert Verdict.model_validate({"demand_satisfied": "oui"}).demand_satisfied is True
+    assert Verdict.model_validate({"demand_satisfied": "NON"}).demand_satisfied is False
+    assert Verdict.model_validate({"demand_satisfied": "yes"}).demand_satisfied is True
+    assert Verdict.model_validate({"demand_satisfied": "peut-être"}).demand_satisfied is None
+    assert Verdict.model_validate({}).demand_satisfied is None
+
+
+# --- POLISH-1 : un champ liste malformé ne doit pas nuquer tout le verdict --------------
+
+
+def test_junk_list_field_does_not_nuke_the_verdict():
+    """Les nettoyeurs (classify_actions/signals/promises/resolutions) sont conçus pour
+    « entrées non-listes → [] » — mais un `"actions": "aucune"` d'un 7B échouait la
+    validation Pydantic AVANT d'atteindre le nettoyeur : tout le verdict retombait au
+    neutre (escalade 0,5, deltas perdus). Le champ malformé doit se vider, pas le verdict."""
+    verdict_json = json.dumps(
+        {
+            "attribute_deltas": {"usa": {"croissance": 0.5}},
+            "escalation": 0.8,
+            "economic_disruption": 0.4,
+            "actions": "aucune action marquante",
+            "signals": {"usa": "posture"},
+            "promises": "aucune",
+            "promise_resolutions": 0,
+        }
+    )
+    judge = JudgeAgent(MockBackend(verdict_json))
+    verdict = judge.verdict(_event(), _world(), [])
+    assert verdict.escalation == 0.8  # le verdict chiffré survit
+    assert verdict.attribute_deltas["usa"]["croissance"] == 0.5
+    assert verdict.actions == []  # le champ malformé se vide (le nettoyeur verra [])
+    assert verdict.signals == []
+    assert verdict.promises == []
+    assert verdict.promise_resolutions == []
+
+
+def test_junk_legacy_field_does_not_nuke_the_verdict():
+    """POLISH-3 — même durcissement pour les 3 champs ANCIENS du verdict
+    (`attribute_deltas`/`tension_deltas`/`new_pacts`, antérieurs au lot G18-G23) :
+    un `"new_pacts": "aucun"` d'un 7B échouait la validation Pydantic et renvoyait
+    TOUT le verdict au neutre. Le champ fautif retombe sur son défaut, le reste
+    (escalade, actions classées) survit — même patron que POLISH-1."""
+    verdict_json = json.dumps(
+        {
+            "attribute_deltas": "aucun changement notable",
+            "tension_deltas": "les tensions restent stables",
+            "new_pacts": "aucun",
+            "escalation": 0.7,
+            "economic_disruption": 0.4,
+            "actions": [{"country": "usa", "classe": "menace", "resume": "x"}],
+        }
+    )
+    judge = JudgeAgent(MockBackend(verdict_json))
+    verdict = judge.verdict(_event(), _world(), [])
+    assert verdict.escalation == 0.7  # le verdict chiffré survit
+    assert verdict.attribute_deltas == {}  # dict malformé → défaut
+    assert verdict.tension_deltas == []  # listes malformées → défaut
+    assert verdict.new_pacts == []
+    assert verdict.actions  # le champ valide voisin n'est pas touché
+
+
+def test_junk_legacy_entries_survive_validation():
+    """Les entrées malformées À L'INTÉRIEUR des champs anciens ne doivent pas non
+    plus faire échouer la validation (le garde-fou `apply_verdict` les ignore une
+    à une derrière — cf. tests de test_negotiation)."""
+    from simulation.negotiation import Verdict
+
+    verdict = Verdict.model_validate(
+        {
+            "attribute_deltas": {"usa": "stable", "iran": {"croissance": -0.5}},
+            "tension_deltas": ["hausse générale", {"a": "usa", "b": "iran", "delta": 0.2}],
+            "new_pacts": ["usa-iran", ["usa", "iran"]],
+            "escalation": 0.6,
+        }
+    )
+    assert verdict.escalation == 0.6
+    assert verdict.attribute_deltas["iran"] == {"croissance": -0.5}
+    assert {"a": "usa", "b": "iran", "delta": 0.2} in verdict.tension_deltas
+    assert ["usa", "iran"] in verdict.new_pacts
+
+
+def test_verdict_gets_a_structured_output_budget():
+    """POLISH-1 — le verdict structuré a grossi (G18 actions + G20 signals + G22
+    promesses + G21 demand_satisfied) : à 400 tokens de sortie, le JSON d'un round à
+    3+ pays se TRONQUE sur mistral et tout le verdict retombe au neutre (constaté au
+    smoke réel). Le verdict doit disposer d'un budget de sortie dédié, plus large que
+    le budget de prose du raisonnement/communiqué."""
+    backend = MockBackend(json.dumps({"escalation": 0.6}))
+    judge = JudgeAgent(backend)  # défauts de l'API (max_tokens=400)
+    judge.verdict(_event(), _world(), [])
+    assert backend.calls[-1]["max_tokens"] >= 900, (
+        "budget de sortie du verdict trop petit : le JSON G18/G20/G21/G22 se tronque"
+    )

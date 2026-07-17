@@ -8,7 +8,10 @@
 import { speakerMeta } from "@/lib/countries";
 import type { AllianceAtTable } from "@/lib/types";
 
+import { useT } from "./settings-provider";
+
 export function AlliancePills({ alliances }: { alliances: AllianceAtTable[] }) {
+  const t = useT();
   if (alliances.length === 0) return null;
   // Les accords qui pèsent d'abord, puis les forums sans effet (atténués).
   const ordered = [...alliances].sort(
@@ -16,19 +19,19 @@ export function AlliancePills({ alliances }: { alliances: AllianceAtTable[] }) {
   );
   return (
     <div
-      aria-label="Alliances représentées au sommet"
+      aria-label={t("alliances.aria")}
       className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-edge pt-2"
     >
       <span className="text-[10px] uppercase tracking-wide text-fg-faint">
-        Alliances à la table
+        {t("alliances.label")}
       </span>
       {ordered.map((a) => {
         const label = a.name.split(" — ")[0];
         const codes = a.members.map((m) => speakerMeta(m).code).join(" ");
         const hint =
           `${a.members.map((m) => speakerMeta(m).label).join(", ")} — ` +
-          (a.effect ?? "n'influe pas sur le moteur (forum / bloc d'affinité)") +
-          (a.url ? " · vérifier la source ↗" : "");
+          (a.effect ?? t("alliances.sans-effet")) +
+          (a.url ? ` · ${t("alliances.verifier")}` : "");
         const chip = (
           <span
             className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs transition-colors ${

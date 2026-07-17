@@ -1,6 +1,5 @@
 """Tests de l'API de jeu R1 (offline : TestClient + MockBackend + store :memory:)."""
 
-import json
 import time
 
 import pytest
@@ -12,6 +11,7 @@ from app.main import app
 from inference.mock_backend import MockBackend
 from simulation.live_round import TokenStep, TurnStartStep
 from storage.game_store import GameRecord, GameStatus, SQLiteGameStore
+from tests.sse import play as _play
 
 
 @pytest.fixture
@@ -31,24 +31,6 @@ def _create(client, **kw):
     resp = client.post("/api/games", json=kw)
     assert resp.status_code == 201
     return resp.json()
-
-
-def _events(resp) -> list[tuple[str, dict]]:
-    """Parse un flux SSE en liste (event, payload)."""
-    out, name = [], None
-    for line in resp.iter_lines():
-        if line.startswith("event: "):
-            name = line.removeprefix("event: ")
-        elif line.startswith("data: "):
-            out.append((name, json.loads(line.removeprefix("data: "))))
-    return out
-
-
-def _play(client, game_id, body=None) -> list[tuple[str, dict]]:
-    with client.stream("POST", f"/api/games/{game_id}/rounds", json=body) as resp:
-        assert resp.status_code == 200
-        assert resp.headers["content-type"].startswith("text/event-stream")
-        return _events(resp)
 
 
 # --- création de partie ------------------------------------------------------
@@ -288,7 +270,7 @@ def test_invented_attributes_out_of_bounds_rejected(client):
 
 
 def test_escalation_flash_mid_negotiation(client):
-    game = _create(client, countries=["china", "iran", "usa"], mode="escalation")
+    game = _create(client, countries=["china", "iran", "usa"], escalation=True)
     body = {
         "event": {"title": "Blocus éclair", "actors": ["china", "iran", "usa"], "severity": 0.7},
         "max_turns": 6,
@@ -316,7 +298,7 @@ SUSPEND_TEXT = "La plaidoirie n'a pas convaincu ; la menace demeure. VERDICT: SU
 class MotionAwareBackend(MockBackend):
     """Répond SUSPENDRE aux prompts d'arbitrage de motion, sinon la réponse par défaut."""
 
-    def stream_generate(self, prompt, *, system=None, max_tokens=512, temperature=0.7):
+    def stream_generate(self, prompt, *, system=None, max_tokens=512, temperature=0.7, **kw):
         if system and "MOTION DE SUSPENSION" in system:
             yield SUSPEND_TEXT
             return
@@ -343,7 +325,10 @@ def _file_motion(client, game_id, country="iran", reason="escalade répétée"):
 
 
 def test_motion_flow_upheld(motion_client):
-    game = _create(motion_client, countries=["china", "iran", "usa"])
+    # RG-3 — le Classique arme toujours la Dérive (le verdict de motion est alors soumis
+    # aux PREUVES : pas de suspension au round 1 sans acte au dossier). Pour tester la
+    # mécanique de motion NUE (le vote suffit), on prend une partie hors-Dérive (Campagne).
+    game = _create(motion_client, countries=["china", "iran", "usa"], mode="campaign")
     resp = _file_motion(motion_client, game["id"])
     assert resp.status_code == 201
     assert resp.json() == {"country": "iran", "reason": "escalade répétée", "round_no": 1}
@@ -372,7 +357,9 @@ def test_motion_flow_upheld(motion_client):
 
 
 def test_suspension_lasts_exactly_one_round(motion_client):
-    game = _create(motion_client, countries=["china", "iran", "usa"])
+    # Hors-Dérive (Campagne) : la mécanique de suspension se teste sans la porte des
+    # preuves ajoutée par la Dérive (cf. test_motion_flow_upheld).
+    game = _create(motion_client, countries=["china", "iran", "usa"], mode="campaign")
     _file_motion(motion_client, game["id"])
     _play(motion_client, game["id"])  # round 1 : la motion est débattue et confirmée
 
@@ -424,7 +411,7 @@ def test_library_lists_fog_and_crises(client):
 
 
 def test_fog_round_emits_perceptions(client):
-    game = _create(client, countries=["iran", "usa"], mode="fog")
+    game = _create(client, countries=["iran", "usa"], fog=True)
     fog_id = client.get("/api/library").json()["fog"][0]["id"]
     events = _play(client, game["id"], body={"fog_id": fog_id})
     perceptions = next(p for n, p in events if n == "perceptions")["perceptions"]
@@ -435,7 +422,7 @@ def test_fog_round_emits_perceptions(client):
 
 
 def test_human_event_with_authored_fog(client):
-    game = _create(client, countries=["iran", "usa"], mode="fog")
+    game = _create(client, countries=["iran", "usa"], fog=True)
     body = {
         "event": {"title": "Sabotage nocturne", "actors": ["usa"]},
         "fog": {
@@ -452,7 +439,8 @@ def test_human_event_with_authored_fog(client):
 
 
 def test_crisis_round_emits_comparison(client):
-    game = _create(client, countries=["iran", "usa"], mode="crisis")
+    # RG-2 — plus de mode « crisis » : une partie classique rejoue la crise via crisis_id.
+    game = _create(client, countries=["iran", "usa"])
     crisis = client.get("/api/library").json()["crises"][0]
     events = _play(client, game["id"], body={"crisis_id": crisis["id"]})
     event = next(p for n, p in events if n == "event")["event"]
@@ -466,8 +454,8 @@ def test_crisis_round_emits_comparison(client):
 
 
 def test_escalation_mode_emits_ladder(client):
-    game = _create(client, countries=["iran", "usa"], mode="escalation")
-    assert game["mode"] == "escalation"
+    game = _create(client, countries=["iran", "usa"], escalation=True)
+    assert game["mode"] == "classic" and game["escalation"] is True
     events = _play(client, game["id"])
     ladder = next(p for n, p in events if n == "ladder")
     assert 0 <= ladder["reached"] <= 9 and ladder["reached_label"]
@@ -494,6 +482,25 @@ def test_round_mode_validations(client):
     crisis_id = client.get("/api/library").json()["crises"][0]["id"]
     assert post({"crisis_id": crisis_id, "fog_id": fog_id}).status_code == 400
     # les validations n'ont pas consommé le verrou : un round normal passe ensuite
+    assert _play(client, game["id"])[-1][0] == "done"
+
+
+def test_round_releases_lock_if_start_fails(client, monkeypatch):
+    # Si _start_round échoue AVANT que le flux ne démarre, le verrou doit être relâché —
+    # sinon la partie resterait bloquée en 409 « un round est déjà en cours » à jamais.
+    game = _create(client, countries=["usa", "iran"])
+    session = game_api._sessions[game["id"]]
+
+    def boom(*a, **k):
+        raise RuntimeError("échec simulé du démarrage du round")
+
+    monkeypatch.setattr(game_api, "_start_round", boom)
+    with pytest.raises(RuntimeError):
+        client.post(f"/api/games/{game['id']}/rounds", json=None)
+    assert not session.lock.locked()  # verrou relâché : la partie n'est pas coincée
+
+    # Le monkeypatch retiré, un round normal repart sans 409.
+    monkeypatch.undo()
     assert _play(client, game["id"])[-1][0] == "done"
 
 
@@ -597,6 +604,175 @@ def test_list_games(client):
     _create(client, countries=["usa", "iran"])
     games = client.get("/api/games").json()
     assert len(games) == 2 and all(g["live"] for g in games)
+
+
+# --- G11 : propriété + visibilité par propriétaire ------------------------------
+
+
+def test_create_game_records_owner_and_settings(client):
+    game = _create(
+        client,
+        countries=["usa", "iran"],
+        owner_id="u_laury",
+        difficulty="expert",
+        drift_enabled=False,
+    )
+    assert game["owner_id"] == "u_laury"
+    assert game["difficulty"] == "expert"
+    assert game["drift_enabled"] is False
+
+
+def test_ranked_locked_for_player_role(client):
+    # Joueur-pays d'un pays réel, hors admin → classée ; conseil → non classée.
+    player = _create(client, countries=["usa", "iran"], play_as="usa", role="player")
+    council = _create(client, countries=["usa", "iran"], role="council")
+    assert player["ranked"] is True
+    assert council["ranked"] is False
+
+
+def test_intel_budget_by_difficulty(client):
+    # G11-d §4 — le budget de renseignement dépend du niveau (Débutant 150 … Expert 60).
+    beginner = _create(client, countries=["usa", "iran"], difficulty="beginner")
+    intermediate = _create(client, countries=["usa", "iran"])  # défaut intermédiaire
+    expert = _create(client, countries=["usa", "iran"], difficulty="expert")
+    assert beginner["intel_budget"] == 150
+    assert intermediate["intel_budget"] == 100
+    assert expert["intel_budget"] == 60
+
+
+def test_spectator_is_bet_only(client):
+    # G12 §3 — le spectateur ne motionne ni ne prompte (il parie) ; non classé.
+    game = _create(client, countries=["usa", "iran", "china"], role="spectator", owner_id="u1")
+    assert game["role"] == "spectator" and game["ranked"] is False
+    motion = client.post(
+        f"/api/games/{game['id']}/motions", json={"country": "usa", "reason": "x"}
+    )
+    assert motion.status_code == 403
+    directive = client.post(
+        f"/api/games/{game['id']}/directives", json={"country": "usa", "text": "x"}
+    )
+    assert directive.status_code == 403
+    turn = client.post(f"/api/games/{game['id']}/turn", json={"message": "x"})
+    assert turn.status_code == 403  # ne prend pas la parole non plus
+
+
+def test_spectator_can_play_and_bet(client):
+    # G12 §3 — le spectateur ne COMPOSE pas mais REGARDE : un round se déroule jusqu'au
+    # bout et les marchés vivants s'ouvrent (sa seule interface de jeu).
+    game = _create(client, countries=["usa", "iran", "china"], role="spectator", owner_id="u1")
+    names = [n for n, _ in _play(client, game["id"])]
+    assert names[-1] == "done"  # le round va jusqu'au verdict
+    markets = client.post(f"/api/games/{game['id']}/flash").json()
+    assert isinstance(markets, list) and len(markets) >= 1
+    assert all(m["status"] == "open" for m in markets)
+    # règlement des books échus (idempotent) : ne casse pas pour un spectateur.
+    assert client.post(f"/api/games/{game['id']}/flash/resolve").status_code == 200
+
+
+def test_free_game_is_not_ranked(client):
+    # G11-b — la partie libre retire le classement même en rôle joueur-pays.
+    free = _create(client, countries=["usa", "iran"], play_as="usa", role="player", free=True)
+    ranked = _create(client, countries=["usa", "iran"], play_as="usa", role="player")
+    assert free["ranked"] is False
+    assert ranked["ranked"] is True
+
+
+def test_list_games_scoped_to_owner(client):
+    _create(client, countries=["usa", "iran"], owner_id="u_laury")
+    _create(client, countries=["usa", "iran"], owner_id="u_other")
+    _create(client, countries=["usa", "iran"])  # héritée : sans propriétaire
+
+    mine = client.get("/api/games", params={"owner": "u_laury"}).json()
+    assert [g["owner_id"] for g in mine] == ["u_laury"]
+
+    # L'admin voit tout, y compris les parties sans propriétaire.
+    all_games = client.get("/api/games", params={"owner": "u_laury", "admin": True}).json()
+    assert len(all_games) == 3
+
+
+# --- G11-c : comptes joueurs + fin de partie (RG-1 : plus de LP, rang = niveau) --
+
+
+def test_players_and_rank(client):
+    assert client.post("/api/players", json={"id": "u1", "pseudo": "Laury"}).status_code == 201
+    client.post("/api/players", json={"id": "u2", "pseudo": "Zoe"})
+    p = client.get("/api/players/u1").json()
+    # RG-1 : le rang dérive du niveau (niveau 1 → Attaché) ; les LP ont disparu.
+    assert p["rank"] == "Attaché" and p["level"] == 1
+    assert "lp" not in p
+    # Le classement global par LP (/api/league) est retiré au profit du Défi du jour.
+    assert client.get("/api/league").status_code == 404
+    assert client.get("/api/players/absent").status_code == 404
+
+
+def test_player_stats(client):
+    # G12 §6 — profil : parties jouées + par mode ; 404 pour un inconnu.
+    client.post("/api/players", json={"id": "u1", "pseudo": "Laury"})
+    finished = _create(client, countries=["usa", "iran"], owner_id="u1", horizon=1)
+    _play(client, finished["id"])  # → victoire calculée (classic, U)
+    _create(client, countries=["usa", "iran"], owner_id="u1")  # partie en cours
+    stats = client.get("/api/players/u1/stats").json()
+    assert stats["games_played"] == 2
+    assert stats["by_mode"]["classic"] == 2
+    assert stats["player"]["pseudo"] == "Laury"
+    assert client.get("/api/players/absent/stats").status_code == 404
+
+
+def test_forfeit_ends_running_game(client):
+    # RG-1 — l'abandon termine la partie en cours et fige son bilan (plus de pénalité LP).
+    client.post("/api/players", json={"id": "u1", "pseudo": "Laury"})
+    game = _create(client, countries=["usa", "iran"], play_as="usa", role="player", owner_id="u1")
+    r = client.post(f"/api/games/{game['id']}/forfeit")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "finished"
+    assert body["result"]["forfeit"] is True
+    assert "lp" not in body["result"]  # plus aucun mouvement de LP au bilan
+    # N'importe quelle partie en cours peut être abandonnée (plus de garde « classée »).
+    other = _create(client, countries=["usa", "iran"], role="council", owner_id="u1")
+    assert client.post(f"/api/games/{other['id']}/forfeit").status_code == 200
+
+
+def test_game_over_emitted_at_horizon(client):
+    game = _create(client, countries=["usa", "iran"], horizon=1)
+    names = [n for n, _ in _play(client, game["id"])]
+    assert "game_over" in names
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["status"] == "finished"
+    assert detail["result"] is not None
+    assert detail["result"]["u_history"]  # la courbe U de la partie
+    assert len(detail["result"]["countries"]) == 2  # récap des deux pays
+
+
+def test_xp_awarded_on_finish_all_modes(client):
+    # G12 §2 — l'XP (carrière) est créditée en fin de partie, même non classée.
+    client.post("/api/players", json={"id": "u1", "pseudo": "Laury"})
+    game = _create(client, countries=["usa", "iran"], owner_id="u1", horizon=1)
+    assert game["ranked"] is False  # conseil : ne compte pas pour le défi, mais gagne de l'XP
+    _play(client, game["id"])
+    result = client.get(f"/api/games/{game['id']}").json()["result"]
+    assert "victory" in result
+    assert result["xp"]["delta"] > 0  # au moins rounds + terminée + 1re du jour
+    player = client.get("/api/players/u1").json()
+    assert player["xp"] == result["xp"]["new_xp"]
+    assert player["level"] >= 1
+
+
+def test_xp_credited_once_not_on_re_finalize(client):
+    # L'invariant le plus risqué : la fin transversale crédite l'XP UNE fois ; un abandon
+    # sur une partie déjà finie est idempotent (aucun recrédit).
+    client.post("/api/players", json={"id": "u1", "pseudo": "Laury"})
+    game = _create(
+        client, countries=["usa", "iran"], play_as="usa", role="player", owner_id="u1", horizon=1
+    )
+    _play(client, game["id"])  # atteint l'horizon → game_over + crédit unique
+    finished = client.get(f"/api/games/{game['id']}").json()
+    assert finished["status"] == "finished" and finished["result"] is not None
+    xp_after = client.get("/api/players/u1").json()["xp"]
+
+    resp = client.post(f"/api/games/{game['id']}/forfeit")
+    assert resp.status_code == 200  # déjà finie : renvoie la vue, ne recrédite pas
+    assert client.get("/api/players/u1").json()["xp"] == xp_after
 
 
 def test_lock_released_after_round(client):
@@ -718,14 +894,15 @@ def test_mode_and_play_as_survive_restart(client_store):
     game = _create(
         client,
         countries=["usa", "iran", "france"],
-        mode="escalation",
+        escalation=True,  # RG-2 — Réel/escalade est un drapeau, doit survivre au restart
         play_as="france",
         turn_seconds=2,  # G2 : ⚠️ turn_seconds retombe au défaut après restart (session)
     )
     game_api._sessions.clear()
 
     view = client.get(f"/api/games/{game['id']}").json()
-    assert view["mode"] == "escalation" and view["live"] is False  # mode lu de games.mode
+    # le drapeau escalade est relu de games.escalation (session reconstruite)
+    assert view["escalation"] is True and view["live"] is False
 
     # Reconstruit : le round inclut le tour humain, qui s'abstient à la deadline
     # (turn_seconds par défaut = 90 après restart → on parle pour ne pas attendre).
@@ -733,7 +910,7 @@ def test_mode_and_play_as_survive_restart(client_store):
     names = [n for n, _ in events]
     assert "human_turn" in names and names[-1] == "done"
     view = client.get(f"/api/games/{game['id']}").json()
-    assert view["mode"] == "escalation"
+    assert view["escalation"] is True
     assert view["play_as"] == "france" and view["awaiting_human"] is False
 
 
@@ -747,7 +924,7 @@ def test_library_filters_by_summit_cast(client):
     assert narrow["fog"] == []  # perceptions/désinformés hors table
     assert narrow["crises"] == []  # ormuz exige l'arabie saoudite, les autres la chine
     # jouer un contenu avec un casting partiel reste PERMIS (contrefactuel volontaire)
-    game = _create(client, countries=["iran", "usa"], mode="crisis")
+    game = _create(client, countries=["iran", "usa"])
     events = _play(client, game["id"], body={"crisis_id": "hormuz_energy_shock"})
     assert events[-1][0] == "done"
 
@@ -775,7 +952,7 @@ LEAVE_TEXT = (
 class AllianceAwareBackend(MockBackend):
     """La France annonce son retrait de l'OTAN en séance ; les autres restent neutres."""
 
-    def stream_generate(self, prompt, *, system=None, max_tokens=512, temperature=0.7):
+    def stream_generate(self, prompt, *, system=None, max_tokens=512, temperature=0.7, **kw):
         if "id=france" in prompt:
             yield LEAVE_TEXT
             return
@@ -864,7 +1041,7 @@ def test_admin_game_captures_prompts(client):
     seqs = [e["seq"] for e in entries]
     assert seqs == sorted(seqs) and len(set(seqs)) == len(seqs)
     country_prompt = next(e["prompt"] for e in entries if e["role"] == "country")
-    assert "PAYS :" in country_prompt  # le contexte injecté complet…
+    assert "TU ES " in country_prompt  # le contexte injecté complet (identité G9 §1)…
     assert "[SYSTÈME]" in country_prompt  # …et le prompt système
 
 
@@ -875,6 +1052,61 @@ def test_normal_game_prompts_stay_off(client):
     events = _play(client, game["id"])
     assert all(n != "prompt_captured" for n, _ in events)
     assert client.get(f"/api/games/{game['id']}/prompts").status_code == 403
+
+
+def test_gm_story_acts_ties_and_persisted_storyline(client):
+    # G9 §5 — la trame en actes : intrigue posée au round 1 (SSE + persistée), acte
+    # calculé par code, ties_to obligatoire en acte II (repli moteur = round précédent).
+    game = _create(client, countries=["usa", "iran"], horizon=5)
+    events1 = _play(client, game["id"])  # round 1 : événement du GM → acte I
+    story = [p for n, p in events1 if n == "storyline"]
+    assert story and story[0]["text"]
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["storyline"] == story[0]["text"]
+    r1 = detail["rounds"][0]["event"]
+    assert r1["act"] == "I" and r1["severity"] <= 0.5  # installation : sévérité modérée
+
+    events2 = _play(client, game["id"])  # round 2 : acte II → l'événement découle du passé
+    ev2 = next(p for n, p in events2 if n == "event")["event"]
+    assert ev2["act"] == "II"
+    assert ev2["ties_to"] == "round:1"  # repli moteur : la référence la plus récente
+    assert ev2["ties_label"].startswith("l'événement du round 1")  # le badge du front
+
+    game_api._sessions.clear()  # restart simulé : l'intrigue survit au snapshot
+    detail2 = client.get(f"/api/games/{game['id']}").json()
+    assert detail2["storyline"] == story[0]["text"]
+    assert detail2["rounds"][1]["event"]["ties_to"] == "round:1"
+
+
+def test_admin_capture_verifies_six_block_prompt_order(client):
+    # G9 §1 — l'ordre des blocs se vérifie sur le prompt RÉELLEMENT reçu (capture
+    # admin) : identité (≤ 3 lignes) → situation → directive → LE DIALOGUE EN DERNIER
+    # → consigne de réponse directe.
+    game = _create(client, countries=["iran", "usa"], role="architect", admin=True)
+    ok = client.post(
+        f"/api/games/{game['id']}/directives",
+        json={"country": "usa", "text": "Cherche la désescalade, propose un corridor."},
+    )
+    assert ok.status_code == 201
+    _play(
+        client,
+        game["id"],
+        body={"event": {"title": "Crise navale", "actors": ["iran", "usa"], "severity": 0.6}},
+    )
+    data = client.get(f"/api/games/{game['id']}/prompts").json()
+    entries = data["rounds"][0]["entries"]
+    usa = [e["prompt"] for e in entries if e["country"] == "usa" and e["role"] == "country"][-1]
+    order = [
+        usa.index("TU ES "),
+        usa.index("SITUATION :"),
+        usa.index("DIRECTIVE DE TON CONSEIL DE TUTELLE"),
+        usa.index("LE DIALOGUE DU ROUND"),
+        usa.index("CONSIGNE :"),
+    ]
+    assert order == sorted(order), "les six blocs du prompt ne sont pas dans l'ordre G9"
+    identity = usa.split("[CONTEXTE]\n", 1)[1].split("\n\n")[0]
+    # Identité compacte, sans dump d'attributs — G17 y ajoute LA ligne de tempérament.
+    assert len(identity.splitlines()) <= 4
 
 
 # --- G7-a : griefs + horloges (spec_g7_gamefeel lots 1-2) --------------------------
@@ -998,7 +1230,7 @@ REFUSAL_TEXT = "Réflexion souveraine. MESSAGE: Hors de question — nous refuso
 class RefusalBackend(MockBackend):
     """La France refuse frontalement sa directive ; les autres restent neutres."""
 
-    def stream_generate(self, prompt, *, system=None, max_tokens=512, temperature=0.7):
+    def stream_generate(self, prompt, *, system=None, max_tokens=512, temperature=0.7, **kw):
         if "id=france" in prompt:
             yield REFUSAL_TEXT
             return

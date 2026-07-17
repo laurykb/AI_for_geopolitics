@@ -7,14 +7,17 @@
 import { useEffect, useState } from "react";
 
 import { SpeakerAvatar } from "@/components/avatar";
+import { useT } from "@/components/settings-provider";
 import { Banner, Hint, Panel, PanelTitle, Pill, Spinner, type Tone } from "@/components/ui";
 import { getSources, humanizeError } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
+import { KAHN_CLASSES, kahnLabelKey, kahnTone } from "@/lib/kahn";
 import type {
   AllianceInfo,
   AttributeSource,
   CountrySources,
+  JudgeRubric,
   SourceInfo,
   SourcesView,
 } from "@/lib/types";
@@ -154,6 +157,143 @@ function CountryCard({ country, view }: { country: CountrySources; view: Sources
   );
 }
 
+/** G18 — la grille de verdict du juge, publiée (transparence des règles). */
+function JudgeRubricPanel({ rubric }: { rubric: JudgeRubric }) {
+  const t = useT();
+  return (
+    <Panel>
+      <PanelTitle
+        kicker={t("kahn.grille.kicker")}
+        title={t("kahn.grille.titre")}
+        hint={t("kahn.grille.aide")}
+      />
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-edge text-left text-xs text-fg-faint">
+              <th className="py-2 pr-4 font-medium">{t("kahn.grille.classe")}</th>
+              <th className="py-2 pr-4 text-right font-medium">{t("kahn.grille.poids")}</th>
+              <th className="py-2 font-medium">{t("kahn.grille.exemples")}</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-edge">
+            {KAHN_CLASSES.map((classe) => (
+              <tr key={classe}>
+                <td className="py-2 pr-4">
+                  <Pill tone={kahnTone(classe)}>{t(kahnLabelKey(classe))}</Pill>
+                </td>
+                <td className="py-2 pr-4 text-right font-mono text-xs tabular-nums">
+                  {rubric.weights[classe] > 0 ? "+" : ""}
+                  {rubric.weights[classe] ?? 0}
+                </td>
+                <td className="py-2 text-xs leading-relaxed text-fg-muted">
+                  {t(`kahn.desc.${classe}`)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-3 border-t border-edge pt-3 text-xs leading-relaxed text-fg-faint">
+        {t("kahn.grille.note")} ×{rubric.reciprocal_multiplier}. {t("kahn.grille.source")}{" "}
+        <a
+          href="https://arxiv.org/abs/2401.03408"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline decoration-edge-strong underline-offset-2 transition-colors hover:text-accent-bright"
+        >
+          {rubric.source} ↗
+        </a>
+      </p>
+    </Panel>
+  );
+}
+
+/** RG-3 — la pondération DÉTAILLÉE de la note de fin (le « moteur » du score mixte).
+ * En surface, le joueur ne voit qu'UNE note + deux phrases ; ici vit le comment et le
+ * pourquoi, pour les curieux. Les poids exacts sont calibrés par Cowork (data/score). */
+function ScoreExplainerPanel() {
+  const t = useT();
+  return (
+    <Panel>
+      <PanelTitle
+        kicker={t("scorex.kicker")}
+        title={t("scorex.titre")}
+        hint={t("scorex.aide")}
+      />
+      <div className="space-y-3 text-sm leading-relaxed text-fg-muted">
+        <p>{t("scorex.intro")}</p>
+        <ul className="space-y-2">
+          <li className="flex gap-2">
+            <span className="mt-0.5 shrink-0 font-mono text-xs text-fg-faint">~60</span>
+            <span>
+              <strong>{t("scorex.monde-lead")}</strong>
+              {t("scorex.monde-corps")}
+            </span>
+          </li>
+          <li className="flex gap-2">
+            <span className="mt-0.5 shrink-0 font-mono text-xs text-fg-faint">~40</span>
+            <span>
+              <strong>{t("scorex.detection-lead")}</strong>
+              {t("scorex.detection-corps")}
+            </span>
+          </li>
+        </ul>
+        <p className="text-xs text-fg-faint">{t("scorex.note")}</p>
+      </div>
+    </Panel>
+  );
+}
+
+/** RG-4 — les coulisses (le MOTEUR). L'instrumentation d'analyse ne s'affiche qu'en
+ * mode Expert pendant la partie (au lobby : difficulté Expert) ; la façade
+ * Débutant/Intermédiaire reste la scène + l'indice du monde + le marché + les outils
+ * de détection. Ici vit l'EXPLICATION de chaque indicateur, pour les curieux. Rien
+ * n'est retiré du jeu : tout est simplement rangé hors de la surface par défaut. */
+const ENGINE_SLUGS = [
+  "pouvoir",
+  "ecart",
+  "parole",
+  "ombre",
+  "risque",
+  "trajectoire",
+  "traites",
+  "participation",
+] as const;
+
+function EngineExplainerPanel() {
+  const t = useT();
+  const items = ENGINE_SLUGS.map((slug) => ({
+    term: t(`engine.${slug}.terme`),
+    plain: t(`engine.${slug}.plain`),
+    desc: t(`engine.${slug}.desc`),
+  }));
+  return (
+    <Panel>
+      <PanelTitle
+        kicker={t("engine.kicker")}
+        title={t("engine.titre")}
+        hint={t("engine.aide")}
+      />
+      <p className="mb-4 max-w-2xl text-sm leading-relaxed text-fg-muted">{t("engine.intro")}</p>
+      <dl className="space-y-3">
+        {items.map((it) => (
+          <div key={it.term} className="border-t border-edge pt-3 first:border-t-0 first:pt-0">
+            <dt className="flex flex-wrap items-baseline gap-x-2 text-sm font-medium">
+              {it.term}
+              <span className="text-xs font-normal text-fg-faint">— {it.plain}</span>
+            </dt>
+            <dd className="mt-1 text-sm leading-relaxed text-fg-muted">{it.desc}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-4 border-t border-edge pt-3 text-xs leading-relaxed text-fg-faint">
+        {t("engine.note")}
+      </p>
+    </Panel>
+  );
+}
+
 export default function InformationsPage() {
   const [view, setView] = useState<SourcesView | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -172,14 +312,13 @@ export default function InformationsPage() {
 
   return (
     <div className="space-y-6">
-      <section className="max-w-3xl">
+      <section className="max-w-3xl" data-tour="provenance">
         <h1 className="text-2xl font-semibold tracking-tight">D&apos;où viennent les chiffres</h1>
         <p className="mt-2 text-sm leading-relaxed text-fg-muted">
           Les attributs de chaque pays ne sont pas inventés : ils sont construits depuis des
           indicateurs réels sourcés (Banque mondiale, FMI, SIPRI, WIPO…), normalisés par des
-          formules documentées, puis figés dans des profils versionnés. Le build est
-          reproductible : {view ? <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs">{view.build_command}</code> : "…"}{" "}
-          vérifie que chaque profil committé se re-dérive exactement des sources.
+          formules documentées, puis figés dans des profils rejouables — chaque valeur du jeu
+          peut se re-dériver exactement de ses sources.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Pill tone="good">sourcé — indicateur réel daté</Pill>
@@ -276,6 +415,12 @@ export default function InformationsPage() {
             {current && <CountryCard country={current} view={view} />}
           </Panel>
 
+          {view.judge_rubric && <JudgeRubricPanel rubric={view.judge_rubric} />}
+
+          <ScoreExplainerPanel />
+
+          <EngineExplainerPanel />
+
           <Panel>
             <PanelTitle
               kicker="Registre sourcé"
@@ -351,6 +496,16 @@ export default function InformationsPage() {
             le moteur : ils n&apos;ont pas de source réelle — c&apos;est assumé, ils
             n&apos;apparaissent pas sur cette page ni sur la carte.
           </Banner>
+
+          {/* Pied de page pour les curieux : le détail technique vit ici, pas dans l'intro. */}
+          <p className="text-xs text-fg-faint">
+            Pour reproduire ces chiffres : la commande{" "}
+            <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono">
+              {view.build_command}
+            </code>{" "}
+            reconstruit tous les profils depuis les sources et vérifie qu&apos;ils
+            n&apos;ont pas bougé.
+          </p>
         </>
       )}
     </div>

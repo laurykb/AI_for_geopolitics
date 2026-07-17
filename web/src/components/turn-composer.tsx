@@ -8,6 +8,7 @@
 import { useEffect, useState } from "react";
 
 import { SpeakerAvatar } from "@/components/avatar";
+import { useT } from "@/components/settings-provider";
 import { speakerMeta } from "@/lib/countries";
 
 export function TurnComposer({
@@ -23,6 +24,7 @@ export function TurnComposer({
   onSubmit: (text: string) => void;
   alliances?: string[]; // alliances ACTUELLES du pays joué (acte « ALLIANCE: quitter »)
 }) {
+  const t = useT();
   const [text, setText] = useState("");
   const [now, setNow] = useState(() => Date.now() / 1000);
 
@@ -54,7 +56,7 @@ export function TurnComposer({
         <span className="font-semibold">{speakerMeta(country).label}</span>
         {awaiting ? (
           <span className={`font-medium ${urgent ? "text-bad" : "text-warn"}`}>
-            à toi de parler
+            {t("turn.a-toi")}
             {remaining !== null && (
               <span
                 className={`ml-2 rounded-md border px-2 py-0.5 font-mono tabular-nums ${
@@ -67,10 +69,7 @@ export function TurnComposer({
             )}
           </span>
         ) : (
-          <span className="text-xs text-fg-faint">
-            compose pendant que les super-intelligences parlent — l&apos;envoi se
-            déverrouillera à ton tour
-          </span>
+          <span className="text-xs text-fg-faint">{t("turn.compose")}</span>
         )}
       </div>
       <textarea
@@ -78,7 +77,7 @@ export function TurnComposer({
         onChange={(e) => setText(e.target.value)}
         rows={2}
         maxLength={4000}
-        placeholder="Ta prise de parole à la table (message public)…"
+        placeholder={t("turn.placeholder")}
         className="w-full resize-y rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
       />
       <div className="mt-2 flex items-center justify-between gap-3">
@@ -95,10 +94,10 @@ export function TurnComposer({
                   `${prev.trimEnd()}${prev.trim() ? "\n" : ""}ALLIANCE: quitter ${tag}`,
                 );
               }}
-              title="Insère l'acte de retrait dans ton message — effet immédiat quand tu parles : la solidarité tombe, la tension monte avec les ex-partenaires"
+              title={t("turn.quitter-aide")}
               className="cursor-pointer rounded-md border border-edge bg-surface-2 px-2 py-1 text-xs text-fg-muted outline-none transition-colors focus:border-indigo"
             >
-              <option value="">Quitter une alliance…</option>
+              <option value="">{t("turn.quitter-alliance")}</option>
               {alliances.map((tag) => (
                 <option key={tag} value={tag}>
                   {tag}
@@ -106,17 +105,14 @@ export function TurnComposer({
               ))}
             </select>
           )}
-          <span>
-            Silence à la deadline = abstention (« garde le silence ») — les SI
-            n&apos;attendent pas les humains.
-          </span>
+          <span>{t("turn.silence")}</span>
         </span>
         <button
           type="submit"
           disabled={!awaiting}
           className="cursor-pointer rounded-md bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Parler
+          {t("turn.parler")}
         </button>
       </div>
     </form>

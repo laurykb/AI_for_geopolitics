@@ -36,7 +36,7 @@ class PerceivedEvent(BaseModel):
 
 
 def _noise(seed: str) -> float:
-    digest = hashlib.md5(seed.encode("utf-8")).digest()
+    digest = hashlib.md5(seed.encode("utf-8"), usedforsecurity=False).digest()
     return int.from_bytes(digest[:2], "little") / 65535.0
 
 

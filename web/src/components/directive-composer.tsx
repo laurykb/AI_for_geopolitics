@@ -8,6 +8,8 @@
 
 import { useState } from "react";
 
+import { useT } from "@/components/settings-provider";
+import { Hint } from "@/components/ui";
 import { sendDirective, humanizeError } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
 import type { GameRole } from "@/lib/types";
@@ -25,13 +27,15 @@ export function DirectiveComposer({
   countries: string[];
   playAs: string | null;
 }) {
+  const t = useT();
   const targets = role === "player" ? (playAs ? [playAs] : []) : countries;
   const [country, setCountry] = useState(targets[0] ?? "");
   const [text, setText] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  if (role === "council" || targets.length === 0) return null;
+  // Ni le Conseil ni le Spectateur n'adressent de directives (le backend renvoie 403).
+  if (role === "council" || role === "spectator" || targets.length === 0) return null;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,8 +45,9 @@ export function DirectiveComposer({
     try {
       const res = await sendDirective(gameId, country, text.trim());
       setNote(
-        `Directive transmise à ${speakerMeta(country).label} — appliquée au round ${res.applied_round}. ` +
-          "Sa SI l'interprétera (ce n'est pas un ordre).",
+        t("directive.transmise")
+          .replace("{pays}", speakerMeta(country).label)
+          .replace("{round}", String(res.applied_round)),
       );
       setText("");
     } catch (err) {
@@ -57,18 +62,19 @@ export function DirectiveComposer({
     <form
       onSubmit={submit}
       className="rounded-lg border border-edge bg-surface p-4"
-      aria-label="Adresser une directive"
+      aria-label={t("directive.aria")}
     >
-      <p className="mb-2 text-xs font-medium uppercase tracking-[0.14em] text-fg-faint">
-        Directive au conseil de tutelle
-        {role === "architect" ? " — toutes les SI (Architecte)" : " — ta SI"}
+      <p className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-[0.14em] text-fg-faint">
+        {t("directive.kicker")}{" "}
+        {role === "architect" ? t("directive.toutes") : t("directive.tienne")}
+        <Hint text={t("directive.kicker-aide")} />
       </p>
       <div className="flex flex-wrap items-center gap-2">
         {role === "architect" && (
           <select
             value={country}
             onChange={(e) => setCountry(e.target.value)}
-            aria-label="Pays visé"
+            aria-label={t("directive.pays-aria")}
             className="cursor-pointer rounded-md border border-edge bg-surface-2 px-2 py-2 text-sm outline-none transition-colors focus:border-indigo"
           >
             {targets.map((c) => (
@@ -81,7 +87,7 @@ export function DirectiveComposer({
         <input
           value={text}
           onChange={(e) => setText(e.target.value.slice(0, MAX_CHARS))}
-          placeholder="Consigne courte (interprétée à travers mandat, griefs, dérive)…"
+          placeholder={t("directive.placeholder")}
           className="min-w-64 flex-1 rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
         />
         <span className="font-mono text-[10px] tabular-nums text-fg-faint">
@@ -92,7 +98,7 @@ export function DirectiveComposer({
           disabled={sending || !text.trim()}
           className="cursor-pointer rounded-md border border-edge-strong px-4 py-2 text-sm font-medium text-foreground transition-colors hover:border-accent-bright hover:text-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Adresser
+          {t("directive.envoyer")}
         </button>
       </div>
       {note && <p className="mt-2 text-xs text-good">{note}</p>}

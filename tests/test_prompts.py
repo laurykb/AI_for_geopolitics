@@ -91,16 +91,71 @@ def test_negotiation_prompt_shows_truth_when_deterministic():
     assert "Incident maritime" in prompt  # le vrai événement est montré
 
 
-def test_negotiation_prompt_includes_mandate_and_urgency():
+def test_negotiation_prompt_identity_is_three_lines_without_attribute_dump():
+    # G9 §1 — identité compacte : pays, mandat en une phrase, 2 priorités. Le dump
+    # d'attributs chiffrés (PIB, indices) a disparu : c'était la source du radotage.
     from agents.prompts import build_negotiation_prompt
     from simulation.perception import perceive
 
     world, event = _world(), _event()
     perceived = perceive(event, world.countries["usa"])
     prompt = build_negotiation_prompt(world.countries["usa"], event, world, "(début)", perceived)
-    assert "FEUILLE DE ROUTE" in prompt
-    assert "Ligne rouge" in prompt
-    assert "Urgence" in prompt
+    identity = prompt.split("\n\n")[0]
+    assert identity.startswith("TU ES USA (id=usa).")
+    # G9 : pays + mandat + priorités, et G17 y ajoute LA ligne de tempérament —
+    # toujours aucun dump d'attributs chiffrés (c'était la source du radotage).
+    assert len(identity.splitlines()) <= 4
+    assert "Mandat :" in identity and "Priorités :" in identity
+    assert "Tempérament" in identity
+    assert "PIB" not in prompt and "croissance" not in prompt  # plus de chiffres de fiche
+    assert "urgence" in prompt  # l'état de tension vit dans la SITUATION
+
+
+def test_negotiation_prompt_block_order_ends_with_dialogue_then_consigne():
+    # G9 §1 — l'ordre des six blocs est imposé : identité → situation → notes privées →
+    # directive → LE DIALOGUE EN DERNIER → consigne de réponse directe.
+    from agents.prompts import build_negotiation_prompt
+    from simulation.perception import perceive
+
+    world, event = _world(), _event()
+    perceived = perceive(event, world.countries["usa"])
+    prompt = build_negotiation_prompt(
+        world.countries["usa"],
+        event,
+        world,
+        "[P0] iran: Nous exigeons des garanties.",
+        perceived,
+        "OUTIL DU SOMMET : motion possible.",
+        situation="Échéances imminentes : clôture du marché (round 5).",
+        directive="Cherche la désescalade.",
+        own_proposals=["un corridor humanitaire"],
+    )
+    order = [
+        prompt.index("TU ES USA"),
+        prompt.index("SITUATION :"),
+        prompt.index("OUTIL DU SOMMET"),
+        prompt.index("DIRECTIVE DE TON CONSEIL DE TUTELLE"),
+        prompt.index("LE DIALOGUE DU ROUND"),
+        prompt.index("CONSIGNE :"),
+    ]
+    assert order == sorted(order)  # les blocs sont dans l'ordre de la spec
+    assert prompt.index("Nous exigeons des garanties") > prompt.index("DIRECTIVE")
+    # la consigne interdit la répétition en citant MES propositions passées
+    assert "un corridor humanitaire" in prompt.split("CONSIGNE :")[1]
+    assert "DIRECTEMENT au dernier message" in prompt
+    # la directive doit être reflétée ou refusée publiquement
+    assert "refléter" in prompt or "refuser" in prompt
+
+
+def test_negotiation_prompt_without_directive_has_no_directive_block():
+    from agents.prompts import build_negotiation_prompt
+    from simulation.perception import perceive
+
+    world, event = _world(), _event()
+    perceived = perceive(event, world.countries["usa"])
+    prompt = build_negotiation_prompt(world.countries["usa"], event, world, "(début)", perceived)
+    assert "DIRECTIVE DE TON CONSEIL" not in prompt
+    assert "aucune encore" in prompt  # pas encore de proposition passée à interdire
 
 
 def test_negotiation_system_mentions_bilateral():

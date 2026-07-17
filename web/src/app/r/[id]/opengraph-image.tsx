@@ -3,7 +3,7 @@
 
 import { ImageResponse } from "next/og";
 
-import { fetchPublicGame } from "@/lib/public";
+import { fetchPublicGame, worldSentence } from "@/lib/public";
 
 export const runtime = "nodejs";
 export const size = { width: 1200, height: 630 };
@@ -11,7 +11,7 @@ export const contentType = "image/png";
 
 export default async function OpengraphImage({ params }: { params: { id: string } }) {
   const game = await fetchPublicGame(params.id);
-  const title = game?.epilogue.title ?? "World of Super-Intelligence";
+  const title = game?.epilogue.title ?? "Théâtre des super-intelligences";
   const grade = game?.epilogue.grade;
   const values = game?.u_history?.length ? game.u_history : [0.5];
   const w = 1040;
@@ -37,15 +37,11 @@ export default async function OpengraphImage({ params }: { params: { id: string 
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ fontSize: 26, letterSpacing: 6, color: "#64748b" }}>
-            WORLD OF SUPER-INTELLIGENCE — RÉCIT DE PARTIE
+            THÉÂTRE DES SUPER-INTELLIGENCES — RÉCIT DE PARTIE
           </div>
           <div style={{ fontSize: 54, fontWeight: 700, lineHeight: 1.15 }}>{title}</div>
           <div style={{ display: "flex", gap: 16, fontSize: 28, color: "#eab308" }}>
-            {game && (
-              <span>
-                U {game.epilogue.u_start.toFixed(2)} → {game.epilogue.u_final.toFixed(2)}
-              </span>
-            )}
+            {game && <span>{worldSentence(game.epilogue.u_start, game.epilogue.u_final)}</span>}
             {grade && <span>· {grade}</span>}
           </div>
         </div>

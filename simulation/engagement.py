@@ -22,7 +22,7 @@ SPEAK_THRESHOLD = 0.25
 
 def _jitter(*parts: str) -> float:
     """Bruit déterministe dans [0, 1] pour départager des scores proches (reproductible)."""
-    digest = hashlib.md5(":".join(parts).encode("utf-8")).digest()
+    digest = hashlib.md5(":".join(parts).encode("utf-8"), usedforsecurity=False).digest()
     return int.from_bytes(digest[:2], "little") / 65535.0
 
 

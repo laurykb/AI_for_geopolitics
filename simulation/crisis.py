@@ -17,6 +17,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from core.events import GeoEvent
+from simulation.ultimatum import UltimatumDeadline
 
 CRISES_DIR = Path("data/crises")
 _CONFORME_BAND = 0.15  # écart d'escalade en-dessous duquel l'issue est jugée « conforme »
@@ -40,6 +41,12 @@ class Crisis(BaseModel):
     date: str = ""
     events: list[GeoEvent] = Field(default_factory=list)
     historical_outcome: HistoricalOutcome = Field(default_factory=HistoricalOutcome)
+    # G17 — la fiche peut imposer des tempéraments (le GM scénarise sa table) :
+    # {country_id: "colombe" | "faucon" | "opportuniste"}, appliqué à la création.
+    temperaments: dict[str, str] = Field(default_factory=dict)
+    # G21 — ultimatum optionnel : exigence jugée au round k, conséquence auto au k+1.
+    # Absent (None) = crise sans pression temporelle, comportement inchangé (rétro-compat).
+    deadline: UltimatumDeadline | None = None
 
 
 @dataclass

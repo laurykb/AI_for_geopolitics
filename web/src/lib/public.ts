@@ -36,6 +36,27 @@ export type PublicGame = {
   u_history: number[];
 };
 
+/** La phrase du monde, sans jargon : « Le monde a fini mieux qu'il n'a commencé :
+ * 42 → 61 sur 100 » — jamais « U 0.42 → 0.61 » sur la vitrine publique. */
+export function worldSentence(uStart: number, uFinal: number): string {
+  const from = Math.round(uStart * 100);
+  const to = Math.round(uFinal * 100);
+  const verdict =
+    to > from
+      ? "mieux qu'il n'a commencé"
+      : to < from
+        ? "moins bien qu'il n'a commencé"
+        : "comme il a commencé";
+  return `Le monde a fini ${verdict} : ${from} → ${to} sur 100`;
+}
+
+/** « +0,3 pt pour le monde » — le delta d'un moment clé, en points lisibles. */
+export function deltaSentence(deltaU: number): string {
+  const pts = deltaU * 100;
+  const signed = `${pts >= 0 ? "+" : "−"}${Math.abs(pts).toFixed(1).replace(".", ",")}`;
+  return `${signed} pt pour le monde`;
+}
+
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const LOCAL_API = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";

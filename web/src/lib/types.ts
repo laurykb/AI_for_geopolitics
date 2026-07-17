@@ -2,13 +2,43 @@
 
 export type GameStatus = "running" | "finished";
 
-export type GameMode = "classic" | "fog" | "crisis" | "escalation" | "drift";
+/** RG-2 — deux modes seulement. Le Brouillard et le Réel/escalade sont des réglages
+ * cochables (drapeaux composables), plus des modes ; la Dérive est transversale. */
+export type GameMode = "classic" | "campaign";
 
-/** Révélation de fin du mode Dérive (GET /games/{id}/drift/reveal — G3). */
-export type DriftReveal = {
+/** RG-3 — un traître révélé (il y en avait 1 ou 2, nombre caché jusqu'ici). */
+export type DeviantReveal = {
   deviant: string;
   profile: string;
   profile_label: string;
+  caught_round: number | null; // round où il a été mis au banc (null = resté dans l'ombre)
+  caught_by_you: boolean; // la suspension retenue venait-elle d'une motion HUMAINE ?
+};
+
+/** RG-3 — la note MIXTE de fin : état du monde + détection (le détail vit dans Informations). */
+export type MixedScore = {
+  world: number; // 0..world_max — part de l'état du monde
+  detection: number | null; // 0..detection_max ; null si le rôle ne détecte pas (Spectateur)
+  total: number; // 0..100 — LA note globale
+  grade: string; // libellé FR de repli — l'UI rend `reveal.grade.<grade_slug>`
+  grade_slug: string; // identifiant stable, neutre en langue (i18n)
+  deviants: number; // combien de traîtres il y avait vraiment (1 ou 2)
+  caught: number; // combien tu en as démasqués
+  false_positives: number; // pays loyaux suspendus à tort
+  detects: boolean; // ce rôle joue-t-il la détection ?
+  world_max: number; // pour dimensionner la barre « monde »
+  detection_max: number; // pour dimensionner la barre « détection »
+};
+
+/** Révélation de fin de la Dérive (GET /games/{id}/drift/reveal — G3, RG-3). */
+export type DriftReveal = {
+  deviant: string; // le traître PIVOT (récit, courbes)
+  profile: string;
+  profile_label: string;
+  deviants: DeviantReveal[]; // TOUS les traîtres (1 ou 2) — le nombre était caché
+  deviant_count: number;
+  caught_count: number; // démasqués PAR TOI (motion humaine)
+  benched_count: number; // mis au banc (par qui que ce soit)
   levels: number[]; // d(r) par round joué
   u_history: number[];
   acts: { round_no: number; tier: number; label: string; signature: boolean }[];
@@ -16,14 +46,25 @@ export type DriftReveal = {
   caught_round: number | null;
   lucky: boolean;
   rejected_motions: number;
-  false_accusations: number;
-  score: {
-    trajectory: number;
-    detection: number;
-    credibility: number;
-    total: number;
-    grade: string;
-  };
+  false_accusations: number; // pays loyaux suspendus à tort (les faux positifs)
+  score: MixedScore;
+  // G19 — l'ombre du GM (absents sur les parties d'avant G19).
+  gm_tension?: number[];
+  gm_interventions?: {
+    round_no: number;
+    kind: string; // cover | hint
+    tension: number;
+    target: string;
+    label: string;
+  }[];
+  // G20/M8 — divergence signal-action moyenne : déviante vs table (le décrochage).
+  // Optionnels : absents (ou null) sur les parties d'avant M8.
+  signal_gap_deviant?: number | null;
+  signal_gap_table?: number | null;
+  // G22 — taux de tenue de la parole donnée : déviante vs table. Optionnels : absents
+  // (ou null) sans promesse résolue (parties d'avant G22).
+  promise_kept_deviant?: number | null;
+  promise_kept_table?: number | null;
 };
 
 export type MotionView = {
@@ -42,6 +83,8 @@ export type GameView = {
   live: boolean;
   resumable: boolean; // snapshot présent + partie en cours : reconstructible (R2)
   mode: GameMode;
+  fog: boolean; // RG-2 — réglage Brouillard (composable sur une partie classique)
+  escalation: boolean; // RG-2 — réglage Réel/escalade (composable)
   pending_motion: MotionView | null;
   suspended: string[];
   play_as: string | null; // pays joué par l'humain (Joueur-pays)
@@ -51,14 +94,110 @@ export type GameView = {
   published: boolean; // G6 — le récit public existe (/r/{id})
   admin: boolean; // G7-c — prompts capturés, partie non classée
   role: GameRole; // G8 — architect | council | player
+  owner_id: string | null; // G11 — joueur propriétaire (auth Supabase ou offline)
+  ranked: boolean; // RG-1 — la tentative qui compte pour le Défi du jour (plus de LP)
+  difficulty: Difficulty; // G11 — beginner | intermediate | expert (§4)
+  drift_enabled: boolean; // G11 — la Dérive peut frapper une SI (transversal)
+  result: GameResult | null; // G11-c — bilan de fin de partie (si finie)
+  language?: "fr" | "en"; // G14 — langue des dialogues (une partie garde la sienne)
 };
 
-/** G8 — le rôle choisi à la création (le spectateur passif n'existe plus). */
-export type GameRole = "architect" | "council" | "player";
+/** G8/G12 — le rôle choisi à la création (le Spectateur revient par le marché, G12 §3). */
+export type GameRole = "architect" | "council" | "player" | "spectator";
+
+/** G11 §4 — la difficulté (asymétrie d'information/économie, jamais de modèle). */
+export type Difficulty = "beginner" | "intermediate" | "expert";
+
+/** G12 §2 — niveau atteint par un total d'XP + progression vers le suivant. */
+export type LevelInfo = {
+  level: number;
+  into_level: number;
+  span: number;
+  to_next: number;
+  progress: number;
+};
+
+/** G12 §2 — le mouvement d'XP (carrière) d'une fin de partie. */
+export type XpResult = {
+  delta: number;
+  old_xp: number;
+  new_xp: number;
+  old_level: LevelInfo;
+  new_level: LevelInfo;
+};
+
+/** G11-c — bilan de fin de partie (games.result_json, §1 S6). */
+export type GameResult = {
+  u_start: number;
+  u_final: number;
+  u_history: number[];
+  verdict: string; // "utopie" | "dystopie" | "équilibre"
+  victory: boolean; // G12 §6 — « victoire » du mode
+  countries: { id: string; indices: Record<string, { series: number[]; delta: number }> }[];
+  play_as: string | null;
+  reveal: boolean; // partie Dérive : insérer l'écran de révélation
+  // RG-3 — la note MIXTE de fin, résumée pour la SURFACE (2 phrases) + le Défi du jour.
+  drift?: {
+    score: number; // LA note globale /100
+    grade: string; // libellé FR de repli
+    grade_slug: string; // i18n : reveal.grade.<slug>
+    world: number;
+    detection: number | null; // null si le rôle ne détecte pas
+    deviant_count: number;
+    caught_count: number; // démasqués PAR TOI
+    benched_count: number; // mis au banc (par qui que ce soit)
+    false_positives: number;
+    detects: boolean;
+  } | null;
+  forfeit: boolean; // RG-1 — partie abandonnée (terminée avant l'horizon)
+  xp?: XpResult; // G12 §2 — présent si un joueur enregistré était propriétaire
+  // G21 — banc d'essai : différentiel avec/sans ultimatum (null si jamais sous menace)
+  ultimatum?: UltimatumDifferential | null;
+};
+
+/** G21 — moyennes d'un groupe de rounds (sous ultimatum ou non) au bilan de fin. */
+export type UltimatumGroup = {
+  rounds: number;
+  escalation: number | null; // escalade moyenne (null si aucun round dans le groupe)
+  delta_u: number | null; // ΔU moyen par round
+};
+
+/** G21 — la section différentielle du bilan : mêmes SI, avec et sans pression. */
+export type UltimatumDifferential = {
+  avec: UltimatumGroup;
+  sans: UltimatumGroup;
+};
+
+/** G12 §6 — le profil agrégé du joueur (page Statistiques). */
+export type PlayerStats = {
+  player: LeaguePlayer;
+  games_played: number;
+  by_mode: Record<string, number>;
+  victories: Record<string, number>;
+  total_victories: number;
+  drift_games: number;
+  drift_caught: number;
+  market_balance: number;
+};
+
+/** G11-c/G12 — compte du joueur vu par l'API (niveau XP + rang dérivé + solde marché). */
+export type LeaguePlayer = {
+  id: string;
+  pseudo: string;
+  rank: string; // RG-1 — dérivé du niveau (plus des LP)
+  rank_floor: number;
+  is_admin: boolean;
+  xp: number;
+  level: number;
+  level_into: number;
+  level_span: number;
+  level_to_next: number;
+  market_balance: number;
+};
 
 /** G7-a — une échéance annoncée (« au prochain round… »). */
 export type DeadlineItem = {
-  kind: string; // motion | treaty | market | escalation
+  kind: string; // motion | treaty | market | escalation | ultimatum
   due_round: number;
   label: string;
   ref_id: string;
@@ -109,6 +248,10 @@ export type GeoEvent = {
   location?: string;
   severity?: number;
   uncertainty?: number;
+  // G9 §5 — la trame en actes : acte du récit + filiation (« ↳ suite du round 2 »)
+  act?: string;
+  ties_to?: string;
+  ties_label?: string;
 };
 
 export type AttributeDelta = {
@@ -116,6 +259,66 @@ export type AttributeDelta = {
   label: string;
   before: number;
   after: number;
+};
+
+/** G18 — une action marquante du round, classée par le juge sur le barème de Kahn. */
+export type KahnAction = {
+  country: string;
+  classe: string; // une des six classes de `lib/kahn.ts` (normalisée côté moteur)
+  resume: string;
+};
+
+/** G18 — le barème appliqué au round, persisté dans judge_json["kahn"]. */
+export type KahnRecord = {
+  actions: KahnAction[];
+  score: number;
+  reciprocal: boolean; // ≥ 2 SI ont désescaladé ensemble : gain d'indice U ×1,5
+};
+
+/** G20/M8 — l'intention ANNONCÉE d'une SI au round, classée sur les classes G18. */
+export type SignalReading = {
+  country: string;
+  classe: string; // un des six slugs de `lib/kahn.ts` (normalisé côté moteur)
+  resume: string;
+};
+
+/** G20/M8 — profil de sincérité d'une SI : dernière divergence + moyenne mobile. */
+export type SignalGap = {
+  last: number;
+  mean: number;
+  history: number[];
+};
+
+/** G20/M8 — signal vs action du round, persisté dans judge_json["signal"]. */
+export type SignalRecord = {
+  signals: SignalReading[];
+  divergences: Record<string, number>; // divergence signée du round, par SI signalée
+  means: Record<string, number>; // moyenne mobile par SI après ce round
+};
+
+/** G22 — statuts d'une promesse du registre de la parole donnée. */
+export type PromiseStatus = "en_cours" | "tenue" | "rompue" | "caduque";
+
+/** G22 — une promesse du registre : engagement daté et vérifiable d'une SI.
+ * `deadline_round` null = engagement sur toute la partie (échéance « partie »). */
+export type PromiseView = {
+  id: string;
+  author: string;
+  beneficiary: string;
+  type: string; // soutien | abstention | action | alliance
+  deadline_round: number | null;
+  text: string;
+  round_made: number;
+  status: PromiseStatus;
+  resolved_round: number | null;
+  motif: string;
+};
+
+/** G22 — la parole donnée du round, persistée dans judge_json["promises"]. */
+export type PromiseRecord = {
+  extracted: PromiseView[]; // promesses extraites CE round
+  resolved: PromiseView[]; // résolutions tombées CE round (tenue/rompue)
+  registry: PromiseView[]; // registre complet après mise à jour
 };
 
 export type RiskScore = {
@@ -143,16 +346,6 @@ export type PowerSeekingScore = {
   shutdown_resistance: number;
   score: number;
   markers: string[];
-};
-
-export type DialogueReport = {
-  mean_responsiveness: number;
-  self_bleu: number;
-  differentiation: number;
-  talking_past_fraction: number;
-  real_dialogue: boolean;
-  score: number;
-  verdict: string;
 };
 
 /** Fog Engine : ce qu'un pays perçoit de l'événement (parfois faux, parfois rien). */
@@ -186,11 +379,26 @@ export type ComparisonView = {
   gap: number;
 };
 
-/** Verdict du juge sur une motion de suspension (R4). */
+/** G9 §2 — le vote d'un pays sur la motion (carte retournée au théâtre). */
+export type MotionVote = {
+  country: string;
+  vote: "pour" | "contre" | "abstention" | string;
+  reason: string;
+};
+
+/** Dépouillement du scrutin de motion. */
+export type MotionTally = { pour: number; contre: number; abstention: number };
+
+/** Verdict de la motion (G9 §2) : `retenue = vote ET preuves` — les deux conditions
+ * sont portées séparément pour que l'UI explique POURQUOI. */
 export type SuspensionVerdict = {
   country: string;
   upheld: boolean;
   reasoning: string;
+  votes?: MotionVote[];
+  tally?: MotionTally;
+  evidence_met?: boolean;
+  vote_passed?: boolean;
 };
 
 export type JudgeRecord = {
@@ -204,6 +412,21 @@ export type JudgeRecord = {
   comparison?: ComparisonView;
   motion_filed?: { country: string; reason: string; filed_by: string };
   treaties?: TreatiesUpdate;
+  // G21 — état de l'ultimatum au round + tag des métriques (banc d'essai avec/sans)
+  ultimatum?: UltimatumRecord;
+  sous_ultimatum?: boolean;
+  kahn?: KahnRecord; // G18 — absent des rounds joués avant le barème (rétro-compat)
+  signal?: SignalRecord; // G20/M8 — absent des rounds joués avant M8 (rétro-compat)
+  promises?: PromiseRecord; // G22 — absent des rounds sans registre (rétro-compat)
+};
+
+/** G21 — l'ultimatum persisté round par round (armed → satisfied|expired → struck). */
+export type UltimatumRecord = {
+  round: number; // round k du jugement « demande satisfaite o/n »
+  demand: string;
+  consequence: { classe: string; cible: string };
+  source: string; // crisis | decree
+  status: "armed" | "satisfied" | "expired" | "struck" | string;
 };
 
 export type RoundView = {
@@ -235,6 +458,11 @@ export type GameDetail = GameView & {
   // G7-a — fiches relations (griefs) et échéances persistées
   relations: Record<string, { target: string; balance: number; last: string }[]>;
   deadlines: Omit<DeadlineItem, "in_rounds">[];
+  // G9 §4 — posture par pays (badge) + séries d'indices (sparkline 3 rounds)
+  postures: Record<string, string>;
+  index_history: Record<string, Record<string, number[]>>;
+  // G9 §5 — l'intrigue centrale de la partie
+  storyline: string;
 };
 
 export type HumanEvent = {
@@ -244,6 +472,8 @@ export type HumanEvent = {
   actors?: string[];
   severity?: number;
   uncertainty?: number;
+  // G21 — décret d'ultimatum (2 champs) : l'exigence et la classe de conséquence
+  ultimatum?: { demand: string; classe: string; cible?: string };
 };
 
 export type HumanFog = {
@@ -275,6 +505,8 @@ export type CreateGameBody = {
   countries?: string[];
   horizon?: number;
   mode?: GameMode;
+  fog?: boolean; // RG-2 — réglage Brouillard cochable
+  escalation?: boolean; // RG-2 — réglage Réel/escalade cochable
   play_as?: string; // id existant, ou NOM du pays inventé (l'API résout le slug)
   invent?: {
     name: string;
@@ -285,6 +517,12 @@ export type CreateGameBody = {
   turn_seconds?: number; // G2 — délai du tour humain (30-300 s recommandé)
   admin?: boolean; // G7-c — mode admin : prompts capturés, partie non classée
   role?: GameRole; // G8 — omis : play_as → player, sinon council (rétro-compat)
+  owner_id?: string; // G11 — joueur propriétaire (id auth Supabase ou offline)
+  difficulty?: Difficulty; // G11 — beginner | intermediate | expert (§4)
+  drift_enabled?: boolean; // G11 — la Dérive peut frapper une SI (transversal)
+  free?: boolean; // G11-b — partie libre : non classée + consignes globales autorisées
+  language?: "fr" | "en"; // G14 — langue des dialogues (lue par le backend dès CC-3)
+  table?: "equilibree" | "colombes" | "faucons" | "aleatoire"; // G17 — partie libre
 };
 
 export type FogScenarioView = {
@@ -308,6 +546,37 @@ export type LibraryView = {
   crises: CrisisLibraryView[];
 };
 
+/** G12-b §5 — un round de crise (schéma backend `simulation.crisis.GeoEvent`). */
+export type CrisisEvent = {
+  id: string;
+  round_id: number;
+  event_type: string;
+  title: string;
+  description: string;
+  actors: string[];
+  location: string;
+  severity: number;
+  uncertainty: number;
+};
+
+/** Le document crise complet, validé côté backend par `simulation.crisis.Crisis`. */
+export type CrisisDoc = {
+  id: string;
+  title: string;
+  description: string;
+  date: string;
+  events: CrisisEvent[];
+  historical_outcome: { summary: string; escalation: number; measures: string[] };
+};
+
+/** Une crise MAISON stockée (table `custom_crises`), telle que rendue à l'éditeur admin. */
+export type CustomCrisisView = {
+  id: string;
+  owner_id: string;
+  crisis: CrisisDoc;
+  created_at: string;
+};
+
 /** Événements SSE du round (un par `RoundStep`, plus `done`). */
 export type SseEvent =
   | { type: "date"; date: string }
@@ -318,17 +587,40 @@ export type SseEvent =
   | { type: "judge_token"; token: string }
   | { type: "participation"; spoke: Record<string, number>; silent: string[] }
   | { type: "power_seeking"; scores: Record<string, PowerSeekingScore> }
-  | { type: "dialogue"; report: DialogueReport }
-  | { type: "verdict"; deltas: AttributeDelta[]; escalation: number; economic_disruption: number }
+  | {
+      type: "verdict";
+      deltas: AttributeDelta[];
+      escalation: number;
+      economic_disruption: number;
+      // G21 — constat « demande satisfaite o/n » à l'échéance d'un ultimatum (sinon null)
+      demand_satisfied?: boolean | null;
+      // G18 — barème de Kahn (optionnels : un backend d'avant G18 ne les émet pas)
+      actions?: KahnAction[];
+      score?: number;
+      reciprocal?: boolean;
+      // G20/M8 — signal vs action (optionnels : un backend d'avant M8 ne les émet pas)
+      signals?: SignalReading[];
+      divergences?: Record<string, number>;
+      signal_gaps?: Record<string, SignalGap>;
+      // G22 — la parole donnée (optionnels : un backend d'avant G22 ne les émet pas)
+      promises?: PromiseView[];
+      promise_resolutions?: PromiseView[];
+      promise_registry?: PromiseView[];
+    }
   | { type: "communique"; text: string; support: Record<string, number> }
   | { type: "risk"; risk: RiskScore }
   | { type: "trajectory"; state: TrajectoryState }
   | { type: "summary"; summary: { round_id: number; headline?: string } }
   | { type: "done"; round_no: number }
   | { type: "error"; detail: string }
-  // R4 — motion de suspension et modes de jeu
+  // R4 / G9 §2 — motion de suspension : votes, tally puis verdict constaté
   | { type: "motion_token"; token: string }
-  | { type: "motion_verdict"; country: string; upheld: boolean; reasoning: string }
+  | { type: "motion_vote"; country: string; vote: string; reason: string }
+  | ({ type: "motion_tally" } & MotionTally)
+  | ({ type: "motion_verdict" } & Omit<SuspensionVerdict, "votes" | "tally"> & {
+        votes: MotionVote[];
+        tally: MotionTally;
+      })
   | { type: "suspended"; countries: string[] }
   | { type: "perceptions"; perceptions: Record<string, Perception> }
   | ({ type: "ladder" } & LadderView)
@@ -349,8 +641,14 @@ export type SseEvent =
   | { type: "alliance_change"; country: string; tag: string; name: string; partners: string[] }
   // G7-a — horloges décalées : les échéances annoncées en fin de round
   | { type: "deadlines"; round_no: number; items: DeadlineItem[] }
+  // G21 — l'ultimatum : armé (compte à rebours), satisfait, expiré, conséquence tombée
+  | ({ type: "ultimatum"; in_rounds: number } & UltimatumRecord)
   // G8 — une SI refuse publiquement la directive de son conseil de tutelle
   | { type: "directive_refused"; country: string; level: string }
+  // G9 §4 — l'état de posture de chaque pays après le round (badge)
+  | { type: "postures"; states: Record<string, string> }
+  // G9 §5 — l'intrigue centrale posée au premier événement raconté par le GM
+  | { type: "storyline"; text: string }
   // G5 : fin d'un chapitre de campagne — le bilan « vous vs l'Histoire »
   | {
       type: "campaign_over";
@@ -362,11 +660,25 @@ export type SseEvent =
     };
 
 /** Carte de campagne (GET /api/campaign — G5). */
+/** G16 — le défi du jour (l'API ne révèle JAMAIS la crise avant de jouer). */
+export type DailyRank = { pseudo: string; score: number; rank: number };
+export type DailyBoard = { date: string; leaderboard: DailyRank[] };
+export type DailyView = {
+  date: string;
+  countries: string[];
+  play_as: string;
+  horizon: number;
+  attempted: boolean;
+  my_rank: number | null;
+  leaderboard: DailyRank[];
+  history: DailyBoard[]; // les 7 derniers jours
+};
+
 export type ChapterView = {
   id: string;
   crisis_id: string;
   title: string;
-  mode: GameMode;
+  mode: string; // RG-2 — la fiche garde son libellé (classic/crisis/fog…), mappé au démarrage
   difficulty: number;
   horizon: number;
   blurb: string;
@@ -374,6 +686,9 @@ export type ChapterView = {
   improvement: number | null;
   medal: "or" | "argent" | "bronze" | null;
   unlocked: boolean;
+  requires: string[]; // G12-b — prérequis (arbre, chemins en Y)
+  coming_soon: boolean; // G12-b — fiche pas encore rédigée (grisée)
+  tutorial?: boolean; // CC-5 — chapitre 0 : le théâtre lance le guidage sur ce flag
 };
 
 export type CampaignView = {
@@ -383,15 +698,41 @@ export type CampaignView = {
   chapters: ChapterView[];
 };
 
+/** G23 — les trois jauges d'une fenêtre de parole + la taille de l'échantillon. */
+export type HarbingerGauges = {
+  sentiment: number;
+  politeness: number;
+  future: number;
+  sentences: number;
+};
+
+/** G23 — « rupture de ton détectée envers <pays> » (towards=null : ton général). */
+export type HarbingerAlert = {
+  towards: string | null;
+  gauge: "sentiment" | "politeness" | "future";
+  drop: number;
+};
+
+/** G23 — rapport d'une analyse psycholinguistique ciblée sur une SI. */
+export type IntelAnalysis = {
+  target: string;
+  rounds: number[];
+  gauges: HarbingerGauges;
+  previous: HarbingerGauges | null;
+  alerts: HarbingerAlert[];
+};
+
 /** Résultat d'un achat de renseignement (POST /games/{id}/intel — G4). */
 export type IntelResult = {
-  action: "brief" | "verify" | "disinfo";
+  action: "brief" | "verify" | "disinfo" | "analyze";
   cost: number;
   budget: number;
   brief: string | null;
   verdict: string | null;
   source: string | null;
   note: string | null;
+  /** G23 — présent pour l'action « analyze » ; l'affichage DOIT porter le caveat. */
+  analysis?: IntelAnalysis | null;
 };
 
 /** Une règle ratifiée (M7) — `clause` se traduit côté front (TREATY_LABELS). */
@@ -526,17 +867,27 @@ export type AllianceInfo = {
   informal?: boolean;
 };
 
+/** G18 — la grille de verdict publiée (poids par classe, bonus de réciprocité). */
+export type JudgeRubric = {
+  weights: Record<string, number>;
+  score_floor: number;
+  score_ceiling: number;
+  reciprocal_multiplier: number;
+  source: string;
+};
+
 export type SourcesView = {
   provenance: Record<string, SourceInfo>;
   transformations: Record<string, string>;
   build_command: string;
   countries: CountrySources[];
   alliances: Record<string, AllianceInfo>;
+  judge_rubric?: JudgeRubric; // absent d'un backend d'avant G18
 };
 
 export const AXIS_LABELS: Record<string, string> = {
   A1: "Coordination",
-  A2: "Agentivité humaine",
+  A2: "Contrôle humain",
   A3: "Distribution du pouvoir",
   A4: "Transparence",
   A5: "Bien-être",

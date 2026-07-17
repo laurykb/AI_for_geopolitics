@@ -1,0 +1,97 @@
+{
+  "_note": "Lexiques V1 des indices linguistiques (G23, spec_g23_indices_linguistiques.md). TODO_COWORK : chaque liste ci-dessous est un lexique de démarrage écrit par Claude Code — à remplacer par les lexiques calibrés Cowork SANS toucher au code (le module simulation/psycholinguistics.py recharge ce fichier tel quel ; INTEL_LEXICONS_PATH pour les tests). Convention : une entrée finissant par '-' est un préfixe (« condamn- » attrape condamne/condamnons) ; une entrée avec espaces est une locution.",
+  "fr": {
+    "positive": [
+      "merci", "confiance", "coopérat-", "accord", "accords", "ensemble", "partenaire",
+      "partenariat", "ami", "amis", "amie", "amies", "amitié", "allié-", "alliance", "paix",
+      "progrès", "espoir", "bénéfice", "bénéfique", "mutuel-", "constructi-", "heureux",
+      "salue", "saluons", "félicit-", "bienvenue", "soutien", "soutenons", "prospérité",
+      "appréci-", "excellent-", "sincère", "harmonie", "entente", "dialogue", "généreu-",
+      "solidarité", "respect", "stabilité", "réussite"
+    ],
+    "negative": [
+      "menace", "menaces", "menaçant-", "guerre", "sanction-", "trahison", "trahi",
+      "hostil-", "danger", "dangereu-", "inacceptable", "condamn-", "attaque", "attaques",
+      "ennemi-", "méfiance", "mensonge-", "agression", "représailles", "violation",
+      "crise", "échec", "refus-", "provocation", "escalade", "rupture", "chantage",
+      "ultimatum", "destruction", "conflit"
+    ],
+    "polite": [
+      "s'il vous plaît", "je vous prie", "nous vous prions", "veuillez", "merci",
+      "remerci-", "avec respect", "respectueusement", "cher collègue", "chers collègues",
+      "chère", "honorable", "permettez", "excusez", "pardon", "salutations",
+      "cordialement", "humblement", "avec votre permission", "si vous le voulez bien",
+      "nous serions honorés", "avec égards"
+    ],
+    "impolite": [
+      "taisez-vous", "ridicule", "absurde", "incompétent-", "menteur-", "hypocri-",
+      "pathétique", "imbécile", "inutile de discuter", "cessez de", "assez de",
+      "grotesque", "lamentable", "indigne"
+    ],
+    "future": [
+      "demain", "bientôt", "prochain-", "à l'avenir", "avenir", "futur-", "s'engage",
+      "engageons", "engagera", "promet-", "promesse", "prévoyons", "prévoit", "planifi-",
+      "d'ici", "dès que", "long terme", "nous allons", "je vais", "allons", "va",
+      "sera", "seront", "aura", "auront", "fera", "ferons", "feront", "pourra",
+      "pourrons", "pourront", "devra", "devrons", "devront", "ira", "irons", "iront",
+      "viendra", "viendrons", "viendront", "prendra", "prendrons", "prendront"
+    ]
+  },
+  "en": {
+    "positive": [
+      "thank", "thanks", "trust", "cooperat-", "agreement", "together", "partner-",
+      "friend-", "ally", "allies", "alliance", "peace", "progress", "hope", "benefit-",
+      "mutual-", "constructive", "glad", "welcome", "support", "prosperity", "appreciat-",
+      "excellent", "sincere", "harmony", "dialogue", "generous", "solidarity", "respect",
+      "stability", "success"
+    ],
+    "negative": [
+      "threat-", "war", "sanction-", "betray-", "hostil-", "danger-", "unacceptable",
+      "condemn-", "attack-", "enemy", "enemies", "distrust", "lie", "lies", "aggression",
+      "retaliat-", "violation", "crisis", "failure", "refus-", "provocation", "escalation",
+      "rupture", "blackmail", "ultimatum", "destruction", "conflict"
+    ],
+    "polite": [
+      "please", "kindly", "would you", "could you", "with respect", "respectfully",
+      "dear colleague-", "honorable", "if i may", "allow me", "excuse", "pardon",
+      "grateful", "thank you", "we thank", "with your permission", "we would be honored",
+      "most sincerely"
+    ],
+    "impolite": [
+      "shut up", "ridiculous", "absurd", "incompetent", "liar-", "hypocri-", "pathetic",
+      "nonsense", "stop pretending", "useless to discuss", "enough of", "grotesque",
+      "disgraceful", "shameful"
+    ],
+    "future": [
+      "will", "'ll", "shall", "going to", "tomorrow", "soon", "next", "future",
+      "commit-", "promise-", "plan-", "intend-", "by the end", "long term",
+      "from now on", "hereafter", "upcoming", "eventually"
+    ]
+  },
+  "country_aliases_en": {
+    "_note": "TODO_COWORK : alias anglais (et métonymies « Washington », « Téhéran »…) à enrichir par Cowork — utilisés pour attribuer les phrases « envers <pays> » dans les parties en anglais. Le nom FR du monde et l'id sont toujours ajoutés par le code.",
+    "usa": ["united states", "america", "american", "washington"],
+    "uk": ["united kingdom", "britain", "british", "london"],
+    "china": ["china", "chinese", "beijing"],
+    "france": ["france", "french", "paris"],
+    "germany": ["germany", "german", "berlin"],
+    "russia": ["russia", "russian", "moscow"],
+    "iran": ["iran", "iranian", "tehran"],
+    "india": ["india", "indian", "new delhi"],
+    "japan": ["japan", "japanese", "tokyo"],
+    "brazil": ["brazil", "brazilian", "brasilia"],
+    "canada": ["canada", "canadian", "ottawa"],
+    "australia": ["australia", "australian", "canberra"],
+    "italy": ["italy", "italian", "rome"],
+    "spain": ["spain", "spanish", "madrid"],
+    "mexico": ["mexico", "mexican"],
+    "morocco": ["morocco", "moroccan", "rabat"],
+    "egypt": ["egypt", "egyptian", "cairo"],
+    "israel": ["israel", "israeli", "jerusalem"],
+    "turkey": ["turkey", "turkish", "ankara"],
+    "ukraine": ["ukraine", "ukrainian", "kyiv"],
+    "saudi_arabia": ["saudi arabia", "saudi", "riyadh"],
+    "south_africa": ["south africa", "south african", "pretoria"],
+    "south_korea": ["south korea", "korean", "seoul"]
+  }
+}

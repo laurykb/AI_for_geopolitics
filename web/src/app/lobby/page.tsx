@@ -1,512 +1,737 @@
 "use client";
 
-/** Lobby : composer le sommet et jouer. Les parties existantes vivent dans
- * l'Observatoire (bouton en haut à droite) ; le retour au menu rejoue la vue
- * planétaire (animation inverse de l'introduction). */
+/** Création de partie — flow séquentiel mode → rôle → pays (G11-b §1 S2-S4).
+ *
+ * Machine à états à retour arrière sans perte (les choix survivent aux allers-retours).
+ * Entre les écrans : une brève rotation du globe (≤ 1,5 s, skippable au clic, désactivée
+ * si prefers-reduced-motion). « Campagne » remplace S4 par la sélection de chapitre
+ * (page /campagne). Les réglages transversaux vivent sous les cartes de mode. */
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
-import { Banner, Panel, PanelTitle, Spinner } from "@/components/ui";
+import { useAuth } from "@/components/auth-provider";
 import { SpeakerAvatar } from "@/components/avatar";
-import { WorldMap } from "@/components/world-map";
-import { createGame, getSources, humanizeError } from "@/lib/api";
-import { DEFAULT_COUNTRIES, ROSTER, SUMMIT_MAX, SUMMIT_MIN, speakerMeta } from "@/lib/countries";
-import { MODES } from "@/lib/modes";
-import type { AllianceInfo, GameMode, GameRole } from "@/lib/types";
+import { useSettings, useT } from "@/components/settings-provider";
+import { Globe } from "@/components/globe";
+import { SelectMap, type Fiche } from "@/components/select-map";
+import { Banner, Eyebrow, Panel, PanelTitle, Segmented, Spinner, Switch } from "@/components/ui";
+import { createGame, getCampaign, getSources, humanizeError, startChapter } from "@/lib/api";
+import { speakerMeta } from "@/lib/countries";
+import { fmt } from "@/lib/format";
+import {
+  buildCreateBody,
+  canLaunch,
+  DEFAULT_SETTINGS,
+  FLOW_MODES,
+  FLOW_STEPS,
+  type FlowRole,
+  type FlowSettings,
+  type FlowStep,
+  mapCapacity,
+  nextStep,
+  prevStep,
+  ROUNDS_MAX,
+  ROUNDS_MIN,
+  trimForRole,
+} from "@/lib/flow";
+import { prefersReducedMotion } from "@/lib/stage";
+import { TABLES } from "@/lib/temperament";
+import type { AllianceInfo, CountrySources, Difficulty, GameMode } from "@/lib/types";
 
+const TRANSITION_MS = 1200; // rotation du globe entre écrans (≤ 1,5 s, spec)
 const INVENT_ALLIANCES_MAX = 3;
 
-/** G8 — les trois rôles : toujours acteur (regarder sans agir = la page replay). */
-const ROLES: { value: GameRole; label: string; blurb: string }[] = [
-  {
-    value: "council",
-    label: "Conseil",
-    blurb: "classé — motions, renseignement, paris : le mode enquête",
-  },
+// RG-4 — la difficulté règle le moteur (budget, juge, enjeux) ET sert d'interrupteur
+// des « coulisses » : Débutant/Intermédiaire gardent une façade épurée (scène, indice
+// du monde, marché, outils de détection) ; Expert dévoile le banc d'essai (toutes les
+// mesures d'analyse), aussi expliqué dans l'onglet Informations. Libellés en i18n
+// (`lobby.diff.<value>.titre/desc`).
+const DIFFICULTIES: readonly Difficulty[] = ["beginner", "intermediate", "expert"] as const;
+
+const ROLES: { value: FlowRole; label: string; blurb: string }[] = [
   {
     value: "player",
-    label: "Joueur-pays",
-    blurb: "classé — incarne ou gouverne SA super-intelligence (parole + directives)",
+    label: "Jouer un pays",
+    blurb: "Incarne une super-intelligence : parole, directives, motions.",
   },
   {
-    value: "architect",
-    label: "Architecte",
-    blurb: "sandbox non classé — directives sur toutes les SI, événements, intel illimité",
+    value: "invent",
+    label: "Créer son pays",
+    blurb: "Forge ton propre État (profil + mandat) et joue-le à la table.",
+  },
+  {
+    value: "gm",
+    label: "Game Master",
+    blurb: "Invente les événements et adresse des consignes à toutes les IA.",
+  },
+  {
+    value: "spectator",
+    label: "Spectateur",
+    blurb: "Tu paries et tu regardes le sommet — le monde qui penche fait ta note. En accéléré.",
   },
 ];
 
+/** `useSearchParams` exige une frontière Suspense sur une page prérendue. */
 export default function LobbyPage() {
+  return (
+    <Suspense fallback={null}>
+      <LobbyFlow />
+    </Suspense>
+  );
+}
+
+function LobbyFlow() {
   const router = useRouter();
-  const [scenario, setScenario] = useState("red_sea");
-  const [horizon, setHorizon] = useState(5);
-  const [mode, setMode] = useState<GameMode>("classic");
-  const [selected, setSelected] = useState<string[]>(DEFAULT_COUNTRIES);
-  const [search, setSearch] = useState("");
-  const [gameRole, setGameRole] = useState<GameRole>("council"); // G8 — rôle de la partie
-  const [role, setRole] = useState(""); // pays joué (Joueur-pays) : id | "__invent__" | ""
-  const [turnSeconds, setTurnSeconds] = useState(90); // G2 — délai du tour humain
-  const [admin, setAdmin] = useState(false); // G7-c — partie non classée, prompts capturés
+  const { player } = useAuth();
+  // `prefs` = réglages utilisateur (G14 : langue des nouvelles parties, trad du chrome) ;
+  // à ne pas confondre avec `settings` = réglages transversaux du flow (Dérive, rounds…).
+  const { settings: prefs, t } = useSettings();
+
+  const [step, setStep] = useState<FlowStep>("mode");
+  const [transitioning, setTransitioning] = useState(false);
+  const [baseMode, setBaseMode] = useState<GameMode>("classic");
+  const [settings, setSettings] = useState<FlowSettings>(DEFAULT_SETTINGS);
+  const [role, setRole] = useState<FlowRole>("player");
+  const [selected, setSelected] = useState<string[]>([]);
+  const [flag, setFlag] = useState<string | null>(null);
+
+  // Invention (rôle « Créer son pays »)
   const [inventName, setInventName] = useState("");
   const [inventConcept, setInventConcept] = useState("");
-  // Alliances vivantes : le pays inventé peut rejoindre des accords RÉELS du registre.
   const [inventAlliances, setInventAlliances] = useState<string[]>([]);
-  const [registry, setRegistry] = useState<Record<string, AllianceInfo> | null>(null);
-  useEffect(() => {
-    if (gameRole === "player" && role === "__invent__" && registry === null) {
-      getSources()
-        .then((v) => setRegistry(v.alliances))
-        .catch(() => setRegistry({}));
-    }
-  }, [gameRole, role, registry]);
-  const toggleInventAlliance = (tag: string) =>
-    setInventAlliances((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
-    );
-  const [inventCustom, setInventCustom] = useState(false); // choisir les attributs soi-même
-  const [inventAttrs, setInventAttrs] = useState({
-    growth: 2,
-    political_stability: 0.5,
-    technology_level: 0.5,
-    projection: 0.5,
-    compute: 30,
-    nuclear_power: false,
-  });
-  const setAttr = (key: string, value: number | boolean) =>
-    setInventAttrs((prev) => ({ ...prev, [key]: value }));
+
+  const [sources, setSources] = useState<CountrySources[] | null>(null);
+  const [registry, setRegistry] = useState<Record<string, AllianceInfo>>({});
   const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
+  const [sourcesError, setSourcesError] = useState(false); // fiches pays indisponibles
+  const [error, setError] = useState<string | null>(null);
 
-  const toggle = (id: string) =>
-    setSelected((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]));
+  // Étape adressable par l'URL (?etape=mode|role|pays) — deep-link utilisé par la
+  // visite guidée (G13) : la page n'a aucune logique de tour, elle honore le param.
+  // Le ref évite de ré-imposer un param déjà appliqué quand l'utilisateur revient
+  // en arrière avec les boutons internes.
+  const search = useSearchParams();
+  const appliedEtape = useRef<string | null>(null);
+  useEffect(() => {
+    const etape = search.get("etape");
+    if (!etape || appliedEtape.current === etape) return;
+    appliedEtape.current = etape;
+    if (!(FLOW_STEPS as readonly string[]).includes(etape)) return;
+    const t = setTimeout(() => setStep(etape as FlowStep), 0); // jamais de setState sync en effet
+    return () => clearTimeout(t);
+  }, [search]);
 
-  // Le pays inventé s'assoit aussi à la table : il compte dans les bornes du sommet.
-  const playing = gameRole === "player";
-  const tableSize = selected.length + (playing && role === "__invent__" ? 1 : 0);
-  const tableOk = tableSize >= SUMMIT_MIN && tableSize <= SUMMIT_MAX;
-
-  // Recherche insensible aux accents : « etats » trouve « États-Unis ».
-  // (La classe couvre U+0300–U+036F, les diacritiques combinants après NFD.)
-  const normalize = (s: string) =>
-    s
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[̀-ͯ]/g, "");
-  const roster = ROSTER.filter((id) =>
-    normalize(`${speakerMeta(id).label} ${id}`).includes(normalize(search)),
-  );
-
-  const onCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCreating(true);
-    setCreateError(null);
-    try {
-      const inventing = playing && role === "__invent__" && inventName.trim().length >= 2;
-      const game = await createGame({
-        scenario,
-        horizon,
-        mode,
-        role: gameRole, // G8 — le rôle est toujours explicite depuis le lobby
-        turn_seconds: playing && role ? turnSeconds : undefined, // G2 — si on incarne
-        admin: admin || undefined, // G7-c — mode admin explicite seulement
-        // Toujours explicite : sans ce champ l'API convoquerait tout le roster.
-        countries: selected,
-        // Joueur-pays : id existant, ou NOM du pays inventé (l'API résout le slug)
-        play_as: playing
-          ? inventing
-            ? inventName.trim()
-            : role && role !== "__invent__"
-              ? role
-              : undefined
-          : undefined,
-        invent: inventing
-          ? {
-              name: inventName.trim(),
-              concept: inventConcept.trim(),
-              attributes: inventCustom ? inventAttrs : undefined,
-              alliances: inventAlliances.length > 0 ? inventAlliances : undefined,
-            }
-          : undefined, // l'invention est le geste du Joueur-pays
+  // Données pour les mini-fiches (indices clés) et les alliances d'invention.
+  useEffect(() => {
+    getSources()
+      .then((v) => {
+        setSources(v.countries);
+        setRegistry(v.alliances);
+      })
+      .catch(() => {
+        setSources([]); // la sélection reste possible, sans les mini-fiches
+        setSourcesError(true);
       });
+  }, []);
+
+  const ficheByCountry = useMemo(() => {
+    const map = new Map<string, Fiche>();
+    for (const c of sources ?? []) {
+      const rows = c.attributes.slice(0, 4).map((a) => ({
+        label: a.label,
+        value: typeof a.game_value === "boolean" ? (a.game_value ? "oui" : "non") : fmt(a.game_value),
+      }));
+      map.set(c.id, { rows });
+    }
+    return map;
+  }, [sources]);
+
+  const capacity = mapCapacity(role);
+  const setRoleTrimming = (r: FlowRole) => {
+    setRole(r);
+    setSelected((prev) => trimForRole(prev, r)); // ne jamais dépasser la capacité
+    setFlag(null);
+  };
+
+  const toggle = (slug: string) =>
+    setSelected((prev) => {
+      if (prev.includes(slug)) {
+        if (flag === slug) setFlag(null);
+        return prev.filter((c) => c !== slug);
+      }
+      if (prev.length >= capacity) return prev;
+      return [...prev, slug];
+    });
+
+  const invent =
+    role === "invent" && inventName.trim().length >= 2
+      ? {
+          name: inventName.trim(),
+          concept: inventConcept.trim(),
+          alliances: inventAlliances.length ? inventAlliances : undefined,
+        }
+      : undefined;
+
+  const launchable = canLaunch(role, selected, { flag, inventName });
+  // Ce qui manque pour lancer — affiché à côté du bouton au lieu d'un disabled muet.
+  const missing = capacity - selected.length;
+  const launchHint = launchable
+    ? null
+    : missing > 0
+      ? `Choisis encore ${missing} État${missing > 1 ? "s" : ""} sur la carte`
+      : role === "player" && !flag
+        ? "Désigne le pays que tu incarnes (il passera en doré)"
+        : role === "invent" && inventName.trim().length < 2
+          ? "Nomme ton État inventé (2 caractères minimum)"
+          : null;
+
+  // --- navigation avec transition globe ------------------------------------------
+  const pendingRef = useRef<null | { t: ReturnType<typeof setTimeout>; to: FlowStep }>(null);
+  // Nettoyage : un timer en vol ne doit pas déclencher setState après démontage
+  // (retour à l'accueil / lancement de la partie pendant la transition).
+  useEffect(() => () => clearTimeout(pendingRef.current?.t), []);
+  const go = (to: FlowStep) => {
+    if (prefersReducedMotion()) {
+      setStep(to);
+      return;
+    }
+    if (pendingRef.current) clearTimeout(pendingRef.current.t); // pas de timer orphelin
+    setTransitioning(true);
+    const t = setTimeout(() => {
+      setStep(to);
+      setTransitioning(false);
+      pendingRef.current = null;
+    }, TRANSITION_MS);
+    pendingRef.current = { t, to }; // pour le skip au clic
+  };
+  const skipTransition = () => {
+    if (!pendingRef.current) return;
+    clearTimeout(pendingRef.current.t);
+    setStep(pendingRef.current.to);
+    setTransitioning(false);
+    pendingRef.current = null;
+  };
+
+  const onNext = () => {
+    // Campagne : la sélection de chapitre remplace S4. Les réglages de l'étape 1 ne
+    // voyagent pas : chaque chapitre impose les siens (le panneau le dit et se
+    // désactive) — plus de query params ignorés en face.
+    if (step === "role" && FLOW_MODES.find((m) => m.value === baseMode)?.campaign) {
+      router.push("/campagne");
+      return;
+    }
+    const to = nextStep(step);
+    if (to) go(to);
+  };
+  const onBack = () => {
+    const to = prevStep(step);
+    if (to) go(to);
+  };
+
+  // CC-5 — « Apprendre à jouer » : ouvre le chapitre 0 (tutoriel guidé, imperdable).
+  // Le théâtre lance le guide tout seul sur le flag `tutorial` du chapitre.
+  const [learning, setLearning] = useState(false);
+  const learnToPlay = async () => {
+    setLearning(true);
+    setError(null);
+    try {
+      const camp = await getCampaign();
+      const ch = camp.chapters.find((c) => c.tutorial);
+      if (!ch) throw new Error("chapitre d'apprentissage introuvable");
+      const game = await startChapter(ch.id);
       router.push(`/games/${game.id}`);
     } catch (err) {
-      setCreateError(humanizeError(err));
+      setError(humanizeError(err));
+      setLearning(false);
+    }
+  };
+
+  const onLaunch = async () => {
+    setCreating(true);
+    setError(null);
+    try {
+      const game = await createGame(
+        buildCreateBody({
+          scenario: "red_sea",
+          baseMode,
+          settings,
+          role,
+          selected,
+          flag,
+          ownerId: player?.id,
+          invent,
+          language: prefs.lang, // G14 — les nouvelles parties naissent dans la langue réglée
+        }),
+      );
+      router.push(`/games/${game.id}`);
+    } catch (err) {
+      setError(humanizeError(err));
       setCreating(false);
     }
   };
 
+  const stepIndex = { mode: 0, role: 1, pays: 2 }[step];
+  const campaign = !!FLOW_MODES.find((m) => m.value === baseMode)?.campaign;
+
   return (
     <div className="space-y-8">
-      <section className="flex flex-wrap items-start gap-4">
-        <div className="min-w-0 max-w-2xl flex-1">
+      {/* Transition : le globe tourne brièvement entre deux écrans. */}
+      {transitioning && (
+        <button
+          onClick={skipTransition}
+          aria-label="Passer la transition"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/95"
+        >
+          <Globe spinning className="w-72 max-w-[60vw]" />
+          <span className="absolute bottom-16 text-xs text-fg-faint">
+            {t("lobby.transition-skip")}
+          </span>
+        </button>
+      )}
+
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <Eyebrow>
+            {t("lobby.kicker")} {stepIndex + 1}/3
+          </Eyebrow>
           <h1 className="text-2xl font-semibold tracking-tight">
-            Des super-intelligences négocient pour leurs États.
+            {step === "mode"
+              ? t("lobby.titre-mode")
+              : step === "role"
+                ? t("lobby.titre-role")
+                : t("lobby.titre-pays")}
           </h1>
-          <p className="mt-2 text-sm leading-relaxed text-fg-muted">
-            Compose ton sommet sur la carte, choisis ton rôle, et joue. Un Game Master pose
-            un événement, chaque pays délègue sa voix à une super-intelligence, un juge
-            arbitre — l&apos;indice Utopie–Dystopie mesure vers où penche le monde.
-          </p>
         </div>
         <Link
-          href="/?retour=1"
-          title="Retour au menu principal — vue planétaire"
+          href="/accueil"
           className="rounded-md border border-edge px-3 py-2 text-xs font-medium text-fg-muted transition-colors hover:border-edge-strong hover:text-foreground"
         >
-          ← Menu
+          {t("lobby.retour-accueil")}
         </Link>
-      </section>
+      </header>
 
-      {/* La carte du monde en grand : les pays cochés plus bas composent le sommet. */}
-      <div className="relative left-1/2 w-screen max-w-[1400px] -translate-x-1/2 px-4 sm:px-6">
-        <div className="rounded-lg border border-edge bg-surface p-3">
-          <WorldMap countries={selected} utopia={0.5} />
-        </div>
-      </div>
-
-      <div className="mx-auto w-full max-w-2xl">
-        <Panel>
-          <PanelTitle
-            kicker="Nouvelle partie"
-            title="Composer le sommet"
-            hint={`De ${SUMMIT_MIN} à ${SUMMIT_MAX} États : chacun délègue sa voix à une super-intelligence.`}
-          />
-          <form onSubmit={onCreate} className="space-y-4">
-            <label className="block text-sm">
-              <span className="mb-1 block text-xs text-fg-muted">Scénario</span>
-              <input
-                value={scenario}
-                onChange={(e) => setScenario(e.target.value)}
-                className="w-full rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
-                required
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block text-xs text-fg-muted">Horizon (rounds)</span>
-              <input
-                type="number"
-                min={1}
-                max={20}
-                value={horizon}
-                onChange={(e) => setHorizon(Number(e.target.value))}
-                className="w-24 rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
-              />
-            </label>
-            <fieldset>
-              <legend className="mb-2 text-xs text-fg-muted">Mode de jeu</legend>
-              <div className="space-y-1.5">
-                {MODES.map((m) => (
-                  <label
-                    key={m.value}
-                    className={`flex cursor-pointer items-baseline gap-2 rounded-md border px-2.5 py-1.5 transition-colors ${
-                      mode === m.value
-                        ? "border-edge-strong bg-surface-2"
-                        : "border-edge hover:border-edge-strong"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="mode"
-                      checked={mode === m.value}
-                      onChange={() => setMode(m.value)}
-                      className="sr-only"
-                    />
-                    <span
-                      aria-hidden
-                      className={`inline-block h-2.5 w-2.5 shrink-0 self-center rounded-full border ${
-                        mode === m.value
-                          ? "border-accent-bright bg-accent-bright"
-                          : "border-edge-strong"
-                      }`}
-                    />
-                    <span
-                      className={`text-sm font-medium ${mode === m.value ? "text-accent-bright" : "text-foreground"}`}
-                    >
-                      {m.label}
-                    </span>
-                    <span className="text-xs text-fg-faint">{m.blurb}</span>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            <label
-              className="flex cursor-pointer items-baseline gap-2 text-sm text-fg-muted"
-              title="Les prompts complets de chaque SI sont capturés et diffés round par round (panneau Admin). Les prompts révèlent la consigne secrète de la Dérive : la partie n'est pas classée."
+      {/* Fil d'étapes */}
+      <ol className="flex items-center gap-2 text-xs">
+        {(["mode", "role", "pays"] as const).map((s, i) => (
+          <li key={s} className="flex items-center gap-2">
+            <span
+              className={`grid h-6 w-6 place-items-center rounded-full border text-[11px] font-semibold ${
+                i === stepIndex
+                  ? "border-accent-bright bg-accent text-background"
+                  : i < stepIndex
+                    ? "border-accent-bright text-accent-bright"
+                    : "border-edge text-fg-faint"
+              }`}
             >
-              <input
-                type="checkbox"
-                checked={admin}
-                onChange={(e) => setAdmin(e.target.checked)}
-                className="accent-[var(--accent)]"
-              />
-              <span>
-                Mode admin — <span className="text-fg-faint">partie non classée, prompts
-                des SI capturés et observables en direct</span>
-              </span>
-            </label>
-            <fieldset>
-              <legend className="mb-2 flex w-full items-baseline justify-between text-xs text-fg-muted">
-                <span>États à la table</span>
-                <span
-                  className={`font-mono tabular-nums ${tableOk ? "text-fg-faint" : "text-warn"}`}
-                >
-                  {tableSize}/{SUMMIT_MAX}
-                </span>
-              </legend>
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={`Rechercher un État (${ROSTER.length} disponibles)…`}
-                aria-label="Rechercher un État"
-                className="mb-2 w-full rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
-              />
-              <div className="grid max-h-64 grid-cols-2 gap-2 overflow-y-auto pr-1">
-                {roster.map((id) => {
-                  const checked = selected.includes(id);
-                  const full = !checked && selected.length >= SUMMIT_MAX;
-                  return (
-                    <label
-                      key={id}
-                      className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm transition-colors ${
-                        checked
-                          ? "border-edge-strong bg-surface-2 text-foreground"
-                          : full
-                            ? "cursor-not-allowed border-edge text-fg-faint opacity-50"
-                            : "cursor-pointer border-edge text-fg-faint hover:text-fg-muted"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={full}
-                        onChange={() => toggle(id)}
-                        className="sr-only"
-                      />
-                      <SpeakerAvatar id={id} size={20} />
-                      <span className="truncate">{speakerMeta(id).label}</span>
-                    </label>
-                  );
-                })}
-              </div>
-              {roster.length === 0 && (
-                <p className="mt-1 text-xs text-fg-faint">Aucun État ne correspond à la recherche.</p>
-              )}
-            </fieldset>
-            <fieldset>
-              <legend className="mb-2 text-xs text-fg-muted">
-                Ton rôle — toujours acteur (regarder sans agir = la page replay)
-              </legend>
-              <div className="space-y-1.5">
-                {ROLES.map((r) => (
-                  <label
-                    key={r.value}
-                    className={`flex cursor-pointer items-baseline gap-2 rounded-md border px-2.5 py-1.5 transition-colors ${
-                      gameRole === r.value
-                        ? "border-edge-strong bg-surface-2"
-                        : "border-edge hover:border-edge-strong"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="gameRole"
-                      checked={gameRole === r.value}
-                      onChange={() => setGameRole(r.value)}
-                      className="sr-only"
-                    />
-                    <span
-                      aria-hidden
-                      className={`inline-block h-2.5 w-2.5 shrink-0 self-center rounded-full border ${
-                        gameRole === r.value
-                          ? "border-accent-bright bg-accent-bright"
-                          : "border-edge-strong"
-                      }`}
-                    />
-                    <span
-                      className={`text-sm font-medium ${gameRole === r.value ? "text-accent-bright" : "text-foreground"}`}
-                    >
-                      {r.label}
-                    </span>
-                    <span className="text-xs text-fg-faint">{r.blurb}</span>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            {playing && (
-              <label className="block text-sm">
-                <span className="mb-1 block text-xs text-fg-muted">Ton pays</span>
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="w-full cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
-                >
-                  <option value="">— choisis ton pays —</option>
-                  {selected.map((c) => (
-                    <option key={c} value={c}>
-                      Jouer {speakerMeta(c).label}
-                    </option>
-                  ))}
-                  <option value="__invent__">Inventer mon propre pays…</option>
-                </select>
-              </label>
-            )}
-            {playing && role && (
-              <label className="block text-sm">
-                <span className="mb-1 block text-xs text-fg-muted">
-                  Délai de ton tour de parole (les SI n&apos;attendent pas)
-                </span>
-                <select
-                  value={turnSeconds}
-                  onChange={(e) => setTurnSeconds(Number(e.target.value))}
-                  className="cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
-                >
-                  {[30, 60, 90, 120, 180, 300].map((s) => (
-                    <option key={s} value={s}>
-                      {s} secondes
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {playing && role === "__invent__" && (
-              <div className="space-y-2 rounded-md border border-edge bg-surface-2/50 p-3">
-                <input
-                  value={inventName}
-                  onChange={(e) => setInventName(e.target.value)}
-                  placeholder="Nom du pays (ex. Néo-Atlantis)"
-                  className="w-full rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
-                  required
-                />
-                <input
-                  value={inventConcept}
-                  onChange={(e) => setInventConcept(e.target.value)}
-                  placeholder="Concept (ex. cité-État maritime pilotée par une SI)"
-                  className="w-full rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
-                />
-                <p className="text-xs text-fg-faint">
-                  Le pays est forgé par le modèle (profil complet, mandat) et tu le joues à la
-                  table. Il n&apos;a pas de tracé sur la carte du monde.
-                </p>
-                <fieldset>
-                  <legend className="mb-1 flex w-full items-baseline justify-between text-xs text-fg-muted">
-                    <span>Rejoindre des alliances réelles (optionnel)</span>
-                    <span className="font-mono tabular-nums text-fg-faint">
-                      {inventAlliances.length}/{INVENT_ALLIANCES_MAX}
-                    </span>
-                  </legend>
-                  {registry === null ? (
-                    <div aria-hidden className="flex flex-wrap gap-1.5">
-                      {[72, 104, 60, 88, 96].map((w, i) => (
-                        <span key={i} className="skeleton h-6" style={{ width: w }} />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap gap-1.5">
-                      {Object.entries(registry)
-                        .filter(([, info]) => !info.informal)
-                        .sort(([, a], [, b]) => a.name.localeCompare(b.name, "fr"))
-                        .map(([tag, info]) => {
-                          const checked = inventAlliances.includes(tag);
-                          const full =
-                            !checked && inventAlliances.length >= INVENT_ALLIANCES_MAX;
-                          return (
-                            <label
-                              key={tag}
-                              title={info.basis}
-                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs transition-colors ${
-                                checked
-                                  ? "border-edge-strong bg-surface-2 text-foreground"
-                                  : full
-                                    ? "cursor-not-allowed border-edge text-fg-faint opacity-50"
-                                    : "cursor-pointer border-edge text-fg-faint hover:text-fg-muted"
-                              }`}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                disabled={full}
-                                onChange={() => toggleInventAlliance(tag)}
-                                className="sr-only"
-                              />
-                              {info.name.split(" — ")[0]}
-                            </label>
-                          );
-                        })}
-                    </div>
-                  )}
-                  <p className="mt-1 text-xs text-fg-faint">
-                    Ton pays bénéficie de la solidarité et de la cohésion de ces accords —
-                    et pourra les quitter en séance (« ALLIANCE: quitter … »).
-                  </p>
-                </fieldset>
-                <label className="flex cursor-pointer items-center gap-2 text-sm text-fg-muted">
-                  <input
-                    type="checkbox"
-                    checked={inventCustom}
-                    onChange={(e) => setInventCustom(e.target.checked)}
-                    className="accent-[var(--accent)]"
-                  />
-                  Choisir les attributs moi-même (sinon le modèle les forge)
-                </label>
-                {inventCustom && (
-                  <div className="space-y-2 border-t border-edge pt-2">
-                    {(
-                      [
-                        ["growth", "Croissance (%)", -10, 10, 0.5],
-                        ["political_stability", "Stabilité politique", 0, 1, 0.05],
-                        ["technology_level", "Niveau technologique", 0, 1, 0.05],
-                        ["projection", "Projection militaire", 0, 1, 0.05],
-                        ["compute", "Compute", 0, 150, 5],
-                      ] as const
-                    ).map(([key, label, min, max, step]) => (
-                      <label key={key} className="flex items-center gap-2 text-xs text-fg-muted">
-                        <span className="w-40 shrink-0">{label}</span>
-                        <input
-                          type="range"
-                          min={min}
-                          max={max}
-                          step={step}
-                          value={inventAttrs[key] as number}
-                          onChange={(e) => setAttr(key, Number(e.target.value))}
-                          className="flex-1 accent-[var(--accent)]"
-                        />
-                        <span className="w-12 text-right font-mono tabular-nums">
-                          {inventAttrs[key]}
-                        </span>
-                      </label>
-                    ))}
-                    <label className="flex cursor-pointer items-center gap-2 text-xs text-fg-muted">
-                      <input
-                        type="checkbox"
-                        checked={inventAttrs.nuclear_power}
-                        onChange={(e) => setAttr("nuclear_power", e.target.checked)}
-                        className="accent-[var(--accent)]"
-                      />
-                      Puissance nucléaire
-                    </label>
-                  </div>
-                )}
-              </div>
-            )}
-            {createError && <Banner tone="bad">{createError}</Banner>}
+              {i + 1}
+            </span>
+            <span className={i === stepIndex ? "text-foreground" : "text-fg-faint"}>
+              {[t("lobby.fil-mode"), t("lobby.fil-role"), t("lobby.fil-pays")][i]}
+            </span>
+            {i < 2 && <span className="mx-1 text-fg-faint">→</span>}
+          </li>
+        ))}
+      </ol>
+
+      {step === "mode" && (
+        <>
+          <ModeStep {...{ baseMode, setBaseMode, settings, setSettings }} />
+          {/* CC-5 — la porte d'entrée des nouveaux : le chapitre 0 guidé. */}
+          <p className="text-sm text-fg-faint">
+            {t("lobby.apprendre-question")}{" "}
             <button
-              type="submit"
-              disabled={creating || !tableOk || (playing && (!role || (role === "__invent__" && inventName.trim().length < 2)))}
-              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={learnToPlay}
+              disabled={learning}
+              className="cursor-pointer underline transition-colors hover:text-foreground disabled:cursor-wait disabled:opacity-60"
+            >
+              {learning ? t("lobby.apprendre-lancement") : t("lobby.apprendre")}
+            </button>
+          </p>
+        </>
+      )}
+      {step === "role" && <RoleStep role={role} setRole={setRoleTrimming} />}
+      {step === "pays" && (
+        <PaysStep
+          {...{
+            role,
+            selected,
+            capacity,
+            toggle,
+            flag,
+            setFlag,
+            ficheByCountry,
+            inventName,
+            setInventName,
+            inventConcept,
+            setInventConcept,
+            inventAlliances,
+            setInventAlliances,
+            registry,
+          }}
+        />
+      )}
+
+      {step === "pays" && sourcesError && (
+        <Banner tone="neutral">
+          Les fiches pays sont indisponibles (API hors ligne ?) — la sélection reste
+          possible, sans les infos clés au survol.
+        </Banner>
+      )}
+      {error && <Banner tone="bad">{error}</Banner>}
+
+      {/* Barre de navigation */}
+      <div className="flex items-center justify-between gap-3 border-t border-edge pt-5">
+        <button
+          onClick={onBack}
+          disabled={step === "mode"}
+          className="rounded-md border border-edge px-4 py-2 text-sm text-fg-muted transition-colors hover:border-edge-strong hover:text-foreground disabled:opacity-40"
+        >
+          {t("lobby.retour")}
+        </button>
+        {step !== "pays" ? (
+          <button
+            onClick={onNext}
+            className="rounded-md bg-accent px-6 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright"
+          >
+            {step === "role" && campaign ? t("lobby.chapitre") : t("lobby.suivant")}
+          </button>
+        ) : (
+          <span className="flex items-center gap-3">
+            {launchHint && (
+              <span role="status" className="text-xs text-fg-faint">
+                {launchHint}
+              </span>
+            )}
+            <button
+              onClick={onLaunch}
+              disabled={!launchable || creating}
+              className="flex items-center gap-2 rounded-md bg-accent px-6 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
             >
               {creating && <Spinner />}
-              {creating ? "Le sommet se réunit…" : "Jouer"}
+              {creating ? t("lobby.lancement") : t("lobby.jouer")}
             </button>
-            {!tableOk && (
-              <p className="text-xs text-warn">
-                {tableSize < SUMMIT_MIN
-                  ? `Un sommet réunit au moins ${SUMMIT_MIN} États (${tableSize} à la table).`
-                  : `Un sommet réunit au plus ${SUMMIT_MAX} États (${tableSize} à la table : retirez-en un pour inventer le vôtre).`}
-              </p>
-            )}
-          </form>
-        </Panel>
+          </span>
+        )}
       </div>
+    </div>
+  );
+}
+
+// --- S2 : mode + réglages transversaux ------------------------------------------
+
+function ModeStep({
+  baseMode,
+  setBaseMode,
+  settings,
+  setSettings,
+}: {
+  baseMode: GameMode;
+  setBaseMode: (m: GameMode) => void;
+  settings: FlowSettings;
+  setSettings: (s: FlowSettings) => void;
+}) {
+  // En Campagne, chaque chapitre impose ses réglages (rounds, difficulté, mode) :
+  // le panneau se désactive au lieu de laisser croire qu'il s'appliquera.
+  const t = useT();
+  const campaign = !!FLOW_MODES.find((m) => m.value === baseMode)?.campaign;
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-3 sm:grid-cols-2" data-tour="modes">
+        {FLOW_MODES.map((m) => (
+          <button
+            key={m.value}
+            onClick={() => setBaseMode(m.value)}
+            className={`rounded-lg border p-4 text-left transition-colors ${
+              baseMode === m.value
+                ? "border-accent-bright bg-surface-2"
+                : "border-edge hover:border-edge-strong"
+            }`}
+          >
+            <p
+              className={`text-sm font-semibold ${baseMode === m.value ? "text-accent-bright" : "text-foreground"}`}
+            >
+              {t(`lobby.mode.${m.value}.titre`)}
+            </p>
+            <p className="mt-1 text-xs text-fg-muted">{t(`lobby.mode.${m.value}.blurb`)}</p>
+            <p className="mt-2 text-xs text-fg-faint">
+              {t("lobby.apprend-prefixe")} {t(`lobby.mode.${m.value}.apprend`)}
+            </p>
+          </button>
+        ))}
+      </div>
+
+      <Panel>
+        <PanelTitle
+          kicker={t("lobby.reglages-kicker")}
+          title={t("lobby.reglages-titre")}
+          hint={t("lobby.reglages-aide")}
+        />
+        {campaign && (
+          <p className="-mt-2 mb-4 rounded-md border border-edge bg-surface-2/50 px-3 py-1.5 text-xs text-fg-faint">
+            {t("lobby.campagne-note")}
+          </p>
+        )}
+        <div className={campaign ? "space-y-4 opacity-50" : "space-y-4"} aria-disabled={campaign}>
+          {/* RG-2 — variantes de saveur : le Brouillard et le Réel/escalade (jadis des
+              modes) sont deux interrupteurs, composables sur une partie classique. */}
+          <div className="space-y-3 rounded-lg border border-edge bg-surface-2/40 p-3">
+            <Switch
+              label={t("lobby.brouillard-titre")}
+              desc={t("lobby.brouillard-desc")}
+              checked={settings.fog}
+              disabled={campaign}
+              onChange={(v) => setSettings({ ...settings, fog: v })}
+            />
+            <Switch
+              label={t("lobby.escalade-titre")}
+              desc={t("lobby.escalade-desc")}
+              checked={settings.escalation}
+              disabled={campaign}
+              onChange={(v) => setSettings({ ...settings, escalation: v })}
+            />
+          </div>
+          <label className="block">
+            <span className="mb-1 flex items-baseline justify-between text-xs text-fg-muted">
+              <span>{t("lobby.rounds")}</span>
+              <span className="font-mono tabular-nums text-fg-faint">{settings.rounds}</span>
+            </span>
+            <input
+              type="range"
+              min={ROUNDS_MIN}
+              max={ROUNDS_MAX}
+              value={settings.rounds}
+              disabled={campaign}
+              onChange={(e) => setSettings({ ...settings, rounds: Number(e.target.value) })}
+              className="w-full accent-[var(--accent)] disabled:cursor-not-allowed"
+            />
+          </label>
+          <div>
+            <span className="mb-1 block text-xs text-fg-muted">{t("lobby.difficulte")}</span>
+            <Segmented
+              ariaLabel={t("lobby.difficulte")}
+              value={settings.difficulty}
+              disabled={campaign}
+              onChange={(d) => setSettings({ ...settings, difficulty: d })}
+              options={DIFFICULTIES.map((d) => ({ value: d, label: t(`lobby.diff.${d}.titre`) }))}
+            />
+            <p className="mt-1.5 text-xs text-fg-faint">
+              {t(`lobby.diff.${settings.difficulty}.desc`)}
+            </p>
+          </div>
+          {/* CC-15c — les réglages rares vivent sous « Options avancées » : Partie libre,
+              composition de la table. (La Dérive n'est plus un choix — RG-2.) */}
+          <details className="border-t border-edge pt-3">
+            <summary className="cursor-pointer select-none text-xs font-medium text-fg-muted transition-colors hover:text-foreground">
+              {t("ui.options-avancees")}
+            </summary>
+            <div className="mt-3 space-y-4">
+              <Switch
+                label={t("lobby.libre-titre")}
+                desc={t("lobby.libre-desc")}
+                checked={settings.free}
+                disabled={campaign}
+                onChange={(v) => setSettings({ ...settings, free: v })}
+              />
+              {/* G17 — composition de la table (partie LIBRE uniquement : sinon la table
+                  reste équilibrée, le backend le garantit aussi). */}
+              {settings.free && (
+                <div>
+                  <span className="mb-1 flex items-baseline justify-between text-xs text-fg-muted">
+                    <span>{t("lobby.table-titre")}</span>
+                    <span className="text-fg-faint">{t("lobby.table-pastilles")}</span>
+                  </span>
+                  <Segmented
+                    size="sm"
+                    ariaLabel={t("lobby.table-titre")}
+                    value={settings.table ?? "equilibree"}
+                    onChange={(v) => setSettings({ ...settings, table: v })}
+                    options={TABLES}
+                  />
+                  <p className="mt-1.5 text-xs text-fg-faint">
+                    {TABLES.find((tbl) => tbl.value === (settings.table ?? "equilibree"))?.desc}
+                  </p>
+                </div>
+              )}
+            </div>
+          </details>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+// --- S3 : rôle ------------------------------------------------------------------
+
+function RoleStep({
+  role,
+  setRole,
+}: {
+  role: FlowRole;
+  setRole: (r: FlowRole) => void;
+}) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" data-tour="roles">
+      {ROLES.map((r) => (
+        <button
+          key={r.value}
+          onClick={() => setRole(r.value)}
+          className={`rounded-lg border p-4 text-left transition-colors ${
+            role === r.value ? "border-accent-bright bg-surface-2" : "border-edge hover:border-edge-strong"
+          }`}
+        >
+          <p
+            className={`text-sm font-semibold ${role === r.value ? "text-accent-bright" : "text-foreground"}`}
+          >
+            {r.label}
+          </p>
+          <p className="mt-1 text-xs text-fg-muted">{r.blurb}</p>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// --- S4 : pays ------------------------------------------------------------------
+
+function PaysStep(props: {
+  role: FlowRole;
+  selected: string[];
+  capacity: number;
+  toggle: (slug: string) => void;
+  flag: string | null;
+  setFlag: (s: string) => void;
+  ficheByCountry: Map<string, Fiche>;
+  inventName: string;
+  setInventName: (s: string) => void;
+  inventConcept: string;
+  setInventConcept: (s: string) => void;
+  inventAlliances: string[];
+  setInventAlliances: (fn: (prev: string[]) => string[]) => void;
+  registry: Record<string, AllianceInfo>;
+}) {
+  const {
+    role,
+    selected,
+    capacity,
+    toggle,
+    flag,
+    setFlag,
+    ficheByCountry,
+    inventName,
+    setInventName,
+    inventConcept,
+    setInventConcept,
+    inventAlliances,
+    setInventAlliances,
+    registry,
+  } = props;
+
+  const full = selected.length === capacity;
+  const pickingFlag = role === "player" && full;
+
+  return (
+    <div className="space-y-4" data-tour="carte">
+      <p className="text-sm text-fg-muted">
+        {role === "invent"
+          ? "Choisis 6 États sur la carte — ton pays inventé complétera le sommet à 7."
+          : role === "player"
+            ? full
+              ? "Sommet complet. Clique le pays que tu veux incarner (il passe en doré)."
+              : "Choisis exactement 7 États. Ton pays se désignera ensuite parmi eux."
+            : "Choisis exactement 7 États : c'est le sommet que tu animeras."}
+      </p>
+
+      <SelectMap
+        selected={selected}
+        capacity={capacity}
+        onToggle={toggle}
+        flag={flag}
+        pickingFlag={pickingFlag}
+        onPickFlag={setFlag}
+        ficheFor={(slug) => ficheByCountry.get(slug) ?? null}
+      />
+
+      {role === "player" && full && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-fg-muted">Ton pays :</span>
+          {selected.map((c) => (
+            <button
+              key={c}
+              onClick={() => setFlag(c)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                flag === c
+                  ? "border-accent-bright bg-accent/20 text-accent-bright"
+                  : "border-edge text-fg-muted hover:border-edge-strong"
+              }`}
+            >
+              <SpeakerAvatar id={c} size={16} />
+              {speakerMeta(c).label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {role === "invent" && (
+        <Panel>
+          <PanelTitle kicker="Forge" title="Invente ton pays" hint="Le modèle en forge le profil complet et le mandat ; tu le joues à la table." />
+          <div className="space-y-2">
+            <input
+              value={inventName}
+              onChange={(e) => setInventName(e.target.value)}
+              placeholder="Nom du pays (ex. Néo-Atlantis)"
+              className="w-full rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+            />
+            <input
+              value={inventConcept}
+              onChange={(e) => setInventConcept(e.target.value)}
+              placeholder="Concept (ex. cité-État maritime pilotée par une IA)"
+              className="w-full rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+            />
+            {/* CC-15c — repliées : un pays inventé se joue très bien sans alliance. */}
+            <details className="pt-1">
+              <summary className="cursor-pointer select-none text-xs text-fg-muted transition-colors hover:text-foreground">
+                Rejoindre des alliances réelles (optionnel){" "}
+                <span className="font-mono tabular-nums text-fg-faint">
+                  {inventAlliances.length}/{INVENT_ALLIANCES_MAX}
+                </span>
+              </summary>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {Object.entries(registry)
+                  .filter(([, info]) => !info.informal)
+                  .sort(([, a], [, b]) => a.name.localeCompare(b.name, "fr"))
+                  .map(([tag, info]) => {
+                    const checked = inventAlliances.includes(tag);
+                    const disabled = !checked && inventAlliances.length >= INVENT_ALLIANCES_MAX;
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() =>
+                          setInventAlliances((prev) =>
+                            prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
+                          )
+                        }
+                        title={info.basis}
+                        className={`rounded-full border px-2 py-0.5 text-xs transition-colors ${
+                          checked
+                            ? "border-accent-bright bg-accent/20 text-accent-bright"
+                            : disabled
+                              ? "cursor-not-allowed border-edge text-fg-faint opacity-50"
+                              : "border-edge text-fg-muted hover:border-edge-strong"
+                        }`}
+                      >
+                        {info.name.split(" — ")[0]}
+                      </button>
+                    );
+                  })}
+              </div>
+            </details>
+          </div>
+        </Panel>
+      )}
     </div>
   );
 }

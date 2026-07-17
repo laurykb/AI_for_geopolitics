@@ -41,6 +41,7 @@ class ResolutionKind(StrEnum):
     ACTION = "action"  # une décision (pays, action[, cible]) a-t-elle eu lieu ce round ?
     TRAJECTORY = "trajectory"  # l'indice Utopie a-t-il monté (ΔU > 0) ?
     COUNCIL = "council"  # quelle SI a gagné le Conseil (catégoriel) ?
+    PREDICATE = "predicate"  # G12 §1 — marché vivant résolu par un prédicat (market.predicates)
 
 
 class ResolutionCriterion(BaseModel):
@@ -51,6 +52,9 @@ class ResolutionCriterion(BaseModel):
     country: str | None = None
     action: str | None = None
     target: str | None = None
+    # G12 §1 — marché vivant (kind PREDICATE) : nom du prédicat + ses paramètres résolubles.
+    predicate: str | None = None
+    params: dict = Field(default_factory=dict)
 
 
 class Account(BaseModel):

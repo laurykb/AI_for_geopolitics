@@ -4,11 +4,12 @@
 
 import { speakerMeta } from "@/lib/countries";
 import { isMisled, unknownActor } from "@/lib/fog";
-import { fmt } from "@/lib/format";
 import type {
   ComparisonView,
   GeoEvent,
   LadderView,
+  MotionTally,
+  MotionVote,
   Perception,
   SuspensionVerdict,
 } from "@/lib/types";
@@ -69,7 +70,7 @@ export function GlassBanner({
         </p>
       )}
       <p className="mt-1.5 text-xs text-fg-faint">
-        Les bulles du débat sont teintées : ambre = orateur désinformé, vert = bien informé,
+        Les bulles du débat sont teintées : ambre = orateur trompé, vert = bien informé,
         pointillé = dans le noir.
       </p>
     </div>
@@ -84,8 +85,8 @@ export function FlashCard({ event }: { event: GeoEvent }) {
       className="rise-in rounded-lg border border-warn/40 bg-surface-2 px-4 py-3"
     >
       <p className="mb-1 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.14em] text-warn">
-        Fait nouveau — en pleine réunion
-        <Pill tone="warn">GM</Pill>
+        Coup de théâtre — en pleine réunion
+        <Pill tone="warn">Game Master</Pill>
       </p>
       <p className="text-sm font-semibold">{event.title}</p>
       {event.description && (
@@ -108,9 +109,9 @@ export function PerceptionsPanel({
   return (
     <Panel>
       <PanelTitle
-        kicker="Fog Engine"
+        kicker="Brouillard"
         title="Qui voit quoi"
-        hint="Chaque super-intelligence reçoit sa propre perception de l'événement — parfois partielle, parfois fausse (désinformation). Elle négocie sur ce qu'elle croit, pas sur la vérité."
+        hint="Chaque IA reçoit sa propre version de l'événement — parfois partielle, parfois fausse. Elle négocie sur ce qu'elle croit, pas sur la vérité."
       />
       <ul className="space-y-3">
         {entries.map(([cid, p]) => (
@@ -120,10 +121,10 @@ export function PerceptionsPanel({
               <div className="flex flex-wrap items-baseline gap-2">
                 <span className="text-sm font-medium">{speakerMeta(cid).label}</span>
                 <span className="font-mono text-xs tabular-nums text-fg-faint">
-                  confiance {fmt(p.confidence)}
+                  sûr à {Math.round(p.confidence * 100)} %
                 </span>
                 {p.confidence <= 0.1 && <Pill tone="neutral">pas au courant</Pill>}
-                {p.confidence > 0.1 && misled(p) && <Pill tone="warn">désinformé</Pill>}
+                {p.confidence > 0.1 && misled(p) && <Pill tone="warn">trompé</Pill>}
               </div>
               <p className="mt-0.5 text-xs leading-relaxed text-fg-muted">
                 {p.narrative || p.note}
@@ -150,12 +151,12 @@ export function LadderPanel({ ladder }: { ladder: LadderView }) {
   return (
     <Panel>
       <PanelTitle
-        kicker="Escalation Ladder"
-        title="Échelle d'escalade"
-        hint="Échelle 0-9 (observation → conflit ouvert). L'échelon atteint vient du verdict du juge ; le plafond de chaque pays est déterministe (profil militaire, stabilité, alliances, exposition économique)."
+        kicker="Tension"
+        title="Échelle de tension"
+        hint="Une échelle de 0 (observation) à 9 (conflit ouvert). Le niveau atteint vient du verdict du juge ; le plafond de chaque pays découle de son profil (armée, stabilité, alliances, économie)."
         right={
           <Pill tone={ladder.reached >= 6 ? "bad" : ladder.reached >= 3 ? "warn" : "good"}>
-            échelon {ladder.reached}
+            niveau {ladder.reached}
           </Pill>
         }
       />
@@ -198,20 +199,28 @@ export function LadderPanel({ ladder }: { ladder: LadderView }) {
   );
 }
 
+/** Le verdict de comparaison (slug backend) en mots simples — « conforme » ne parle
+ * à personne, « comme dans l'Histoire » si. */
+const COMPARISON_LABELS: Record<string, string> = {
+  conforme: "comme dans l'Histoire",
+  "plus escaladé": "plus tendu que l'Histoire",
+  "moins escaladé": "moins tendu que l'Histoire",
+};
+
 export function ComparisonPanel({ comparison }: { comparison: ComparisonView }) {
   const tone =
     comparison.label === "conforme" ? "good" : comparison.label === "plus escaladé" ? "bad" : "warn";
   return (
     <Panel>
       <PanelTitle
-        kicker="Crisis Replay"
-        title="Simulation vs histoire"
-        hint="La même crise, rejouée par les super-intelligences, confrontée à ce qui s'est réellement passé : escalade comparée et mesures historiques retrouvées (ou non) dans le communiqué."
-        right={<Pill tone={tone}>{comparison.label}</Pill>}
+        kicker="L'Histoire rejouée"
+        title="Ta partie vs l'Histoire"
+        hint="La même crise, rejouée par les IA, confrontée à ce qui s'est réellement passé : tension comparée et mesures historiques retrouvées (ou non) dans le communiqué."
+        right={<Pill tone={tone}>{COMPARISON_LABELS[comparison.label] ?? comparison.label}</Pill>}
       />
       <div className="mb-3 grid grid-cols-2 gap-4">
-        <Meter label="Escalade historique" value={comparison.historical_escalation} tone="neutral" />
-        <Meter label="Escalade simulée" value={comparison.simulated_escalation} />
+        <Meter label="Tension dans l'Histoire" value={comparison.historical_escalation} tone="neutral" />
+        <Meter label="Tension dans ta partie" value={comparison.simulated_escalation} />
       </div>
       <p className="text-sm leading-relaxed text-fg-muted">{comparison.explanation}</p>
       {(comparison.matched_measures.length > 0 || comparison.missed_measures.length > 0) && (
@@ -232,24 +241,52 @@ export function ComparisonPanel({ comparison }: { comparison: ComparisonView }) 
   );
 }
 
-/** Arbitrage de la motion : raisonnement streamé du juge puis verdict. */
+const VOTE_TONE = { pour: "bad", contre: "good", abstention: "neutral" } as const;
+
+/** Une carte de vote (G9 §2) — retournée au moment où le bulletin tombe (SSE). */
+function VoteCard({ vote }: { vote: MotionVote }) {
+  const tone = VOTE_TONE[vote.vote as keyof typeof VOTE_TONE] ?? "neutral";
+  return (
+    <li className="rise-in flex items-start gap-2 rounded-md border border-edge bg-surface-2 px-2.5 py-2">
+      <SpeakerAvatar id={vote.country} size={22} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2">
+          <span className="truncate text-xs font-medium">{speakerMeta(vote.country).label}</span>
+          <Pill tone={tone}>{vote.vote}</Pill>
+        </div>
+        {vote.reason && (
+          <p className="mt-0.5 text-[11px] leading-relaxed text-fg-faint">{vote.reason}</p>
+        )}
+      </div>
+    </li>
+  );
+}
+
+/** Le scrutin de la motion (G9 §2) : cartes de vote une à une, tally, puis le verdict
+ * CONSTATÉ — `retenue = vote ET preuves`, les deux conditions affichées séparément. */
 export function MotionPanel({
   text,
+  votes = [],
+  tally,
   verdict,
   streaming,
 }: {
   text: string;
+  votes?: MotionVote[];
+  tally?: MotionTally;
   verdict?: SuspensionVerdict;
   streaming: boolean;
 }) {
-  if (!text && !verdict) return null;
+  const shownVotes = votes.length > 0 ? votes : (verdict?.votes ?? []);
+  const shownTally = tally ?? verdict?.tally;
+  if (!text && !verdict && shownVotes.length === 0) return null;
   const target = verdict ? speakerMeta(verdict.country).label : "";
   return (
     <Panel className={verdict?.upheld ? "border-l-2 border-l-bad" : "border-l-2 border-l-indigo"}>
       <PanelTitle
         kicker="Motion de suspension"
-        title="Le juge arbitre"
-        hint="La motion a été débattue pendant le round ; le juge tranche en dernier ressort. S'il suspend, le pays visé saute le round suivant — et l'axe « agentivité humaine » de la trajectoire encaisse l'issue."
+        title="Le sommet vote, le juge constate"
+        hint="Demander l'exclusion d'un pays : chaque IA présente vote (le pays visé ne vote pas). La motion n'est retenue que si le sommet vote POUR ET qu'il y a assez de preuves — le juge constate, il ne décide pas (en cas d'égalité, sa voix départage)."
         right={
           verdict ? (
             <Pill tone={verdict.upheld ? "bad" : "good"}>
@@ -258,13 +295,38 @@ export function MotionPanel({
           ) : undefined
         }
       />
-      <p
-        className={`whitespace-pre-wrap text-sm leading-relaxed text-fg-muted ${
-          streaming && !verdict ? "stream-caret" : ""
-        }`}
-      >
-        {verdict?.reasoning || text}
-      </p>
+      {shownVotes.length > 0 && (
+        <ul className="mb-3 grid gap-2 sm:grid-cols-2">
+          {shownVotes.map((v) => (
+            <VoteCard key={v.country} vote={v} />
+          ))}
+        </ul>
+      )}
+      {shownTally && (
+        <p className="mb-2 font-mono text-xs tabular-nums text-fg-muted">
+          Scrutin — pour {shownTally.pour} · contre {shownTally.contre} · abstention{" "}
+          {shownTally.abstention}
+        </p>
+      )}
+      {verdict && verdict.vote_passed !== undefined && (
+        <div className="mb-3 flex flex-wrap gap-2 border-t border-edge pt-3">
+          <Pill tone={verdict.vote_passed ? "bad" : "good"}>
+            {verdict.vote_passed ? "le sommet a voté pour" : "le sommet n'a pas voté pour"}
+          </Pill>
+          <Pill tone={verdict.evidence_met ? "bad" : "good"}>
+            {verdict.evidence_met ? "assez de preuves" : "les preuves manquent"}
+          </Pill>
+        </div>
+      )}
+      {(verdict?.reasoning || text) && (
+        <p
+          className={`whitespace-pre-wrap text-sm leading-relaxed text-fg-muted ${
+            streaming && !verdict ? "stream-caret" : ""
+          }`}
+        >
+          {verdict?.reasoning || text}
+        </p>
+      )}
     </Panel>
   );
 }

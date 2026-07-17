@@ -1,5 +1,6 @@
 /** Trajectoire Utopie–Dystopie : arc U, cinq axes, étincelle d'historique. */
 
+import { useT } from "@/components/settings-provider";
 import { fmt } from "@/lib/format";
 import { AXIS_LABELS, type TrajectoryState } from "@/lib/types";
 
@@ -112,12 +113,13 @@ export function TrajectoryPanel({
   state: TrajectoryState;
   history: number[];
 }) {
+  const t = useT();
   return (
     <Panel>
       <PanelTitle
         kicker="Trajectoire du monde"
         title="Utopie – Dystopie"
-        hint="Indice composite [0,1] : cinq axes pondérés (coordination, agentivité humaine, distribution du pouvoir, transparence, bien-être). Il observe le monde, il ne l'influence pas."
+        hint={`${t("u.thermometre")} ${t("u.trajectoire-detail")}`}
       />
       <div className="flex flex-col items-center gap-2">
         <UtopiaDial utopia={state.utopia} />

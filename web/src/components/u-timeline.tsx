@@ -20,7 +20,7 @@ export function UTimeline({ values }: { values: number[] }) {
     <svg
       viewBox={`0 0 ${W} ${H}`}
       role="img"
-      aria-label={`Indice Utopie par round, dernier point ${fmt(last)}`}
+      aria-label={`Le monde round après round, dernier point ${fmt(last)}`}
       className="w-full"
     >
       {/* zones : utopie au-dessus de 0,5, dystopie en dessous */}
@@ -75,7 +75,7 @@ export function UTimeline({ values }: { values: number[] }) {
           <path d={line} fill="none" stroke="var(--indigo-soft)" strokeWidth="2" />
           {values.map((v, i) => (
             <circle key={i} cx={xs(i)} cy={ys(v)} r="3.5" fill="var(--indigo-soft)">
-              <title>{`Round ${i + 1} — U ${fmt(v)}`}</title>
+              <title>{`Round ${i + 1} — monde à ${fmt(v)}`}</title>
             </circle>
           ))}
           <circle

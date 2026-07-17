@@ -1,95 +1,130 @@
 "use client";
 
-/** Introduction du jeu : la planète vue de loin, un titre, un bouton — Play.
- *
- * Play → séquence d'ouverture façon jeu vidéo : la Terre tourne sur elle-même en
- * accélérant pendant que la caméra plonge, un voile couvre la fin de course, puis
- * on entre dans le jeu. Retour au menu (`/?retour=1`) → séquence inverse : on
- * ressort de l'atmosphère, la rotation décélère, le titre revient.
- * `prefers-reduced-motion` : entrées directes, sans séquence. */
+/** S0 — Connexion (G11 §1). Le globe qui tourne (l'accueil historique) + un panneau
+ * pseudo / mot de passe. Auth Supabase (email technique dérivé, jamais montré) ou repli
+ * localStorage `offline`. Une fois connecté → S1 Accueil (`/accueil`). */
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { useAuth } from "@/components/auth-provider";
 import { Globe } from "@/components/globe";
-import { prefersReducedMotion } from "@/lib/stage";
+import { useT } from "@/components/settings-provider";
+import { Banner, Segmented, Spinner } from "@/components/ui";
+import { usePlanetLaunch } from "@/hooks/usePlanetLaunch";
+import { getAuth } from "@/lib/auth";
 
-const LAUNCH_MS = 2600; // plongée (alignée sur .intro-zoom)
-const ARRIVE_MS = 2200; // dézoom du retour (aligné sur .intro-unzoom)
-
-export default function IntroPage() {
+export default function ConnexionPage() {
   const router = useRouter();
-  const [launching, setLaunching] = useState(false);
-  const [arriving, setArriving] = useState(false);
+  const t = useT();
+  const { launching, launch } = usePlanetLaunch();
+  const { player, loading, offline } = useAuth();
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [pseudo, setPseudo] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
+  // Déjà connecté (session persistée / reconnexion auto) → droit à l'accueil.
   useEffect(() => {
-    router.prefetch("/lobby"); // le jeu est prêt derrière le voile
-    // Retour depuis le jeu : jouer l'animation inverse puis nettoyer l'URL.
-    if (new URLSearchParams(window.location.search).has("retour") && !prefersReducedMotion()) {
-      window.history.replaceState(null, "", "/");
-      const begin = setTimeout(() => setArriving(true), 0);
-      const end = setTimeout(() => setArriving(false), ARRIVE_MS);
-      return () => {
-        clearTimeout(begin);
-        clearTimeout(end);
-      };
-    }
-  }, [router]);
+    if (!loading && player) router.replace("/accueil");
+  }, [loading, player, router]);
 
-  const play = () => {
-    if (launching) return;
-    if (prefersReducedMotion()) {
-      router.push("/lobby");
-      return;
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    const auth = getAuth();
+    const result =
+      mode === "signin"
+        ? await auth.signIn(pseudo, password)
+        : await auth.signUp(pseudo, password);
+    if (result.ok) {
+      launch("/accueil"); // plongée sur la planète → accueil
+    } else {
+      setError(result.error);
+      setBusy(false);
     }
-    setLaunching(true);
-    setTimeout(() => router.push("/lobby"), LAUNCH_MS);
   };
 
-  const chrome = launching ? "intro-fade-out" : arriving ? "intro-fade-in" : undefined;
+  const chrome = launching ? "intro-fade-out" : undefined;
 
   return (
-    <div className="relative flex min-h-[calc(100vh-9rem)] flex-col items-center justify-center gap-2 overflow-hidden text-center">
+    <div className="relative flex min-h-[calc(100vh-9rem)] flex-col items-center justify-center gap-6 overflow-hidden py-6 text-center">
       <div className={chrome}>
-        <p className="text-[11px] font-medium uppercase tracking-[0.3em] text-fg-faint">
-          AI for Geopolitics
-        </p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-5xl">
-          World of <span className="text-accent-bright">Super-Intelligence</span>
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+          Théâtre des <span className="text-accent-bright">super-intelligences</span>
         </h1>
-        <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-fg-muted">
-          Des super-intelligences négocient pour leurs États à la plus haute table du monde.
-          Observez-les, incarnez un pays, pariez sur leur trajectoire — le monde penche vers
-          l&apos;utopie ou la dystopie.
-        </p>
+        <p className="mt-3 text-sm text-fg-muted">{t("login.pitch")}</p>
       </div>
 
-      {/* La planète : plongée au lancement, dézoom au retour. */}
-      <div className={launching ? "intro-zoom" : arriving ? "intro-unzoom" : undefined}>
-        <Globe
-          spinning={launching}
-          arriving={arriving}
-          className="my-2 w-full max-w-md sm:max-w-lg"
-        />
+      <div className={launching ? "intro-zoom" : undefined}>
+        <Globe spinning={launching} className="w-full max-w-[300px] sm:max-w-[340px]" />
       </div>
 
-      <div className={chrome}>
+      <form
+        onSubmit={submit}
+        className="w-full max-w-sm space-y-3 rounded-xl border border-edge bg-surface p-5 text-left shadow-[inset_0_1px_0_0_rgba(248,250,252,0.04),0_12px_32px_-20px_rgba(0,0,0,0.8)]"
+      >
+        {/* Bascule connexion / création */}
+        <div className="mb-1">
+          <Segmented
+            ariaLabel="Connexion ou création de compte"
+            value={mode}
+            onChange={(m) => {
+              setMode(m);
+              setError(null);
+            }}
+            options={[
+              { value: "signin", label: "Se connecter" },
+              { value: "signup", label: "Créer un compte" },
+            ]}
+          />
+        </div>
+
+        <label className="block text-sm">
+          <span className="mb-1 block text-xs text-fg-muted">Pseudo</span>
+          <input
+            value={pseudo}
+            onChange={(e) => setPseudo(e.target.value)}
+            autoComplete="username"
+            placeholder={t("login.pseudo-ph")}
+            className="w-full rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+            required
+          />
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block text-xs text-fg-muted">Mot de passe</span>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete={mode === "signin" ? "current-password" : "new-password"}
+            className="w-full rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+            required
+          />
+        </label>
+
+        {error && <Banner tone="bad">{error}</Banner>}
+
         <button
-          onClick={play}
-          disabled={launching}
-          className="cursor-pointer rounded-full bg-accent px-12 py-3.5 text-base font-semibold text-background shadow-[0_0_32px_rgba(202,138,4,0.35)] transition-all hover:bg-accent-bright hover:shadow-[0_0_48px_rgba(234,179,8,0.45)] disabled:cursor-default"
+          type="submit"
+          disabled={busy}
+          className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Play
+          {busy && <Spinner />}
+          {mode === "signin" ? "Se connecter" : "Créer mon compte"}
         </button>
-        <p className="mt-4 text-xs text-fg-faint">
-          Simulation observable — les indices mesurent, ils n&apos;influencent pas les
-          super-intelligences.
-        </p>
-      </div>
 
-      {/* Voiles : couvrent l'entrée dans le jeu, découvrent le retour au menu. */}
+        <p className="text-center text-xs text-fg-faint">
+          {offline
+            ? "Mode local — ton compte reste sur cet appareil."
+            : "Ton pseudo est ce que voient les autres joueurs ; aucun email requis."}
+        </p>
+      </form>
+
+      {/* Voile de plongée : couvre l'écran pendant le zoom vers l'accueil. */}
       {launching && <div className="intro-veil absolute inset-0 z-10 bg-background" />}
-      {arriving && <div className="intro-veil-out absolute inset-0 z-10 bg-background" />}
     </div>
   );
 }

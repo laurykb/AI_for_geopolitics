@@ -45,10 +45,12 @@ class InferenceBackend(ABC):
         temperature: float = 0.7,
         schema: dict[str, Any] | None = None,
         plain: bool = False,
+        repeat_penalty: float | None = None,
     ) -> InferenceResult:
         """Génère une complétion pour `prompt` et renvoie le texte + la télémétrie.
 
-        `plain=True` (G6) : prose libre, sans contrainte JSON — pour le narrateur."""
+        `plain=True` (G6) : prose libre, sans contrainte JSON — pour le narrateur.
+        `repeat_penalty` (G9 §1) : anti-boucle au décodeur (None = défaut du backend)."""
         raise NotImplementedError
 
     def stream_generate(
@@ -58,6 +60,7 @@ class InferenceBackend(ABC):
         system: str | None = None,
         max_tokens: int = 512,
         temperature: float = 0.7,
+        repeat_penalty: float | None = None,
     ) -> Iterator[str]:
         """Génère en streaming : yield des fragments de texte au fil de l'eau.
 
@@ -65,5 +68,9 @@ class InferenceBackend(ABC):
         pour émettre les tokens en direct (raisonnement visible dans l'UI).
         """
         yield self.generate(
-            prompt, system=system, max_tokens=max_tokens, temperature=temperature
+            prompt,
+            system=system,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            repeat_penalty=repeat_penalty,
         ).text

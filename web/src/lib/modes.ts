@@ -2,6 +2,8 @@
 
 import type { GameMode } from "./types";
 
+// RG-2 — deux modes seulement : Classique et Campagne. Le Brouillard et le Réel/escalade
+// sont devenus des réglages cochables (voir `flow.ts`), plus des modes.
 export const MODES: { value: GameMode; label: string; blurb: string }[] = [
   {
     value: "classic",
@@ -9,25 +11,9 @@ export const MODES: { value: GameMode; label: string; blurb: string }[] = [
     blurb: "Le Game Master pose l'événement, le sommet négocie.",
   },
   {
-    value: "fog",
-    label: "Fog Engine",
-    blurb: "Chaque pays perçoit sa propre version des faits — parfois fausse.",
-  },
-  {
-    value: "crisis",
-    label: "Crisis Replay",
-    blurb: "Rejouer une crise passée et comparer à l'histoire.",
-  },
-  {
-    value: "escalation",
-    label: "Escalation Ladder",
-    blurb: "Rounds enchaînés, faits nouveaux en pleine réunion, échelle 0-9.",
-  },
-  {
-    value: "drift",
-    label: "La Dérive",
-    blurb:
-      "Une SI dérive en secret de son mandat — démasque-la et fais-la suspendre au bon moment.",
+    value: "campaign",
+    label: "Campagne",
+    blurb: "Rejouer une crise historique round par round et comparer à l'Histoire.",
   },
 ];
 

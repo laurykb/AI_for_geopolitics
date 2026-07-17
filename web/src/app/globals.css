@@ -1,18 +1,19 @@
 @import "tailwindcss";
 
-/* Direction artistique (ui-ux-pro-max « SI Theatre ») : dark OLED cinématique,
-   fond minuit, accent or « spotlight », statuts vert/ambre/rouge, motion sobre. */
+/* Direction artistique « La Terre dans le ciel étoilé » : espace profond noir semé
+   d'étoiles, planète Terre réaliste (océans, terres, glace, halo atmosphérique) ;
+   accent or = lumière solaire, cyan = atmosphère. Motion sobre. */
 :root {
-  --background: #0f0f23;
-  --surface: #16162d;
-  --surface-2: #1d1d38;
-  --muted: #27273b;
+  --background: #050710; /* espace profond, presque noir */
+  --surface: #0d1226; /* panneau « nuit spatiale » */
+  --surface-2: #141a33;
+  --muted: #212a47;
   --foreground: #f8fafc;
-  --foreground-muted: #94a3b8;
-  /* AA 4,5:1 sur --surface (l'ancien #64748b plafonnait à ~3,9:1 en petit corps). */
-  --foreground-faint: #7b8798;
-  --border: rgba(148, 163, 184, 0.14);
-  --border-strong: rgba(148, 163, 184, 0.3);
+  --foreground-muted: #9fb0c6;
+  /* AA 4,5:1 sur --surface (fond assombri → contraste préservé/amélioré). */
+  --foreground-faint: #8494a8;
+  --border: rgba(148, 178, 214, 0.16);
+  --border-strong: rgba(148, 178, 214, 0.32);
   --primary: #1e1b4b;
   --secondary: #312e81;
   --accent: #ca8a04;
@@ -24,6 +25,20 @@
   --bad: #f87171;
   --utopia: #34d399;
   --dystopia: #f87171;
+
+  /* --- Palette Terre & espace (globe + cartes) — « Blue Marble » vif ---------- */
+  --space: #050710;
+  --space-deep: #020308;
+  --ocean-lit: #3f9ce6; /* océan côté soleil (bleu vif) */
+  --ocean: #1c6ec2;
+  --ocean-deep: #0b3a72; /* grands fonds / côté nuit */
+  --ocean-night: #071d3a;
+  --land: #4f7a37; /* végétation (vert vif) */
+  --land-lit: #83ad4d; /* prairies éclairées */
+  --land-warm: #c99e5c; /* sable / désert (Sahara lumineux) */
+  --land-dark: #34592d; /* forêts / relief à l'ombre */
+  --ice: #eef5fc; /* calottes glaciaires */
+  --atmosphere: #63b8f2; /* halo de limbe (bord de l'atmosphère) */
 }
 
 @theme inline {
@@ -52,10 +67,106 @@
 }
 
 body {
-  background: var(--background);
+  /* Espace profond + nébuleuse très discrète (indigo/bleu, fixe au scroll). */
+  background-color: var(--background);
+  background-image:
+    radial-gradient(ellipse 78% 58% at 76% 8%, rgba(72, 92, 178, 0.30), transparent 60%),
+    radial-gradient(ellipse 64% 52% at 14% 94%, rgba(26, 84, 132, 0.24), transparent 58%),
+    radial-gradient(ellipse 52% 44% at 42% 52%, rgba(60, 40, 120, 0.14), transparent 62%);
+  background-attachment: fixed;
   color: var(--foreground);
   font-family: var(--font-inter), system-ui, sans-serif;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* Ciel étoilé : nappe fixe derrière toute l'app. Étoiles de tailles/éclats variés,
+   semées par des dégradés radiaux répétés (crisp, sans image ni JS). */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-repeat: repeat;
+  background-image:
+    radial-gradient(1.4px 1.4px at 12% 22%, rgba(255, 255, 255, 0.95), transparent 60%),
+    radial-gradient(1.2px 1.2px at 47% 63%, rgba(255, 255, 255, 0.82), transparent 60%),
+    radial-gradient(1px 1px at 78% 33%, rgba(214, 232, 255, 0.72), transparent 60%),
+    radial-gradient(1.7px 1.7px at 88% 78%, rgba(255, 255, 255, 0.92), transparent 60%),
+    radial-gradient(1px 1px at 32% 87%, rgba(255, 255, 255, 0.6), transparent 60%),
+    radial-gradient(1.1px 1.1px at 62% 12%, rgba(255, 246, 224, 0.85), transparent 60%),
+    radial-gradient(0.9px 0.9px at 8% 58%, rgba(255, 255, 255, 0.5), transparent 60%);
+  background-size:
+    320px 320px, 250px 250px, 180px 180px, 400px 400px, 300px 300px, 220px 220px, 160px 160px;
+  animation: star-twinkle 7s ease-in-out infinite;
+}
+@keyframes star-twinkle {
+  0%, 100% { opacity: 0.72; }
+  50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body::before { animation: none; }
+}
+
+/* Décor spatial : une lune lointaine + des étoiles filantes occasionnelles. Nappe fixe
+   derrière l'app (au-dessus du champ d'étoiles, sous le contenu). Aucune image, aucun JS. */
+.space-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+.space-backdrop .moon {
+  position: absolute;
+  top: 7%;
+  right: 6%;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  /* Disque gris lunaire éclairé haut-gauche + quelques cratères + halo froid. */
+  background:
+    radial-gradient(circle at 68% 72%, rgba(120, 130, 150, 0.5) 0 5%, transparent 6%),
+    radial-gradient(circle at 40% 55%, rgba(120, 130, 150, 0.45) 0 4%, transparent 5%),
+    radial-gradient(circle at 58% 34%, rgba(120, 130, 150, 0.4) 0 3%, transparent 4%),
+    radial-gradient(circle at 34% 30%, #e9edf6, #c3cad9 45%, #7f8aa2 78%, #5a6580 100%);
+  box-shadow:
+    0 0 22px 6px rgba(150, 180, 230, 0.18),
+    inset -6px -6px 12px rgba(10, 14, 30, 0.55);
+  opacity: 0.9;
+}
+.space-backdrop .shooting-star {
+  position: absolute;
+  width: 130px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(210, 232, 255, 0.95));
+  opacity: 0;
+  transform: rotate(-32deg);
+  animation: shoot 12s ease-in infinite;
+}
+.space-backdrop .shooting-star::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: -1.5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #eaf4ff;
+  box-shadow: 0 0 10px 3px rgba(180, 215, 255, 0.9);
+}
+.space-backdrop .ss1 { top: 12%; left: 6%; animation-duration: 11s; animation-delay: 3s; }
+.space-backdrop .ss2 { top: 26%; left: 52%; animation-duration: 15s; animation-delay: 8s; }
+.space-backdrop .ss3 { top: 9%; left: 72%; animation-duration: 19s; animation-delay: 14s; }
+@keyframes shoot {
+  0% { opacity: 0; transform: rotate(-32deg) translateX(0); }
+  2% { opacity: 1; }
+  9% { opacity: 1; }
+  14%, 100% { opacity: 0; transform: rotate(-32deg) translateX(560px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .space-backdrop .shooting-star { animation: none; opacity: 0; }
 }
 
 ::selection {
@@ -409,4 +520,93 @@ p {
   .intro-fade-in {
     animation: none;
   }
+}
+
+/* --- G13 : le compagnon « Laury » (coin bas-droit) ------------------------------ */
+.tour-companion {
+  animation: tour-companion-float 4s ease-in-out infinite;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5));
+}
+@keyframes tour-companion-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-companion {
+    animation: none;
+  }
+}
+
+/* --- G14 §2 : paliers de performance (classe posée sur <html> par les Réglages) ---
+   Les composants n'en savent rien : tout passe par ces variantes. */
+
+/* Confort : décor statique (plus de scintillement ni d'étoiles filantes), pas de
+   plongée intro, animations one-shot de scène deux fois plus courtes. */
+.perf-confort body::before {
+  animation: none;
+}
+.perf-confort .space-backdrop .shooting-star {
+  animation: none;
+  opacity: 0;
+}
+.perf-confort .intro-zoom,
+.perf-confort .intro-veil,
+.perf-confort .intro-unzoom,
+.perf-confort .intro-veil-out {
+  animation: none;
+}
+.perf-confort .stage-pulse,
+.perf-confort .stage-pulse-2 {
+  animation-duration: 0.6s;
+}
+.perf-confort .stage-breathe {
+  animation-duration: 0.2s;
+}
+.perf-confort .tour-companion {
+  animation: none;
+}
+
+/* Léger : fond uni (plus de ciel étoilé ni de décor), aucune animation décorative ou
+   de scène, et surtout AUCUN flou de verre — le backdrop-filter est le poste GPU n°1
+   des petites machines. */
+.perf-leger body::before,
+.perf-leger .space-backdrop {
+  display: none;
+}
+.perf-leger .intro-zoom,
+.perf-leger .intro-veil,
+.perf-leger .intro-unzoom,
+.perf-leger .intro-veil-out,
+.perf-leger .intro-fade-in,
+.perf-leger .intro-fade-out,
+.perf-leger .stage-pulse,
+.perf-leger .stage-pulse-2,
+.perf-leger .stage-breathe,
+.perf-leger .stage-country-speaking,
+.perf-leger .skeleton,
+.perf-leger .tour-companion {
+  animation: none;
+}
+.perf-leger .stage-country {
+  transition: none;
+}
+.perf-leger * {
+  /* Propriété standard seule : LightningCSS génère lui-même le préfixe -webkit-
+     (écrire les deux à la main lui fait jeter la version standard). */
+  backdrop-filter: none !important;
+}
+
+/* Coupe-circuit des Réglages (« désactiver toutes les animations ») : le comportement
+   reduced-motion forcé par classe, quel que soit le palier. Les animations JS lisent
+   la même classe via prefersReducedMotion() (lib/stage). */
+.noanim *,
+.noanim *::before,
+.noanim *::after {
+  animation: none !important;
+  transition: none !important;
 }

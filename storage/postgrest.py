@@ -68,6 +68,9 @@ class PostgrestClient:
             )
         )
 
+    def delete(self, table: str, match: dict[str, object]) -> None:
+        self._check(self._http.request("DELETE", f"/{table}", params=_filters(match)))
+
     def select(
         self,
         table: str,
@@ -75,10 +78,13 @@ class PostgrestClient:
         *,
         columns: str = "*",
         order: str | None = None,
+        limit: int | None = None,
     ) -> list[dict]:
         params: dict[str, str] = {"select": columns, **_filters(match or {})}
         if order:
             params["order"] = order
+        if limit is not None:
+            params["limit"] = str(limit)  # borne côté serveur (pas tout rapatrier)
         resp = self._http.get(f"/{table}", params=params)
         self._check(resp)
         return resp.json()

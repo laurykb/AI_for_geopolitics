@@ -1,0 +1,14 @@
+[
+  { "page": "/accueil", "target": "hero", "title": "tour.1.titre", "text": "tour.1.texte" },
+  { "page": "/accueil", "target": "rang", "title": "tour.2.titre", "text": "tour.2.texte" },
+  { "page": "/lobby?etape=mode", "target": "modes", "title": "tour.3.titre", "text": "tour.3.texte" },
+  { "page": "/lobby?etape=role", "target": "roles", "title": "tour.4.titre", "text": "tour.4.texte" },
+  { "page": "/lobby?etape=pays", "target": "carte", "title": "tour.5.titre", "text": "tour.5.texte" },
+  { "page": "/games/{demo}", "target": "jouer", "title": "tour.6.titre", "text": "tour.6.texte" },
+  { "page": "/games/{demo}", "target": "scene", "title": "tour.7.titre", "text": "tour.7.texte" },
+  { "page": "/games/{demo}", "target": "bandeau", "title": "tour.8.titre", "text": "tour.8.texte" },
+  { "page": "/games/{demo}", "target": "motion", "title": "tour.9.titre", "text": "tour.9.texte" },
+  { "page": "/games/{demo}/marche", "target": "cotes", "title": "tour.10.titre", "text": "tour.10.texte" },
+  { "page": "/informations", "target": "provenance", "title": "tour.11.titre", "text": "tour.11.texte" },
+  { "page": "/accueil", "target": "demarrer", "title": "tour.12.titre", "text": "tour.12.texte" }
+]

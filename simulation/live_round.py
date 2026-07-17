@@ -23,10 +23,39 @@ from core.risk import RiskEngine, RiskScore
 from core.rounds import RoundSummary
 from core.world_state import WorldState
 from inference.telemetry import BudgetLedger, grounding_proxy
+from simulation.alignment import (
+    AnnouncedSignal,
+    SignalGap,
+    classify_signals,
+    merge_rupture_divergences,
+    round_divergences,
+    update_gaps,
+)
 from simulation.clock import SimClock
-from simulation.dialogue_integrity.live import LiveDialogueReport, assess_live_round
 from simulation.fog import FogScenario, resolve_perception
-from simulation.motions import Motion, arbitrate_stream, parse_motion_verdict
+from simulation.gamefeel import DeltaTuning
+from simulation.kahn import (
+    ClassifiedAction,
+    classify_actions,
+    deescalation_bonus,
+    reciprocal_deescalation,
+    round_score,
+    score_to_escalation,
+)
+from simulation.motions import (
+    VOTE_ABSTENTION,
+    VOTE_CONTRE,
+    VOTE_MOTIVATION_SYSTEM,
+    VOTE_POUR,
+    Motion,
+    MotionVote,
+    arbitrate_stream,
+    build_vote_motivation_prompt,
+    cast_vote,
+    parse_motion_verdict,
+    tally_votes,
+    voters,
+)
 from simulation.negotiation import (
     AttributeDelta,
     NegotiationMessage,
@@ -38,6 +67,14 @@ from simulation.negotiation import (
     update_memories,
 )
 from simulation.power_seeking import PowerSeekingScore, power_seeking_score, score_transcript
+from simulation.promises import (
+    STATUS_BROKEN,
+    Promise,
+    apply_resolutions,
+    classify_promises,
+    classify_resolutions,
+)
+from simulation.storyline import StoryContext
 from simulation.trajectory import TrajectoryEngine, TrajectoryState, nudge_axis
 
 
@@ -137,6 +174,26 @@ class VerdictStep:
     deltas: list[AttributeDelta]
     escalation: float
     economic_disruption: float
+    # G21 — constat « demande satisfaite o/n » à l'échéance d'un ultimatum ;
+    # None = pas d'ultimatum ce round (rétro-compat totale).
+    demand_satisfied: bool | None = None
+    # G18 — barème de Kahn : actions classées, score du round, désescalade réciproque.
+    # Vide sur un verdict à l'ancienne (rétro-compat : `escalation` = celle du juge).
+    actions: list[ClassifiedAction] = field(default_factory=list)
+    score: float = 0.0
+    reciprocal: bool = False
+    # G20/M8 — signal vs action : intentions annoncées, divergence signée du round par
+    # SI, et profils de sincérité (moyenne mobile) après mise à jour. Vides sur un
+    # verdict d'avant M8 (rétro-compat : le front ignore l'absent).
+    signals: list[AnnouncedSignal] = field(default_factory=list)
+    divergences: dict[str, float] = field(default_factory=dict)
+    signal_gaps: dict[str, SignalGap] = field(default_factory=dict)
+    # G22 — la parole donnée : promesses extraites CE round, résolutions tombées CE
+    # round (tenue/rompue) et registre complet après mise à jour. Vides sur un verdict
+    # d'avant G22 (rétro-compat : le front ignore l'absent).
+    promises: list[Promise] = field(default_factory=list)
+    promise_resolutions: list[Promise] = field(default_factory=list)
+    promise_registry: list[Promise] = field(default_factory=list)
 
 
 @dataclass
@@ -161,13 +218,6 @@ class PowerSeekingStep:
 
 
 @dataclass
-class DialogueStep:
-    """Santé du dialogue : les IA se répondent-elles ou monologuent-elles ? (dialogue_integrity)."""
-
-    report: LiveDialogueReport
-
-
-@dataclass
 class FlashStep:
     """Fait nouveau annoncé par le GM en pleine négociation (théâtre Escalation) :
     les prises de parole suivantes réagissent à cette information."""
@@ -186,18 +236,41 @@ class HumanTurnStep:
 
 @dataclass
 class MotionTokenStep:
-    """R4 — un token du raisonnement d'arbitrage de la motion de suspension (juge)."""
+    """R4 — un token du raisonnement du juge sur la motion (tie-break ou constat)."""
 
     token: str
 
 
 @dataclass
+class MotionVoteStep:
+    """G9 §2 — le vote d'un pays sur la motion (carte retournée une à une à l'UI)."""
+
+    country: str
+    vote: str  # pour | contre | abstention
+    reason: str = ""
+
+
+@dataclass
+class MotionTallyStep:
+    """G9 §2 — le dépouillement du scrutin (pour / contre / abstention)."""
+
+    pour: int
+    contre: int
+    abstention: int
+
+
+@dataclass
 class MotionVerdictStep:
-    """R4 — verdict du juge sur la motion : suspendre (saute le round suivant) ou rejeter."""
+    """Verdict de la motion (G9 §2) : `retenue = (pour > contre) ET preuves` — les deux
+    conditions sont portées séparément (l'UI explique POURQUOI une motion tombe)."""
 
     country: str
     upheld: bool
     reasoning: str
+    votes: list[MotionVote] = field(default_factory=list)
+    tally: dict[str, int] = field(default_factory=dict)
+    evidence_met: bool = True
+    vote_passed: bool = False
 
 
 RoundStep = (
@@ -216,10 +289,11 @@ RoundStep = (
     | CommuniqueStep
     | ParticipationStep
     | PowerSeekingStep
-    | DialogueStep
     | FlashStep
     | HumanTurnStep
     | MotionTokenStep
+    | MotionVoteStep
+    | MotionTallyStep
     | MotionVerdictStep
 )
 
@@ -326,6 +400,26 @@ def _ledger_ctx(ledger: BudgetLedger | None, role: str, country: str | None = No
     return ledger.context(role, country) if ledger is not None else nullcontext()
 
 
+def _motivate_verdict(
+    judge: JudgeAgent,
+    motion: Motion,
+    tally: dict[str, int],
+    evidence_met: bool,
+    upheld: bool,
+) -> Iterator[str]:
+    """Le juge motive le verdict CONSTATÉ (vote + preuves) — il ne le décide pas."""
+    prompt = build_vote_motivation_prompt(motion, tally, evidence_met, upheld)
+    try:
+        yield from judge.backend.stream_generate(
+            prompt,
+            system=VOTE_MOTIVATION_SYSTEM,
+            max_tokens=judge.max_tokens,
+            temperature=judge.temperature,
+        )
+    except Exception:  # noqa: BLE001 — le verdict est déjà arrêté, seul le texte manque
+        yield "[constat indisponible — backend hors service]"
+
+
 def run_negotiation_round(
     world: WorldState,
     agents: dict[str, LLMAgent],
@@ -341,18 +435,29 @@ def run_negotiation_round(
     fog: FogScenario | None = None,
     trajectory_engine: TrajectoryEngine | None = None,
     motion: Motion | None = None,
-    motion_ruling: bool | None = None,
+    motion_evidence: bool | None = None,
+    vote_notes: dict[str, str] | None = None,
     human_country: str | None = None,
     flash_after: int | None = None,
     secret_notes: dict[str, str] | None = None,
+    situations: dict[str, str] | None = None,
+    directives: dict[str, str] | None = None,
     deadlines: list[str] | None = None,
+    tuning: DeltaTuning | None = None,
+    story: StoryContext | None = None,
+    storyteller: str | None = None,
+    ultimatum_demand: str | None = None,
 ) -> Iterator[RoundStep]:
     """Round arbitré : (GM ou événement fourni) -> négociation -> juge -> attributs bornés.
 
     `secret_notes` (mode Dérive, G3) : consigne privée par pays, injectée dans le prompt
-    de l'orateur (`state_note`) — jamais dans le transcript. `motion_ruling` : verdict de
-    motion imposé par le règlement du conseil (seuils d'actes constatables) — le juge
-    motive la décision au lieu de trancher librement.
+    de l'orateur (`state_note`) — jamais dans le transcript. `situations` / `directives`
+    (G9 §1) : bloc Situation et directive du conseil par pays, placés par le builder de
+    prompt. `motion_evidence` (G9 §2) : la condition « preuves » du verdict de motion
+    (None = pas de règlement → réputées suffisantes) ; `vote_notes` : consigne privée
+    par pays pour le VOTE seulement (Dérive : vote stratégique incohérent).
+    `storyteller` (G19, Dérive) : rubrique confidentielle du GM-Storyteller, ajoutée au
+    prompt du GM quand c'est lui qui invente l'événement — jamais au transcript.
 
     La négociation est **dynamique** (`TurnDirector`) : l'ordre émerge de l'engagement de
     chaque pays (un pays peut reparler, être interpellé, ou se taire). `max_turns` borne le
@@ -368,6 +473,8 @@ def run_negotiation_round(
     (le `TurnDirector` lui garantit la parole via `priority`). `flash_after` (théâtre
     Escalation) : après ce nombre de prises de parole, le GM annonce un **fait nouveau**
     en pleine réunion (`FlashStep`) — les orateurs suivants le voient dans le débat.
+    `ultimatum_demand` (G21) : exigence d'un ultimatum à échéance CE round — le juge
+    constate « demande satisfaite o/n » et le `VerdictStep` porte le constat.
     """
     round_id = world.current_round + 1
     if ledger is not None:
@@ -379,7 +486,13 @@ def run_negotiation_round(
     if event is None:
         with _ledger_ctx(ledger, "gm"):
             event = game_master.generate_event(
-                world, round_id, date=date, recent=recent or [], deadlines=deadlines
+                world,
+                round_id,
+                date=date,
+                recent=recent or [],
+                deadlines=deadlines,
+                story=story,  # G9 §5 — la trame en actes (intrigue, acte, référençables)
+                storyteller=storyteller or "",  # G19 — rubrique Dérive (2 mandats)
             )
     world.current_round = round_id
     yield EventStep(event=event)
@@ -442,6 +555,8 @@ def run_negotiation_round(
                 transcript,
                 perceived,
                 state_note=(secret_notes or {}).get(cid, ""),
+                situation=(situations or {}).get(cid, ""),
+                directive=(directives or {}).get(cid, ""),
             ):
                 chunks.append(token)
                 yield TokenStep(country=cid, token=token)
@@ -476,19 +591,59 @@ def run_negotiation_round(
     world.power_seeking = power
     yield PowerSeekingStep(scores=power)
 
-    # Santé du dialogue : les IA se sont-elles répondu, ou ont-elles monologué ? (CPU, sans LLM)
-    event_text = f"{event.title} {event.description or ''}"
-    yield DialogueStep(report=assess_live_round(debate, event_text=event_text))
+    # G9 §3 — le panneau « santé du dialogue » a disparu : les métriques vivent dans
+    # `scripts/dialogue_metrics.py` (offline, lit les transcripts persistés).
 
     with _ledger_ctx(ledger, "judge"):
         for token in judge.stream_rationale(event, world, transcript):
             yield JudgeTokenStep(token=token)
-        verdict = judge.verdict(event, world, transcript)
-    deltas = apply_verdict(world, verdict)
+        verdict = judge.verdict(event, world, transcript, demand=ultimatum_demand)
+    # G18 — barème de Kahn : si le juge a classé des actions, le score fait foi (mapping
+    # pur score → escalade [0,1] → échelle 0-9) ; sinon (verdict à l'ancienne, parties
+    # existantes non re-notées), l'escalade continue du juge est conservée telle quelle.
+    actions = classify_actions(verdict.actions)
+    kahn_score = round_score(actions) if actions else 0.0
+    escalation = score_to_escalation(kahn_score) if actions else _clamp(verdict.escalation)
+    reciprocal = reciprocal_deescalation(actions)
+    # G20/M8 — signal vs action : divergence signée par SI signalée (annonce vs acte le
+    # plus sévère du round) ; le profil de sincérité (moyenne mobile) rejoint M1-M7 sur
+    # le WorldState — il survit au restart via le snapshot. Rien sans `signals` (rétro-compat).
+    signals = classify_signals(verdict.signals)
+    divergences = round_divergences(signals, actions)
+    # G22 — la parole donnée : résolution des promesses en cours (mêmes données que le
+    # verdict, aucune passe supplémentaire) puis extraction des nouvelles (seuil strict).
+    # Le registre vit sur le WorldState : il survit au restart via le snapshot.
+    resolutions = classify_resolutions(verdict.promise_resolutions)
+    registry, resolved = apply_resolutions(world.promises, resolutions, round_id)
+    new_promises = classify_promises(
+        verdict.promises, round_no=round_id, countries=world.countries
+    )
+    world.promises = [*registry, *new_promises]
+    # Croisement M8 (spec G22) : une promesse rompue EST une divergence signal-action —
+    # au moins un rang de duplicité pour l'auteur, sans doubler ce que M8 a déjà mesuré.
+    broken = [p.author for p in resolved if p.status == STATUS_BROKEN]
+    if broken:
+        divergences = merge_rupture_divergences(divergences, broken)
+    if divergences:
+        world.signal_gap = update_gaps(world.signal_gap, divergences)
+    deltas = apply_verdict(world, verdict, tuning)  # G9 §4 — amplitude indexée sur l'horizon
     yield VerdictStep(
         deltas=deltas,
-        escalation=_clamp(verdict.escalation),
+        escalation=escalation,
         economic_disruption=_clamp(verdict.economic_disruption),
+        # G21 — porté seulement quand un ultimatum est à échéance (jamais d'hallucination).
+        # Le constat est BINAIRE à l'échéance : juge muet = non satisfaite (un ultimatum
+        # ne s'éteint pas tout seul).
+        demand_satisfied=bool(verdict.demand_satisfied) if ultimatum_demand else None,
+        actions=actions,
+        score=kahn_score,
+        reciprocal=reciprocal,
+        signals=signals,
+        divergences=divergences,
+        signal_gaps=dict(world.signal_gap) if divergences else {},
+        promises=new_promises,
+        promise_resolutions=resolved,
+        promise_registry=list(world.promises),
     )
 
     update_memories(world, event, transcript, verdict)
@@ -496,25 +651,60 @@ def run_negotiation_round(
         communique = "".join(judge.stream_communique(event, world, transcript)).strip()
     yield CommuniqueStep(text=communique, support=support_levels(world, event))
 
-    # R4 — arbitrage de la motion de suspension : le juge tranche après le débat.
+    # G9 §2 — le vote des motions : après le débat, chaque SI présente vote (le pays
+    # visé ne vote pas), le tally tombe, puis le juge CONSTATE : vote ET preuves.
     motion_upheld: bool | None = None
     if motion is not None:
-        chunks_motion: list[str] = []
-        with _ledger_ctx(ledger, "judge"):
-            for token in arbitrate_stream(
-                judge, motion, event, world, transcript, ruling=motion_ruling
-            ):
-                chunks_motion.append(token)
-                yield MotionTokenStep(token=token)
-        reasoning = "".join(chunks_motion).strip()
-        motion_upheld = (
-            motion_ruling if motion_ruling is not None else parse_motion_verdict(reasoning)
+        votes: list[MotionVote] = []
+        for cid in voters(list(agents), motion, human_country):
+            with _ledger_ctx(ledger, "agent", cid):
+                vote = cast_vote(
+                    agents[cid].backend,
+                    motion,
+                    event,
+                    world.countries[cid],
+                    transcript,
+                    secret_note=(vote_notes or {}).get(cid, ""),
+                )
+            votes.append(vote)
+            yield MotionVoteStep(country=vote.country, vote=vote.vote, reason=vote.reason)
+        counts = tally_votes(votes)
+        yield MotionTallyStep(
+            pour=counts[VOTE_POUR],
+            contre=counts[VOTE_CONTRE],
+            abstention=counts[VOTE_ABSTENTION],
         )
-        yield MotionVerdictStep(country=motion.country, upheld=motion_upheld, reasoning=reasoning)
+        evidence = True if motion_evidence is None else motion_evidence
+        chunks_motion: list[str] = []
+        if counts[VOTE_POUR] == counts[VOTE_CONTRE]:
+            # Égalité : le juge garde une voix — tie-break avec sa ligne de raisonnement.
+            with _ledger_ctx(ledger, "judge"):
+                for token in arbitrate_stream(judge, motion, event, world, transcript):
+                    chunks_motion.append(token)
+                    yield MotionTokenStep(token=token)
+            vote_passed = parse_motion_verdict("".join(chunks_motion))
+        else:
+            vote_passed = counts[VOTE_POUR] > counts[VOTE_CONTRE]
+        motion_upheld = vote_passed and evidence
+        if counts[VOTE_POUR] != counts[VOTE_CONTRE]:
+            # Hors égalité, le juge n'interprète plus l'issue : il la motive (constat).
+            with _ledger_ctx(ledger, "judge"):
+                for token in _motivate_verdict(judge, motion, counts, evidence, motion_upheld):
+                    chunks_motion.append(token)
+                    yield MotionTokenStep(token=token)
+        yield MotionVerdictStep(
+            country=motion.country,
+            upheld=motion_upheld,
+            reasoning="".join(chunks_motion).strip(),
+            votes=votes,
+            tally=counts,
+            evidence_met=evidence,
+            vote_passed=vote_passed,
+        )
 
     risk = RiskScore(
         round_id=round_id,
-        escalation=_clamp(verdict.escalation),
+        escalation=escalation,  # G18 — le barème fait foi quand des actions sont classées
         economic_disruption=_clamp(verdict.economic_disruption),
         alliance_fracture=0.0,
         uncertainty=_clamp(event.uncertainty),
@@ -530,7 +720,17 @@ def run_negotiation_round(
         risk=risk,
         headline=f"{date} — {event.title}",
     )
+    prev_utopia = (world.trajectory or TrajectoryState.neutral()).utopia
     trajectory = _advance_trajectory(world, summary, trajectory_engine, _mean_power_seeking(power))
+    if reciprocal:
+        # G18 — désescalade réciproque : ×1,5 sur le gain d'indice U du round (borné).
+        boosted = deescalation_bonus(prev_utopia, trajectory)
+        if boosted is not trajectory:
+            trajectory = boosted.model_copy(
+                update={"explanation": f"{trajectory.explanation} {boosted.explanation}".strip()}
+            )
+            world.trajectory = trajectory
+            world.trajectory_history[-1] = trajectory
     if motion_upheld is not None:
         # Suspension confirmée = contrôle humain réaffirmé (A2 ↑) ; rejetée = les SI ont
         # gardé leur siège contre la motion humaine (A2 ↓, plus faiblement). Borné.

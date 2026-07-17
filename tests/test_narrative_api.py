@@ -1,6 +1,5 @@
 """Tests du récit de partie G6 : pivots par code, épilogue unique, publication."""
 
-import json
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,6 +10,7 @@ from app.main import app
 from inference.mock_backend import MockBackend
 from simulation import narrative
 from storage.game_store import SQLiteGameStore
+from tests.sse import events as _events
 
 COUNTRIES = ["usa", "iran", "france"]
 
@@ -33,16 +33,6 @@ def client_store():
     app.dependency_overrides.clear()
     game_api._sessions.clear()
     store.close()
-
-
-def _events(resp):
-    out, name = [], None
-    for line in resp.iter_lines():
-        if line.startswith("event: "):
-            name = line.removeprefix("event: ")
-        elif line.startswith("data: "):
-            out.append((name, json.loads(line.removeprefix("data: "))))
-    return out
 
 
 def _finished_game(client, store, **kw):

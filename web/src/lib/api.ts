@@ -3,12 +3,17 @@
 import type {
   CampaignView,
   CreateGameBody,
+  CrisisDoc,
+  CustomCrisisView,
+  DailyView,
   DriftReveal,
   GameDetail,
   GameView,
   IntelResult,
+  LeaguePlayer,
   LibraryView,
   MotionView,
+  PlayerStats,
   PromptsView,
   SourcesView,
 } from "./types";
@@ -48,10 +53,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new ApiError(resp.status, detail);
   }
+  // 204 No Content (ex. DELETE) : aucun corps à parser — renvoyer undefined.
+  if (resp.status === 204) return undefined as T;
   return (await resp.json()) as T;
 }
 
-export const listGames = (): Promise<GameView[]> => request("/api/games");
+/** Parties connues. `owner` = seulement les siennes (accueil) ; `admin` = tout (vue admin).
+ * Sans argument : rétro-compat (toutes les parties). Le vrai verrou est la RLS Supabase. */
+export const listGames = (opts?: { owner?: string; admin?: boolean }): Promise<GameView[]> => {
+  const params = new URLSearchParams();
+  if (opts?.owner) params.set("owner", opts.owner);
+  if (opts?.admin) params.set("admin", "true");
+  const qs = params.toString();
+  return request(`/api/games${qs ? `?${qs}` : ""}`);
+};
 
 export const getGame = (id: string): Promise<GameDetail> => request(`/api/games/${id}`);
 
@@ -95,15 +110,27 @@ export const publishGame = (gameId: string): Promise<GameView> =>
 /** Carte de campagne (G5) : chapitres, meilleurs scores, déblocage. */
 export const getCampaign = (): Promise<CampaignView> => request("/api/campaign");
 
+/** G16 — le défi du jour : même sommet pour tous, classement du jour + 7 derniers. */
+export const getDaily = (player?: string): Promise<DailyView> =>
+  request(`/api/daily${player ? `?player=${encodeURIComponent(player)}` : ""}`);
+
+/** G16 — lance le défi (classé, une tentative/jour ; `free` = re-run non scoré). */
+export const startDaily = (ownerId: string, free = false): Promise<GameView> =>
+  request("/api/daily/start", {
+    method: "POST",
+    body: JSON.stringify({ owner_id: ownerId, free }),
+  });
+
 /** Ouvre un chapitre de campagne : une partie normale, paramétrée par la fiche. */
 export const startChapter = (chapterId: string): Promise<GameView> =>
   request(`/api/campaign/${chapterId}/start`, { method: "POST" });
 
-/** Achat de renseignement (G4) : brief classifié, vérification, désinformation. */
+/** Achat de renseignement (G4) : brief classifié, vérification, désinformation,
+ * analyse psycholinguistique (G23 — `target` = la SI analysée). */
 export const buyIntel = (
   gameId: string,
   body: {
-    action: "brief" | "verify" | "disinfo";
+    action: "brief" | "verify" | "disinfo" | "analyze";
     target?: string;
     claim?: string;
     speaker?: string;
@@ -119,6 +146,56 @@ export const submitTurn = (gameId: string, message: string): Promise<{ accepted:
     method: "POST",
     body: JSON.stringify({ message }),
   });
+
+/** G11-c — enregistre/rafraîchit le compte joueur (à la connexion). */
+export const upsertPlayer = (id: string, pseudo: string): Promise<LeaguePlayer> =>
+  request("/api/players", { method: "POST", body: JSON.stringify({ id, pseudo }) });
+
+/** G11-c — le compte d'un joueur (niveau XP + rang dérivé, source de vérité backend). */
+export const getLeaguePlayer = (id: string): Promise<LeaguePlayer> =>
+  request(`/api/players/${encodeURIComponent(id)}`);
+
+/** G14 §3 — suppression du compte : le backend anonymise l'owner des parties
+ * publiées, purge le reste et efface la fiche joueur (endpoint livré en CC-3 —
+ * d'ici là l'API répond 405 et le front montre l'erreur sans purger la session). */
+export const deletePlayer = (id: string): Promise<void> =>
+  request<void>(`/api/players/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+/** G12 §6 — statistiques agrégées du joueur (page Profil). */
+export const getPlayerStats = (id: string): Promise<PlayerStats> =>
+  request(`/api/players/${encodeURIComponent(id)}/stats`);
+
+/** RG-1 — abandon d'une partie en cours : on la termine et on fige son bilan (sans
+ * pénalité ; le Classement du jour a remplacé le classement global par LP). */
+export const forfeitGame = (gameId: string): Promise<GameView> =>
+  request(`/api/games/${gameId}/forfeit`, { method: "POST" });
+
+/** G12-b §5 — crises MAISON (éditeur admin). Le backend valide le JSON par le même
+ * schéma Pydantic que `data/crises/*.json` ; le verrou de propriété est la RLS Supabase. */
+export const listCustomCrises = (owner?: string): Promise<CustomCrisisView[]> =>
+  request(`/api/admin/crises${owner ? `?owner=${encodeURIComponent(owner)}` : ""}`);
+
+export const saveCustomCrisis = (
+  ownerId: string,
+  crisis: CrisisDoc,
+): Promise<CustomCrisisView> =>
+  request("/api/admin/crises", {
+    method: "POST",
+    body: JSON.stringify({ owner_id: ownerId, crisis }),
+  });
+
+export const deleteCustomCrisis = (id: string, owner: string): Promise<void> =>
+  request<void>(
+    `/api/admin/crises/${encodeURIComponent(id)}?owner=${encodeURIComponent(owner)}`,
+    { method: "DELETE" },
+  );
+
+/** Lance une partie de test (non classée) sur une crise maison, avec son casting. */
+export const testCustomCrisis = (id: string, owner: string): Promise<GameView> =>
+  request(
+    `/api/admin/crises/${encodeURIComponent(id)}/test?owner=${encodeURIComponent(owner)}`,
+    { method: "POST" },
+  );
 
 /** Dépose une motion de suspension (R4) — débattue puis arbitrée au prochain round. */
 export const fileMotion = (

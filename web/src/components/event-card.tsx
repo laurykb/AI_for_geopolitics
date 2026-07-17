@@ -1,9 +1,12 @@
+"use client";
+
 /** Carte de l'événement du round (posé par le Game Master ou décrété par l'humain). */
 
 import { speakerMeta } from "@/lib/countries";
 import type { GeoEvent } from "@/lib/types";
 
 import { SpeakerAvatar } from "./avatar";
+import { useT } from "./settings-provider";
 import { Meter, Panel, PanelTitle, Pill } from "./ui";
 
 export function EventCard({
@@ -15,21 +18,23 @@ export function EventCard({
   date?: string;
   truth?: boolean; // boîte de verre (Fog) : cet événement est la vérité, que toi seul vois
 }) {
+  const t = useT();
   const when = event.date || date;
   return (
     <Panel className="border-l-2 border-l-accent">
       <PanelTitle
-        kicker="Événement du round"
+        kicker={t("event.kicker")}
         title={event.title}
         right={
           <span className="flex items-center gap-2">
-            {truth && <Pill tone="good">vérité — visible de toi seul</Pill>}
+            {truth && <Pill tone="good">{t("event.verite")}</Pill>}
             <Pill tone={event.event_type === "motion" ? "warn" : "accent"}>
               {event.event_type === "human"
-                ? "décrété par l'humain"
+                ? t("event.type.humain")
                 : event.event_type === "motion"
-                  ? "motion de suspension"
-                  : event.event_type}
+                  ? t("event.type.motion")
+                  : // jamais le slug technique brut — libellé générique (audit n°3)
+                    t("event.type.defaut")}
             </Pill>
           </span>
         }
@@ -51,14 +56,14 @@ export function EventCard({
         )}
         <span className="ml-auto grid w-56 grid-cols-2 gap-3">
           <Meter
-            label="Gravité"
+            label={t("event.gravite")}
             value={event.severity ?? 0.5}
-            hint="Poids de l'événement selon le Game Master (0 = anodin, 1 = majeur)."
+            hint={t("event.gravite-aide")}
           />
           <Meter
-            label="Incertitude"
+            label={t("event.incertitude")}
             value={event.uncertainty ?? 0.5}
-            hint="Part de brouillard : à quel point les faits sont-ils établis ?"
+            hint={t("event.incertitude-aide")}
           />
         </span>
       </div>

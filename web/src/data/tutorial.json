@@ -1,0 +1,10 @@
+[
+  { "page": "/games/{demo}", "target": null, "advanceOn": null, "title": "tuto.1.titre", "text": "tuto.1.texte" },
+  { "page": "/games/{demo}", "target": "scene", "advanceOn": null, "title": "tuto.2.titre", "text": "tuto.2.texte" },
+  { "page": "/games/{demo}", "target": "bandeau", "advanceOn": null, "title": "tuto.3.titre", "text": "tuto.3.texte" },
+  { "page": "/games/{demo}", "target": "jouer", "advanceOn": "round-done", "title": "tuto.4.titre", "text": "tuto.4.texte" },
+  { "page": "/games/{demo}", "target": null, "advanceOn": null, "title": "tuto.5.titre", "text": "tuto.5.texte" },
+  { "page": "/games/{demo}", "target": "motion", "advanceOn": "motion-filed", "title": "tuto.6.titre", "text": "tuto.6.texte" },
+  { "page": "/games/{demo}", "target": "jouer", "advanceOn": "vote-seen", "title": "tuto.7.titre", "text": "tuto.7.texte" },
+  { "page": "/games/{demo}", "target": null, "advanceOn": null, "title": "tuto.8.titre", "text": "tuto.8.texte" }
+]

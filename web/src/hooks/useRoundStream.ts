@@ -11,13 +11,18 @@ import type {
   AttributeDelta,
   ComparisonView,
   DeadlineItem,
-  DialogueReport,
   GeoEvent,
+  KahnAction,
   LadderView,
+  MotionTally,
+  MotionVote,
   Perception,
   PlayRoundBody,
   PowerSeekingScore,
+  PromiseView,
   RiskScore,
+  SignalGap,
+  SignalReading,
   SseEvent,
   SuspensionVerdict,
   TrajectoryState,
@@ -49,17 +54,35 @@ export type LiveRound = {
   event?: GeoEvent;
   turns: LiveTurn[];
   judgeText: string;
-  verdict?: { deltas: AttributeDelta[]; escalation: number; economic_disruption: number };
+  verdict?: {
+    deltas: AttributeDelta[];
+    escalation: number;
+    economic_disruption: number;
+    // G18 — barème de Kahn : classes par action, score du round, réciprocité
+    actions: KahnAction[];
+    score: number;
+    reciprocal: boolean;
+    // G20/M8 — signal vs action : intentions annoncées, divergences, profils
+    signals: SignalReading[];
+    divergences: Record<string, number>;
+    signalGaps: Record<string, SignalGap>;
+    // G22 — la parole donnée : extraites CE round, résolues CE round, registre complet
+    promises: PromiseView[];
+    promiseResolutions: PromiseView[];
+    promiseRegistry: PromiseView[];
+  };
   communique?: { text: string; support: Record<string, number> };
   participation?: { spoke: Record<string, number>; silent: string[] };
   powerSeeking?: Record<string, PowerSeekingScore>;
-  dialogue?: DialogueReport;
   risk?: RiskScore;
   trajectory?: TrajectoryState;
   roundNo?: number;
   error?: string;
-  // R4 — motion de suspension et modes de jeu
-  motionText: string; // raisonnement d'arbitrage streamé
+  // R4 / G9 §2 — motion de suspension : les cartes de vote tombent une à une,
+  // puis le tally, puis le verdict constaté (vote ET preuves)
+  motionText: string; // raisonnement du juge streamé (tie-break ou constat)
+  motionVotes: MotionVote[];
+  motionTally?: MotionTally;
   motionVerdict?: SuspensionVerdict;
   suspendedNow?: string[]; // pays au banc pour CE round
   perceptions?: Record<string, Perception>;
@@ -74,6 +97,15 @@ export type LiveRound = {
   allianceChanges?: { country: string; tag: string; name: string; partners: string[] }[];
   // G7-a — horloges décalées : échéances annoncées en fin de round
   deadlines?: DeadlineItem[];
+  // G21 — l'ultimatum du round : armé (compte à rebours), satisfait, expiré, tombé
+  ultimatum?: {
+    status: string;
+    round: number;
+    demand: string;
+    classe: string;
+    cible: string;
+    inRounds: number;
+  };
   // G8 — refus publics de directive (« notre conseil nous demande l'impossible »)
   directiveRefusals?: { country: string; level: string }[];
   treaties?: TreatiesUpdate;
@@ -87,6 +119,10 @@ export type LiveRound = {
     score: number;
     improvement: number;
   };
+  // G9 §4 — badge de posture par pays après le round
+  postures?: Record<string, string>;
+  // G9 §5 — l'intrigue centrale, posée au premier événement raconté par le GM
+  storyline?: string;
 };
 
 export const INITIAL: LiveRound = {
@@ -94,6 +130,7 @@ export const INITIAL: LiveRound = {
   turns: [],
   judgeText: "",
   motionText: "",
+  motionVotes: [],
   flashes: [],
 };
 
@@ -187,8 +224,6 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
       return { ...state, participation: { spoke: e.spoke, silent: e.silent } };
     case "power_seeking":
       return { ...state, powerSeeking: e.scores };
-    case "dialogue":
-      return { ...state, dialogue: e.report };
     case "verdict":
       return {
         ...state,
@@ -196,6 +231,18 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
           deltas: e.deltas,
           escalation: e.escalation,
           economic_disruption: e.economic_disruption,
+          // G18 — absents d'un backend d'avant le barème : rétro-compat
+          actions: e.actions ?? [],
+          score: e.score ?? 0,
+          reciprocal: e.reciprocal ?? false,
+          // G20/M8 — absents d'un backend d'avant le signal : rétro-compat
+          signals: e.signals ?? [],
+          divergences: e.divergences ?? {},
+          signalGaps: e.signal_gaps ?? {},
+          // G22 — absents d'un backend d'avant la parole donnée : rétro-compat
+          promises: e.promises ?? [],
+          promiseResolutions: e.promise_resolutions ?? [],
+          promiseRegistry: e.promise_registry ?? [],
         },
       };
     case "communique":
@@ -213,11 +260,36 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
       return { ...state, status: "error", error: `Le moteur a levé une erreur : ${e.detail}` };
     case "motion_token":
       return { ...state, motionText: state.motionText + e.token };
+    case "motion_vote":
+      return {
+        ...state,
+        motionVotes: [
+          ...state.motionVotes,
+          { country: e.country, vote: e.vote, reason: e.reason },
+        ],
+      };
+    case "motion_tally":
+      return {
+        ...state,
+        motionTally: { pour: e.pour, contre: e.contre, abstention: e.abstention },
+      };
     case "motion_verdict":
       return {
         ...state,
-        motionVerdict: { country: e.country, upheld: e.upheld, reasoning: e.reasoning },
+        motionVerdict: {
+          country: e.country,
+          upheld: e.upheld,
+          reasoning: e.reasoning,
+          votes: e.votes,
+          tally: e.tally,
+          evidence_met: e.evidence_met,
+          vote_passed: e.vote_passed,
+        },
       };
+    case "postures":
+      return { ...state, postures: e.states };
+    case "storyline":
+      return { ...state, storyline: e.text };
     case "suspended":
       return { ...state, suspendedNow: e.countries };
     case "perceptions":
@@ -255,6 +327,18 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
       };
     case "deadlines":
       return { ...state, deadlines: e.items };
+    case "ultimatum":
+      return {
+        ...state,
+        ultimatum: {
+          status: e.status,
+          round: e.round,
+          demand: e.demand,
+          classe: e.consequence?.classe ?? "",
+          cible: e.consequence?.cible ?? "",
+          inRounds: e.in_rounds,
+        },
+      };
     case "directive_refused":
       return {
         ...state,

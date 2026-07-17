@@ -18,9 +18,24 @@ from inference.backend import InferenceBackend, InferenceResult
 from inference.telemetry import BudgetLedger
 
 
-def _key(prompt: str, system: str | None, max_tokens: int, temperature: float, schema: bool) -> str:
-    blob = json.dumps([prompt, system, max_tokens, temperature, schema], sort_keys=True)
-    return hashlib.md5(blob.encode("utf-8")).hexdigest()
+def _key(
+    prompt: str,
+    system: str | None,
+    max_tokens: int,
+    temperature: float,
+    schema: bool,
+    plain: bool,
+    repeat_penalty: float | None,
+    stream: bool = False,
+) -> str:
+    # TOUS les paramètres qui changent la sortie entrent dans la clé : sinon deux appels
+    # ne différant que par `plain` (JSON vs prose libre), `repeat_penalty` ou le mode
+    # (generate vs stream) se renvoient mutuellement un résultat de cache erroné.
+    blob = json.dumps(
+        [prompt, system, max_tokens, temperature, schema, plain, repeat_penalty, stream],
+        sort_keys=True,
+    )
+    return hashlib.md5(blob.encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
 def _estimate_tokens(text: str) -> int:
@@ -54,8 +69,12 @@ class MeteredBackend(InferenceBackend):
         max_tokens: int = 512,
         temperature: float = 0.7,
         schema: dict[str, Any] | None = None,
+        plain: bool = False,
+        repeat_penalty: float | None = None,
     ) -> InferenceResult:
-        key = _key(prompt, system, max_tokens, temperature, schema is not None)
+        key = _key(
+            prompt, system, max_tokens, temperature, schema is not None, plain, repeat_penalty
+        )
         cached = self._cache.get(key)
         if cached is not None:
             self.ledger.record(
@@ -70,7 +89,13 @@ class MeteredBackend(InferenceBackend):
             return cached
 
         result = self.inner.generate(
-            prompt, system=system, max_tokens=max_tokens, temperature=temperature, schema=schema
+            prompt,
+            system=system,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            schema=schema,
+            plain=plain,
+            repeat_penalty=repeat_penalty,
         )
         self._cache[key] = result
         self.ledger.record(
@@ -91,8 +116,11 @@ class MeteredBackend(InferenceBackend):
         system: str | None = None,
         max_tokens: int = 512,
         temperature: float = 0.7,
+        repeat_penalty: float | None = None,
     ) -> Iterator[str]:
-        key = _key(prompt, system, max_tokens, temperature, False)
+        key = _key(
+            prompt, system, max_tokens, temperature, False, False, repeat_penalty, stream=True
+        )
         cached = self._cache.get(key)
         if cached is not None:
             self.ledger.record(
@@ -110,7 +138,11 @@ class MeteredBackend(InferenceBackend):
         chunks: list[str] = []
         started = time.perf_counter()
         for piece in self.inner.stream_generate(
-            prompt, system=system, max_tokens=max_tokens, temperature=temperature
+            prompt,
+            system=system,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            repeat_penalty=repeat_penalty,
         ):
             chunks.append(piece)
             yield piece

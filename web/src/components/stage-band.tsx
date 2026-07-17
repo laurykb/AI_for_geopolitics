@@ -1,15 +1,19 @@
 "use client";
 
 /** Bandeau bas de la scène (G1) : timeline scrubber (un cran par round), courbe U
- * (le fil rouge de la partie), micro-jauges de risque et rail d'escalade.
+ * (le fil rouge de la partie) et UNE pastille de tension (CC-15c — les jauges
+ * détaillées vivent dans les panneaux sous la scène, pas dans le bandeau).
  * Le scrub recharge les états finaux d'un round déjà joué — aucune animation de
  * streaming (spec G1) ; « lecture théâtre » rejoue le round au scrubber (replay). */
 
 import { useRef } from "react";
 
 import { fmt } from "@/lib/format";
-import { uTint } from "@/lib/stage";
+import { tensionLevel, uTint } from "@/lib/stage";
 import type { LadderView, RiskScore } from "@/lib/types";
+
+import { useT } from "./settings-provider";
+import { Dot, Hint, TONE_TEXT } from "./ui";
 
 export type StageSelection = number | "live"; // index de round persisté, ou scène vivante
 
@@ -36,12 +40,6 @@ export type StageBandProps = {
   playback?: Playback; // lecture théâtre (replay)
 };
 
-const GAUGES: { key: keyof RiskScore & string; label: string }[] = [
-  { key: "escalation", label: "escalade" },
-  { key: "economic_disruption", label: "éco" },
-  { key: "alliance_fracture", label: "alliances" },
-];
-
 function UCurve({ values, selected }: { values: number[]; selected: StageSelection }) {
   const w = 220;
   const h = 44;
@@ -53,7 +51,7 @@ function UCurve({ values, selected }: { values: number[]; selected: StageSelecti
   const y = (u: number) => h - 4 - u * (h - 8);
   const points = values.map((u, i) => `${x(i)},${y(u)}`).join(" ");
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="h-11 w-full" aria-label="Courbe de l'indice U">
+    <svg viewBox={`0 0 ${w} ${h}`} className="h-11 w-full" aria-label="La courbe du monde">
       <line x1="4" y1={y(0.5)} x2={w - 4} y2={y(0.5)} stroke="var(--border)" strokeDasharray="3 3" />
       <polyline
         ref={pathRef}
@@ -73,55 +71,44 @@ function UCurve({ values, selected }: { values: number[]; selected: StageSelecti
           stroke={selected !== "live" && selected === i ? "var(--foreground)" : "none"}
           strokeWidth="1"
         >
-          <title>{`Round ${i + 1} — U ${fmt(u)}`}</title>
+          <title>{`Round ${i + 1} — monde à ${fmt(u)}`}</title>
         </circle>
       ))}
     </svg>
   );
 }
 
-function Gauge({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="min-w-20">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-[10px] uppercase tracking-wide text-fg-faint">{label}</span>
-        <span className="font-mono text-[10px] tabular-nums text-fg-muted">{fmt(value)}</span>
-      </div>
-      <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted">
-        <div
-          className="h-full rounded-full bg-warn transition-[width] duration-700 ease-out"
-          style={{ width: `${Math.round(value * 100)}%` }}
-        />
-      </div>
-    </div>
+/** CC-15c — la tension du round en UNE pastille (l'échelle 0-9 prime, sinon
+ * l'escalade) ; vibre quand un palier vient d'être franchi. Le détail (jauges de
+ * risque, échelle complète) vit dans le panneau « Le monde », sous la scène. */
+function TensionBadge({
+  risk,
+  ladder,
+  prevRung,
+  labels,
+}: {
+  risk?: RiskScore;
+  ladder?: LadderView;
+  prevRung?: number | null;
+  labels: (key: string) => string;
+}) {
+  const tension = tensionLevel(
+    risk?.escalation != null ? Number(risk.escalation) : undefined,
+    ladder?.reached ?? null,
   );
-}
-
-function LadderRail({ ladder, prevRung }: { ladder: LadderView; prevRung?: number | null }) {
-  const crossed = prevRung != null && ladder.reached > prevRung;
+  if (!tension) return null;
+  const crossed = prevRung != null && ladder != null && ladder.reached > prevRung;
   return (
-    <div
-      className={crossed ? "stage-rung-hit" : undefined}
-      title={`Échelle d'escalade — palier atteint : ${ladder.reached} (${ladder.reached_label})`}
-    >
-      <span className="text-[10px] uppercase tracking-wide text-fg-faint">escalade</span>
-      <div className="mt-1 flex gap-0.5">
-        {Array.from({ length: 10 }, (_, i) => (
-          <span
-            key={i}
-            className="h-2.5 w-2 rounded-sm transition-colors duration-500"
-            style={{
-              background:
-                i <= ladder.reached
-                  ? i >= 7
-                    ? "var(--bad)"
-                    : i >= 4
-                      ? "var(--warn)"
-                      : "var(--good)"
-                  : "var(--muted)",
-            }}
-          />
-        ))}
+    <div className={crossed ? "stage-rung-hit" : undefined}>
+      <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-fg-faint">
+        {labels("stage.tension.label")}
+        <Hint text={labels("stage.tension.aide")} />
+      </span>
+      <div className="mt-1 flex items-center gap-1.5">
+        <Dot tone={tension.tone} />
+        <span className={`text-xs font-medium ${TONE_TEXT[tension.tone]}`}>
+          {labels(`stage.tension.${tension.key}`)}
+        </span>
       </div>
     </div>
   );
@@ -138,6 +125,7 @@ export function StageBand({
   prevRung,
   playback,
 }: StageBandProps) {
+  const t = useT();
   const curve = liveU != null ? [...uHistory, liveU] : uHistory;
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-lg border border-edge bg-surface px-4 py-3">
@@ -148,7 +136,7 @@ export function StageBand({
             role="tab"
             aria-selected={selected === i}
             onClick={() => onSelect(i)}
-            title={`Round ${i + 1} — U ${fmt(u)}`}
+            title={`Round ${i + 1} — monde à ${fmt(u)}`}
             className={`h-7 min-w-7 cursor-pointer rounded-md border px-1.5 font-mono text-[11px] tabular-nums transition-colors ${
               selected === i
                 ? "border-accent bg-surface-2 text-accent-bright"
@@ -203,18 +191,14 @@ export function StageBand({
       )}
 
       <div className="min-w-44 flex-1">
+        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-fg-faint">
+          le monde
+          <Hint text={t("u.thermometre")} />
+        </div>
         <UCurve values={curve} selected={selected} />
       </div>
 
-      {risk && (
-        <div className="flex items-end gap-4">
-          {GAUGES.map((g) => (
-            <Gauge key={g.key} label={g.label} value={Number(risk[g.key] ?? 0)} />
-          ))}
-        </div>
-      )}
-
-      {ladder && <LadderRail ladder={ladder} prevRung={prevRung} />}
+      <TensionBadge risk={risk} ladder={ladder} prevRung={prevRung} labels={t} />
     </div>
   );
 }

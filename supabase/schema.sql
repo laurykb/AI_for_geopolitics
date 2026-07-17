@@ -18,9 +18,26 @@ create table if not exists games (
   epilogue_json jsonb,                             -- G6 : le récit de partie (unique)
   published   boolean not null default false,      -- G6 : privé par défaut
   admin       boolean not null default false,      -- G7-c : prompts capturés, non classée
-  role        text not null default 'council'      -- G8 : architect | council | player
-              check (role in ('architect', 'council', 'player'))
+  role        text not null default 'council'       -- G8/G12 : architect|council|player|spectator
+              check (role in ('architect', 'council', 'player', 'spectator')),
+  -- G11 : propriété + réglages transversaux (verrouillés à la création).
+  owner_id    uuid references auth.users(id) on delete set null,  -- joueur propriétaire
+  ranked      boolean not null default false,       -- classée (§3) : compte pour les LP
+  difficulty  text not null default 'intermediate'  -- §4 : beginner | intermediate | expert
+              check (difficulty in ('beginner', 'intermediate', 'expert')),
+  drift_enabled boolean not null default true,       -- la Dérive peut frapper une SI (transversal)
+  result_json jsonb,                                 -- G11-c : bilan de fin de partie (§1 S6)
+  language    text not null default 'fr'             -- G14 §1 : langue des dialogues (fr | en)
+              check (language in ('fr', 'en'))
 );
+-- Migration des bases existantes (idempotent) :
+alter table games add column if not exists owner_id uuid references auth.users(id) on delete set null;
+alter table games add column if not exists ranked boolean not null default false;
+alter table games add column if not exists difficulty text not null default 'intermediate';
+alter table games add column if not exists drift_enabled boolean not null default true;
+alter table games add column if not exists result_json jsonb;
+alter table games add column if not exists language text not null default 'fr';
+create index if not exists games_owner_idx on games (owner_id);
 
 create table if not exists rounds (
   id              text primary key,
@@ -55,8 +72,13 @@ create table if not exists game_sessions (
   grudges_json        jsonb not null default '{}',  -- G7-a : registre de griefs (GrudgeBook)
   deadlines_json      jsonb not null default '[]',  -- G7-a : échéances (horloges décalées)
   directives_json     jsonb not null default '{}',  -- G8 : directives en attente {pays: texte}
+  history_json        jsonb not null default '{}',  -- G9 §4 : séries d'indices (IndexHistory)
+  storyline           text not null default '',     -- G9 §5 : l'intrigue centrale (round 1)
   updated_at          timestamptz not null default now()
 );
+-- Migration des bases existantes (idempotent) :
+alter table game_sessions add column if not exists history_json jsonb not null default '{}';
+alter table game_sessions add column if not exists storyline text not null default '';
 
 -- G5 : le résultat d'un chapitre de campagne (une ligne par partie de campagne).
 create table if not exists campaign_scores (
@@ -65,6 +87,16 @@ create table if not exists campaign_scores (
   score       double precision not null,
   improvement double precision not null,  -- escalade historique − simulée (positif = mieux)
   created_at  timestamptz not null default now()
+);
+
+-- G16 : le défi du jour — LE score du jour d'un joueur (la 1re tentative fait foi).
+create table if not exists daily_scores (
+  date        text not null,              -- date UTC du défi (YYYY-MM-DD)
+  player_id   text not null,
+  game_id     text not null,
+  score       double precision not null,
+  created_at  timestamptz not null default now(),
+  primary key (date, player_id)
 );
 
 create table if not exists transcripts (
@@ -94,6 +126,59 @@ create table if not exists prompts (
   unique (round_id, seq)
 );
 create index if not exists prompts_round_idx on prompts (round_id, seq);
+
+-- ============================== joueurs (G11) ===============================
+-- Le compte de ligue : une fiche par utilisateur auth. Le pseudo est ce que tout
+-- le monde voit ; l'email dérivé (`<pseudo>@wosi.local`) ne sort jamais de l'UI.
+create table if not exists players (
+  id         uuid primary key references auth.users(id) on delete cascade,
+  pseudo     text not null unique,
+  is_admin   boolean not null default false,
+  lp         integer not null default 0,          -- points de ligue (§2, plancher 0)
+  xp         integer not null default 0,          -- G12 §2 : carrière (ne baisse jamais)
+  market_balance double precision not null default 0,  -- G12 §1 : solde de marché (carrière)
+  created_at timestamptz not null default now()
+);
+-- Migration des bases existantes (idempotent) :
+alter table players add column if not exists xp integer not null default 0;
+alter table players add column if not exists market_balance double precision not null default 0;
+
+-- G12 §2 : chaque gain d'XP daté (carrière). Écrit par le service_role ; le joueur lit le sien.
+create table if not exists xp_history (
+  id        text primary key,
+  player_id uuid not null references players(id) on delete cascade,
+  game_id   text references games(id) on delete set null,
+  delta     integer not null,
+  reason    text not null default '',
+  ts        timestamptz not null default now()
+);
+create index if not exists xp_history_player_idx on xp_history (player_id, ts);
+
+-- G12-b §5 : crises créées depuis l'UI admin (JSON validé par le schéma Pydantic Crisis,
+-- JAMAIS d'écriture de fichier). Jouables par tous ; éditables/supprimables par leur auteur.
+create table if not exists custom_crises (
+  id         text primary key,
+  owner_id   uuid not null references auth.users(id) on delete cascade,
+  crisis_json jsonb not null,
+  created_at timestamptz not null default now()
+);
+
+-- « admin » sans récursion RLS : SECURITY DEFINER lit players en contournant sa propre
+-- politique (sinon la policy admin de players s'auto-référencerait à l'infini).
+create or replace function public.is_admin() returns boolean
+  language sql stable security definer set search_path = public as
+$$ select coalesce((select p.is_admin from players p where p.id = auth.uid()), false) $$;
+
+-- G11-c : chaque mouvement de LP (gain, perte, forfait), daté. Écrit par le service_role
+-- (le backend crédite les LP en fin de partie) ; le joueur lit son historique.
+create table if not exists lp_history (
+  id        text primary key,
+  player_id uuid not null references players(id) on delete cascade,
+  game_id   text references games(id) on delete set null,
+  delta     integer not null,
+  ts        timestamptz not null default now()
+);
+create index if not exists lp_history_player_idx on lp_history (player_id, ts);
 
 -- ============================== marché ======================================
 
@@ -155,6 +240,9 @@ create index if not exists trades_market_idx on market_trades (market_id, ts);
 -- Quand l'auth Supabase entrera en jeu (comptes de parieurs), remplacer les
 -- politiques du marché par des politiques par utilisateur (auth.uid()).
 
+alter table players         enable row level security;  -- G11 : chacun sa fiche, admin tout
+alter table lp_history      enable row level security;  -- G11-c : chacun son historique LP
+alter table xp_history      enable row level security;  -- G12 : chacun son historique XP
 alter table games           enable row level security;
 alter table rounds          enable row level security;
 alter table transcripts     enable row level security;
@@ -179,3 +267,56 @@ create policy "lecture publique" on markets         for select using (true);
 create policy "lecture publique" on market_outcomes for select using (true);
 create policy "lecture publique" on market_trades   for select using (true);
 -- accounts/positions : pas de lecture publique (soldes), le backend seul y accède.
+
+-- ============================== accès G11 (comptes de ligue) ================
+-- Les policies SELECT multiples s'additionnent (OR) : la « lecture publique » ci-dessus
+-- (parties publiées, anon) COEXISTE avec l'accès propriétaire/admin ci-dessous.
+
+-- players : chacun lit et gère SA fiche ; l'admin lit tout (via is_admin()).
+create policy "fiche : lecture de soi"   on players for select using (auth.uid() = id or public.is_admin());
+create policy "fiche : création de soi"  on players for insert with check (auth.uid() = id);
+create policy "fiche : mise à jour de soi" on players for update using (auth.uid() = id) with check (auth.uid() = id);
+
+-- lp_history / xp_history : chacun lit le sien (admin tout) ; écriture réservée au service_role.
+create policy "LP : lecture de soi" on lp_history for select
+  using (player_id = auth.uid() or public.is_admin());
+create policy "XP : lecture de soi" on xp_history for select
+  using (player_id = auth.uid() or public.is_admin());
+
+-- custom_crises : jouables par tous (contenu de campagne), gérées par leur auteur.
+alter table custom_crises enable row level security;
+create policy "crise maison : lecture publique" on custom_crises for select using (true);
+create policy "crise maison : gestion de soi" on custom_crises for all
+  using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+
+-- INVARIANT DE SÉCURITÉ : is_admin et lp ne s'écrivent JAMAIS côté client — sinon un
+-- utilisateur se promeut admin (→ lit toutes les parties) et truque le leaderboard.
+-- La RLS seule ne borne pas les colonnes ; Postgres ne soustrait pas une colonne d'un
+-- privilège de table → on révoque insert/update de table puis on regrante les seules
+-- colonnes autorisées. is_admin/lp restent écrits par le backend service_role (qui
+-- contourne la RLS) : LP crédités après une partie, admin posé en base (§2).
+revoke insert, update on players from anon, authenticated;
+grant insert (id, pseudo) on players to authenticated;
+grant update (pseudo)     on players to authenticated;
+
+-- games/rounds/transcripts : le propriétaire lit SES parties (même non publiées),
+-- l'admin lit tout (l'ex-observatoire). Le public garde les seules parties publiées.
+create policy "partie : propriétaire et admin" on games for select
+  using (owner_id = auth.uid() or public.is_admin());
+create policy "rounds : propriétaire et admin" on rounds for select
+  using (exists (
+    select 1 from games g where g.id = rounds.game_id
+    and (g.owner_id = auth.uid() or public.is_admin())
+  ));
+create policy "transcripts : propriétaire et admin" on transcripts for select
+  using (exists (
+    select 1 from rounds r join games g on g.id = r.game_id
+    where r.id = transcripts.round_id and (g.owner_id = auth.uid() or public.is_admin())
+  ));
+
+-- Leaderboard public : pseudo + LP seulement (jamais l'historique d'autrui). La vue
+-- (propriété du créateur, hors security_invoker) contourne la RLS de players → expose
+-- toutes les lignes, mais UNIQUEMENT ces deux colonnes.
+create or replace view leaderboard as
+  select pseudo, lp from players order by lp desc, pseudo asc;
+grant select on leaderboard to anon, authenticated;

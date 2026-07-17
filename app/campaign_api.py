@@ -18,6 +18,7 @@ from app import game_api
 from app.game_api import GameView, get_backend, get_store
 from inference.backend import InferenceBackend
 from simulation import campaign as campaign_mod
+from simulation.game_mode import from_legacy_mode
 from storage.game_store import GameStore
 
 router = APIRouter(prefix="/api", tags=["campaign"])
@@ -47,6 +48,9 @@ class ChapterView(BaseModel):
     improvement: float | None = None  # du meilleur essai (vs l'Histoire)
     medal: str | None = None
     unlocked: bool = False
+    requires: list[str] = Field(default_factory=list)  # G12-b — arbre (chemins en Y)
+    coming_soon: bool = False  # G12-b — fiche pas encore rédigée (grisée, non jouable)
+    tutorial: bool = False  # CC-5 — chapitre 0 : le front lance le guidage sur ce flag
 
 
 class CampaignView(BaseModel):
@@ -89,6 +93,9 @@ def get_campaign(store: Annotated[GameStore, Depends(get_store)]) -> CampaignVie
                 improvement=best.get(c.id, (None, None))[1],
                 medal=_medal(best.get(c.id, (None,))[0]),
                 unlocked=unlocked.get(c.id, False),
+                requires=c.requires,
+                coming_soon=c.coming_soon,
+                tutorial=c.tutorial,
             )
             for c in camp.chapters
         ],
@@ -106,16 +113,29 @@ def start_chapter(
     chapter = camp.chapter(chapter_id)
     if chapter is None:
         raise HTTPException(status_code=404, detail=f"chapitre inconnu : {chapter_id}")
+    if chapter.coming_soon:  # G12-b — la fiche historique n'est pas encore rédigée
+        raise HTTPException(
+            status_code=409, detail="chapitre à venir — sa fiche historique n'est pas prête"
+        )
     best = {c: s for c, (s, _) in _best_scores(store).items()}
     if not campaign_mod.unlocked_chapters(camp, best).get(chapter_id, False):
         raise HTTPException(
             status_code=409,
             detail=f"chapitre verrouillé — finir le précédent à {camp.unlock_score:g}+",
         )
+    # RG-2 — la fiche de chapitre garde son ancien libellé de mode ; on le mappe vers le
+    # mode Campagne + les drapeaux composables (Brouillard/Réel/Dérive). En Campagne la
+    # Dérive SUIT la pédagogie du chapitre (elle n'est pas forcée partout — cf. §2).
+    flags = from_legacy_mode(chapter.mode)
     body = game_api.CreateGameRequest(
         scenario=f"{campaign_mod.SCENARIO_PREFIX}{chapter_id}",
         countries=chapter.countries or None,
         horizon=chapter.horizon,
-        mode=chapter.mode,  # type: ignore[arg-type] — validé par la fiche
+        mode="campaign",
+        fog=flags.fog,
+        escalation=flags.escalation,
+        drift_enabled=flags.drift,
+        # CC-5 — tutoriel imperdable : l'amplitude Débutant plafonne les verdicts.
+        difficulty="beginner" if chapter.tutorial else "intermediate",
     )
     return game_api.create_game(body, backend, store)

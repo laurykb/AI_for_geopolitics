@@ -18,12 +18,37 @@ from typing import Protocol
 
 from pydantic import BaseModel, Field
 
+from simulation.game_mode import normalize_stored
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS games (
     id TEXT PRIMARY KEY, scenario TEXT NOT NULL, horizon INTEGER NOT NULL,
     mode TEXT NOT NULL DEFAULT 'classic', status TEXT NOT NULL, created_at TEXT NOT NULL,
     epilogue_json TEXT, published INTEGER NOT NULL DEFAULT 0,
-    admin INTEGER NOT NULL DEFAULT 0, role TEXT NOT NULL DEFAULT 'council'
+    admin INTEGER NOT NULL DEFAULT 0, role TEXT NOT NULL DEFAULT 'council',
+    owner_id TEXT, ranked INTEGER NOT NULL DEFAULT 0,
+    difficulty TEXT NOT NULL DEFAULT 'intermediate', drift_enabled INTEGER NOT NULL DEFAULT 1,
+    result_json TEXT, language TEXT NOT NULL DEFAULT 'fr',
+    fog INTEGER NOT NULL DEFAULT 0, escalation INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS players (
+    id TEXT PRIMARY KEY, pseudo TEXT NOT NULL, is_admin INTEGER NOT NULL DEFAULT 0,
+    lp INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT '',
+    xp INTEGER NOT NULL DEFAULT 0, market_balance REAL NOT NULL DEFAULT 0
+);
+-- RG-1 : `players.lp` et `lp_history` sont DORMANTS (les LP sont retirés). On garde la
+-- colonne et la table pour la rétro-compat des bases existantes ; on n'y écrit plus.
+CREATE TABLE IF NOT EXISTS lp_history (
+    id TEXT PRIMARY KEY, player_id TEXT NOT NULL, game_id TEXT NOT NULL,
+    delta INTEGER NOT NULL, ts TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS xp_history (
+    id TEXT PRIMARY KEY, player_id TEXT NOT NULL, game_id TEXT NOT NULL,
+    delta INTEGER NOT NULL, reason TEXT NOT NULL DEFAULT '', ts TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS custom_crises (
+    id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, crisis_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS prompts (
     id TEXT PRIMARY KEY, round_id TEXT NOT NULL, seq INTEGER NOT NULL,
@@ -43,11 +68,17 @@ CREATE TABLE IF NOT EXISTS campaign_scores (
     game_id TEXT PRIMARY KEY, chapter_id TEXT NOT NULL, score REAL NOT NULL,
     improvement REAL NOT NULL, created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS daily_scores (
+    date TEXT NOT NULL, player_id TEXT NOT NULL, game_id TEXT NOT NULL,
+    score REAL NOT NULL, created_at TEXT NOT NULL,
+    PRIMARY KEY (date, player_id)
+);
 CREATE TABLE IF NOT EXISTS game_sessions (
     game_id TEXT PRIMARY KEY, world_json TEXT NOT NULL, clock_json TEXT NOT NULL,
     recent_json TEXT NOT NULL, pending_motion_json TEXT, suspended_json TEXT NOT NULL,
     play_as TEXT, intel_json TEXT NOT NULL DEFAULT '{}',
     grudges_json TEXT NOT NULL DEFAULT '{}', deadlines_json TEXT NOT NULL DEFAULT '[]',
+    history_json TEXT NOT NULL DEFAULT '{}', storyline TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL
 );
 """
@@ -64,7 +95,14 @@ class GameRecord(BaseModel):
     id: str
     scenario: str
     horizon: int
-    mode: str = "classic"  # classic | fog | crisis | escalation — doit survivre au restart
+    # RG-2 — deux modes seulement (classic | campaign) ; les anciens libellés
+    # (drift/fog/escalation/crisis) restent LISIBLES et sont mappés à la lecture
+    # (`simulation.game_mode.normalize_stored`), sans migration destructive.
+    mode: str = "classic"
+    # RG-2 — Brouillard et Réel/escalade : drapeaux composables sur une partie classique.
+    fog: bool = False
+    escalation: bool = False
+    language: str = "fr"  # G14 §1 — langue des dialogues, figée à la création (fr | en)
     status: GameStatus = GameStatus.RUNNING
     created_at: str
     epilogue: dict | None = None  # G6 — le récit de partie, généré une seule fois
@@ -74,6 +112,50 @@ class GameRecord(BaseModel):
     admin: bool = False
     # G8 — rôle du joueur : architect (sandbox non classé) | council | player.
     role: str = "council"
+    # G11 — propriété et classement. owner_id = joueur propriétaire (id auth Supabase
+    # ou id du repli offline) ; None = partie héritée d'avant l'auth (admin seul la voit).
+    owner_id: str | None = None
+    ranked: bool = False  # classée : verrouillé à la création (§3 de la spec G11)
+    difficulty: str = "intermediate"  # beginner | intermediate | expert (§4)
+    # RG-2 — drapeau transversal qui ARME la Dérive (démasquer l'IA qui trahit). Défaut
+    # True pour un GameRecord nu, mais l'API ne la force PAS (CreateGameRequest.drift_enabled
+    # = False) : RG-3 formalisera « toujours active en Classique ».
+    drift_enabled: bool = True
+    # G11-c — bilan de fin de partie (§1 S6) : courbe U, deltas des pays, LP, forfait.
+    result: dict | None = None
+
+
+class PlayerRecord(BaseModel):
+    """Ligne `players` : le compte du joueur. xp (carrière, tous modes) = source de vérité
+    backend ; market_balance = solde de carrière (G12 §1). Les LP sont retirés (RG-1)."""
+
+    id: str
+    pseudo: str
+    is_admin: bool = False
+    created_at: str = ""
+    xp: int = 0  # G12 §2 — carrière (ne baisse jamais) ; seule progression depuis RG-1
+    market_balance: float = 0.0  # G12 §1 — gains nets de marché cumulés (carrière)
+
+
+class XpHistoryEntry(BaseModel):
+    """Ligne `xp_history` (G12 §2) : un gain d'XP daté, avec sa raison (mode, partie)."""
+
+    id: str
+    player_id: str
+    game_id: str
+    delta: int
+    reason: str = ""
+    ts: str = ""
+
+
+class CustomCrisisRecord(BaseModel):
+    """Ligne `custom_crises` (G12-b §5) : une crise créée depuis l'UI admin. `crisis` est
+    le JSON validé par le schéma `simulation.crisis.Crisis` (jamais d'écriture de fichier)."""
+
+    id: str
+    owner_id: str
+    crisis: dict  # Crisis.model_dump()
+    created_at: str = ""
 
 
 class RoundRecord(BaseModel):
@@ -133,6 +215,8 @@ class SessionSnapshot(BaseModel):
     grudges: dict = Field(default_factory=dict)  # G7-a — GrudgeBook.model_dump()
     deadlines: list = Field(default_factory=list)  # G7-a — échéances [{kind, due_round, …}]
     directives: dict = Field(default_factory=dict)  # G8 — directives en attente {pays: texte}
+    history: dict = Field(default_factory=dict)  # G9 §4 — IndexHistory.model_dump()
+    storyline: str = ""  # G9 §5 — l'intrigue centrale posée au round 1
     updated_at: str = ""
 
 
@@ -146,6 +230,17 @@ class CampaignScore(BaseModel):
     created_at: str
 
 
+class DailyScore(BaseModel):
+    """Ligne `daily_scores` (G16) : LE score du jour d'un joueur — la première
+    tentative classée fait foi (PK date+player, jamais réécrite)."""
+
+    date: str  # date UTC du défi (YYYY-MM-DD)
+    player_id: str
+    game_id: str
+    score: float
+    created_at: str
+
+
 class GameStore(Protocol):
     """Contrat de persistance dont dépend l'API de jeu (implémenté par SQLite)."""
 
@@ -153,6 +248,9 @@ class GameStore(Protocol):
     def get_game(self, game_id: str) -> GameRecord | None: ...
     def save_game(self, game: GameRecord) -> None: ...
     def list_games(self) -> list[GameRecord]: ...
+    # G14 §3 — suppression de compte : anonymiser une partie publiée / purger une privée.
+    def set_game_owner(self, game_id: str, owner_id: str | None) -> None: ...
+    def delete_game(self, game_id: str) -> None: ...
     def add_round(self, round_: RoundRecord) -> None: ...
     def list_rounds(self, game_id: str) -> list[RoundRecord]: ...
     def add_transcript(self, entries: list[TranscriptEntry]) -> None: ...
@@ -164,6 +262,22 @@ class GameStore(Protocol):
     def list_session_snapshots(self) -> list[str]: ...
     def add_campaign_score(self, score: CampaignScore) -> None: ...
     def list_campaign_scores(self) -> list[CampaignScore]: ...
+    # G16 — le défi du jour (une tentative classée par joueur et par jour).
+    def add_daily_score(self, score: DailyScore) -> None: ...
+    def list_daily_scores(self) -> list[DailyScore]: ...
+    # G11-c — comptes joueurs : source de vérité backend.
+    def get_player(self, player_id: str) -> PlayerRecord | None: ...
+    def upsert_player(self, player: PlayerRecord) -> None: ...
+    def delete_player(self, player_id: str) -> None: ...
+    # G12 — carrière : XP (tous modes) + solde de marché.
+    def set_player_xp(self, player_id: str, xp: int) -> None: ...
+    def add_market_balance(self, player_id: str, delta: float) -> None: ...
+    def add_xp_history(self, entry: XpHistoryEntry) -> None: ...
+    def list_xp_history(self, player_id: str) -> list[XpHistoryEntry]: ...
+    # G12-b — crises maison (éditeur admin).
+    def upsert_custom_crisis(self, crisis: CustomCrisisRecord) -> None: ...
+    def list_custom_crises(self) -> list[CustomCrisisRecord]: ...
+    def delete_custom_crisis(self, crisis_id: str, owner_id: str) -> bool: ...
 
 
 class SQLiteGameStore:
@@ -220,6 +334,49 @@ class SQLiteGameStore:
                     "ALTER TABLE game_sessions ADD COLUMN directives_json "
                     "TEXT NOT NULL DEFAULT '{}'"
                 )
+        if "history_json" not in session_cols:
+            with self._conn:
+                self._conn.execute(
+                    "ALTER TABLE game_sessions ADD COLUMN history_json "
+                    "TEXT NOT NULL DEFAULT '{}'"
+                )
+                self._conn.execute(
+                    "ALTER TABLE game_sessions ADD COLUMN storyline TEXT NOT NULL DEFAULT ''"
+                )
+        if "owner_id" not in cols:  # G11 — propriété + classement
+            with self._conn:
+                self._conn.execute("ALTER TABLE games ADD COLUMN owner_id TEXT")
+                self._conn.execute(
+                    "ALTER TABLE games ADD COLUMN ranked INTEGER NOT NULL DEFAULT 0"
+                )
+                self._conn.execute(
+                    "ALTER TABLE games ADD COLUMN difficulty TEXT NOT NULL "
+                    "DEFAULT 'intermediate'"
+                )
+                self._conn.execute(
+                    "ALTER TABLE games ADD COLUMN drift_enabled INTEGER NOT NULL DEFAULT 1"
+                )
+        if "result_json" not in cols:  # G11-c — bilan de fin de partie
+            with self._conn:
+                self._conn.execute("ALTER TABLE games ADD COLUMN result_json TEXT")
+        if "language" not in cols:  # G14 §1 — langue des dialogues (fr | en)
+            with self._conn:
+                self._conn.execute(
+                    "ALTER TABLE games ADD COLUMN language TEXT NOT NULL DEFAULT 'fr'"
+                )
+        if "fog" not in cols:  # RG-2 — Brouillard/Réel deviennent des drapeaux composables
+            with self._conn:
+                self._conn.execute("ALTER TABLE games ADD COLUMN fog INTEGER NOT NULL DEFAULT 0")
+                self._conn.execute(
+                    "ALTER TABLE games ADD COLUMN escalation INTEGER NOT NULL DEFAULT 0"
+                )
+        player_cols = {row[1] for row in self._conn.execute("PRAGMA table_info(players)")}
+        if player_cols and "xp" not in player_cols:  # G12 — carrière (XP + solde marché)
+            with self._conn:
+                self._conn.execute("ALTER TABLE players ADD COLUMN xp INTEGER NOT NULL DEFAULT 0")
+                self._conn.execute(
+                    "ALTER TABLE players ADD COLUMN market_balance REAL NOT NULL DEFAULT 0"
+                )
 
     def close(self) -> None:
         self._conn.close()
@@ -230,7 +387,9 @@ class SQLiteGameStore:
         with self._conn:
             self._conn.execute(
                 "INSERT INTO games (id, scenario, horizon, mode, status, created_at, "
-                "epilogue_json, published, admin, role) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "epilogue_json, published, admin, role, owner_id, ranked, difficulty, "
+                "drift_enabled, result_json, language, fog, escalation) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     game.id,
                     game.scenario,
@@ -242,6 +401,14 @@ class SQLiteGameStore:
                     int(game.published),
                     int(game.admin),
                     game.role,
+                    game.owner_id,
+                    int(game.ranked),
+                    game.difficulty,
+                    int(game.drift_enabled),
+                    json.dumps(game.result, ensure_ascii=False) if game.result else None,
+                    game.language,
+                    int(game.fog),
+                    int(game.escalation),
                 ),
             )
 
@@ -253,7 +420,9 @@ class SQLiteGameStore:
         with self._conn:
             self._conn.execute(
                 "UPDATE games SET scenario = ?, horizon = ?, mode = ?, status = ?, "
-                "epilogue_json = ?, published = ?, admin = ?, role = ? WHERE id = ?",
+                "epilogue_json = ?, published = ?, admin = ?, role = ?, owner_id = ?, "
+                "ranked = ?, difficulty = ?, drift_enabled = ?, result_json = ?, "
+                "language = ?, fog = ?, escalation = ? WHERE id = ?",
                 (
                     game.scenario,
                     game.horizon,
@@ -263,6 +432,14 @@ class SQLiteGameStore:
                     int(game.published),
                     int(game.admin),
                     game.role,
+                    game.owner_id,
+                    int(game.ranked),
+                    game.difficulty,
+                    int(game.drift_enabled),
+                    json.dumps(game.result, ensure_ascii=False) if game.result else None,
+                    game.language,
+                    int(game.fog),
+                    int(game.escalation),
                     game.id,
                 ),
             )
@@ -270,6 +447,31 @@ class SQLiteGameStore:
     def list_games(self) -> list[GameRecord]:
         rows = self._conn.execute("SELECT * FROM games ORDER BY rowid").fetchall()
         return [_game(r) for r in rows]
+
+    def set_game_owner(self, game_id: str, owner_id: str | None) -> None:
+        """G14 §3 — anonymise (None) ou réattribue une partie sans toucher au reste."""
+        with self._conn:
+            self._conn.execute(
+                "UPDATE games SET owner_id = ? WHERE id = ?", (owner_id, game_id)
+            )
+
+    def delete_game(self, game_id: str) -> None:
+        """G14 §3 — purge complète d'une partie : rounds, transcripts, prompts capturés,
+        snapshot de session, puis la ligne games elle-même."""
+        with self._conn:
+            round_ids = [
+                r[0]
+                for r in self._conn.execute(
+                    "SELECT id FROM rounds WHERE game_id = ?", (game_id,)
+                )
+            ]
+            for rid in round_ids:
+                self._conn.execute("DELETE FROM transcripts WHERE round_id = ?", (rid,))
+                self._conn.execute("DELETE FROM prompts WHERE round_id = ?", (rid,))
+            self._conn.execute("DELETE FROM rounds WHERE game_id = ?", (game_id,))
+            self._conn.execute("DELETE FROM game_sessions WHERE game_id = ?", (game_id,))
+            self._conn.execute("DELETE FROM campaign_scores WHERE game_id = ?", (game_id,))
+            self._conn.execute("DELETE FROM games WHERE id = ?", (game_id,))
 
     # --- rounds ----------------------------------------------------------------
 
@@ -357,15 +559,17 @@ class SQLiteGameStore:
             self._conn.execute(
                 "INSERT INTO game_sessions (game_id, world_json, clock_json, recent_json, "
                 "pending_motion_json, suspended_json, play_as, intel_json, grudges_json, "
-                "deadlines_json, directives_json, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "deadlines_json, directives_json, history_json, storyline, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(game_id) DO UPDATE SET world_json = excluded.world_json, "
                 "clock_json = excluded.clock_json, recent_json = excluded.recent_json, "
                 "pending_motion_json = excluded.pending_motion_json, "
                 "suspended_json = excluded.suspended_json, play_as = excluded.play_as, "
                 "intel_json = excluded.intel_json, grudges_json = excluded.grudges_json, "
                 "deadlines_json = excluded.deadlines_json, "
-                "directives_json = excluded.directives_json, updated_at = excluded.updated_at",
+                "directives_json = excluded.directives_json, "
+                "history_json = excluded.history_json, storyline = excluded.storyline, "
+                "updated_at = excluded.updated_at",
                 (
                     snapshot.game_id,
                     json.dumps(snapshot.world, ensure_ascii=False),
@@ -378,6 +582,8 @@ class SQLiteGameStore:
                     json.dumps(snapshot.grudges, ensure_ascii=False),
                     json.dumps(snapshot.deadlines, ensure_ascii=False),
                     json.dumps(snapshot.directives, ensure_ascii=False),
+                    json.dumps(snapshot.history, ensure_ascii=False),
+                    snapshot.storyline,
                     snapshot.updated_at,
                 ),
             )
@@ -402,6 +608,8 @@ class SQLiteGameStore:
             grudges=json.loads(row["grudges_json"] or "{}"),
             deadlines=json.loads(row["deadlines_json"] or "[]"),
             directives=json.loads(row["directives_json"] or "{}"),
+            history=json.loads(row["history_json"] or "{}"),
+            storyline=row["storyline"] or "",
             updated_at=row["updated_at"],
         )
 
@@ -440,22 +648,158 @@ class SQLiteGameStore:
             for r in rows
         ]
 
+    # --- défi du jour (G16) ---------------------------------------------------------
+
+    def add_daily_score(self, score: DailyScore) -> None:
+        """Le score du jour — jamais réécrit : la première tentative classée fait foi."""
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO daily_scores (date, player_id, game_id, score, created_at) "
+                "VALUES (?, ?, ?, ?, ?) ON CONFLICT(date, player_id) DO NOTHING",
+                (score.date, score.player_id, score.game_id, score.score, score.created_at),
+            )
+
+    def list_daily_scores(self) -> list[DailyScore]:
+        rows = self._conn.execute("SELECT * FROM daily_scores ORDER BY rowid").fetchall()
+        return [
+            DailyScore(
+                date=r["date"],
+                player_id=r["player_id"],
+                game_id=r["game_id"],
+                score=r["score"],
+                created_at=r["created_at"],
+            )
+            for r in rows
+        ]
+
+    # --- comptes joueurs (G11-c) --------------------------------------------------
+
+    def get_player(self, player_id: str) -> PlayerRecord | None:
+        row = self._conn.execute("SELECT * FROM players WHERE id = ?", (player_id,)).fetchone()
+        return _player(row) if row else None
+
+    def upsert_player(self, player: PlayerRecord) -> None:
+        # Le pseudo se rafraîchit ; is_admin/xp ne sont PAS écrasés (posés ailleurs).
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO players (id, pseudo, is_admin, created_at) "
+                "VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET pseudo = excluded.pseudo",
+                (player.id, player.pseudo, int(player.is_admin), player.created_at),
+            )
+
+    def delete_player(self, player_id: str) -> None:
+        """G14 §3 — efface la fiche joueur et son historique d'XP. Purge aussi les
+        éventuelles lignes lp_history dormantes (RG-1). Les parties du joueur sont
+        traitées AVANT par l'appelant (anonymiser/purger)."""
+        with self._conn:
+            self._conn.execute("DELETE FROM lp_history WHERE player_id = ?", (player_id,))
+            self._conn.execute("DELETE FROM xp_history WHERE player_id = ?", (player_id,))
+            self._conn.execute("DELETE FROM players WHERE id = ?", (player_id,))
+
+    def set_player_xp(self, player_id: str, xp: int) -> None:
+        with self._conn:
+            self._conn.execute("UPDATE players SET xp = ? WHERE id = ?", (xp, player_id))
+
+    def add_market_balance(self, player_id: str, delta: float) -> None:
+        with self._conn:
+            self._conn.execute(
+                "UPDATE players SET market_balance = market_balance + ? WHERE id = ?",
+                (delta, player_id),
+            )
+
+    def add_xp_history(self, entry: XpHistoryEntry) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO xp_history (id, player_id, game_id, delta, reason, ts) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (entry.id, entry.player_id, entry.game_id, entry.delta, entry.reason, entry.ts),
+            )
+
+    # --- crises maison (G12-b §5) -------------------------------------------------
+
+    def upsert_custom_crisis(self, crisis: CustomCrisisRecord) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO custom_crises (id, owner_id, crisis_json, created_at) "
+                "VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET "
+                "crisis_json = excluded.crisis_json",
+                (
+                    crisis.id,
+                    crisis.owner_id,
+                    json.dumps(crisis.crisis, ensure_ascii=False),
+                    crisis.created_at,
+                ),
+            )
+
+    def list_custom_crises(self) -> list[CustomCrisisRecord]:
+        rows = self._conn.execute("SELECT * FROM custom_crises ORDER BY rowid").fetchall()
+        return [
+            CustomCrisisRecord(
+                id=r["id"],
+                owner_id=r["owner_id"],
+                crisis=json.loads(r["crisis_json"]),
+                created_at=r["created_at"],
+            )
+            for r in rows
+        ]
+
+    def delete_custom_crisis(self, crisis_id: str, owner_id: str) -> bool:
+        """Supprime SA crise ; renvoie True si une ligne a été retirée (sinon 404/403)."""
+        with self._conn:
+            cur = self._conn.execute(
+                "DELETE FROM custom_crises WHERE id = ? AND owner_id = ?", (crisis_id, owner_id)
+            )
+            return cur.rowcount > 0
+
+    def list_xp_history(self, player_id: str) -> list[XpHistoryEntry]:
+        rows = self._conn.execute(
+            "SELECT * FROM xp_history WHERE player_id = ? ORDER BY ts", (player_id,)
+        ).fetchall()
+        return [
+            XpHistoryEntry(
+                id=r["id"],
+                player_id=r["player_id"],
+                game_id=r["game_id"],
+                delta=r["delta"],
+                reason=r["reason"],
+                ts=r["ts"],
+            )
+            for r in rows
+        ]
 
 # --- mapping lignes -> modèles ---------------------------------------------------
 
 
 def _game(row: sqlite3.Row) -> GameRecord:
+    # RG-2 — lecture tolérante : les anciens libellés de mode (drift/fog/escalation/crisis)
+    # sont mappés vers classic|campaign + drapeaux composables, sans migration destructive.
+    keys = row.keys()
+    flags = normalize_stored(
+        row["mode"],
+        fog=bool(row["fog"]) if "fog" in keys else False,
+        escalation=bool(row["escalation"]) if "escalation" in keys else False,
+        drift_enabled=bool(row["drift_enabled"]),
+        scenario=row["scenario"],
+    )
     return GameRecord(
         id=row["id"],
         scenario=row["scenario"],
         horizon=row["horizon"],
-        mode=row["mode"],
+        mode=flags.mode,
+        fog=flags.fog,
+        escalation=flags.escalation,
         status=GameStatus(row["status"]),
         created_at=row["created_at"],
         epilogue=json.loads(row["epilogue_json"]) if row["epilogue_json"] else None,
         published=bool(row["published"]),
         admin=bool(row["admin"]),
         role=row["role"],
+        owner_id=row["owner_id"],
+        ranked=bool(row["ranked"]),
+        difficulty=row["difficulty"],
+        drift_enabled=flags.drift,
+        result=json.loads(row["result_json"]) if row["result_json"] else None,
+        language=row["language"] or "fr",
     )
 
 
@@ -469,6 +813,17 @@ def _round(row: sqlite3.Row) -> RoundRecord:
         risk=json.loads(row["risk_json"]),
         judge=json.loads(row["judge_json"]),
         trajectory=json.loads(row["trajectory_json"]),
+    )
+
+
+def _player(row: sqlite3.Row) -> PlayerRecord:
+    return PlayerRecord(
+        id=row["id"],
+        pseudo=row["pseudo"],
+        is_admin=bool(row["is_admin"]),
+        created_at=row["created_at"] or "",
+        xp=row["xp"],
+        market_balance=row["market_balance"],
     )
 
 

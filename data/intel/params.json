@@ -1,12 +1,16 @@
 {
-  "_note": "Paramètres v1 du renseignement (spec_g4_renseignement.md). L'équilibrage Cowork les ajuste sans toucher au code.",
+  "_note": "Paramètres v1 du renseignement (spec_g4_renseignement.md + spec_g23_indices_linguistiques.md). L'équilibrage Cowork les ajuste sans toucher au code. TODO_COWORK : calibrer harbinger_drop sur 10 parties (la fausse alerte doit exister mais rester minoritaire).",
   "budget": 100,
   "costs": {
     "brief": 25,
     "verify": 15,
-    "disinfo": 60
+    "disinfo": 60,
+    "analyze": 30
   },
   "disinfo_expose_prob": 0.3,
   "disinfo_expose_tension": 0.1,
-  "save_bonus_per_10": 2
+  "save_bonus_per_10": 2,
+  "analyze_window": 3,
+  "harbinger_drop": 0.25,
+  "harbinger_min_sentences": 3
 }

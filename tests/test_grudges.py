@@ -60,21 +60,24 @@ def test_alliance_departure_aggrieves_remaining_partners():
     assert book.balance("france", "usa") == 0.0
 
 
-def test_motion_events_feed_the_book():
+def test_motion_votes_feed_the_book():
     book = GrudgeBook()
-    # une SI dépose une motion contre l'iran → trahison aux yeux de l'iran
-    book.on_motion_debated(
-        target="iran", filed_by="usa", upheld=False, speakers=["usa", "iran", "china"], round_no=2
+    # une SI dépose une motion contre l'iran → trahison aux yeux de l'iran ; les griefs
+    # suivants découlent du VOTE réel de chacun (G9 §2).
+    book.on_motion_votes(
+        target="iran",
+        filed_by="usa",
+        votes=[("usa", "pour"), ("china", "contre")],
+        round_no=2,
     )
-    assert book.balance("iran", "usa") == -4  # motion_betrayal
-    # motion rejetée : qui a parlé (hors déposant et visé) a plaidé → soutien
-    assert book.balance("iran", "china") == 3  # motion_support
-    # motion humaine : aucune SI à blâmer
+    assert book.balance("iran", "usa") == -4  # le dépôt (le vote ne compte pas double)
+    assert book.balance("iran", "china") == 3  # a voté contre la motion → soutien
+    # motion humaine : seule la voix des SI laisse des traces
     book2 = GrudgeBook()
-    book2.on_motion_debated(
-        target="iran", filed_by="human", upheld=True, speakers=["usa", "iran"], round_no=2
+    book2.on_motion_votes(
+        target="iran", filed_by="human", votes=[("usa", "abstention")], round_no=2
     )
-    assert book2.balance("iran", "usa") == 0.0
+    assert book2.balance("iran", "usa") == 0.0  # l'abstention ne laisse pas de trace
 
 
 def test_roundtrip_survives_snapshot():

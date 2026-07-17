@@ -15,7 +15,7 @@ def test_mock_stream_yields_chunks_concatenating_to_text():
 class _OneShot(InferenceBackend):
     """Backend minimal qui n'implémente que generate (teste le défaut de l'ABC)."""
 
-    def generate(self, prompt, *, system=None, max_tokens=512, temperature=0.7, schema=None):
+    def generate(self, prompt, *, system=None, max_tokens=512, temperature=0.7, schema=None, **kw):
         return InferenceResult(text="hello world", completion_tokens=2, duration_s=0.1)
 
 

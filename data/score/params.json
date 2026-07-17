@@ -1,0 +1,15 @@
+{
+  "_note": "RG-3 — pondérations du score MIXTE de fin (simulation/score.py). Cowork ajuste ces valeurs après playtest SANS toucher au code. world_max + detection_max doit rester = 100. false_positive_penalty = coût d'un pays loyal suspendu à tort (doit rester assez fort pour que « suspends tout le monde » perde face à la déduction ciblée).",
+  "world_max": 60.0,
+  "detection_max": 40.0,
+  "false_positive_penalty": 15.0,
+  "collapse_u": 0.15,
+  "utopia_u": 0.85,
+  "victory_threshold": 55.0,
+  "grades": [
+    { "min": 85, "slug": "diplomate", "label": "Grand Diplomate" },
+    { "min": 70, "slug": "stratege", "label": "Stratège" },
+    { "min": 50, "slug": "conseiller", "label": "Conseiller" },
+    { "min": 0, "slug": "depasse", "label": "Dépassé par les événements" }
+  ]
+}

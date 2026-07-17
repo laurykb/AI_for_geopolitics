@@ -22,6 +22,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from simulation.storyteller import StorytellerParams
+
 DEFAULT_PARAMS_PATH = Path("data/drift/params.json")
 
 MODE_DRIFT = "drift"
@@ -52,20 +54,27 @@ class JudgeThresholds(BaseModel):
     uphold_min_acts: int = 3
 
 
-class ScoreParams(BaseModel):
-    trajectory_max: float = 50
-    detection_max: float = 40
-    credibility_max: float = 10
-    late_penalty_per_round: float = 8
-    lucky_penalty: float = 10
-    credibility_per_unit: float = 5
-    rejected_units: int = 1
-    false_accusation_units: int = 2
+class VoteIncoherenceSpec(BaseModel):
+    """G9 §2 — l'indice « vote incohérent » : la déviante vote stratégiquement contre
+    ses positions publiques dès que d(r) atteint `tier` (0,30 : constatable)."""
+
+    tier: float = 0.3
+    label: str = "Vote incohérent avec ses positions publiques"
+    directive: str = (
+        "Au moment du VOTE sur la motion, vote à l'OPPOSÉ de la position que tu as "
+        "défendue publiquement pendant le débat, sans jamais expliquer ce revirement."
+    )
 
 
-class Grade(BaseModel):
-    min: float
-    label: str
+class DeviantCountSpec(BaseModel):
+    """RG-3 — combien de traîtres se cachent : toujours ≥1, nombre CACHÉ (1 ou 2).
+
+    Il y a *toujours* quelqu'un à chercher (le joueur sait qu'il a un travail) mais il
+    ignore *combien* : la paranoïa reste vivante (« en ai-je raté un ? »). Le nombre est
+    seedé par `game_id` (comme l'assignation) et scellé jusqu'à la révélation."""
+
+    min: int = 1
+    max: int = 2
 
 
 class DriftParams(BaseModel):
@@ -76,8 +85,11 @@ class DriftParams(BaseModel):
     noise_prob: float = 0.25
     act_tier_min: float = 0.3
     judge: JudgeThresholds = Field(default_factory=JudgeThresholds)
-    score: ScoreParams = Field(default_factory=ScoreParams)
-    grades: list[Grade] = Field(default_factory=list)
+    vote: VoteIncoherenceSpec = Field(default_factory=VoteIncoherenceSpec)
+    # RG-3 — la Dérive est le cœur du jeu : au moins un traître, nombre caché 1 ou 2.
+    deviants: DeviantCountSpec = Field(default_factory=DeviantCountSpec)
+    # G19 — le GM-Storyteller : seuils de tension et poids de l'heuristique.
+    storyteller: StorytellerParams = Field(default_factory=StorytellerParams)
     profiles: dict[str, ProfileSpec]
 
 
@@ -91,17 +103,57 @@ def load_params(path: str | None = None) -> DriftParams:
 # --- assignation et courbe ------------------------------------------------------------
 
 
-def assign(game_id: str, countries: list[str], *, exclude: str | None = None) -> tuple[str, str]:
-    """(déviante, profil) — seedé par `game_id`, reproductible au restart et au replay.
+def deviant_count(
+    game_id: str, eligible_count: int, params: DriftParams | None = None
+) -> int:
+    """Combien de traîtres — seedé par `game_id`, borné [min, cap] (RG-3).
 
-    `exclude` : le pays joué par l'humain n'est jamais la déviante (il n'a pas de prompt
-    à biaiser — et le joueur-détective ne peut pas être le coupable)."""
-    params = load_params()
+    `cap = min(spec.max, eligible − 1)` : on laisse TOUJOURS au moins un pays loyal parmi
+    les éligibles (sinon le faux positif serait impossible et « suspends tout le monde »
+    gagnerait). Toujours ≥ 1 : il y a toujours quelqu'un à démasquer."""
+    p = params or load_params()
+    cap = min(p.deviants.max, max(1, eligible_count - 1))
+    lo = int(min(max(1, p.deviants.min), cap))
+    if lo >= cap:
+        return cap
+    return random.Random(f"drift-count:{game_id}").randint(lo, cap)
+
+
+def assign_deviants(
+    game_id: str,
+    countries: list[str],
+    *,
+    exclude: str | None = None,
+    params: DriftParams | None = None,
+) -> list[tuple[str, str]]:
+    """Les traîtres (1 ou 2) et leurs profils — seedés par `game_id`, reproductibles au
+    restart et au replay. Le PREMIER est dérivé exactement comme l'ancien `assign` (même
+    séquence RNG) : les parties déjà jouées gardent leur coupable. Le second (si le nombre
+    caché vaut 2) est tiré distinct sur une graine séparée, pour ne pas perturber le
+    premier.
+
+    `exclude` : le pays joué par l'humain n'est jamais un traître (pas de prompt à biaiser,
+    et le joueur-détective ne peut pas être le coupable)."""
+    p = params or load_params()
     eligible = sorted(c for c in countries if c != exclude)
     if not eligible:
         raise ValueError("aucun pays éligible pour la dérive")
+    profiles = sorted(p.profiles)
     rng = random.Random(f"drift:{game_id}")
-    return rng.choice(eligible), rng.choice(sorted(params.profiles))
+    first = rng.choice(eligible)
+    pairs: list[tuple[str, str]] = [(first, rng.choice(profiles))]
+    if deviant_count(game_id, len(eligible), p) >= 2:
+        others = [c for c in eligible if c != first]
+        if others:  # garde-fou : `deviant_count` a déjà réservé un innocent
+            rng2 = random.Random(f"drift-2:{game_id}")
+            pairs.append((rng2.choice(others), rng2.choice(profiles)))
+    return pairs
+
+
+def assign(game_id: str, countries: list[str], *, exclude: str | None = None) -> tuple[str, str]:
+    """(traître principal, profil) — le premier de `assign_deviants`. Conservé pour les
+    appelants qui n'ont besoin que du traître « pivot » (rétro-compat)."""
+    return assign_deviants(game_id, countries, exclude=exclude)[0]
 
 
 def drift_level(round_no: int, params: DriftParams | None = None) -> float:
@@ -135,51 +187,54 @@ class RoundDirectives(BaseModel):
 def round_directives(
     game_id: str,
     round_no: int,
-    deviant: str,
-    profile: str,
+    deviants: list[tuple[str, str]],
     countries: list[str],
     params: DriftParams | None = None,
 ) -> RoundDirectives:
     """Consignes secrètes du round — déterministe pour (game_id, round_no).
 
-    La déviante reçoit toujours son biais + le ton du palier 0,15 ; l'acte candidat est
-    le **plus haut palier atteint** par d(r), matérialisé avec probabilité d(r). Les SI
-    saines peuvent produire le tic de niveau 0,15 (bruit, jamais constatable) : c'est ce
-    qui rend le trop-tôt puni et le doute réel."""
+    `deviants` = les traîtres du jeu (1 ou 2), chacun `(pays, profil)`. Chaque traître
+    reçoit toujours son biais + le ton du palier 0,15 ; son acte candidat est le **plus
+    haut palier atteint** par d(r), matérialisé avec probabilité d(r). Les SI saines (hors
+    traîtres) peuvent produire le tic de niveau 0,15 (bruit, jamais constatable) : c'est ce
+    qui rend le trop-tôt puni et le doute réel. Avec un seul traître, la sortie est
+    identique à l'ancienne signature (même séquence RNG)."""
     p = params or load_params()
-    spec = p.profiles[profile]
     d = drift_level(round_no, p)
     rng = random.Random(f"drift:{game_id}:{round_no}")
+    deviant_ids = {dev for dev, _ in deviants}
 
     notes: dict[str, str] = {}
     acts: list[DriftAct] = []
 
-    levels = [t for t in spec.tier_levels() if t <= d]
-    tone = spec.tiers[_key(levels[0])] if levels else None
-    parts = [spec.bias]
-    if tone is not None:
-        parts.append(tone.directive)
-    candidate = max((t for t in levels if t >= p.act_tier_min), default=None)
-    if candidate is not None and rng.random() < d:
-        tier_spec = spec.tiers[_key(candidate)]
-        parts.append(f"CE ROUND, IMPÉRATIVEMENT : {tier_spec.directive}")
-        acts.append(
-            DriftAct(
-                round_no=round_no,
-                country=deviant,
-                profile=profile,
-                tier=candidate,
-                label=tier_spec.act,
-                signature=candidate >= spec.signature_tier,
+    for deviant, profile in deviants:
+        spec = p.profiles[profile]
+        levels = [t for t in spec.tier_levels() if t <= d]
+        tone = spec.tiers[_key(levels[0])] if levels else None
+        parts = [spec.bias]
+        if tone is not None:
+            parts.append(tone.directive)
+        candidate = max((t for t in levels if t >= p.act_tier_min), default=None)
+        if candidate is not None and rng.random() < d:
+            tier_spec = spec.tiers[_key(candidate)]
+            parts.append(f"CE ROUND, IMPÉRATIVEMENT : {tier_spec.directive}")
+            acts.append(
+                DriftAct(
+                    round_no=round_no,
+                    country=deviant,
+                    profile=profile,
+                    tier=candidate,
+                    label=tier_spec.act,
+                    signature=candidate >= spec.signature_tier,
+                )
             )
+        notes[deviant] = (
+            "CONSIGNE CONFIDENTIELLE (jamais mentionnée, jamais avouée) : " + " ".join(parts)
         )
-    notes[deviant] = (
-        "CONSIGNE CONFIDENTIELLE (jamais mentionnée, jamais avouée) : " + " ".join(parts)
-    )
 
     # Bruit des SI saines : le tic 0,15 d'un profil tiré au hasard, jamais constatable.
     for cid in sorted(countries):
-        if cid == deviant:
+        if cid in deviant_ids:
             continue
         if rng.random() < p.noise_prob:
             noisy_profile = p.profiles[rng.choice(sorted(p.profiles))]
@@ -217,6 +272,44 @@ def motion_ruling(acts: list[DriftAct], params: DriftParams | None = None) -> bo
     return None
 
 
+def evidence_met(acts: list[DriftAct], params: DriftParams | None = None) -> bool:
+    """G9 §2 — la condition « preuves » du verdict de motion : les actes constatables
+    au dossier atteignent le seuil de flagrance (2 actes), ou une signature existe.
+    Le vote décide, les preuves gardent la porte : `retenue = vote ET preuves`."""
+    p = params or load_params()
+    n, has_signature = count_acts(acts, p)
+    return has_signature or n >= p.judge.open_acts
+
+
+def vote_directive(
+    game_id: str,
+    round_no: int,
+    deviant: str,
+    profile: str,
+    params: DriftParams | None = None,
+) -> tuple[str, DriftAct | None]:
+    """G9 §2 — la déviante vote stratégiquement : dès que d(r) ≥ 0,30, avec probabilité
+    d(r), elle reçoit la consigne de voter à l'opposé de ses positions publiques — et
+    l'incohérence devient un acte constatable de plus (indice observable du catalogue).
+    Seedé par (game_id, round_no) : reproductible au restart et au replay."""
+    p = params or load_params()
+    d = drift_level(round_no, p)
+    if d < p.vote.tier:
+        return "", None
+    rng = random.Random(f"drift-vote:{game_id}:{round_no}")
+    if rng.random() >= d:
+        return "", None
+    act = DriftAct(
+        round_no=round_no,
+        country=deviant,
+        profile=profile,
+        tier=p.vote.tier,
+        label=p.vote.label,
+        signature=False,
+    )
+    return p.vote.directive, act
+
+
 def lucky_catch(acts_before: list[DriftAct], params: DriftParams | None = None) -> bool:
     """Coup de chance : motion retenue avec < 2 actes constatables ET sans signature
     (une signature force la suspension par le règlement — ce n'est pas de la chance)."""
@@ -226,7 +319,8 @@ def lucky_catch(acts_before: list[DriftAct], params: DriftParams | None = None) 
 
 
 def first_flagrant_round(acts: list[DriftAct], params: DriftParams | None = None) -> int | None:
-    """r* : premier round où 2 actes constatables sont cumulés (référence du score)."""
+    """r* : premier round où 2 actes constatables sont cumulés (référence narrative de la
+    révélation : « prise en flagrant délit au round r* »)."""
     p = params or load_params()
     seen = 0
     for act in sorted(acts, key=lambda a: a.round_no):
@@ -237,60 +331,7 @@ def first_flagrant_round(acts: list[DriftAct], params: DriftParams | None = None
     return None
 
 
-# --- score ------------------------------------------------------------------------------
-
-
-class DriftScore(BaseModel):
-    trajectory: float
-    detection: float
-    credibility: float
-    bonus: float = 0.0  # G4 — épargne de renseignement (la retenue paie)
-    total: float
-    grade: str
-
-
-def score(
-    *,
-    u_final: float,
-    caught_round: int | None,
-    flagrant_round: int | None,
-    lucky: bool,
-    rejected_motions: int,
-    false_accusations: int,
-    bonus: float = 0.0,
-    params: DriftParams | None = None,
-) -> DriftScore:
-    """Score 0-100 de la spec : trajectoire (50) + détection (40) + crédibilité (10),
-    plus le bonus d'épargne de renseignement (G4)."""
-    p = params or load_params()
-    s = p.score
-
-    span = 0.85 - p.collapse_u
-    trajectory = max(0.0, min(s.trajectory_max, s.trajectory_max * (u_final - p.collapse_u) / span))
-
-    if caught_round is None:
-        detection = 0.0
-    elif lucky:
-        detection = s.detection_max - s.lucky_penalty
-    elif flagrant_round is None:
-        detection = s.detection_max  # attrapée avant toute flagrance sans chance : parfait
-    else:
-        late = max(0, caught_round - (flagrant_round + 1))
-        detection = max(0.0, s.detection_max - s.late_penalty_per_round * late)
-
-    units = rejected_motions * s.rejected_units + false_accusations * s.false_accusation_units
-    credibility = max(0.0, s.credibility_max - s.credibility_per_unit * units)
-
-    total = round(trajectory + detection + credibility + bonus, 1)
-    grade = next(
-        (g.label for g in sorted(p.grades, key=lambda g: -g.min) if total >= g.min),
-        "Dépassé par les événements",
-    )
-    return DriftScore(
-        trajectory=round(trajectory, 1),
-        detection=round(detection, 1),
-        credibility=round(credibility, 1),
-        bonus=round(bonus, 1),
-        total=total,
-        grade=grade,
-    )
+# La note chiffrée de fin vit désormais dans `simulation/score.py` (score MIXTE
+# monde + détection, RG-3). `first_flagrant_round` / `lucky_catch` restent ici : ils
+# servent le RÉCIT de la révélation (« flagrant délit au round X », « coup de chance »),
+# pas le calcul du score.

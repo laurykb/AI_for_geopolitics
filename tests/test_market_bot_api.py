@@ -13,7 +13,10 @@ from app.main import app
 from app.market_api import get_engine
 from inference.mock_backend import MockBackend
 from market.engine import STARTING_BALANCE, MarketEngine
-from market.models import MarketStatus
+from market.flash import resolve_flash
+from market.models import MarketStatus, ResolutionCriterion, ResolutionKind
+from market.predicates import MarketContext
+from market.resolution import settle
 from market.store import SQLiteMarketStore
 from storage.game_store import SQLiteGameStore
 
@@ -119,3 +122,59 @@ def test_bot_409_when_market_resolved(confident):
     market.status = MarketStatus.RESOLVED
     engine.store.save_market(market)
     assert client.post(f"/api/games/{game['id']}/market/bot").status_code == 409
+
+
+def test_flash_markets_open_idempotent_and_resolve(confident):
+    # G12 §1 — marchés vivants : ouverture (au moins le repli), idempotence par round,
+    # résolution qui ne casse pas (books échus réglés ; les autres restent ouverts).
+    client, _, engine = confident
+    game = _create(client)
+    gid = game["id"]
+
+    opened = client.post(f"/api/games/{gid}/flash")
+    assert opened.status_code == 200
+    books = opened.json()
+    assert len(books) >= 1  # au moins le book de repli (u_above)
+    assert all(len(b["outcomes"]) == 2 for b in books)  # binaires YES/NO
+
+    again = client.post(f"/api/games/{gid}/flash").json()
+    assert {b["id"] for b in again} == {b["id"] for b in books}  # idempotent par round
+
+    resolved = client.post(f"/api/games/{gid}/flash/resolve")
+    assert resolved.status_code == 200
+    assert isinstance(resolved.json(), list)
+
+
+def test_flash_unknown_game_404(confident):
+    client, _, _ = confident
+    assert client.post("/api/games/nope/flash").status_code == 404
+
+
+def test_flash_market_settles_once_no_double_pay(confident):
+    # G12 §1 — chemin argent : un marché vivant se règle UNE fois (part gagnante = 1),
+    # un second règlement est idempotent (aucun double paiement).
+    client, _, engine = confident
+    _create(client)  # une partie (pour le game_id)
+    market = engine.open_binary_market(
+        round_id=1,
+        game_id="g",
+        question="U au-dessus de 0,5 au round 1 ?",
+        b=100,
+        criterion=ResolutionCriterion(
+            kind=ResolutionKind.PREDICATE,
+            predicate="u_above",
+            params={"threshold": 0.5, "round": 1},
+        ),
+    )
+    yes = next(o.id for o in market.outcomes if o.label == "YES")
+    engine.create_account("Humain", account_id="h")
+    engine.place_bet("h", market.id, yes, 5)  # parie YES (5 parts)
+
+    ctx = MarketContext(current_round=1, utopia=0.6)  # U > 0,5 → YES gagne
+    assert resolve_flash(market.criterion, ctx) == "YES"
+
+    first = settle(engine.store, market, yes)
+    bal_after = engine.store.get_account("h").balance
+    second = settle(engine.store, engine.store.get_market(market.id), yes)  # rejeu
+    assert first.already_settled is False and second.already_settled is True
+    assert engine.store.get_account("h").balance == bal_after  # pas de double paiement

@@ -45,7 +45,7 @@ def test_memory_is_capped():
     assert len(world.country_memory["usa"]) <= 4  # borné
 
 
-def test_negotiation_prompt_includes_profile_perception_memory():
+def test_negotiation_prompt_includes_perception_and_memory():
     from agents.prompts import build_negotiation_prompt
     from simulation.perception import perceive
 
@@ -55,6 +55,6 @@ def test_negotiation_prompt_includes_profile_perception_memory():
     event = _event()
     prompt = build_negotiation_prompt(country, event, world, "(début)", perceive(event, country))
 
-    assert "Penchant" in prompt  # fiche/penchant dérivé
     assert "perception" in prompt.lower()  # fog of war
-    assert "Vieux sommet" in prompt  # mémoire réinjectée
+    assert "Vieux sommet" in prompt  # mémoire réinjectée (une ligne, G9 §1)
+    assert "Penchant" not in prompt  # le dump de fiche a disparu (source du radotage)

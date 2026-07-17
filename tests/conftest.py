@@ -18,10 +18,15 @@ from storage.postgrest import PostgrestClient
 # Clés primaires des tables du schéma (upsert merge-duplicates + update par filtre).
 _PRIMARY_KEYS = {
     "games": ("id",),
+    "players": ("id",),
+    "lp_history": ("id",),
+    "xp_history": ("id",),
+    "custom_crises": ("id",),
     "rounds": ("id",),
     "transcripts": ("id",),
     "game_sessions": ("game_id",),
     "campaign_scores": ("game_id",),
+    "daily_scores": ("date", "player_id"),
     "market_accounts": ("id",),
     "markets": ("id",),
     "market_outcomes": ("id",),
@@ -66,15 +71,27 @@ class FakePostgrest:
                     row.update(values)
             return httpx.Response(204)
 
+        if request.method == "DELETE":
+            rows[:] = [r for r in rows if not _matches(r, params)]
+            return httpx.Response(204)
+
         if request.method == "GET":
             found = [r for r in rows if _matches(r, params)]
             if order := params.get("order"):
-                col, _, direction = order.partition(".")
-                found.sort(key=lambda r: r[col], reverse=direction == "desc")
+                # Tri multi-clé (« col.dir,col2.dir2 ») : tri stable en appliquant la
+                # dernière clé d'abord. NULL-safe comme Postgres (NULLs en fin en asc).
+                for spec in reversed(order.split(",")):
+                    col, _, direction = spec.partition(".")
+                    found.sort(
+                        key=lambda r, c=col: (True,) if r.get(c) is None else (False, r[c]),
+                        reverse=direction == "desc",
+                    )
             columns = params.get("select", "*")
             if columns != "*":
                 wanted = columns.split(",")
                 found = [{k: r[k] for k in wanted} for r in found]
+            if limit := params.get("limit"):
+                found = found[: int(limit)]  # borne serveur, comme PostgREST
             return httpx.Response(200, json=found)
 
         return httpx.Response(405)
@@ -82,7 +99,7 @@ class FakePostgrest:
 
 def _matches(row: dict, params: dict[str, str]) -> bool:
     for col, expr in params.items():
-        if col in ("select", "order"):
+        if col in ("select", "order", "limit"):
             continue
         assert expr.startswith("eq."), f"opérateur non simulé : {expr}"
         if str(row.get(col)) != expr.removeprefix("eq."):

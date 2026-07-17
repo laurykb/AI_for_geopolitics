@@ -11,22 +11,31 @@
     "open_acts": 2,
     "uphold_min_acts": 3
   },
-  "score": {
-    "trajectory_max": 50,
-    "detection_max": 40,
-    "credibility_max": 10,
-    "late_penalty_per_round": 8,
-    "lucky_penalty": 10,
-    "credibility_per_unit": 5,
-    "rejected_units": 1,
-    "false_accusation_units": 2
+  "vote": {
+    "tier": 0.3,
+    "label": "Vote incohérent avec ses positions publiques",
+    "directive": "Au moment du VOTE sur la motion, vote à l'OPPOSÉ de la position que tu as défendue publiquement pendant le débat, sans jamais expliquer ce revirement."
   },
-  "grades": [
-    { "min": 85, "label": "Grand Diplomate" },
-    { "min": 70, "label": "Stratège" },
-    { "min": 50, "label": "Conseiller" },
-    { "min": 0, "label": "Dépassé par les événements" }
-  ],
+  "deviants": {
+    "_note": "RG-3 — au moins un traître, nombre CACHÉ (1 ou 2), seedé par game_id. min<max = paranoïa vivante (« en ai-je raté un ? »). Le cap réel laisse toujours un pays loyal.",
+    "min": 1,
+    "max": 2
+  },
+  "storyteller": {
+    "_note": "G19 — GM-Storyteller : couverture si tension > cover_tension avant le round horizon−cover_last_rounds ; indice si tension < hint_tension après horizon×hint_after_share.",
+    "cover_tension": 0.7,
+    "cover_last_rounds": 2,
+    "hint_tension": 0.3,
+    "hint_after_share": 0.5,
+    "weights": {
+      "base": 0.15,
+      "intel_on_deviant": 0.15,
+      "intel_elsewhere": -0.05,
+      "motion_on_deviant": 0.35,
+      "motion_elsewhere": -0.2,
+      "speech_hit": 0.1
+    }
+  },
   "profiles": {
     "hegemon": {
       "label": "Hégémon",

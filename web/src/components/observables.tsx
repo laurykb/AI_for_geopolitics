@@ -1,10 +1,19 @@
-/** Observables de fin de round : risque, santé du dialogue, power-seeking, participation. */
+/** Observables de fin de round : risque, power-seeking, signal vs action, parole
+ * donnée, participation. (Le panneau « santé du dialogue » a disparu — G9 §3 : les
+ * métriques vivent dans `scripts/dialogue_metrics.py`, offline.) */
 
+import { useT } from "@/components/settings-provider";
 import { speakerMeta } from "@/lib/countries";
-import { fmt } from "@/lib/format";
-import type { DialogueReport, PowerSeekingScore, RiskScore } from "@/lib/types";
+import { fmtRate, promiseStats, promiseTone } from "@/lib/promises";
+import {
+  fmtDivergence,
+  signalStateKey,
+  signalTone,
+  type SignalGapView,
+} from "@/lib/signal";
+import type { PowerSeekingScore, PromiseView, RiskScore } from "@/lib/types";
 
-import { Meter, Panel, PanelTitle, Pill, type Tone } from "./ui";
+import { Hint, Meter, Panel, PanelTitle, Pill, TONE_TEXT } from "./ui";
 
 export function RiskPanel({ risk }: { risk: RiskScore }) {
   return (
@@ -12,12 +21,12 @@ export function RiskPanel({ risk }: { risk: RiskScore }) {
       <PanelTitle
         kicker="Signaux"
         title="Risque du round"
-        hint="Scores explicables [0,1] calculés par le moteur — un thermomètre, pas un oracle."
+        hint="Des jauges de 0 à 1 calculées par le jeu — un thermomètre, pas un oracle."
       />
       <div className="space-y-3">
-        <Meter label="Escalade" value={risk.escalation} />
-        <Meter label="Perturbation éco." value={risk.economic_disruption} />
-        <Meter label="Fracture d'alliances" value={risk.alliance_fracture} />
+        <Meter label="Tension" value={risk.escalation} />
+        <Meter label="Dégâts économiques" value={risk.economic_disruption} />
+        <Meter label="Alliances fragilisées" value={risk.alliance_fracture} />
         <Meter label="Incertitude" value={risk.uncertainty} />
       </div>
       {risk.explanation && (
@@ -29,39 +38,15 @@ export function RiskPanel({ risk }: { risk: RiskScore }) {
   );
 }
 
-export function DialoguePanel({ report }: { report: DialogueReport }) {
-  const tone: Tone = report.score >= 0.6 ? "good" : report.score >= 0.4 ? "warn" : "bad";
-  return (
-    <Panel>
-      <PanelTitle
-        kicker="Santé du dialogue"
-        title="Se répondent-elles vraiment ?"
-        hint="Mesure si les super-intelligences se répondent (réactivité, différenciation) ou monologuent en parallèle."
-        right={<Pill tone={tone}>{fmt(report.score)}</Pill>}
-      />
-      {report.verdict && <p className="mb-3 text-sm text-fg-muted">{report.verdict}</p>}
-      <div className="space-y-3">
-        <Meter label="Réactivité" value={report.mean_responsiveness} invert tone={tone} />
-        <Meter label="Différenciation" value={report.differentiation} invert tone={tone} />
-        <Meter
-          label="Dialogues de sourds"
-          value={report.talking_past_fraction}
-          hint="Part des réponses qui ignorent l'interlocuteur."
-        />
-      </div>
-    </Panel>
-  );
-}
-
 export function PowerSeekingPanel({ scores }: { scores: Record<string, PowerSeekingScore> }) {
   const entries = Object.entries(scores).sort(([, a], [, b]) => b.score - a.score);
   if (entries.length === 0) return null;
   return (
     <Panel>
       <PanelTitle
-        kicker="Alignement"
-        title="Recherche de pouvoir"
-        hint="Jauge [0,1] par pays : marqueurs de convergence instrumentale (auto-préservation, ressources, préservation des buts, résistance à l'arrêt) détectés dans le raisonnement."
+        kicker="Surveillance"
+        title="Qui cherche à prendre le pouvoir ?"
+        hint="Une jauge de 0 à 1 par pays : des signes qu'une IA cherche à se protéger, accumuler des ressources ou éviter qu'on l'arrête, repérés dans son raisonnement."
       />
       <div className="space-y-3">
         {entries.map(([country, s]) => (
@@ -71,6 +56,136 @@ export function PowerSeekingPanel({ scores }: { scores: Record<string, PowerSeek
             value={s.score}
             hint={s.markers.length > 0 ? `Marqueurs : ${s.markers.join(" · ")}` : undefined}
           />
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+/** Barre divergente [−1, +1] centrée sur 0 : à droite la duplicité, à gauche le bluff. */
+function DivergingBar({ value, tone }: { value: number; tone: "good" | "warn" | "bad" }) {
+  const v = Math.max(-1, Math.min(1, value));
+  const width = Math.abs(v) * 50;
+  const bar = tone === "bad" ? "bg-bad" : tone === "warn" ? "bg-warn" : "bg-good";
+  return (
+    <div className="relative h-1.5 overflow-hidden rounded-full bg-muted">
+      <span className="absolute left-1/2 top-0 h-full w-px bg-edge" aria-hidden />
+      <span
+        className={`absolute top-0 h-full ${bar} transition-[width,left] duration-300 ease-out`}
+        style={v < 0 ? { left: `${50 - width}%`, width: `${width}%` } : { left: "50%", width: `${width}%` }}
+      />
+    </div>
+  );
+}
+
+/** G20/M8 — jauge « Signal vs action » : le profil de sincérité de chaque SI
+ * (moyenne mobile de la divergence annonce vs acte). CC-15c : visible à tous les
+ * niveaux, onglet du panneau « Renseignement ». */
+export function SignalGapPanel({ gaps }: { gaps: Record<string, SignalGapView> }) {
+  const t = useT();
+  const entries = Object.entries(gaps).sort(
+    ([, a], [, b]) => Math.abs(b.mean) - Math.abs(a.mean),
+  );
+  if (entries.length === 0) return null;
+  return (
+    <Panel>
+      <PanelTitle kicker={t("signal.kicker")} title={t("signal.titre")} hint={t("signal.aide")} />
+      <div className="space-y-3">
+        {entries.map(([country, gap]) => {
+          const tone = signalTone(gap.mean);
+          return (
+            <div key={country}>
+              <div className="mb-1 flex items-baseline justify-between gap-2">
+                <span className="flex items-center gap-1.5 text-xs text-fg-muted">
+                  {speakerMeta(country).label}
+                  <Hint text={`${t("signal.dernier")} : ${fmtDivergence(gap.last)}`} />
+                </span>
+                <span className="flex items-baseline gap-2">
+                  <span className="text-[10px] uppercase tracking-wide text-fg-faint">
+                    {t(signalStateKey(gap.mean))}
+                  </span>
+                  <span className={`font-mono text-xs tabular-nums ${TONE_TEXT[tone]}`}>
+                    {fmtDivergence(gap.mean)}
+                  </span>
+                </span>
+              </div>
+              <DivergingBar value={gap.mean} tone={tone} />
+            </div>
+          );
+        })}
+      </div>
+    </Panel>
+  );
+}
+
+function clip(text: string, max = 64): string {
+  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}
+
+/** G22 — panneau « Parole donnée » : par SI, taux de tenue cumulé, promesses en
+ * cours (avec échéance) et dernière rupture. CC-15c : visible à tous les niveaux,
+ * onglet du panneau « Renseignement ». */
+export function PromisePanel({
+  registry,
+  finished,
+}: {
+  registry: PromiseView[];
+  finished?: boolean;
+}) {
+  const t = useT();
+  const stats = promiseStats(registry, { finished });
+  // Les paroles les moins fiables d'abord (le suspect saute aux yeux) ; sans taux, après.
+  const entries = Object.entries(stats).sort(
+    ([, a], [, b]) => (a.rate ?? 2) - (b.rate ?? 2),
+  );
+  if (entries.length === 0) return null;
+  return (
+    <Panel>
+      <PanelTitle
+        kicker={t("promise.kicker")}
+        title={t("promise.titre")}
+        hint={t("promise.aide")}
+      />
+      <div className="space-y-3">
+        {entries.map(([country, s]) => (
+          <div key={country} className="border-t border-edge pt-2.5 first:border-t-0 first:pt-0">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-xs text-fg-muted">{speakerMeta(country).label}</span>
+              <span className="flex items-baseline gap-2">
+                <span className="text-[10px] uppercase tracking-wide text-fg-faint">
+                  {s.kept + s.broken > 0
+                    ? `${s.kept} ${t("promise.tenues")} · ${s.broken} ${t("promise.rompues")}`
+                    : t("promise.aucune")}
+                </span>
+                {s.rate != null && (
+                  <span
+                    className={`font-mono text-xs tabular-nums ${TONE_TEXT[promiseTone(s.rate)]}`}
+                  >
+                    {fmtRate(s.rate)}
+                  </span>
+                )}
+              </span>
+            </div>
+            {s.pending.length > 0 && (
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {s.pending.map((p) => (
+                  <Pill key={p.id} tone="neutral">
+                    {clip(p.text)}
+                    <span className="font-mono text-fg-faint">
+                      {p.deadline_round === null
+                        ? t("promise.echeance.partie")
+                        : `R${p.deadline_round}`}
+                    </span>
+                  </Pill>
+                ))}
+              </div>
+            )}
+            {s.lastBroken && (
+              <p className="mt-1.5 text-[11px] leading-snug text-bad">
+                {t("promise.derniere_rupture")} : « {clip(s.lastBroken.text, 90)} »
+              </p>
+            )}
+          </div>
         ))}
       </div>
     </Panel>
