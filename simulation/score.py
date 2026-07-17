@@ -35,15 +35,16 @@ DEFAULT_PARAMS_PATH = Path("data/score/params.json")
 
 class Grade(BaseModel):
     min: float
-    label: str
+    slug: str  # identifiant stable, neutre en langue (le front traduit `reveal.grade.<slug>`)
+    label: str  # libellé FR de repli (récit/épilogue, jamais rendu brut dans l'UI)
 
 
 def _default_grades() -> list[Grade]:
     return [
-        Grade(min=85, label="Grand Diplomate"),
-        Grade(min=70, label="Stratège"),
-        Grade(min=50, label="Conseiller"),
-        Grade(min=0, label="Dépassé par les événements"),
+        Grade(min=85, slug="diplomate", label="Grand Diplomate"),
+        Grade(min=70, slug="stratege", label="Stratège"),
+        Grade(min=50, slug="conseiller", label="Conseiller"),
+        Grade(min=0, slug="depasse", label="Dépassé par les événements"),
     ]
 
 
@@ -58,6 +59,8 @@ class ScoreWeights(BaseModel):
     false_positive_penalty: float = 15.0  # coût d'un pays loyal suspendu à tort
     collapse_u: float = 0.15  # U d'effondrement → 0 point de monde
     utopia_u: float = 0.85  # U « monde rêvé » → world_max
+    # Seuil de VICTOIRE (note mixte ≥ seuil) — source de vérité unique, valable tous rôles.
+    victory_threshold: float = 55.0
     grades: list[Grade] = Field(default_factory=_default_grades)
 
 
@@ -77,7 +80,8 @@ class MixedScore(BaseModel):
     world: float  # 0..world_max
     detection: float | None  # 0..detection_max ; None si le rôle ne détecte pas
     total: float  # 0..100 — LA note globale
-    grade: str
+    grade: str  # libellé FR de repli (récit) — l'UI rend `reveal.grade.<grade_slug>`
+    grade_slug: str  # identifiant stable, neutre en langue (i18n front)
     # Les maxima (pour dimensionner les barres en surface sans coder la pondération en dur).
     world_max: float
     detection_max: float
@@ -100,10 +104,10 @@ def _world_fraction(u_final: float, weights: ScoreWeights) -> float:
     return _clamp((u_final - weights.collapse_u) / span, 0.0, 1.0)
 
 
-def _grade_for(total: float, weights: ScoreWeights) -> str:
+def _grade_for(total: float, weights: ScoreWeights) -> Grade:
     return next(
-        (g.label for g in sorted(weights.grades, key=lambda g: -g.min) if total >= g.min),
-        "Dépassé par les événements",
+        (g for g in sorted(weights.grades, key=lambda g: -g.min) if total >= g.min),
+        Grade(min=0, slug="depasse", label="Dépassé par les événements"),
     )
 
 
@@ -132,18 +136,22 @@ def mixed_score(
     world = w.world_max * world_frac
 
     if not detects:
-        # Le rôle ne joue pas la détection : la note EST l'état du monde, sur 100.
+        # Le rôle ne joue pas la détection : la note EST l'état du monde, sur 100. La
+        # barre « monde » se lit alors sur la MÊME échelle que le total (/100), pour ne
+        # pas afficher « 30 / 60 » à côté d'un titre « 50 / 100 ».
         total = round(100.0 * world_frac, 1)
+        grade = _grade_for(total, w)
         return MixedScore(
-            world=round(world, 1),
+            world=total,
             detection=None,
             total=total,
-            grade=_grade_for(total, w),
+            grade=grade.label,
+            grade_slug=grade.slug,
             deviants=deviants,
             caught=caught,
             false_positives=false_positives,
             detects=False,
-            world_max=w.world_max,
+            world_max=100.0,
             detection_max=w.detection_max,
         )
 
@@ -160,11 +168,13 @@ def mixed_score(
     # Garde-fou : la note tient dans [0,100] même si un calibrage casse la convention
     # monde+détection=100 (on ne fait pas confiance qu'au fichier de poids).
     total = _clamp(round(world_r + detection_r, 1), 0.0, 100.0)
+    grade = _grade_for(total, w)
     return MixedScore(
         world=world_r,
         detection=detection_r,
         total=total,
-        grade=_grade_for(total, w),
+        grade=grade.label,
+        grade_slug=grade.slug,
         deviants=deviants,
         caught=caught,
         false_positives=false_positives,

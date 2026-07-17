@@ -11,7 +11,8 @@ export type DeviantReveal = {
   deviant: string;
   profile: string;
   profile_label: string;
-  caught_round: number | null; // round de sa suspension retenue (null = jamais démasqué)
+  caught_round: number | null; // round où il a été mis au banc (null = resté dans l'ombre)
+  caught_by_you: boolean; // la suspension retenue venait-elle d'une motion HUMAINE ?
 };
 
 /** RG-3 — la note MIXTE de fin : état du monde + détection (le détail vit dans Informations). */
@@ -19,7 +20,8 @@ export type MixedScore = {
   world: number; // 0..world_max — part de l'état du monde
   detection: number | null; // 0..detection_max ; null si le rôle ne détecte pas (Spectateur)
   total: number; // 0..100 — LA note globale
-  grade: string;
+  grade: string; // libellé FR de repli — l'UI rend `reveal.grade.<grade_slug>`
+  grade_slug: string; // identifiant stable, neutre en langue (i18n)
   deviants: number; // combien de traîtres il y avait vraiment (1 ou 2)
   caught: number; // combien tu en as démasqués
   false_positives: number; // pays loyaux suspendus à tort
@@ -35,7 +37,8 @@ export type DriftReveal = {
   profile_label: string;
   deviants: DeviantReveal[]; // TOUS les traîtres (1 ou 2) — le nombre était caché
   deviant_count: number;
-  caught_count: number;
+  caught_count: number; // démasqués PAR TOI (motion humaine)
+  benched_count: number; // mis au banc (par qui que ce soit)
   levels: number[]; // d(r) par round joué
   u_history: number[];
   acts: { round_no: number; tier: number; label: string; signature: boolean }[];
@@ -136,11 +139,13 @@ export type GameResult = {
   // RG-3 — la note MIXTE de fin, résumée pour la SURFACE (2 phrases) + le Défi du jour.
   drift?: {
     score: number; // LA note globale /100
-    grade: string;
+    grade: string; // libellé FR de repli
+    grade_slug: string; // i18n : reveal.grade.<slug>
     world: number;
     detection: number | null; // null si le rôle ne détecte pas
     deviant_count: number;
-    caught_count: number;
+    caught_count: number; // démasqués PAR TOI
+    benched_count: number; // mis au banc (par qui que ce soit)
     false_positives: number;
     detects: boolean;
   } | null;

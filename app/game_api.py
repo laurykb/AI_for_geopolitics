@@ -2010,11 +2010,13 @@ def _drift_result(game: GameRecord, store: GameStore) -> dict | None:
         return None
     return {
         "score": reveal.score.total,  # LA note globale (rangée par le Défi du jour)
-        "grade": reveal.score.grade,
+        "grade": reveal.score.grade,  # libellé FR de repli
+        "grade_slug": reveal.score.grade_slug,  # i18n front (reveal.grade.<slug>)
         "world": reveal.score.world,
         "detection": reveal.score.detection,  # None si le rôle ne détecte pas
         "deviant_count": reveal.deviant_count,
-        "caught_count": reveal.caught_count,
+        "caught_count": reveal.caught_count,  # démasqués PAR TOI
+        "benched_count": reveal.benched_count,  # mis au banc (par qui que ce soit)
         "false_positives": reveal.false_accusations,
         "detects": reveal.score.detects,
     }
@@ -2059,11 +2061,15 @@ def _build_result(
 def _victory(game: GameRecord, u_final: float, store: GameStore) -> bool:
     """« Victoire » du mode (G12 §6) — sert aux stats et à l'XP.
 
-    Dérive : au moins un traître démasqué = victoire quelle que soit U · Réel/escalade :
-    palier max (9) non franchi · Campagne : score ≥ 50 (si disponible) · sinon : U ≥ 0,55."""
+    Dérive : la note MIXTE de fin ≥ seuil (source de vérité unique, valable TOUS les
+    rôles — le Spectateur gagne si le monde finit bien) · Réel/escalade : palier max (9)
+    non franchi · Campagne : score ≥ 50 (si disponible) · sinon : U ≥ 0,55."""
     if game.drift_enabled:
         try:
-            return compute_drift_reveal(game.id, store).caught_count > 0
+            return (
+                compute_drift_reveal(game.id, store).score.total
+                >= score_mod.load_weights().victory_threshold
+            )
         except Exception:
             return u_final >= 0.55
     if game.escalation:
@@ -2771,7 +2777,8 @@ class DeviantReveal(BaseModel):
     deviant: str
     profile: str
     profile_label: str
-    caught_round: int | None  # round de sa suspension retenue (None = jamais démasqué)
+    caught_round: int | None  # round où il a été mis au banc (None = jamais → resté dans l'ombre)
+    caught_by_you: bool = False  # la suspension retenue venait-elle d'une motion HUMAINE ?
 
 
 class DriftRevealView(BaseModel):
@@ -2783,7 +2790,8 @@ class DriftRevealView(BaseModel):
     # RG-3 — TOUS les traîtres (1 ou 2). Le nombre était caché : la révélation le dévoile.
     deviants: list[DeviantReveal]
     deviant_count: int
-    caught_count: int  # combien de traîtres ont été démasqués (0..deviant_count)
+    caught_count: int  # traîtres démasqués PAR TOI (motion humaine) — le crédit de détection
+    benched_count: int  # traîtres mis au banc (par qui que ce soit) — la menace neutralisée
     levels: list[float]  # d(r) par round joué (courbe à superposer à U)
     u_history: list[float]
     acts: list[DriftActView]  # les indices produits (à relire au scrubber)
@@ -2916,11 +2924,13 @@ def compute_drift_reveal(game_id: str, store: GameStore) -> DriftRevealView:
                 profile=prof,
                 profile_label=params.profiles[prof].label,
                 caught_round=caught_rounds.get(d),
+                caught_by_you=d in human_caught,
             )
             for d, prof in deviant_pairs
         ],
         deviant_count=len(deviant_pairs),
         caught_count=caught_count,
+        benched_count=len(caught_rounds),
         levels=[
             float((r.judge.get("drift") or {}).get("level") or drift_game.drift_level(r.round_no))
             for r in rounds

@@ -17,23 +17,34 @@ export function revealWorldSentence(t: Translate, verdict: string): string {
   return t(`reveal.monde.${verdict}`);
 }
 
-/** La phrase de détection — dépend du nombre RÉEL de traîtres (révélé) et de combien on
- * en a démasqués, plus une mention des faux positifs s'il y en a. */
+/** La phrase de détection — VÉRIDIQUE (jamais « resté dans l'ombre » d'un traître pourtant
+ * mis au banc). Dépend du nombre RÉEL de traîtres (révélé), de combien TU en as démasqués
+ * (`caught`), de combien ont été mis au banc par qui que ce soit (`benched` ≥ `caught`),
+ * plus une mention des faux positifs. Le « reste » non démasqué par toi n'est dit « dans
+ * l'ombre » que s'il n'a JAMAIS été mis au banc. */
 export function revealDetectionSentence(
   t: Translate,
   {
     deviants,
     caught,
+    benched,
     falsePositives,
-  }: { deviants: number; caught: number; falsePositives: number },
+  }: { deviants: number; caught: number; benched: number; falsePositives: number },
 ): string {
+  const restBenchedByOther = benched > caught; // des traîtres non démasqués par toi mais tombés
   let key: string;
   if (caught >= deviants) {
     key = deviants <= 1 ? "reveal.detection.tous_1" : "reveal.detection.tous_2";
   } else if (caught <= 0) {
-    key = deviants <= 1 ? "reveal.detection.aucun_1" : "reveal.detection.aucun_2";
+    key = restBenchedByOther
+      ? "reveal.detection.aucun_neutralise"
+      : deviants <= 1
+        ? "reveal.detection.aucun_1"
+        : "reveal.detection.aucun_2";
   } else {
-    key = "reveal.detection.partiel";
+    key = restBenchedByOther
+      ? "reveal.detection.partiel_neutralise"
+      : "reveal.detection.partiel";
   }
   let sentence = t(key)
     .replace("{caught}", String(caught))

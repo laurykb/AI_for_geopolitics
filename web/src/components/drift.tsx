@@ -189,8 +189,9 @@ function PromiseKeptReveal({ reveal }: { reveal: DriftReveal }) {
   );
 }
 
-/** RG-3 — la ligne d'un traître révélé (avatar, profil, et l'issue : pris à tel round,
- * ou resté dans l'ombre). Le nombre de traîtres (1 ou 2) était caché jusqu'ici. */
+/** RG-3 — la ligne d'un traître révélé (avatar, profil, et son issue VÉRIDIQUE, en trois
+ * états qui ne se contredisent jamais avec le titre : démasqué PAR TOI, mis au banc
+ * autrement, ou resté dans l'ombre). Le nombre de traîtres (1 ou 2) était caché jusqu'ici. */
 function DeviantLine({ dev }: { dev: DriftReveal["deviants"][number] }) {
   const meta = speakerMeta(dev.deviant);
   return (
@@ -198,13 +199,28 @@ function DeviantLine({ dev }: { dev: DriftReveal["deviants"][number] }) {
       <SpeakerAvatar id={dev.deviant} size={28} />
       <strong>{meta.label}</strong>
       <Pill tone="bad">{dev.profile_label}</Pill>
-      {dev.caught_round != null ? (
-        <Pill tone="good">démasqué au round {dev.caught_round}</Pill>
-      ) : (
+      {dev.caught_round == null ? (
         <Pill tone="bad">resté dans l&apos;ombre</Pill>
+      ) : dev.caught_by_you ? (
+        <Pill tone="good">démasqué par toi au round {dev.caught_round}</Pill>
+      ) : (
+        <Pill tone="warn">mis au banc au round {dev.caught_round} (pas par toi)</Pill>
       )}
     </p>
   );
+}
+
+/** RG-3 — titre VÉRIDIQUE de la révélation, cohérent avec les DeviantLine : ne dit jamais
+ * « resté dans l'ombre » d'un traître pourtant mis au banc, ni « démasqué » sans crédit. */
+function revealTitle(count: number, caught: number, benched: number): string {
+  if (caught === count) {
+    return count > 1 ? `Tu as démasqué les ${count} traîtres` : "Le traître a été démasqué";
+  }
+  if (benched === count) return "La menace a été neutralisée — mais pas par toi";
+  if (benched === 0) {
+    return count > 1 ? "Les traîtres sont restés dans l'ombre" : "Le traître est resté dans l'ombre";
+  }
+  return `Il y avait ${count} traîtres — tu en as démasqué ${caught}`;
 }
 
 export function DriftRevealPanel({
@@ -214,15 +230,11 @@ export function DriftRevealPanel({
   reveal: DriftReveal;
   onJumpToRound?: (roundNo: number) => void;
 }) {
+  const t = useT();
   const count = reveal.deviant_count;
   const caught = reveal.caught_count;
-  // Titre honnête au nombre RÉVÉLÉ : « 1 traître » / « 2 traîtres », et combien démasqués.
-  const title =
-    count > 1
-      ? `Il y avait ${count} traîtres — tu en as démasqué ${caught}`
-      : caught > 0
-        ? "Le traître a été démasqué"
-        : "Le traître est resté dans l'ombre";
+  const benchedByOther = reveal.benched_count - caught; // tombés, mais pas grâce à toi
+  const title = revealTitle(count, caught, reveal.benched_count);
   return (
     <Panel className="border-l-2 border-l-bad">
       <PanelTitle
@@ -234,7 +246,7 @@ export function DriftRevealPanel({
             <span className="block font-mono text-2xl font-semibold tabular-nums text-accent-bright">
               {fmt(reveal.score.total)}
             </span>
-            <span className="text-xs text-fg-muted">{reveal.score.grade}</span>
+            <span className="text-xs text-fg-muted">{t(`reveal.grade.${reveal.score.grade_slug}`)}</span>
           </span>
         }
       />
@@ -322,7 +334,9 @@ export function DriftRevealPanel({
           <PromiseKeptReveal reveal={reveal} />
           <p className="border-t border-edge pt-3 text-xs leading-relaxed text-fg-faint">
             {caught > 0 &&
-              `${caught} traître${caught > 1 ? "s" : ""} démasqué${caught > 1 ? "s" : ""} sur ${count}. `}
+              `${caught} traître${caught > 1 ? "s" : ""} démasqué${caught > 1 ? "s" : ""} sur ${count} par toi. `}
+            {benchedByOther > 0 &&
+              `${benchedByOther} mis au banc autrement (pas à ton crédit). `}
             {reveal.false_accusations > 0 &&
               `${reveal.false_accusations} pays loyal${reveal.false_accusations > 1 ? "s" : ""} suspendu${reveal.false_accusations > 1 ? "s" : ""} à tort (ça coûte). `}
             {reveal.rejected_motions > 0 &&

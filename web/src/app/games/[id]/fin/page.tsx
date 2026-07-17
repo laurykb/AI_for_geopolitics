@@ -260,6 +260,7 @@ function DriftSurface({
     ? revealDetectionSentence(t, {
         deviants: drift.deviant_count,
         caught: drift.caught_count,
+        benched: drift.benched_count,
         falsePositives: drift.false_positives,
       })
     : "";
@@ -267,7 +268,7 @@ function DriftSurface({
     <Panel>
       <PanelTitle
         kicker={t("reveal.kicker")}
-        title={drift.grade}
+        title={t(`reveal.grade.${drift.grade_slug}`)}
         right={
           <span className="text-right">
             <span className="block font-mono text-3xl font-semibold tabular-nums text-accent-bright">

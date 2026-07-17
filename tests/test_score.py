@@ -125,6 +125,34 @@ def test_non_detector_is_scored_on_world_only_not_punished():
     assert player.total < spec.total
 
 
+def test_non_detector_world_bar_matches_the_total_on_100():
+    """Fix — la barre « monde » du Spectateur doit se lire sur la même échelle que le
+    titre : sinon on afficherait « 30 / 60 » à côté de « 50 / 100 »."""
+    for u in (0.85, 0.5, 0.2):
+        s = mixed_score(u_final=u, deviants=1, caught=0, false_positives=0, detects=False)
+        assert s.world == s.total  # même valeur…
+        assert s.world_max == 100.0  # …et même échelle que le total
+
+
+def test_grade_exposes_a_stable_language_neutral_slug():
+    """Fix — la note de fin expose un SLUG de grade (i18n côté front), pas seulement un
+    label FR qui fuirait tel quel dans l'UI anglaise."""
+    def slug(u: float, caught: int = 1) -> str:
+        return mixed_score(u_final=u, deviants=1, caught=caught, false_positives=0).grade_slug
+
+    assert slug(1.0) == "diplomate"
+    assert slug(0.6) == "stratege"
+    assert slug(0.4) == "conseiller"
+    assert slug(0.15, caught=0) == "depasse"
+
+
+def test_victory_threshold_is_a_calibrated_default():
+    """Fix — la victoire est désormais fondée sur la note mixte ≥ un seuil (source de
+    vérité unique, valable tous rôles)."""
+    assert ScoreWeights().victory_threshold == 55.0
+    assert load_weights().victory_threshold == 55.0
+
+
 # --- robustesse -------------------------------------------------------------------------
 
 

@@ -249,6 +249,70 @@ def test_daily_challenge_seeds_same_traitors_for_everyone(drift_client):
     assert {d["deviant"] for d in r2["deviants"]} == expected
 
 
+def test_reveal_is_truthful_when_a_traitor_is_benched_by_an_ai(drift_client):
+    """Fix — un traître mis au banc par une motion d'une SI (filed_by=pays) est TOMBÉ
+    (caught_round non nul) mais PAS démasqué par le joueur : la révélation doit distinguer
+    « mis au banc » de « démasqué par toi » de « resté dans l'ombre », sans se contredire.
+    Le joueur n'en a pas le crédit (détection 0), mais la menace est bien neutralisée."""
+    from app.game_api import compute_drift_reveal
+    from storage.game_store import GameRecord, RoundRecord, SessionSnapshot
+
+    _client, store = drift_client
+    gid = "ai-bench"
+    store.add_game(
+        GameRecord(id=gid, scenario="demo", horizon=1, mode="classic",
+                   drift_enabled=True, created_at="t")
+    )
+    store.save_session_snapshot(
+        SessionSnapshot(game_id=gid, world={"countries": {c: {} for c in COUNTRIES}})
+    )
+    deviant = drift_game.assign(gid, sorted(COUNTRIES))[0]
+    filer = next(c for c in COUNTRIES if c != deviant)  # une SI, pas l'humain
+    store.add_round(
+        RoundRecord(
+            id="r1", game_id=gid, round_no=1,
+            judge={"suspension": {"country": deviant, "upheld": True, "filed_by": filer}},
+            trajectory={"utopia": 0.7},
+        )
+    )
+    reveal = compute_drift_reveal(gid, store)
+    dv = next(d for d in reveal.deviants if d.deviant == deviant)
+    assert dv.caught_round == 1  # il est bien tombé…
+    assert dv.caught_by_you is False  # …mais pas grâce à toi
+    assert reveal.benched_count == 1  # la menace a été neutralisée
+    assert reveal.caught_count == 0  # le joueur n'a pas le mérite → détection nulle
+    assert reveal.score.detection == 0
+
+
+def test_victory_is_based_on_the_mixed_total_for_all_roles(drift_client):
+    """Fix (defects 1b + 2) — la VICTOIRE se fonde sur la note mixte ≥ seuil (source de
+    vérité unique), plus sur `caught_count>0`. Un Spectateur (ne motionne jamais) peut
+    donc gagner si le monde finit bien — sinon il ne gagnait JAMAIS (régression RG-3)."""
+    from app.game_api import _victory
+    from storage.game_store import GameRecord, RoundRecord, SessionSnapshot
+
+    _client, store = drift_client
+
+    def _finished_game(gid: str, role: str, utopia: float) -> GameRecord:
+        store.add_game(
+            GameRecord(id=gid, scenario="demo", horizon=1, mode="classic",
+                       drift_enabled=True, role=role, created_at="t")
+        )
+        store.save_session_snapshot(
+            SessionSnapshot(game_id=gid, world={"countries": {c: {} for c in COUNTRIES}})
+        )
+        store.add_round(RoundRecord(id=f"{gid}-r1", game_id=gid, round_no=1,
+                                    trajectory={"utopia": utopia}))
+        return store.get_game(gid)
+
+    # Spectateur, monde au sommet → note = monde seul = 100 → VICTOIRE (avant : jamais).
+    win = _finished_game("spec-win", "spectator", 0.85)
+    assert _victory(win, 0.85, store) is True
+    # Conseil, monde effondré, aucun traître pris → note basse → pas de victoire.
+    lose = _finished_game("council-lose", "council", 0.2)
+    assert _victory(lose, 0.2, store) is False
+
+
 def test_reveal_gates(drift_client):
     client, _ = drift_client
     # RG-3 — le Classique arme la Dérive dès 3 pays ; une partie SANS Dérive = un duo.
