@@ -1,10 +1,9 @@
 """API FastAPI (backend).
 
 L'UI humaine est le front Next.js (`web/`), branché sur l'API de jeu SSE
-(`app/game_api.py`) et l'API marché (`app/market_api.py`). L'ancienne app
-Streamlit est archivée dans `legacy/`.
+(`app/game_api.py`) et l'API marché (`app/market_api.py`).
 
-Lancer : `uvicorn app.main:app`.
+Lancer : `uvicorn app.main:app` (ou `python serve.py` pour l'API + le front).
 """
 
 from __future__ import annotations

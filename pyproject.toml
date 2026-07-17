@@ -16,12 +16,9 @@ dependencies = [
 [project.optional-dependencies]
 # Embeddings + reranking sur CPU pour le RAG réel (tire torch). Tests offline sans cet extra.
 rag = ["sentence-transformers>=2.2"]
-# App Streamlit archivée (legacy/). Tests offline sans cet extra (on teste legacy.game).
-# plotly : carte du monde (choroplèthe hors-ligne, géométries intégrées).
-ui = ["streamlit>=1.30", "plotly>=5.20"]
 
 [tool.setuptools.packages.find]
-include = ["app*", "core*", "agents*", "inference*", "ingestion*", "rag*", "simulation*", "storage*", "legacy*"]
+include = ["app*", "core*", "agents*", "inference*", "ingestion*", "rag*", "simulation*", "storage*"]
 
 [tool.ruff]
 line-length = 100
