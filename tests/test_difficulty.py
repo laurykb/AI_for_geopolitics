@@ -65,3 +65,30 @@ def test_delta_params_amplitude_by_level():
     # L'amplitude gamefeel (G9 §4) est indexée sur le niveau.
     assert delta_params("beginner").amplitude_total == 0.4
     assert delta_params("expert").amplitude_total == 0.6
+
+
+def test_deviant_cap_by_level():
+    # RG-5 — « Débutant imperdable » : le niveau plafonne le nombre de traîtres.
+    assert load_difficulty("beginner").max_deviants == 1
+    assert load_difficulty("intermediate").max_deviants == 2
+    assert load_difficulty("expert").max_deviants == 2
+
+
+def test_drift_params_caps_deviants_for_beginner():
+    # Le plafond du niveau descend jusque dans le tirage du nombre de traîtres :
+    # Débutant plafonne `deviants.max` à 1, les autres gardent 2 ; le minimum reste 1
+    # (il y a TOUJOURS quelqu'un à démasquer).
+    assert drift_params("beginner").deviants.max == 1
+    assert drift_params("beginner").deviants.min == 1
+    assert drift_params("intermediate").deviants.max == 2
+    assert drift_params("expert").deviants.max == 2
+
+
+def test_beginner_params_force_single_deviant_draw():
+    # « g0 » tire 2 traîtres au défaut (Intermédiaire) ; en Débutant, le plafond le ramène
+    # à 1, quel que soit le tirage seedé.
+    countries = ["usa", "china", "iran", "france", "egypt"]
+    assert drift_game.deviant_count("g0", 5, drift_game.load_params()) == 2
+    assert drift_game.deviant_count("g0", 5, drift_params("beginner")) == 1
+    assert len(drift_game.assign_deviants("g0", countries, params=drift_params("beginner"))) == 1
+    assert len(drift_game.assign_deviants("g0", countries)) == 2

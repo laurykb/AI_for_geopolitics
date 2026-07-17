@@ -892,10 +892,21 @@ def _drift_assignment(seed: str, countries: list[str], play_as: str | None) -> t
 
 
 def _drift_deviants(
-    seed: str, countries: list[str], play_as: str | None
+    seed: str, countries: list[str], play_as: str | None, difficulty: str | None = None
 ) -> list[tuple[str, str]]:
-    """Tous les traîtres (1 ou 2) et leurs profils — nombre CACHÉ seedé (RG-3)."""
-    return drift_game.assign_deviants(seed, sorted(countries), exclude=play_as)
+    """Tous les traîtres (1 ou 2) et leurs profils — nombre CACHÉ seedé (RG-3).
+
+    RG-5 — la difficulté module le NOMBRE : Débutant = au plus 1 traître (« imperdable »,
+    pédagogie). GARDE-FOU du Défi du jour : pour un scénario `daily:<date>` (seed == le
+    scénario, cf. `_drift_seed`), le nombre est seedé sur le SCÉNARIO pour être IDENTIQUE
+    à tous les joueurs du même Défi (classement du jour équitable) ; la difficulté, qui est
+    PAR JOUEUR, ne doit alors PAS le changer. On n'applique donc le plafond du niveau
+    qu'HORS Défi. `difficulty=None` (appels sans contexte de partie) = comportement
+    historique (nombre plein, jusqu'à 2)."""
+    params = None
+    if difficulty is not None and not seed.startswith(daily_mod.DATE_PREFIX):
+        params = difficulty_mod.drift_params(difficulty)
+    return drift_game.assign_deviants(seed, sorted(countries), exclude=play_as, params=params)
 
 
 def _storyteller_signals(
@@ -1253,7 +1264,10 @@ def _prepare_drift(
         return evidence, vote_notes, gm_rubric
     # G11-d §4 — la difficulté pilote la vitesse de dérive k et le seuil d'actes du juge.
     dparams = difficulty_mod.drift_params(session.difficulty)
-    deviants = _drift_deviants(seed, sorted(session.world.countries), session.human_country)
+    # RG-5 — …et le NOMBRE de traîtres (Débutant = 1 hors Défi).
+    deviants = _drift_deviants(
+        seed, sorted(session.world.countries), session.human_country, session.difficulty
+    )
     # Le pivot sert le GM-Storyteller (couverture d'UN traître mis en scène) et le vote.
     deviant, profile = deviants[0]
     directives = drift_game.round_directives(
@@ -2337,7 +2351,10 @@ def _finish_drift_if_over(run: RoundRun) -> Iterator[str]:
         return
     deviant_ids = {
         d for d, _ in _drift_deviants(
-            run.session.drift_seed, sorted(run.session.world.countries), run.session.human_country
+            run.session.drift_seed,
+            sorted(run.session.world.countries),
+            run.session.human_country,
+            run.session.difficulty,
         )
     }
     caught_ids = {
@@ -2530,7 +2547,9 @@ def create_game(
             }
         )
     if drift_enabled and temperament_mod.drift_facade(drift_seed):
-        for deviant, _ in _drift_deviants(drift_seed, sorted(world.countries), play_as):
+        for deviant, _ in _drift_deviants(
+            drift_seed, sorted(world.countries), play_as, body.difficulty
+        ):
             assignments[deviant] = "colombe"
     for cid, assigned in assignments.items():
         world.countries[cid].temperament = assigned
@@ -2843,7 +2862,11 @@ def compute_drift_reveal(game_id: str, store: GameStore) -> DriftRevealView:
     game = store.get_game(game_id)
     seed = _drift_seed(game.scenario, game_id) if game else game_id
     countries = sorted(snapshot.world.get("countries", {}))
-    deviant_pairs = _drift_deviants(seed, countries, snapshot.play_as)
+    # RG-5 — recompte les traîtres avec la difficulté de la partie (Débutant = 1 hors Défi) :
+    # le score de fin doit être cohérent avec le round et la fin de partie.
+    deviant_pairs = _drift_deviants(
+        seed, countries, snapshot.play_as, game.difficulty if game else None
+    )
     deviant, profile = deviant_pairs[0]  # traître PIVOT (récit, courbes, vote)
     deviant_ids = {d for d, _ in deviant_pairs}
     params = drift_game.load_params()
@@ -3079,7 +3102,10 @@ def buy_intel(
             # (pas seulement le pivot), sinon l'outil rendrait un traître #2 « propre ».
             deviant_ids = {
                 d for d, _ in _drift_deviants(
-                    session.drift_seed, sorted(session.world.countries), session.human_country
+                    session.drift_seed,
+                    sorted(session.world.countries),
+                    session.human_country,
+                    session.difficulty,
                 )
             }
             acts = _drift_acts(store.list_rounds(game_id))

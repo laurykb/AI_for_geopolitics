@@ -322,3 +322,53 @@ def test_reveal_gates(drift_client):
 
     game = _create(client)
     assert client.get(f"/api/games/{game['id']}/drift/reveal").status_code == 409
+
+
+def test_beginner_caps_deviants_but_daily_is_scenario_seeded():
+    """RG-5 — Débutant = au plus 1 traître (« imperdable »). GARDE-FOU du Défi : la
+    difficulté est PAR JOUEUR, mais le nombre de traîtres du Défi du jour est seedé sur le
+    SCÉNARIO (mêmes traîtres pour tous). Donc la difficulté plafonne HORS Défi seulement ;
+    pour un scénario `daily:<date>`, elle ne change RIEN au nombre."""
+    from app.game_api import _drift_deviants
+
+    drift_game.load_params.cache_clear()  # paramètres réels (max 2), pas les params de test
+    countries = ["usa", "china", "iran", "france", "egypt"]
+    # « g0 » tire 2 traîtres au défaut (aucune difficulté / Intermédiaire) …
+    assert len(_drift_deviants("g0", countries, None)) == 2
+    assert len(_drift_deviants("g0", countries, None, difficulty="intermediate")) == 2
+    # … et Débutant le plafonne à 1 hors Défi (imperdable, pédagogie).
+    assert len(_drift_deviants("g0", countries, None, difficulty="beginner")) == 1
+
+    # GARDE-FOU : un Défi du jour qui tire 2 traîtres les GARDE, même en Débutant —
+    # sinon deux joueurs du même Défi affronteraient des Dérives différentes.
+    daily = "daily:2026-01-04"  # graine scénario qui tire 2 au défaut
+    assert len(_drift_deviants(daily, countries, None)) == 2
+    assert len(_drift_deviants(daily, countries, None, difficulty="beginner")) == 2
+
+
+def test_reveal_respects_beginner_deviant_cap():
+    """La révélation (le score de fin) recompte les traîtres avec la difficulté de la
+    partie : une partie Débutant dont la graine tirerait 2 traîtres n'en révèle qu'UN
+    (câblage cohérent bout-en-bout avec le round et la fin de partie). Params RÉELS
+    (max 2) pour rendre visible la distinction 2 vs 1."""
+    from app.game_api import compute_drift_reveal
+    from storage.game_store import GameRecord, SessionSnapshot, SQLiteGameStore
+
+    drift_game.load_params.cache_clear()
+    store = SQLiteGameStore(":memory:")
+    countries = ["usa", "china", "iran", "france", "egypt"]
+
+    def _reveal(gid: str, level: str):
+        store.add_game(
+            GameRecord(id=gid, scenario="demo", horizon=1, mode="classic",
+                       drift_enabled=True, difficulty=level, created_at="t")
+        )
+        store.save_session_snapshot(
+            SessionSnapshot(game_id=gid, world={"countries": {c: {} for c in countries}})
+        )
+        return compute_drift_reveal(gid, store)
+
+    # « g1 » tire 2 traîtres au défaut → une partie Intermédiaire en révèle 2 …
+    assert len(_reveal("g1", "intermediate").deviants) == 2
+    # … mais « g0 » (2 au défaut aussi) joué en Débutant n'en révèle qu'UN (plafonné).
+    assert len(_reveal("g0", "beginner").deviants) == 1

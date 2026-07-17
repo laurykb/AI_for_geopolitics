@@ -37,6 +37,11 @@ class DifficultyParams(BaseModel):
     drift_k: float = 0.12  # vitesse de dérive (G3)
     si_context: str = "normal"  # reduced | normal | full (résumé des actions du joueur)
     amplitude: float = 0.5  # amplitude des deltas par partie (G9 §4)
+    # RG-5 — plafond de traîtres du niveau : Débutant = 1 (« imperdable », pédagogie),
+    # Intermédiaire/Expert = 2 (le nombre reste caché 1 ou 2). Ce plafond ne s'applique
+    # qu'HORS Défi du jour : le nombre du Défi est seedé sur le scénario (identique pour
+    # tous), la difficulté — qui est par joueur — ne doit pas le changer (cf. _drift_deviants).
+    max_deviants: int = 2
 
 
 # Défauts canoniques = spec §4 (params.json les surcharge par niveau).
@@ -48,6 +53,7 @@ _DEFAULTS: dict[str, dict] = {
         "drift_k": 0.09,
         "si_context": "reduced",
         "amplitude": 0.4,
+        "max_deviants": 1,  # RG-5 — Débutant imperdable : un seul traître à démasquer
     },
     "intermediate": {
         "free_brief": 0,
@@ -56,6 +62,7 @@ _DEFAULTS: dict[str, dict] = {
         "drift_k": 0.12,
         "si_context": "normal",
         "amplitude": 0.5,
+        "max_deviants": 2,
     },
     "expert": {
         "free_brief": 0,
@@ -64,6 +71,7 @@ _DEFAULTS: dict[str, dict] = {
         "drift_k": 0.16,
         "si_context": "full",
         "amplitude": 0.6,
+        "max_deviants": 2,
     },
 }
 
@@ -83,15 +91,20 @@ def load_difficulty(level: str) -> DifficultyParams:
 
 
 def drift_params(level: str) -> drift_game.DriftParams:
-    """Params drift du niveau : vitesse k et seuil d'actes du juge (§4). Le seuil est
-    `open_acts` — la porte « preuves » d'une motion (`evidence_met`), câblée dans le round.
-    `model_copy` imbriqué : les défauts drift `lru_cache`d ne sont JAMAIS mutés."""
+    """Params drift du niveau : vitesse k, seuil d'actes du juge, plafond de traîtres (§4,
+    RG-5). Le seuil est `open_acts` — la porte « preuves » d'une motion (`evidence_met`),
+    câblée dans le round ; `deviants.max` plafonne le nombre caché (Débutant = 1). Le
+    minimum reste 1 (toujours quelqu'un à démasquer). `model_copy` imbriqué : les défauts
+    drift `lru_cache`d ne sont JAMAIS mutés."""
     d = load_difficulty(level)
     base = drift_game.load_params()
     return base.model_copy(
         update={
             "k": d.drift_k,
             "judge": base.judge.model_copy(update={"open_acts": d.judge_min_acts}),
+            "deviants": base.deviants.model_copy(
+                update={"max": min(base.deviants.max, d.max_deviants)}
+            ),
         }
     )
 
