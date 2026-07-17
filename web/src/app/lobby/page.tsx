@@ -16,7 +16,7 @@ import { SpeakerAvatar } from "@/components/avatar";
 import { useSettings, useT } from "@/components/settings-provider";
 import { Globe } from "@/components/globe";
 import { SelectMap, type Fiche } from "@/components/select-map";
-import { Banner, Eyebrow, Panel, PanelTitle, Spinner, Switch } from "@/components/ui";
+import { Banner, Eyebrow, Panel, PanelTitle, Segmented, Spinner, Switch } from "@/components/ui";
 import { createGame, getCampaign, getSources, humanizeError, startChapter } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
@@ -509,22 +509,13 @@ function ModeStep({
           </label>
           <div>
             <span className="mb-1 block text-xs text-fg-muted">{t("lobby.difficulte")}</span>
-            <div className="flex gap-1 rounded-lg border border-edge bg-surface-2 p-1 text-sm">
-              {DIFFICULTIES.map((d) => (
-                <button
-                  key={d}
-                  disabled={campaign}
-                  onClick={() => setSettings({ ...settings, difficulty: d })}
-                  className={`flex-1 rounded-md px-3 py-1.5 font-medium transition-colors ${
-                    settings.difficulty === d
-                      ? "bg-accent text-background"
-                      : "text-fg-muted hover:text-foreground"
-                  }`}
-                >
-                  {t(`lobby.diff.${d}.titre`)}
-                </button>
-              ))}
-            </div>
+            <Segmented
+              ariaLabel={t("lobby.difficulte")}
+              value={settings.difficulty}
+              disabled={campaign}
+              onChange={(d) => setSettings({ ...settings, difficulty: d })}
+              options={DIFFICULTIES.map((d) => ({ value: d, label: t(`lobby.diff.${d}.titre`) }))}
+            />
             <p className="mt-1.5 text-xs text-fg-faint">
               {t(`lobby.diff.${settings.difficulty}.desc`)}
             </p>
@@ -551,21 +542,13 @@ function ModeStep({
                     <span>{t("lobby.table-titre")}</span>
                     <span className="text-fg-faint">{t("lobby.table-pastilles")}</span>
                   </span>
-                  <div className="flex gap-1 rounded-lg border border-edge bg-surface-2 p-1 text-sm">
-                    {TABLES.map((tbl) => (
-                      <button
-                        key={tbl.value}
-                        onClick={() => setSettings({ ...settings, table: tbl.value })}
-                        className={`flex-1 cursor-pointer rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
-                          (settings.table ?? "equilibree") === tbl.value
-                            ? "bg-accent text-background"
-                            : "text-fg-muted hover:text-foreground"
-                        }`}
-                      >
-                        {tbl.label}
-                      </button>
-                    ))}
-                  </div>
+                  <Segmented
+                    size="sm"
+                    ariaLabel={t("lobby.table-titre")}
+                    value={settings.table ?? "equilibree"}
+                    onChange={(v) => setSettings({ ...settings, table: v })}
+                    options={TABLES}
+                  />
                   <p className="mt-1.5 text-xs text-fg-faint">
                     {TABLES.find((tbl) => tbl.value === (settings.table ?? "equilibree"))?.desc}
                   </p>

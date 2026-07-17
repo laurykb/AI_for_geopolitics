@@ -11,7 +11,16 @@ import { useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { useSettings } from "@/components/settings-provider";
 import { useTour } from "@/components/tour";
-import { Banner, ConfirmDialog, Eyebrow, Panel, PanelTitle, Spinner, Switch } from "@/components/ui";
+import {
+  Banner,
+  ConfirmDialog,
+  Eyebrow,
+  Panel,
+  PanelTitle,
+  Segmented,
+  Spinner,
+  Switch,
+} from "@/components/ui";
 import { deletePlayer, humanizeError } from "@/lib/api";
 import { getAuth } from "@/lib/auth";
 import type { Lang } from "@/lib/i18n";
@@ -52,22 +61,12 @@ export default function ReglagesPage() {
           title={t("reglages.langue-ui")}
           hint={t("reglages.langue-hint")}
         />
-        <div className="flex gap-1 rounded-lg border border-edge bg-surface-2 p-1 text-sm">
-          {LANGS.map((l) => (
-            <button
-              key={l.value}
-              onClick={() => setLang(l.value)}
-              aria-pressed={settings.lang === l.value}
-              className={`flex-1 cursor-pointer rounded-md px-3 py-1.5 font-medium transition-colors ${
-                settings.lang === l.value
-                  ? "bg-accent text-background"
-                  : "text-fg-muted hover:text-foreground"
-              }`}
-            >
-              {l.label}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          options={LANGS}
+          value={settings.lang}
+          onChange={setLang}
+          ariaLabel={t("reglages.langue-ui")}
+        />
       </Panel>
 
       {/* --- 2. Confort & performances --------------------------------------------- */}
@@ -79,22 +78,12 @@ export default function ReglagesPage() {
         />
         <div className="space-y-4">
           <div>
-            <div className="flex gap-1 rounded-lg border border-edge bg-surface-2 p-1 text-sm">
-              {PERFS.map((p) => (
-                <button
-                  key={p.value}
-                  onClick={() => setPerf(p.value)}
-                  aria-pressed={settings.perf === p.value}
-                  className={`flex-1 cursor-pointer rounded-md px-3 py-1.5 font-medium transition-colors ${
-                    settings.perf === p.value
-                      ? "bg-accent text-background"
-                      : "text-fg-muted hover:text-foreground"
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
+            <Segmented
+              options={PERFS}
+              value={settings.perf}
+              onChange={setPerf}
+              ariaLabel={t("reglages.confort-titre")}
+            />
             <p className="mt-1.5 text-xs text-fg-faint">
               {PERFS.find((p) => p.value === settings.perf)?.desc}
             </p>

@@ -10,7 +10,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { Globe } from "@/components/globe";
 import { useT } from "@/components/settings-provider";
-import { Banner, Spinner } from "@/components/ui";
+import { Banner, Segmented, Spinner } from "@/components/ui";
 import { usePlanetLaunch } from "@/hooks/usePlanetLaunch";
 import { getAuth } from "@/lib/auth";
 
@@ -67,22 +67,19 @@ export default function ConnexionPage() {
         className="w-full max-w-sm space-y-3 rounded-xl border border-edge bg-surface p-5 text-left shadow-[inset_0_1px_0_0_rgba(248,250,252,0.04),0_12px_32px_-20px_rgba(0,0,0,0.8)]"
       >
         {/* Bascule connexion / création */}
-        <div className="mb-1 flex gap-1 rounded-lg border border-edge bg-surface-2 p-1 text-sm">
-          {(["signin", "signup"] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => {
-                setMode(m);
-                setError(null);
-              }}
-              className={`flex-1 cursor-pointer rounded-md px-3 py-1.5 font-medium transition-colors ${
-                mode === m ? "bg-accent text-background" : "text-fg-muted hover:text-foreground"
-              }`}
-            >
-              {m === "signin" ? "Se connecter" : "Créer un compte"}
-            </button>
-          ))}
+        <div className="mb-1">
+          <Segmented
+            ariaLabel="Connexion ou création de compte"
+            value={mode}
+            onChange={(m) => {
+              setMode(m);
+              setError(null);
+            }}
+            options={[
+              { value: "signin", label: "Se connecter" },
+              { value: "signup", label: "Créer un compte" },
+            ]}
+          />
         </div>
 
         <label className="block text-sm">

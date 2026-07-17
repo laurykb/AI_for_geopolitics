@@ -234,6 +234,55 @@ export function Switch({
   );
 }
 
+/** Contrôle segmenté du kit (choix unique) : une piste bordée, un onglet par option,
+ * l'actif en or. Extrait de cinq recopies (langue, performances, connexion, difficulté,
+ * composition de la table) qui divergeaient sur le a11y — ici toutes gagnent le
+ * `role=group` + `aria-pressed`. Le liseré de sélection et les tons suivent le kit.
+ * `size="sm"` : version compacte (px réduit) pour les pastilles serrées. */
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+  ariaLabel,
+  disabled = false,
+  size = "md",
+}: {
+  options: readonly { value: T; label: ReactNode; disabled?: boolean }[];
+  value: T;
+  onChange: (value: T) => void;
+  ariaLabel: string;
+  disabled?: boolean;
+  size?: "sm" | "md";
+}) {
+  const pad = size === "sm" ? "px-2 py-1.5 text-xs" : "px-3 py-1.5";
+  return (
+    <div
+      role="group"
+      aria-label={ariaLabel}
+      className="flex gap-1 rounded-lg border border-edge bg-surface-2 p-1 text-sm"
+    >
+      {options.map((o) => {
+        const active = o.value === value;
+        const off = disabled || o.disabled;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            onClick={() => onChange(o.value)}
+            aria-pressed={active}
+            disabled={off}
+            className={`flex-1 rounded-md font-medium transition-colors ${pad} ${
+              active ? "bg-accent text-background" : "text-fg-muted hover:text-foreground"
+            } ${off ? "cursor-not-allowed" : "cursor-pointer"}`}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Dialogue de confirmation du kit — remplace confirm() natif (cohérence + clavier).
  * Fond cliquable et Échap = annuler ; le bouton Annuler prend le focus par défaut. */
 export function ConfirmDialog({
