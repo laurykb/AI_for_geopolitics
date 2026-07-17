@@ -24,6 +24,15 @@ chroma/
 *.sqlite
 *.db
 
+# Node / web (le projet Node vit dans web/ ; voir aussi web/.gitignore — défensif ici)
+node_modules/
+.next/
+
+# Archives (copies de travail, exports tar — ne jamais committer)
+*.tar
+*.tgz
+*.tar.gz
+
 # OS / IDE
 .DS_Store
 .idea/
