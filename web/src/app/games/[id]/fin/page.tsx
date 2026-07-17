@@ -12,7 +12,7 @@ import { EventCard } from "@/components/event-card";
 import { EventTimeline } from "@/components/event-timeline";
 import { CommuniquePanel, VerdictPanel } from "@/components/judge";
 import { useT } from "@/components/settings-provider";
-import { Banner, Hint, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
+import { Banner, Eyebrow, Hint, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
 import { getDaily, getGame, humanizeError } from "@/lib/api";
 import { dailyShareText } from "@/lib/daily";
 import { speakerMeta } from "@/lib/countries";
@@ -82,9 +82,9 @@ export default function FinPage({ params }: { params: Promise<{ id: string }> })
     <div className="space-y-8">
       {/* 1. Bandeau résultat */}
       <header className="text-center">
-        <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-fg-faint">
+        <Eyebrow>
           {t("fin.kicker")} {r.forfeit && t("fin.forfait")}
-        </p>
+        </Eyebrow>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
           {t("fin.penche")} <span className={tone}>{verdictLabel}</span>
         </h1>
@@ -265,23 +265,32 @@ function DriftSurface({
       })
     : "";
   return (
-    <Panel>
-      <PanelTitle
-        kicker={t("reveal.kicker")}
-        title={t(`reveal.grade.${drift.grade_slug}`)}
-        right={
-          <span className="text-right">
-            <span className="block font-mono text-3xl font-semibold tabular-nums text-accent-bright">
-              {fmt(drift.score)}
-            </span>
-            <span className="text-xs text-fg-muted">/ 100</span>
+    <Panel className="border-l-2 border-l-bad">
+      <Eyebrow>{t("reveal.kicker")}</Eyebrow>
+      {/* Le moment fort : la note en médaillon, le grade et l'histoire en deux phrases. */}
+      <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-center sm:gap-6">
+        <div
+          className="grid h-24 w-24 shrink-0 place-items-center rounded-2xl border border-accent-bright/40 bg-surface-2 shadow-[0_0_28px_-8px_rgba(234,179,8,0.4)]"
+          role="img"
+          aria-label={`${t("reveal.kicker")} : ${fmt(drift.score)} / 100`}
+        >
+          <span className="font-mono text-4xl font-semibold leading-none tabular-nums text-accent-bright">
+            {fmt(drift.score)}
           </span>
-        }
-      />
-      <p className="text-base leading-relaxed">
-        {world} {detection}
-      </p>
-      <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-faint">
+          <span className="mt-1 text-[11px] text-fg-muted">/ 100</span>
+        </div>
+        <div className="min-w-0 flex-1 space-y-2">
+          <h2 className="text-xl font-semibold tracking-tight">
+            {t(`reveal.grade.${drift.grade_slug}`)}
+          </h2>
+          <p className="text-[15px] leading-relaxed text-fg-muted">
+            {world} {detection}
+          </p>
+        </div>
+      </div>
+      {/* La note MIXTE, montrée : combien vient du monde, combien de ta détection. */}
+      <ScoreSplit world={drift.world} detection={drift.detection} t={t} />
+      <p className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-faint">
         <Link href={`/games/${id}/replay`} className="text-accent-bright underline">
           {t("reveal.voir")}
         </Link>
@@ -290,6 +299,67 @@ function DriftSurface({
         </Link>
       </p>
     </Panel>
+  );
+}
+
+/** RG-6 — la note mixte donnée à VOIR : une barre /100 en deux segments (la part du
+ * monde + la part de ta détection, additives par construction, cf. simulation/score.py),
+ * avec leur légende chiffrée. Aucune donnée nouvelle : `world` et `detection` viennent
+ * déjà de `GameResult.drift`. La part « monde » est neutre (indigo) ; la détection porte
+ * l'or de la note. Détection absente (rôle qui ne détecte pas) : segment unique. */
+function ScoreSplit({
+  world,
+  detection,
+  t,
+}: {
+  world: number;
+  detection: number | null;
+  t: (key: string) => string;
+}) {
+  const w = Math.max(0, Math.min(100, world));
+  const d = detection == null ? 0 : Math.max(0, Math.min(100, detection));
+  const hasDetection = detection != null;
+  return (
+    <div className="mt-5">
+      <div
+        role="meter"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(w + d)}
+        aria-label={`${t("drift.reveal.monde-label")} + ${t("drift.reveal.detection-label")}`}
+        className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted"
+      >
+        <div
+          className="h-full rounded-l-full bg-indigo-soft transition-[width] duration-700"
+          style={{ width: `${w}%` }}
+        />
+        {hasDetection && (
+          <div
+            className="h-full bg-accent-bright transition-[width] duration-700"
+            style={{ width: `${d}%` }}
+          />
+        )}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+        <span className="flex items-center gap-1.5 text-fg-muted">
+          <span className="h-2 w-2 rounded-full bg-indigo-soft" aria-hidden />
+          {t("drift.reveal.monde-label")}{" "}
+          <span className="font-mono tabular-nums text-foreground">{fmt(world)}</span>
+        </span>
+        {hasDetection ? (
+          <span className="flex items-center gap-1.5 text-fg-muted">
+            <span className="h-2 w-2 rounded-full bg-accent-bright" aria-hidden />
+            {t("drift.reveal.detection-label")}{" "}
+            <span className="font-mono tabular-nums text-foreground">{fmt(detection ?? 0)}</span>
+          </span>
+        ) : (
+          <span className="flex items-center gap-1.5 text-fg-faint">
+            {t("drift.reveal.detection-na")}
+            <Hint text={t("drift.reveal.detection-na-aide")} />
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 
