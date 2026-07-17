@@ -73,7 +73,7 @@ def test_smoke_ultimatum_live_ollama():  # pragma: no cover — dépend d'un mod
         assert resp.status_code == 201
         game = client.post(
             "/api/games",
-            json={"countries": ["usa", "iran"], "mode": "crisis", "horizon": 2},
+            json={"countries": ["usa", "iran"], "horizon": 2},
         )
         assert game.status_code == 201
         game_id = game.json()["id"]

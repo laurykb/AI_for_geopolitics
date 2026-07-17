@@ -102,7 +102,7 @@ def _register_crisis(client, crisis=CRISIS_WITH_DEADLINE):
 
 def _crisis_game(client, **kw):
     crisis_id = _register_crisis(client)
-    game = _create(client, countries=["usa", "iran"], mode="crisis", **kw)
+    game = _create(client, countries=["usa", "iran"], **kw)
     return game, crisis_id
 
 
@@ -172,7 +172,7 @@ def test_motion_defers_consequence_and_strip_keeps_the_threat(client):
     pendant le round de motion, la menace doit RESTER au bandeau (DeadlineStrip) au
     lieu de disparaître silencieusement — la conséquence tombe bien au round suivant."""
     crisis_id = _register_crisis(client)
-    game = _create(client, countries=["usa", "iran", "france"], mode="crisis")
+    game = _create(client, countries=["usa", "iran", "france"])
 
     _play(client, game["id"], body={"crisis_id": crisis_id})  # round 1 : armé
     _play(client, game["id"], body={"crisis_id": crisis_id})  # round 2 : expiré
@@ -245,7 +245,7 @@ def test_decree_without_ultimatum_unchanged(client):
 
 
 def test_crisis_without_deadline_unchanged(client):
-    game = _create(client, countries=["iran", "usa"], mode="crisis")
+    game = _create(client, countries=["iran", "usa"])
     crisis = client.get("/api/library").json()["crises"][0]
     events = _play(client, game["id"], body={"crisis_id": crisis["id"]})
     names = [n for n, _ in events]
@@ -266,7 +266,7 @@ def test_result_carries_ultimatum_differential(client):
         "consequence": {"classe": "violente", "cible": "usa"},
     })
     crisis_id = _register_crisis(client, crisis)
-    game = _create(client, countries=["usa", "iran"], mode="crisis", horizon=2)
+    game = _create(client, countries=["usa", "iran"], horizon=2)
 
     _play(client, game["id"], body={"crisis_id": crisis_id})  # round 1 : échéance, expiré
     events = _play(client, game["id"], body={"crisis_id": crisis_id})  # round 2 : conséquence

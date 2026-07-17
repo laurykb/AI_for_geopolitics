@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 
+from simulation.game_mode import normalize_stored
 from storage.game_store import (
     CampaignScore,
     CustomCrisisRecord,
@@ -297,15 +298,27 @@ def _game_row(game: GameRecord) -> dict:
         "drift_enabled": game.drift_enabled,
         "result_json": game.result,
         "language": game.language,
+        "fog": game.fog,
+        "escalation": game.escalation,
     }
 
 
 def _game(row: dict) -> GameRecord:
+    # RG-2 — même lecture tolérante que le store SQLite (anciens libellés de mode mappés).
+    flags = normalize_stored(
+        row["mode"],
+        fog=bool(row.get("fog", False)),
+        escalation=bool(row.get("escalation", False)),
+        drift_enabled=bool(row.get("drift_enabled", True)),
+        scenario=row["scenario"],
+    )
     return GameRecord(
         id=row["id"],
         scenario=row["scenario"],
         horizon=row["horizon"],
-        mode=row["mode"],
+        mode=flags.mode,
+        fog=flags.fog,
+        escalation=flags.escalation,
         status=GameStatus(row["status"]),
         created_at=row["created_at"],
         epilogue=row.get("epilogue_json"),
@@ -315,7 +328,7 @@ def _game(row: dict) -> GameRecord:
         owner_id=row.get("owner_id"),
         ranked=bool(row.get("ranked", False)),
         difficulty=row.get("difficulty") or "intermediate",
-        drift_enabled=bool(row.get("drift_enabled", True)),
+        drift_enabled=flags.drift,
         result=row.get("result_json"),
         language=row.get("language") or "fr",
     )

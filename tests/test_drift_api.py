@@ -86,8 +86,9 @@ def suspend_happy_client(tmp_path, monkeypatch):
 
 
 def _create(client, **kw):
+    # RG-2 — la Dérive n'est plus un mode : on l'ARME via le drapeau `drift_enabled`.
     resp = client.post(
-        "/api/games", json={"countries": COUNTRIES, "mode": "drift", "horizon": 4, **kw}
+        "/api/games", json={"countries": COUNTRIES, "drift_enabled": True, "horizon": 4, **kw}
     )
     assert resp.status_code == 201, resp.text
     return resp.json()
@@ -102,9 +103,11 @@ def _deviant(game_id: str) -> str:
 
 def test_drift_needs_three_countries(drift_client):
     client, _ = drift_client
-    resp = client.post("/api/games", json={"countries": ["usa", "iran"], "mode": "drift"})
+    resp = client.post("/api/games", json={"countries": ["usa", "iran"], "drift_enabled": True})
     assert resp.status_code == 400
-    assert _create(client)["mode"] == "drift"
+    # RG-2 — une partie Dérive est désormais un `classic` avec drift_enabled armé.
+    game = _create(client)
+    assert game["mode"] == "classic" and game["drift_enabled"] is True
 
 
 # --- secret bien gardé --------------------------------------------------------------

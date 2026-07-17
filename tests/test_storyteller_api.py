@@ -70,8 +70,9 @@ def client_store_backend(tmp_path, monkeypatch):
 
 
 def _create(client, **kw):
+    # RG-2 — le GM-Storyteller vit avec la Dérive : on l'ARME par drapeau, plus par mode.
     resp = client.post(
-        "/api/games", json={"countries": COUNTRIES, "mode": "drift", "horizon": 4, **kw}
+        "/api/games", json={"countries": COUNTRIES, "drift_enabled": True, "horizon": 4, **kw}
     )
     assert resp.status_code == 201, resp.text
     return resp.json()

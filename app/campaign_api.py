@@ -18,6 +18,7 @@ from app import game_api
 from app.game_api import GameView, get_backend, get_store
 from inference.backend import InferenceBackend
 from simulation import campaign as campaign_mod
+from simulation.game_mode import from_legacy_mode
 from storage.game_store import GameStore
 
 router = APIRouter(prefix="/api", tags=["campaign"])
@@ -122,11 +123,18 @@ def start_chapter(
             status_code=409,
             detail=f"chapitre verrouillé — finir le précédent à {camp.unlock_score:g}+",
         )
+    # RG-2 — la fiche de chapitre garde son ancien libellé de mode ; on le mappe vers le
+    # mode Campagne + les drapeaux composables (Brouillard/Réel/Dérive). En Campagne la
+    # Dérive SUIT la pédagogie du chapitre (elle n'est pas forcée partout — cf. §2).
+    flags = from_legacy_mode(chapter.mode)
     body = game_api.CreateGameRequest(
         scenario=f"{campaign_mod.SCENARIO_PREFIX}{chapter_id}",
         countries=chapter.countries or None,
         horizon=chapter.horizon,
-        mode=chapter.mode,  # type: ignore[arg-type] — validé par la fiche
+        mode="campaign",
+        fog=flags.fog,
+        escalation=flags.escalation,
+        drift_enabled=flags.drift,
         # CC-5 — tutoriel imperdable : l'amplitude Débutant plafonne les verdicts.
         difficulty="beginner" if chapter.tutorial else "intermediate",
     )

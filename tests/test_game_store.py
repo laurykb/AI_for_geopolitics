@@ -37,14 +37,26 @@ def _snapshot(game_id: str = "g1", **kw) -> SessionSnapshot:
 
 
 def test_game_mode_roundtrip():
+    # RG-2 — deux modes (classic | campaign) + Brouillard/Réel en drapeaux composables ;
+    # les anciens libellés en base sont mappés à la lecture (lecture tolérante).
     store = SQLiteGameStore(":memory:")
-    store.add_game(_game(mode="escalation"))
+    campaign = GameRecord(
+        id="g1", scenario="campaign:c1", horizon=5, mode="campaign", fog=True,
+        created_at="2026-07-05T00:00:00",
+    )
+    store.add_game(campaign)
     got = store.get_game("g1")
-    assert got is not None and got.mode == "escalation"
+    assert got is not None and got.mode == "campaign"
+    assert got.fog is True and got.escalation is False
 
-    got.mode = "fog"
-    store.save_game(got)
-    assert store.get_game("g1").mode == "fog"
+    # Une partie héritée « escalation » se relit en classic + réglage Réel/escalade.
+    store.add_game(_game("g2", mode="escalation"))
+    legacy = store.get_game("g2")
+    assert legacy.mode == "classic" and legacy.escalation is True and legacy.fog is False
+
+    # Un ancien mode « drift » se relit en classic + Dérive armée.
+    store.add_game(_game("g3", mode="drift"))
+    assert store.get_game("g3").drift_enabled is True
 
 
 def test_ownership_fields_roundtrip():

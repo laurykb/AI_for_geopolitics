@@ -176,7 +176,7 @@ def test_drift_credibility_ignores_ai_filed_motions(tmp_path, monkeypatch):
     drift_game.load_params.cache_clear()
 
     client, store = _setup(MockBackend("Analyse. MESSAGE: rien."))
-    game = _create(client, mode="drift", horizon=2)
+    game = _create(client, drift_enabled=True, horizon=2)  # RG-2 — Dérive armée par drapeau
     deviant = drift_game.assign(game["id"], sorted(COUNTRIES))[0]
     innocent = next(c for c in COUNTRIES if c != deviant)
 

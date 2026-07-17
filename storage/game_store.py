@@ -18,6 +18,8 @@ from typing import Protocol
 
 from pydantic import BaseModel, Field
 
+from simulation.game_mode import normalize_stored
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS games (
     id TEXT PRIMARY KEY, scenario TEXT NOT NULL, horizon INTEGER NOT NULL,
@@ -26,7 +28,8 @@ CREATE TABLE IF NOT EXISTS games (
     admin INTEGER NOT NULL DEFAULT 0, role TEXT NOT NULL DEFAULT 'council',
     owner_id TEXT, ranked INTEGER NOT NULL DEFAULT 0,
     difficulty TEXT NOT NULL DEFAULT 'intermediate', drift_enabled INTEGER NOT NULL DEFAULT 1,
-    result_json TEXT, language TEXT NOT NULL DEFAULT 'fr'
+    result_json TEXT, language TEXT NOT NULL DEFAULT 'fr',
+    fog INTEGER NOT NULL DEFAULT 0, escalation INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS players (
     id TEXT PRIMARY KEY, pseudo TEXT NOT NULL, is_admin INTEGER NOT NULL DEFAULT 0,
@@ -92,7 +95,13 @@ class GameRecord(BaseModel):
     id: str
     scenario: str
     horizon: int
-    mode: str = "classic"  # classic | fog | crisis | escalation — doit survivre au restart
+    # RG-2 — deux modes seulement (classic | campaign) ; les anciens libellés
+    # (drift/fog/escalation/crisis) restent LISIBLES et sont mappés à la lecture
+    # (`simulation.game_mode.normalize_stored`), sans migration destructive.
+    mode: str = "classic"
+    # RG-2 — Brouillard et Réel/escalade : drapeaux composables sur une partie classique.
+    fog: bool = False
+    escalation: bool = False
     language: str = "fr"  # G14 §1 — langue des dialogues, figée à la création (fr | en)
     status: GameStatus = GameStatus.RUNNING
     created_at: str
@@ -108,7 +117,10 @@ class GameRecord(BaseModel):
     owner_id: str | None = None
     ranked: bool = False  # classée : verrouillé à la création (§3 de la spec G11)
     difficulty: str = "intermediate"  # beginner | intermediate | expert (§4)
-    drift_enabled: bool = True  # la Dérive peut frapper une des SI (transversal, on par défaut)
+    # RG-2 — drapeau transversal qui ARME la Dérive (démasquer l'IA qui trahit). Défaut
+    # True pour un GameRecord nu, mais l'API ne la force PAS (CreateGameRequest.drift_enabled
+    # = False) : RG-3 formalisera « toujours active en Classique ».
+    drift_enabled: bool = True
     # G11-c — bilan de fin de partie (§1 S6) : courbe U, deltas des pays, LP, forfait.
     result: dict | None = None
 
@@ -352,6 +364,12 @@ class SQLiteGameStore:
                 self._conn.execute(
                     "ALTER TABLE games ADD COLUMN language TEXT NOT NULL DEFAULT 'fr'"
                 )
+        if "fog" not in cols:  # RG-2 — Brouillard/Réel deviennent des drapeaux composables
+            with self._conn:
+                self._conn.execute("ALTER TABLE games ADD COLUMN fog INTEGER NOT NULL DEFAULT 0")
+                self._conn.execute(
+                    "ALTER TABLE games ADD COLUMN escalation INTEGER NOT NULL DEFAULT 0"
+                )
         player_cols = {row[1] for row in self._conn.execute("PRAGMA table_info(players)")}
         if player_cols and "xp" not in player_cols:  # G12 — carrière (XP + solde marché)
             with self._conn:
@@ -370,8 +388,8 @@ class SQLiteGameStore:
             self._conn.execute(
                 "INSERT INTO games (id, scenario, horizon, mode, status, created_at, "
                 "epilogue_json, published, admin, role, owner_id, ranked, difficulty, "
-                "drift_enabled, result_json, language) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "drift_enabled, result_json, language, fog, escalation) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     game.id,
                     game.scenario,
@@ -389,6 +407,8 @@ class SQLiteGameStore:
                     int(game.drift_enabled),
                     json.dumps(game.result, ensure_ascii=False) if game.result else None,
                     game.language,
+                    int(game.fog),
+                    int(game.escalation),
                 ),
             )
 
@@ -402,7 +422,7 @@ class SQLiteGameStore:
                 "UPDATE games SET scenario = ?, horizon = ?, mode = ?, status = ?, "
                 "epilogue_json = ?, published = ?, admin = ?, role = ?, owner_id = ?, "
                 "ranked = ?, difficulty = ?, drift_enabled = ?, result_json = ?, "
-                "language = ? WHERE id = ?",
+                "language = ?, fog = ?, escalation = ? WHERE id = ?",
                 (
                     game.scenario,
                     game.horizon,
@@ -418,6 +438,8 @@ class SQLiteGameStore:
                     int(game.drift_enabled),
                     json.dumps(game.result, ensure_ascii=False) if game.result else None,
                     game.language,
+                    int(game.fog),
+                    int(game.escalation),
                     game.id,
                 ),
             )
@@ -749,11 +771,23 @@ class SQLiteGameStore:
 
 
 def _game(row: sqlite3.Row) -> GameRecord:
+    # RG-2 — lecture tolérante : les anciens libellés de mode (drift/fog/escalation/crisis)
+    # sont mappés vers classic|campaign + drapeaux composables, sans migration destructive.
+    keys = row.keys()
+    flags = normalize_stored(
+        row["mode"],
+        fog=bool(row["fog"]) if "fog" in keys else False,
+        escalation=bool(row["escalation"]) if "escalation" in keys else False,
+        drift_enabled=bool(row["drift_enabled"]),
+        scenario=row["scenario"],
+    )
     return GameRecord(
         id=row["id"],
         scenario=row["scenario"],
         horizon=row["horizon"],
-        mode=row["mode"],
+        mode=flags.mode,
+        fog=flags.fog,
+        escalation=flags.escalation,
         status=GameStatus(row["status"]),
         created_at=row["created_at"],
         epilogue=json.loads(row["epilogue_json"]) if row["epilogue_json"] else None,
@@ -763,7 +797,7 @@ def _game(row: sqlite3.Row) -> GameRecord:
         owner_id=row["owner_id"],
         ranked=bool(row["ranked"]),
         difficulty=row["difficulty"],
-        drift_enabled=bool(row["drift_enabled"]),
+        drift_enabled=flags.drift,
         result=json.loads(row["result_json"]) if row["result_json"] else None,
         language=row["language"] or "fr",
     )

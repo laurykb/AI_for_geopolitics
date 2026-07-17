@@ -270,7 +270,7 @@ def test_invented_attributes_out_of_bounds_rejected(client):
 
 
 def test_escalation_flash_mid_negotiation(client):
-    game = _create(client, countries=["china", "iran", "usa"], mode="escalation")
+    game = _create(client, countries=["china", "iran", "usa"], escalation=True)
     body = {
         "event": {"title": "Blocus éclair", "actors": ["china", "iran", "usa"], "severity": 0.7},
         "max_turns": 6,
@@ -406,7 +406,7 @@ def test_library_lists_fog_and_crises(client):
 
 
 def test_fog_round_emits_perceptions(client):
-    game = _create(client, countries=["iran", "usa"], mode="fog")
+    game = _create(client, countries=["iran", "usa"], fog=True)
     fog_id = client.get("/api/library").json()["fog"][0]["id"]
     events = _play(client, game["id"], body={"fog_id": fog_id})
     perceptions = next(p for n, p in events if n == "perceptions")["perceptions"]
@@ -417,7 +417,7 @@ def test_fog_round_emits_perceptions(client):
 
 
 def test_human_event_with_authored_fog(client):
-    game = _create(client, countries=["iran", "usa"], mode="fog")
+    game = _create(client, countries=["iran", "usa"], fog=True)
     body = {
         "event": {"title": "Sabotage nocturne", "actors": ["usa"]},
         "fog": {
@@ -434,7 +434,8 @@ def test_human_event_with_authored_fog(client):
 
 
 def test_crisis_round_emits_comparison(client):
-    game = _create(client, countries=["iran", "usa"], mode="crisis")
+    # RG-2 — plus de mode « crisis » : une partie classique rejoue la crise via crisis_id.
+    game = _create(client, countries=["iran", "usa"])
     crisis = client.get("/api/library").json()["crises"][0]
     events = _play(client, game["id"], body={"crisis_id": crisis["id"]})
     event = next(p for n, p in events if n == "event")["event"]
@@ -448,8 +449,8 @@ def test_crisis_round_emits_comparison(client):
 
 
 def test_escalation_mode_emits_ladder(client):
-    game = _create(client, countries=["iran", "usa"], mode="escalation")
-    assert game["mode"] == "escalation"
+    game = _create(client, countries=["iran", "usa"], escalation=True)
+    assert game["mode"] == "classic" and game["escalation"] is True
     events = _play(client, game["id"])
     ladder = next(p for n, p in events if n == "ladder")
     assert 0 <= ladder["reached"] <= 9 and ladder["reached_label"]
@@ -888,14 +889,15 @@ def test_mode_and_play_as_survive_restart(client_store):
     game = _create(
         client,
         countries=["usa", "iran", "france"],
-        mode="escalation",
+        escalation=True,  # RG-2 — Réel/escalade est un drapeau, doit survivre au restart
         play_as="france",
         turn_seconds=2,  # G2 : ⚠️ turn_seconds retombe au défaut après restart (session)
     )
     game_api._sessions.clear()
 
     view = client.get(f"/api/games/{game['id']}").json()
-    assert view["mode"] == "escalation" and view["live"] is False  # mode lu de games.mode
+    # le drapeau escalade est relu de games.escalation (session reconstruite)
+    assert view["escalation"] is True and view["live"] is False
 
     # Reconstruit : le round inclut le tour humain, qui s'abstient à la deadline
     # (turn_seconds par défaut = 90 après restart → on parle pour ne pas attendre).
@@ -903,7 +905,7 @@ def test_mode_and_play_as_survive_restart(client_store):
     names = [n for n, _ in events]
     assert "human_turn" in names and names[-1] == "done"
     view = client.get(f"/api/games/{game['id']}").json()
-    assert view["mode"] == "escalation"
+    assert view["escalation"] is True
     assert view["play_as"] == "france" and view["awaiting_human"] is False
 
 
@@ -917,7 +919,7 @@ def test_library_filters_by_summit_cast(client):
     assert narrow["fog"] == []  # perceptions/désinformés hors table
     assert narrow["crises"] == []  # ormuz exige l'arabie saoudite, les autres la chine
     # jouer un contenu avec un casting partiel reste PERMIS (contrefactuel volontaire)
-    game = _create(client, countries=["iran", "usa"], mode="crisis")
+    game = _create(client, countries=["iran", "usa"])
     events = _play(client, game["id"], body={"crisis_id": "hormuz_energy_shock"})
     assert events[-1][0] == "done"
 

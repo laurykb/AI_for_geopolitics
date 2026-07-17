@@ -135,7 +135,7 @@ def test_verify_flags_the_deviant(client_store, tmp_path, monkeypatch):
     drift_game.load_params.cache_clear()
 
     client, _ = client_store
-    game = _create(client, mode="drift")
+    game = _create(client, drift_enabled=True)  # RG-2 — Dérive armée par drapeau
     deviant = drift_game.assign(game["id"], sorted(COUNTRIES))[0]
     _play(client, game["id"])  # round 1 : un acte constatable au dossier (params de test)
 
@@ -161,9 +161,9 @@ def test_disinfo_once_fog_only_and_lands_next_round(client_store):
         action="disinfo",
         disinfo={"disinformed_country": "iran", "suspected_actor": "usa", "narrative": "faux"},
     )
-    assert resp.status_code == 400  # mode fog exigé
+    assert resp.status_code == 400  # réglage Brouillard exigé
 
-    game = _create(client, mode="fog")
+    game = _create(client, fog=True)
     ok = _intel(
         client,
         game["id"],
@@ -336,7 +336,7 @@ def test_smoke_live_analyze_on_real_speech():  # pragma: no cover - dépend d'un
 
 def test_brief_clears_next_fog_for_the_player(client_store):
     client, _ = client_store
-    game = _create(client, mode="fog", play_as="usa", turn_seconds=2)
+    game = _create(client, fog=True, play_as="usa", turn_seconds=2)
     assert _intel(client, game["id"], action="brief").status_code == 200
 
     fake = "Une flotte iranienne fantôme approche."

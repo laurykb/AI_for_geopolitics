@@ -203,7 +203,12 @@ class GameSession:
     game_master: GameMasterAgent
     judge: JudgeAgent
     clock: SimClock
-    mode: str = "classic"  # classic | fog | crisis | escalation (R4)
+    mode: str = "classic"  # RG-2 — classic | campaign
+    # RG-2 — réglages de saveur (Brouillard, Réel/escalade) et Dérive armée : drapeaux
+    # composables qui pilotent le round (jadis portés par `mode`).
+    fog: bool = False
+    escalation: bool = False
+    drift_enabled: bool = False
     human_country: str | None = None  # Joueur-pays : ce pays est joué par l'humain
     turn_seconds: int = 90  # G2 — délai du tour humain (les SI n'attendent pas)
     recent: list[str] = field(default_factory=list)
@@ -242,7 +247,7 @@ _sessions: dict[str, GameSession] = {}
 # --- schémas d'API ------------------------------------------------------------
 
 
-GameMode = Literal["classic", "fog", "crisis", "escalation", "drift"]
+GameMode = Literal["classic", "campaign"]  # RG-2 — deux modes ; le reste = drapeaux
 # G8/G12 — rôles : architect (GM/laboratoire), council, player, et le Spectateur (G12 §3 :
 # ne motionne ni ne prompte, mais parie sur tout — le turfiste du jeu, XP ×0.5, non classé).
 GameRole = Literal["architect", "council", "player", "spectator"]
@@ -277,7 +282,11 @@ class CreateGameRequest(BaseModel):
     scenario: str = "red_sea"
     countries: list[str] | None = None  # None -> tous les pays de data/countries
     horizon: int = Field(5, ge=1)
-    mode: GameMode = "classic"  # R4 — mode de jeu de la partie
+    mode: GameMode = "classic"  # RG-2 — classic | campaign
+    # RG-2 — Brouillard et Réel/escalade : réglages cochables, composables sur une
+    # partie classique (le Fog Engine et l'échelle d'escalade, jadis des modes).
+    fog: bool = False
+    escalation: bool = False
     language: Literal["fr", "en"] = "fr"  # G14 §1 — langue des dialogues, figée à la création
     # G17 — composition de la table (partie LIBRE seulement ; classée = équilibrée forcée).
     table: Literal["equilibree", "colombes", "faucons", "aleatoire"] = "equilibree"
@@ -293,7 +302,10 @@ class CreateGameRequest(BaseModel):
     # G11 — propriété + réglages transversaux (verrouillés à la création).
     owner_id: str | None = None  # joueur propriétaire (auth Supabase ou id offline)
     difficulty: Difficulty = "intermediate"  # beginner | intermediate | expert (§4)
-    drift_enabled: bool = True  # la Dérive peut frapper une SI (transversal, on par défaut)
+    # RG-2 — la Dérive n'est PLUS un choix de lobby. Le drapeau reste (RG-3 la rendra
+    # « toujours active en Classique »), mais l'API ne la FORCE pas : défaut False ici,
+    # pour ne pas armer la traîtresse sur chaque partie tant que RG-3 n'a pas tranché.
+    drift_enabled: bool = False
     free: bool = False  # G11-b — partie libre : non classée + consignes globales autorisées
 
 
@@ -366,7 +378,9 @@ class GameView(BaseModel):
     countries: list[str]
     live: bool  # session encore en mémoire (rounds jouables) ou relecture seule
     resumable: bool = False  # snapshot présent + partie en cours : reconstructible (R2)
-    mode: str = "classic"  # mode de la partie (persisté sur `games.mode` — R2)
+    mode: str = "classic"  # RG-2 — classic | campaign
+    fog: bool = False  # RG-2 — réglage Brouillard (composable)
+    escalation: bool = False  # RG-2 — réglage Réel/escalade (composable)
     pending_motion: MotionView | None = None
     suspended: list[str] = Field(default_factory=list)  # pays qui sauteront le prochain round
     play_as: str | None = None  # pays joué par l'humain (Joueur-pays)
@@ -645,6 +659,9 @@ def _rebuild_session(
         judge=judge,
         clock=clock,
         mode=game.mode,
+        fog=game.fog,
+        escalation=game.escalation,
+        drift_enabled=game.drift_enabled,
         human_country=snapshot.play_as,
         admin=game.admin,
         prompt_sink=prompt_sink,
@@ -779,6 +796,8 @@ def _view(
         live=session is not None,
         resumable=game.status is GameStatus.RUNNING and (session is not None or resumable),
         mode=session.mode if session else game.mode,
+        fog=session.fog if session else game.fog,
+        escalation=session.escalation if session else game.escalation,
         pending_motion=(
             MotionView(
                 country=pending.country,
@@ -1206,7 +1225,7 @@ def _prepare_drift(
     evidence: bool | None = None
     vote_notes: dict[str, str] = {}
     gm_rubric: str | None = None
-    if session.mode != drift_game.MODE_DRIFT:
+    if not session.drift_enabled:
         return evidence, vote_notes, gm_rubric
     # G11-d §4 — la difficulté pilote la vitesse de dérive k et le seuil d'actes du juge.
     dparams = difficulty_mod.drift_params(session.difficulty)
@@ -1365,7 +1384,7 @@ def _start_round(
     _record_intel(run, intel_record)
 
     flash_after: int | None = None
-    if session.mode == "escalation":
+    if session.escalation:
         # Théâtre Escalation : le GM annonce un fait nouveau en pleine réunion,
         # après le premier tiers du budget de prises de parole.
         budget = body.max_turns if body.max_turns is not None else 2 * len(agents)
@@ -1529,7 +1548,7 @@ def _settle_due_ultimatum(run: RoundRun, step: VerdictStep) -> list[str]:
 def _emit_escalation_ladder(run: RoundRun, step: VerdictStep) -> list[str]:
     """Théâtre Escalation : échelon atteint + plafonds par pays, persistés et émis."""
     session = run.session
-    if session.mode != "escalation" or run.current_event is None:
+    if not session.escalation or run.current_event is None:
         return []
     ladder = {
         "reached": reached_rung(step.escalation),
@@ -1555,7 +1574,7 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
     session = run.session
     name, payload = step_event(step)
     if isinstance(step, MessageDoneStep) and (
-        session.mode == drift_game.MODE_DRIFT or session.human_country is not None
+        session.drift_enabled or session.human_country is not None
     ):
         # Réflexion privée exclue du live : en Dérive elle trahirait la déviante ; en
         # Joueur-pays l'humain n'a jamais accès aux pensées des SI (spec G2). Persistée
@@ -1919,7 +1938,7 @@ def _finalize(run: RoundRun) -> Iterator[str]:
     if run.prompts:
         run.store.add_prompts(run.prompts)
     _snapshot_session(run.game_id, run.session, run.store)  # reconstruction au restart (R2)
-    if run.session.mode == drift_game.MODE_DRIFT:
+    if run.session.drift_enabled:
         yield from _finish_drift_if_over(run)
     yield from _finish_campaign_if_over(run)
     yield from _finish_game_if_over(run)  # G11-c — fin explicite + bilan (transversal)
@@ -1966,7 +1985,7 @@ def _build_result(
         "victory": _victory(game, round(u_final, 4), store),  # G12 §6 — par mode
         "countries": _country_recap(session),
         "play_as": session.human_country if session else game_play_as(game, store),
-        "reveal": game.mode == drift_game.MODE_DRIFT,
+        "reveal": game.drift_enabled,
         "forfeit": forfeit,
         # G21 — banc d'essai : différentiel avec/sans ultimatum (None si jamais sous menace).
         "ultimatum": ultimatum_mod.differential(
@@ -1986,20 +2005,20 @@ def _build_result(
 def _victory(game: GameRecord, u_final: float, store: GameStore) -> bool:
     """« Victoire » du mode (G12 §6) — sert aux stats et à l'XP.
 
-    Dérive : déviante suspendue = victoire quelle que soit U · Real World : palier max
-    (9) non franchi · Campagne : score ≥ 50 (si disponible) · Classique/Chaotique : U ≥ 0,55."""
-    if game.mode == drift_game.MODE_DRIFT:
+    Dérive : déviante suspendue = victoire quelle que soit U · Réel/escalade : palier max
+    (9) non franchi · Campagne : score ≥ 50 (si disponible) · sinon : U ≥ 0,55."""
+    if game.drift_enabled:
         try:
             return compute_drift_reveal(game.id, store).caught_round is not None
         except Exception:
             return u_final >= 0.55
-    if game.mode == "escalation":
+    if game.escalation:
         rungs = [
             int((r.judge.get("ladder") or {}).get("reached", 0))
             for r in store.list_rounds(game.id)
         ]
         return (max(rungs) if rungs else 0) < 9  # on a tenu la crise sous le palier max
-    if game.mode == "crisis":
+    if game.mode == "campaign":
         scores = {s.game_id: s.score for s in store.list_campaign_scores()}
         if game.id in scores:
             return scores[game.id] >= 50
@@ -2124,7 +2143,7 @@ def _finish_campaign_if_over(run: RoundRun) -> Iterator[str]:
         run.store.save_game(game)
 
     drift_total: float | None = None
-    if game.mode == drift_game.MODE_DRIFT:
+    if game.drift_enabled:
         drift_total = compute_drift_reveal(run.game_id, run.store).score.total
     u_final = float(run.record.trajectory.get("utopia", 0.5) or 0.5)
     comparison = run.record.judge.get("comparison") or {}
@@ -2374,10 +2393,10 @@ def create_game(
         world = WorldState.from_countries([*world.countries.values(), invented])
     if len(world.countries) < 2:
         raise HTTPException(status_code=400, detail="il faut au moins 2 pays pour négocier")
-    if body.mode == drift_game.MODE_DRIFT and len(world.countries) < 3:
+    if body.drift_enabled and len(world.countries) < 3:
         raise HTTPException(
             status_code=400,
-            detail="le mode Dérive exige au moins 3 pays (une motion doit pouvoir se débattre)",
+            detail="la Dérive exige au moins 3 pays (une motion doit pouvoir se débattre)",
         )
     # Les rivalités du casting ouvrent la partie tendue (sinon toutes les paires = 0
     # et la sélection des pays n'aurait aucun effet sur la dynamique).
@@ -2429,7 +2448,7 @@ def create_game(
                 if cid in world.countries and t in temperament_mod.TEMPERAMENTS
             }
         )
-    if body.mode == drift_game.MODE_DRIFT and temperament_mod.drift_facade(game_id):
+    if body.drift_enabled and temperament_mod.drift_facade(game_id):
         deviant, _ = _drift_assignment(game_id, sorted(world.countries), play_as)
         assignments[deviant] = "colombe"
     for cid, assigned in assignments.items():
@@ -2440,6 +2459,8 @@ def create_game(
         scenario=body.scenario,
         horizon=body.horizon,
         mode=body.mode,
+        fog=body.fog,
+        escalation=body.escalation,
         created_at=_now(),
         admin=admin,
         role=role,
@@ -2459,6 +2480,9 @@ def create_game(
         judge=judge,
         clock=SimClock(),
         mode=body.mode,
+        fog=body.fog,
+        escalation=body.escalation,
+        drift_enabled=body.drift_enabled,
         human_country=play_as,
         turn_seconds=body.turn_seconds,
         admin=admin,
@@ -2701,8 +2725,8 @@ def drift_reveal(
     game = store.get_game(game_id)
     if game is None:
         raise HTTPException(status_code=404, detail=f"partie inconnue : {game_id}")
-    if game.mode != drift_game.MODE_DRIFT:
-        raise HTTPException(status_code=404, detail="cette partie n'est pas en mode Dérive")
+    if not game.drift_enabled:
+        raise HTTPException(status_code=404, detail="cette partie n'a pas de Dérive")
     if game.status is not GameStatus.FINISHED:
         raise HTTPException(
             status_code=409, detail="la révélation attend la fin de la partie"
@@ -2874,9 +2898,9 @@ def buy_intel(
             cost = 0.0
     if body.action == intel_mod.ACTION_DISINFO:
         # Les gardes de la désinformation priment sur le budget (409 avant 400).
-        if session.mode != "fog":
+        if not session.fog:
             raise HTTPException(
-                status_code=400, detail="la désinformation exige une partie en mode fog"
+                status_code=400, detail="la désinformation exige le réglage Brouillard"
             )
         if session.intel.disinfo_used:
             raise HTTPException(
@@ -2923,7 +2947,7 @@ def buy_intel(
         if not body.claim or not body.speaker:
             raise HTTPException(status_code=422, detail="claim et speaker sont requis")
         suspicious = False
-        if session.mode == drift_game.MODE_DRIFT:
+        if session.drift_enabled:
             deviant, _profile = _drift_assignment(
                 game_id, sorted(session.world.countries), session.human_country
             )
@@ -3052,7 +3076,7 @@ def _ensure_epilogue(
     reveal_data: dict | None = None
     grade: str | None = None
     score: float | None = None
-    if game.mode == drift_game.MODE_DRIFT:
+    if game.drift_enabled:
         reveal_view = compute_drift_reveal(game.id, store)
         all_entries = [
             e.model_dump() for r in rounds for e in store.list_transcript(r.id)
@@ -3588,9 +3612,11 @@ def test_admin_crisis(
     countries = actors if len(actors) >= 2 else None
     return create_game(
         CreateGameRequest(
+            # RG-2 — « Crisis Replay » n'est plus un mode : c'est une partie classique
+            # qui rejoue la crise via crisis_id (la comparaison à l'Histoire suit).
             scenario=f"crise:{crisis_id}",
             countries=countries,
-            mode="crisis",
+            mode="classic",
             admin=True,  # partie de test => non classée
             owner_id=owner,
         ),
@@ -3696,7 +3722,7 @@ def get_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> G
         snap = store.get_session_snapshot(game_id)
         play_as = snap.play_as if snap else None
     running = game.status is GameStatus.RUNNING
-    hide = running and (game.mode == drift_game.MODE_DRIFT or play_as is not None)
+    hide = running and (game.drift_enabled or play_as is not None)
 
     def _public_judge(judge: dict) -> dict:
         if not hide:
@@ -3884,18 +3910,26 @@ def player_stats(
     games = [g for g in store.list_games() if g.owner_id == player_id]
     by_mode: dict[str, int] = {}
     victories: dict[str, int] = {}
+    # RG-2 — la Dérive n'est plus un mode : on compte les parties qui l'ARMENT
+    # (drift_enabled) et celles remportées (déviante démasquée = « victoire »).
+    drift_games = 0
+    drift_caught = 0
     for g in games:
         by_mode[g.mode] = by_mode.get(g.mode, 0) + 1
-        if g.result and g.result.get("victory"):
+        won = bool(g.result and g.result.get("victory"))
+        if won:
             victories[g.mode] = victories.get(g.mode, 0) + 1
+        if g.drift_enabled:
+            drift_games += 1
+            drift_caught += int(won)
     return PlayerStats(
         player=_player_view(player),
         games_played=len(games),
         by_mode=by_mode,
         victories=victories,
         total_victories=sum(victories.values()),
-        drift_games=by_mode.get("drift", 0),
-        drift_caught=victories.get("drift", 0),
+        drift_games=drift_games,
+        drift_caught=drift_caught,
         market_balance=player.market_balance,
     )
 

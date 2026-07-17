@@ -143,7 +143,7 @@ def test_campaign_map_and_locking(client_store):
 def test_chapter_game_scores_and_unlocks(client_store):
     client, store = client_store
     game = client.post("/api/campaign/c1/start").json()
-    assert game["scenario"] == "campaign:c1" and game["mode"] == "classic"
+    assert game["scenario"] == "campaign:c1" and game["mode"] == "campaign"
 
     events = _play(client, game["id"], body={"crisis_id": "hormuz_energy_shock"})
     overs = [p for n, p in events if n == "campaign_over"]

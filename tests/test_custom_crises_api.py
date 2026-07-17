@@ -145,7 +145,7 @@ def test_test_endpoint_starts_unranked_crisis_game(client):
     resp = client.post("/api/admin/crises/crise_x/test?owner=alice")
     assert resp.status_code == 201
     game = resp.json()
-    assert game["mode"] == "crisis"
+    assert game["mode"] == "classic"  # RG-2 — « Crisis Replay » = partie classique + crisis_id
     assert game.get("ranked", False) is False  # partie de test => non classée
     assert set(game["countries"]) == {"iran", "usa"}
 
@@ -157,9 +157,7 @@ def test_test_endpoint_unknown_crisis_404(client):
 def test_custom_crisis_is_playable_in_a_round(client):
     """La preuve : un round résout la crise MAISON comme une crise embarquée."""
     _post(client, _crisis(cid="crise_x", actors=("usa", "iran")))
-    game = client.post(
-        "/api/games", json={"countries": ["usa", "iran"], "mode": "crisis"}
-    ).json()
+    game = client.post("/api/games", json={"countries": ["usa", "iran"]}).json()
     events = _play(client, game["id"], {"crisis_id": "crise_x"})
     event = next(p for n, p in events if n == "event")["event"]
     assert event["title"] == "Événement inaugural"

@@ -20,9 +20,10 @@ def store(fake_postgrest):
     return SupabaseGameStore(fake_postgrest.client())
 
 
-def _game(game_id: str = "g1", mode: str = "fog") -> GameRecord:
+def _game(game_id: str = "g1", mode: str = "classic", **kw) -> GameRecord:
     return GameRecord(
-        id=game_id, scenario="red_sea", horizon=5, mode=mode, created_at="2026-07-05T00:00:00"
+        id=game_id, scenario="red_sea", horizon=5, mode=mode,
+        created_at="2026-07-05T00:00:00", **kw,
     )
 
 
@@ -42,10 +43,11 @@ def test_auth_headers_and_path(store, fake_postgrest):
 
 
 def test_game_roundtrip(store):
-    store.add_game(_game())
+    # RG-2 — mode classic|campaign + drapeaux composables (Brouillard) survivent au store.
+    store.add_game(_game(fog=True))
     got = store.get_game("g1")
     assert got is not None
-    assert (got.mode, got.status) == ("fog", GameStatus.RUNNING)
+    assert (got.mode, got.fog, got.status) == ("classic", True, GameStatus.RUNNING)
     assert store.get_game("absent") is None
 
     got.status = GameStatus.FINISHED
