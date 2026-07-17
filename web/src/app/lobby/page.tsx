@@ -69,7 +69,7 @@ const ROLES: { value: FlowRole; label: string; blurb: string }[] = [
   {
     value: "spectator",
     label: "Spectateur",
-    blurb: "La partie se joue toute seule ; toi, tu paries — en accéléré.",
+    blurb: "Tu paries et tu regardes le sommet — le monde qui penche fait ta note. En accéléré.",
   },
 ];
 

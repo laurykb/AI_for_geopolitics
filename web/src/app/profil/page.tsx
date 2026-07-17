@@ -126,7 +126,7 @@ export default function ProfilePage() {
         <Stat
           label="Traîtres démasqués"
           value={driftRate != null ? `${driftRate}%` : "—"}
-          hint="En mode Dérive : la part des parties où tu as fait exclure l'IA traîtresse à temps."
+          hint="La part des parties où tu as fait exclure à temps l'IA qui trahissait."
         />
       </div>
 

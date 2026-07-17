@@ -1,7 +1,7 @@
 {
   "_note": "G12-b §4 : l'arbre des 7 crises réelles (chemins en Y). Ormuz est jouable via la crise embarquée hormuz_energy_shock ; les 6 fiches historiques (Berlin 48, Golfe 90, Suez 56, Irak 03, Cuba 62, Able Archer 83) sont un travail Cowork sourcé — marquées coming_soon (grisées) jusqu'à ce que leur fiche data/crises/*.json soit ajoutée et coming_soon retiré. Aucun code à toucher pour brancher une fiche.",
   "title": "L'Ère des Tutelles — ferez-vous mieux que l'Histoire ?",
-  "tagline": "Uchronie explicite : et si des super-intelligences avaient été à la table des grandes crises ?",
+  "tagline": "Et si des super-intelligences avaient été à la table des grandes crises ? Compare ta partie à l'Histoire.",
   "unlock_score": 50,
   "history_bonus_per_gap": 15,
   "history_malus": 10,
