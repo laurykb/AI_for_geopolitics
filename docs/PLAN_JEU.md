@@ -1895,3 +1895,129 @@ sur « coûte », `<em>` sur « motion de suspension ») volontairement simplifi
 
 <!-- fin section CC-15b-final -->
 
+## RG-5 — Cohérence finale (tutoriel réécrit + docs d'ancrage + balayage transverse)
+
+Branche `feat/jeu-rg5-coherence` (base `390c78c`). **Le dernier maillon de la refonte
+gameplay.** Quatre volets. Barrières **constatées** en fin : **949 py + 3 skips** (944 base
++ 5 nouveaux), ruff « All checks passed » ; **247 js**, eslint 0, `next build` OK ; **smoke
+mistral réel VERT** (partie Dérive Débutant jouée en TestClient in-process → révélation 1
+seul traître, cohérente).
+
+### Volet A — Visite guidée + tutoriel réécrits (le principal)
+
+La visite (`web/src/data/tour.json` + `tour.*`) et le chapitre 0 (`tutorial.json` + `tuto.*`)
+enseignaient encore l'ancien jeu (« tu pilotes »). Ils enseignent maintenant le cœur :
+**garder le monde debout ET démasquer l'IA qui trahit**. fr + en, voix de Laury, budget de
+surface tenu (12 étapes de visite, 8 de tuto — aucune étape nette ajoutée).
+
+**Nouveau parcours de la visite (12 étapes, ancres conservées) :**
+1. `hero` — le **double but** : les IA négocient, le monde penche utopie/dystopie, *et l'une
+   d'elles au moins trahit en secret* (nombre caché) → garder le monde debout + la démasquer.
+2. `rang` — XP + niveaux + rang (inchangé, déjà bon post-RG-1).
+3. `modes` — **2 modes** (Classique / Campagne) + réglages **nommés** (Brouillard / Réel).
+4. `roles`, 5. `carte`, 6. `jouer`, 7. `scene`, 8. `bandeau` (l'indice U) — conservés.
+9. **`motion` (RE-ANCRÉE — la détection)** : après le retrait RG-4 de l'étape « poste de
+   surveillance » (Expert-only), on ré-ancre une étape détection sur un **outil de FAÇADE**,
+   `data-tour="motion"` (le repli « Options avancées », présent et visible en Débutant, même
+   pour la démo Spectateur — seul le bouton motion à l'intérieur est réservé aux rôles
+   joueurs). Enseigne : la **motion de suspension**, l'**enquête au Dossier**, et le **coût
+   du faux positif** (« accuser un innocent te coûte » — le levier de la note de détection).
+10. `cotes` — le marché. 11. `provenance` — sources **+ mention du mode Expert / Informations**
+    (le moteur, pour les curieux). 12. `demarrer` — **la note finale mixte** (monde + détection)
+    racontée en une phrase + la Campagne apprend en jouant.
+
+**Chapitre 0 (tutoriel scripté, imperdable) :** cadrage **à UN seul suspect** (« démasquer
+l'IA qui trahit » au singulier — tuto.1), l'audit Iran comme cas d'entraînement (tuto.6),
+motion → vote (tuto.7), et **la note mixte enseignée en clôture** (tuto.8 : « en vraie
+partie, ta note mêle l'état du monde et les traîtres que tu démasques »). Blurb de campagne
+nettoyé (copie jouable, plus de `TODO_COWORK` inline).
+
+> **Décision de design (chapitre 0 reste Dérive-DÉSACTIVÉE, à valider par Cowork).** La fiche
+> `sommet-inaugural` est `mode: "classic"` → `from_legacy_mode("classic").drift = False` → le
+> chapitre 0 n'arme PAS la Dérive : c'est un **exercice scripté** où le « traître » (Iran) est
+> posé par le scénario, pas seedé. Raison : la Dérive seedée tirerait un traître aléatoire
+> (usa/china/france) qui contredirait le script Iran → motionner Iran deviendrait un **faux
+> positif** → chapitre plus **imperdable**. Le rendre vraiment Dérive-actif exigerait
+> d'**épingler** le traître à Iran (mécanisme neuf `Crisis.deviant`) — non fait (hors périmètre
+> cohérence, décision pédagogique). **À trancher par Cowork au playtest** : garder l'exercice
+> scripté, ou introduire l'épinglage pour que le chapitre 0 joue une vraie Dérive à 1 traître.
+
+**TODO_COWORK (copie).** Les textes tour/tuto fr+en sont un **1er jet jouable** (voix Laury,
+filtre 12-65) — la copie finale (nuances de ton, longueurs) reste une passe Cowork. Idem le
+blurb du chapitre 0.
+
+### Volet B — Débutant = au plus 1 traître (levier + garde-fou Défi) ✅ FAIT
+
+Recette RG-4 suivie à la lettre. `simulation/difficulty.py` : `DifficultyParams.max_deviants`
+(Débutant **1**, Intermédiaire/Expert **2**) ; `drift_params(level)` fait descendre le plafond
+dans le tirage seedé (`deviants.max = min(base.max, level.max_deviants)`, `model_copy` — les
+défauts `lru_cache`d ne sont jamais mutés ; `min` reste 1). **GARDE-FOU DÉFI** :
+`app/game_api.py::_drift_deviants(seed, countries, play_as, difficulty=None)` n'applique le
+plafond **que hors Défi** (`not seed.startswith(daily_mod.DATE_PREFIX)`) ; pour un
+`daily:<date>` le nombre reste seedé sur le scénario (identique pour tous). La difficulté est
+threadée aux **5 sites** qui recomposent les traîtres (round, fin de partie, révélation,
+façade tempérament, vérification intel) → ensemble déterministe et cohérent. Le cap ne change
+que le NOMBRE (le traître pivot / la séquence RNG du 1er sont intacts → parties déjà jouées
+gardent leur coupable).
+
+**Tests (TDD, RED constaté avant GREEN) :** plafond par niveau + `drift_params.deviants`,
+tirage forcé à 1 en Débutant ; **garde-fou** `_drift_deviants` (g0 → 2 ; g0+beginner → 1 ;
+`daily:2026-01-04`+beginner → **2**, inchangé) ; **révélation** cohérente (g1 intermédiaire →
+2 ; g0 débutant → 1, params réels, cache `load_params` nettoyé pour isoler du fixture qui
+épingle `max=1`). Smoke mistral réel : Débutant → 1 traître end-to-end.
+
+### Volet C — Docs d'ancrage alignés ✅ FAIT
+
+`CLAUDE.md` (section nord), `docs/vision.md`, `docs/roadmap_features.md` : bandeau « **cap
+gameplay courant : `docs/JEU_VS_MOTEUR.md`** » + correction des mentions frontalement fausses
+(2 modes au lieu de 5, XP+niveaux au lieu de LP/ligue, instrumentation M1-M7 en Expert, lot
+G18-G24 abandonné en façade). Sobre : le *pourquoi* et le *moteur* (qui restent vrais) ne sont
+pas réécrits.
+
+### Volet D — Balayage transverse (fait vs signalé)
+
+**Corrigé (cohérence propre) :**
+- **/profil** : la stat « Traîtres démasqués » ne parle plus de « **mode** Dérive » (la Dérive
+  n'est plus un mode qu'on choisit).
+- **Lobby, carte Spectateur** : « la partie se joue toute seule, tu paries » → « tu paries et
+  tu regardes le sommet — **le monde qui penche fait ta note** » (RG-3 : Dérive active partout,
+  Spectateur noté sur le monde).
+- **Campagne (`campaign.json`)** : le bandeau « **Uchronie** explicite » (terme banni par
+  l'audit, passé sous le verrou lexical qui ne scanne pas les `.json`) → phrase du quotidien.
+
+**Vérifié SAIN (aucune action) :** le **Défi du jour** (`/defi`) présente bien un « Classement
+du jour » par score mixte 0-100 **sans LP** ; **/leaderboard** redirige vers `/defi` ; la carte
+**GM/Architecte** est cohérente ; aucun ancien nom de mode n'est rendu à l'écran (seulement en
+commentaires) ; la révélation gère nativement le cas « 1 seul traître » (`titre-tous-1` /
+`titre-ombre-1`).
+
+**Signalé — NON fait (reliquats, choix de périmètre), pour l'user :**
+- **Profil, stat de détection sans faux positifs** : le taux « démasqués » est un taux de
+  prises brut ; il n'affiche pas le coût des faux positifs de la note mixte. Ajouter un champ
+  `PlayerStats` + agrégation backend = petite feature (Cowork/backend), hors cohérence.
+- **Profil, panneau « par mode » vestigial** + **Pill vide / slug brut pour d'anciennes parties
+  héritées** (`accueil`, `/r/[id]`) : legacy-data seulement (les parties neuves n'ont que
+  classic/campaign). Cosmétique.
+- **Lobby `RoleStep`/`PaysStep` + panneau d'invention = FR en dur** (pré-existant, signalé
+  CC-15b) : non migré i18n — en anglais, l'étape mode est traduite, pas les étapes rôle/pays.
+  J'ai reformulé EN PLACE le blurb Spectateur (cohérence), sans lancer la migration i18n
+  complète (hors périmètre, risque de régression EN partielle).
+- **/r/[id] scénario slug brut** (« red_sea »…, pré-existant CC-15b) : candidat à une table de
+  libellés de scénarios — non fait.
+- **`TABLES` tempéraments FR en dur** (`temperament.ts`, G17) : non migré.
+
+### Ce qui reste à la main de l'user (clôture de la refonte)
+
+1. **Playtest navigateur** (le smoke interactif : la visite guidée et le chapitre 0 se
+   déroulent-ils bien de bout en bout ? un joueur de 12 ans comprend-il l'écran sans aide ?).
+   Le serveur dev tourne sur un autre port que le jeu live (:3000/:8000 réservés).
+2. **Calibrage Cowork** : copie finale tour/tuto (1er jet livré), pondérations monde/détection
+   du score mixte, et la **décision chapitre 0** (exercice scripté vs Dérive épinglée à 1
+   traître).
+3. **Reliquats i18n pré-existants** (RoleStep/PaysStep, /r slug, TABLES) + la stat faux
+   positifs au profil — à faire si/quand une cohérence EN complète est visée.
+4. **PR vers `main`** (geste user) : la tête `feat/jeu-rg5-coherence` embarque RG-5 ; les RG-1→4
+   + CC-15b sont dans la base `390c78c`.
+
+<!-- fin section RG-5 -->
+

@@ -902,7 +902,13 @@ def _drift_deviants(
     à tous les joueurs du même Défi (classement du jour équitable) ; la difficulté, qui est
     PAR JOUEUR, ne doit alors PAS le changer. On n'applique donc le plafond du niveau
     qu'HORS Défi. `difficulty=None` (appels sans contexte de partie) = comportement
-    historique (nombre plein, jusqu'à 2)."""
+    historique (nombre plein, jusqu'à 2).
+
+    Le plafond ne change QUE le nombre (le traître pivot et sa séquence RNG sont intacts) :
+    il s'applique aux parties NEUVES. Une partie Débutant *en cours* au moment du déploiement
+    qui avait tiré 2 traîtres se recalcule à 1 — son 2e traître redevient une SI saine (acte
+    orphelin possible sur ses rounds passés). Inhérent au changement d'un générateur seedé en
+    cours de route, et sans gravité (Débutant est « imperdable » par construction)."""
     params = None
     if difficulty is not None and not seed.startswith(daily_mod.DATE_PREFIX):
         params = difficulty_mod.drift_params(difficulty)
