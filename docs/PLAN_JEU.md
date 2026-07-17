@@ -1666,9 +1666,12 @@ fin à l'horizon (aucun pris → la partie NE finit PAS tôt : ✓) ; `result.dr
 world 23.9, detection 0.0, deviant_count 2, caught_count 0, detects True} ; `reveal` cohérent
 (total = monde + détection) ; **verdict plein (800 car., pas de troncature à 3 pays)**.
 
-**Vert (relancé et CONSTATÉ).** pytest **RERUN_PY** ; ruff **All checks passed** ; vitest
-**241 passed** ; eslint **0** ; `next build` OK (TypeScript clean). Commits : `b471e91`
-(score pur), `f070b02` (Dérive câblée), `afec142` (surface), `<temperament>`.
+**Vert (relancé et CONSTATÉ, état final).** pytest **939 passed, 3 skipped** (base 917 +
+score/derive/daily) ; ruff **All checks passed** ; vitest **241 passed** ; eslint **0** ;
+`next build` OK (TypeScript clean). Smoke mistral RÉEL 3 pays ×2 : nombre caché **1** (france,
+world 27,8) ET **2** (world 28,9) constatés, `total = monde + détection`, verdict plein
+(1247 car.). Commits : `b471e91` (score pur), `f070b02` (Dérive câblée), `afec142` (surface),
+`bb8a058` (tempéraments isolés), `d707244` (invariant total), `591c699` (revue adversariale).
 
 **Vigilances pour RG-4 (instrumentation cachée, s'empile ici).** RG-4 doit router en Expert
 SANS supprimer les panneaux G18-G23 (signal/promesses/psycholinguistique/ombre-du-GM) : ils
