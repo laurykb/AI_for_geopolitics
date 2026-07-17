@@ -119,8 +119,3 @@ tests/       # unitaires + intégration (452+, offline)
 docs/        # vision, plans (REFONTE_PLAN, PLAN_JEU), specs, gouvernance des données
 ```
 
-## Prochaine étape
-
-**Le jeu** (`docs/PLAN_JEU.md`) : détecter la super-intelligence qui **dérive de son mandat**
-— carte-scène (G1), tour humain (G2), mode Dérive (G3), renseignement (G4), campagne
-historique (G5), récit public (G6). Côté refonte : R2 (Supabase) puis R5 (déploiement Vercel).
