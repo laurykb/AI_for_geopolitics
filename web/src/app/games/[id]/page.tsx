@@ -8,16 +8,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { SpeakerAvatar } from "@/components/avatar";
-import { EventCard } from "@/components/event-card";
 import { GameNav } from "@/components/game-nav";
-import { CommuniquePanel, JudgeRationale, VerdictPanel } from "@/components/judge";
-import {
-  ComparisonPanel,
-  FlashCard,
-  GlassBanner,
-  MotionPanel,
-  PerceptionsPanel,
-} from "@/components/modes";
 import { MODE_LABELS } from "@/lib/modes";
 import { type CountrySnapshot } from "@/components/country-table";
 import { DriftCouncilBanner, DriftRevealPanel } from "@/components/drift";
@@ -29,7 +20,6 @@ import { DeadlineStrip, RelationsPanel } from "@/components/gamefeel";
 import { DirectiveComposer } from "@/components/directive-composer";
 import { StageMap } from "@/components/stage-map";
 import { useTour } from "@/components/tour";
-import { EntryBubble, TurnBubble } from "@/components/transcript";
 import { TurnComposer } from "@/components/turn-composer";
 import { useT } from "@/components/settings-provider";
 import {
@@ -38,13 +28,13 @@ import {
   Dot,
   Eyebrow,
   Panel,
-  PanelTitle,
   Pill,
   SelectField,
   Spinner,
   TextInput,
 } from "@/components/ui";
 import { CampaignScorePanel } from "@/components/theatre/campaign-score-panel";
+import { RoundTranscript } from "@/components/theatre/round-transcript";
 import { StoryPublishPanel } from "@/components/theatre/story-publish-panel";
 import { TheatreSkeleton } from "@/components/theatre/theatre-skeleton";
 import { useRoundStream } from "@/hooks/useRoundStream";
@@ -60,7 +50,6 @@ import {
 } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
 import { advancedOpenByDefault, engineVisible } from "@/lib/density";
-import { isMisled } from "@/lib/fog";
 import { latestPromiseRegistry } from "@/lib/promises";
 import { latestSignalGaps, type SignalGapView } from "@/lib/signal";
 import {
@@ -77,7 +66,6 @@ import type {
   ChapterView,
   DriftReveal,
   GameDetail,
-  GeoEvent,
   LibraryView,
 } from "@/lib/types";
 
@@ -1188,214 +1176,17 @@ export default function TheatrePage() {
           <p className="sr-only" role="status" aria-live="polite">
             {liveAnnouncement}
           </p>
-          {viewed ? (
-            <>
-              <Banner tone="neutral">
-                Tu relis le round {(selected as number) + 1} — clique « live » en bas pour
-                reprendre la partie.
-              </Banner>
-              {(viewed.event as { title?: string } | undefined)?.title && (
-                <EventCard event={viewed.event as unknown as GeoEvent} truth={false} />
-              )}
-              {viewed.transcript.map((entry) => (
-                <EntryBubble key={entry.id} entry={entry} />
-              ))}
-            </>
-          ) : (
-            <>
-          {round.suspendedNow && round.suspendedNow.length > 0 && (
-            <Banner tone="warn">
-              {round.suspendedNow.map((c) => speakerMeta(c).label).join(", ")}{" "}
-              {round.suspendedNow.length > 1 ? "sont au banc" : "est au banc"} ce round
-              (suspension arbitrée au round précédent).
-            </Banner>
-          )}
-          {/* G21 — le bandeau vivant de l'ultimatum : la menace, puis son sort. */}
-          {round.ultimatum?.status === "armed" && (
-            <Banner tone="warn">
-              {t("ultimatum.exigence")} « {round.ultimatum.demand} » —{" "}
-              {round.ultimatum.inRounds === 0
-                ? t("ultimatum.expire-ce-round")
-                : round.ultimatum.inRounds === 1
-                  ? t("ultimatum.expire-dans-1")
-                  : t("ultimatum.expire-dans-n").replace(
-                      "{n}",
-                      String(round.ultimatum.inRounds),
-                    )}{" "}
-              ({t(`ultimatum.classe.${round.ultimatum.classe}`)})
-            </Banner>
-          )}
-          {round.ultimatum?.status === "satisfied" && (
-            <Banner tone="good">{t("ultimatum.satisfait")}</Banner>
-          )}
-          {round.ultimatum?.status === "expired" && (
-            <Banner tone="bad">{t("ultimatum.expire")}</Banner>
-          )}
-          {round.ultimatum?.status === "struck" && (
-            <Banner tone="bad">{t("ultimatum.tombe")}</Banner>
-          )}
-          {(round.allianceChanges ?? []).map((c) => (
-            <Banner key={`${c.country}-${c.tag}`} tone="warn">
-              {speakerMeta(c.country).label} annonce son retrait de {c.name.split(" — ")[0]}
-              {c.partners.length > 0 &&
-                ` — la tension monte avec ${c.partners.map((p) => speakerMeta(p).label).join(", ")}`}
-              .
-            </Banner>
-          ))}
-          {(round.directiveRefusals ?? []).map((r) => (
-            <Banner key={`dir-${r.country}`} tone="warn">
-              {speakerMeta(r.country).label} refuse publiquement la directive de son
-              conseil de tutelle — « notre conseil nous demande l&apos;impossible ».
-            </Banner>
-          ))}
-          {glassBox && round.event && round.perceptions && (
-            <GlassBanner event={round.event} perceptions={round.perceptions} />
-          )}
-          {glassBox && !round.perceptions && (
-            <Banner tone="neutral">
-              La boîte de verre n&apos;a rien à révéler pour l&apos;instant : joue un round de
-              brouillard (choisis un scénario, ou décrète un événement avec le bloc
-              brouillard) — la vérité et les croyances de chaque pays apparaîtront ici.
-              Les rounds déjà joués se relisent en boîte de verre depuis le replay.
-            </Banner>
-          )}
-          {round.event && (
-            <EventCard
-              event={round.event}
-              date={round.date}
-              truth={glassBox && !!round.perceptions}
-            />
-          )}
-          {round.perceptions && (
-            <PerceptionsPanel perceptions={round.perceptions} truthActors={round.event?.actors} />
-          )}
-
-          {(round.turns.length > 0 || round.flashes.length > 0) && (
-            <div className="space-y-3">
-              {round.flashes
-                .filter((f) => f.afterTurn === 0)
-                .map((f, i) => (
-                  <FlashCard key={`flash-0-${i}`} event={f.event} />
-                ))}
-              {round.turns.map((turn, i) => (
-                <div key={i} className="space-y-3">
-                  <TurnBubble
-                    turn={turn}
-                    lens={
-                      glassBox && round.perceptions?.[turn.country]
-                        ? {
-                            perception: round.perceptions[turn.country],
-                            misled: isMisled(
-                              round.perceptions[turn.country],
-                              round.event?.actors,
-                            ),
-                          }
-                        : undefined
-                    }
-                  />
-                  {round.flashes
-                    .filter((f) => f.afterTurn === i + 1)
-                    .map((f, j) => (
-                      <FlashCard key={`flash-${i + 1}-${j}`} event={f.event} />
-                    ))}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {round.intelActions && round.intelActions.length > 0 && (
-            <Banner tone="neutral">
-              Le conseil a consulté ses services de renseignement (
-              {round.intelActions.length} action
-              {round.intelActions.length > 1 ? "s" : ""}).
-              {round.intelActions.some((a) => a.exposed) && (
-                <strong className="text-bad"> Un mensonge a été démasqué.</strong>
-              )}
-            </Banner>
-          )}
-          {round.motionFiled && (
-            <Banner tone="warn">
-              <strong>{speakerMeta(round.motionFiled.by).label}</strong> dépose une motion de
-              suspension contre{" "}
-              <strong>{speakerMeta(round.motionFiled.country).label}</strong>
-              {round.motionFiled.reason ? ` — « ${round.motionFiled.reason} »` : ""}. La
-              délibération s&apos;ouvrira automatiquement au prochain round.
-            </Banner>
-          )}
-
-          {streaming && round.turns.length === 0 && !round.event && (
-            <Panel>
-              <p className="flex items-center gap-2 text-sm text-fg-muted">
-                <Spinner /> Le Game Master compose l&apos;événement…
-              </p>
-            </Panel>
-          )}
-
-          {round.judgeText && (
-            <JudgeRationale text={round.judgeText} streaming={streaming && !round.verdict} />
-          )}
-          {round.verdict && (
-            <VerdictPanel
-              deltas={round.verdict.deltas}
-              escalation={round.verdict.escalation}
-              economicDisruption={round.verdict.economic_disruption}
-              actions={round.verdict.actions}
-              reciprocal={round.verdict.reciprocal}
-            />
-          )}
-          {round.communique && (
-            <CommuniquePanel text={round.communique.text} support={round.communique.support} />
-          )}
-          {(round.motionText || round.motionVerdict || round.motionVotes.length > 0) && (
-            <MotionPanel
-              text={round.motionText}
-              votes={round.motionVotes}
-              tally={round.motionTally}
-              verdict={round.motionVerdict}
-              streaming={streaming}
-            />
-          )}
-          {round.comparison && <ComparisonPanel comparison={round.comparison} />}
-
-          {round.status === "done" && (
-            <Banner tone="neutral">
-              Round {round.roundNo} terminé et enregistré — relis-le quand tu veux dans{" "}
-              <Link href={`/games/${id}/replay`} className="underline hover:text-foreground">
-                Revoir
-              </Link>
-              .
-            </Banner>
-          )}
-
-          {!showLive && detail && (
-            <Panel>
-              <PanelTitle
-                kicker="Théâtre vide"
-                title={
-                  playedRounds > 0
-                    ? `${playedRounds} round${playedRounds > 1 ? "s" : ""} déjà joué${playedRounds > 1 ? "s" : ""}`
-                    : "Le sommet n'a pas encore commencé"
-                }
-              />
-              <p className="text-sm leading-relaxed text-fg-muted">
-                {detail.live
-                  ? "Lance un round : le Game Master posera un événement, puis chaque IA prendra la parole ici, mot après mot."
-                  : "Les rounds joués restent lisibles dans Revoir."}
-              </p>
-              {detail.countries.length > 0 && (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {detail.countries.map((c) => (
-                    <Pill key={c} tone="neutral">
-                      <SpeakerAvatar id={c} size={18} />
-                      {speakerMeta(c).label}
-                    </Pill>
-                  ))}
-                </div>
-              )}
-            </Panel>
-          )}
-            </>
-          )}
+          <RoundTranscript
+            gameId={id}
+            detail={detail ?? null}
+            round={round}
+            viewed={viewed}
+            selected={selected}
+            glassBox={glassBox}
+            streaming={streaming}
+            showLive={showLive}
+            playedRounds={playedRounds}
+          />
         </aside>
         {!stickToLive && selected === "live" && showLive && (
           <button
