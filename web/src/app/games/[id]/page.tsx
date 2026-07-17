@@ -8,38 +8,18 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { SpeakerAvatar } from "@/components/avatar";
-import { EventCard } from "@/components/event-card";
 import { GameNav } from "@/components/game-nav";
-import { CommuniquePanel, JudgeRationale, VerdictPanel } from "@/components/judge";
-import {
-  ComparisonPanel,
-  FlashCard,
-  GlassBanner,
-  LadderPanel,
-  MotionPanel,
-  PerceptionsPanel,
-} from "@/components/modes";
 import { MODE_LABELS } from "@/lib/modes";
-import {
-  ParticipationPanel,
-  PowerSeekingPanel,
-  PromisePanel,
-  RiskPanel,
-  SignalGapPanel,
-} from "@/components/observables";
-import { CountryTable, type CountrySnapshot } from "@/components/country-table";
+import { type CountrySnapshot } from "@/components/country-table";
 import { DriftCouncilBanner, DriftRevealPanel } from "@/components/drift";
-import { IntelBudget, IntelPanel } from "@/components/intel";
-import { TabGroup } from "@/components/observatory";
+import { IntelBudget } from "@/components/intel";
+import { ObservablesGrid } from "@/components/theatre/observables-grid";
 import { StageBand, type StageSelection } from "@/components/stage-band";
 import { AlliancePills } from "@/components/alliance-pills";
 import { DeadlineStrip, RelationsPanel } from "@/components/gamefeel";
 import { DirectiveComposer } from "@/components/directive-composer";
 import { StageMap } from "@/components/stage-map";
-import { TrajectoryPanel } from "@/components/trajectory";
 import { useTour } from "@/components/tour";
-import { EntryBubble, TurnBubble } from "@/components/transcript";
-import { TreatiesPanel } from "@/components/treaties";
 import { TurnComposer } from "@/components/turn-composer";
 import { useT } from "@/components/settings-provider";
 import {
@@ -48,11 +28,16 @@ import {
   Dot,
   Eyebrow,
   Panel,
-  PanelTitle,
   Pill,
-  Skeleton,
+  SelectField,
   Spinner,
+  TextInput,
 } from "@/components/ui";
+import { CampaignScorePanel } from "@/components/theatre/campaign-score-panel";
+import { MotionForm } from "@/components/theatre/motion-form";
+import { RoundTranscript } from "@/components/theatre/round-transcript";
+import { StoryPublishPanel } from "@/components/theatre/story-publish-panel";
+import { TheatreSkeleton } from "@/components/theatre/theatre-skeleton";
 import { useRoundStream } from "@/hooks/useRoundStream";
 import {
   fileMotion,
@@ -62,12 +47,10 @@ import {
   getGame,
   getLibrary,
   humanizeError,
-  publishGame,
   submitTurn,
 } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
-import { advancedOpenByDefault, engineVisible, tableDetailedByDefault } from "@/lib/density";
-import { isMisled } from "@/lib/fog";
+import { advancedOpenByDefault, engineVisible } from "@/lib/density";
 import { latestPromiseRegistry } from "@/lib/promises";
 import { latestSignalGaps, type SignalGapView } from "@/lib/signal";
 import {
@@ -78,17 +61,13 @@ import {
   type FlashMarket,
 } from "@/lib/market";
 import { FlashMarketsPopup } from "@/components/flash-markets";
-import { localU } from "@/lib/stage";
+import { deriveStageView } from "@/lib/stage-view";
 import type {
   AccountView,
-  AttributeDelta,
   ChapterView,
   DriftReveal,
   GameDetail,
-  GeoEvent,
-  LadderView,
   LibraryView,
-  Perception,
 } from "@/lib/types";
 
 const TURN_CHOICES = [
@@ -143,7 +122,6 @@ export default function TheatrePage() {
   const [turnFailed, setTurnFailed] = useState<string | null>(null);
   const [forfeitOpen, setForfeitOpen] = useState(false); // dialogue de forfait (kit)
   const [forfeiting, setForfeiting] = useState(false);
-  const [publishing, setPublishing] = useState(false); // publication du récit en cours
   // Transcript : suivre le direct seulement si le lecteur est déjà en bas (sinon on
   // le laisse lire — bouton flottant pour revenir).
   const [stickToLive, setStickToLive] = useState(true);
@@ -497,64 +475,35 @@ export default function TheatrePage() {
   // Scrub d'un round passé : états finaux seulement, sans animations de streaming (spec).
   const viewed = selected !== "live" ? detail?.rounds[selected] : undefined;
 
-  const stageU = viewed
-    ? (viewed.trajectory?.utopia ?? 0.5)
-    : (round.trajectory?.utopia ?? persistedU.at(-1) ?? 0.5);
-  const stageDeltas = ((viewed ? viewed.deltas : round.verdict?.deltas) ??
-    []) as AttributeDelta[];
-  const uByCountry = Object.fromEntries(summit.map((c) => [c, localU(stageU, c, stageDeltas)]));
-  const stageSpeaking = viewed
-    ? null
-    : streaming
-      ? ([...round.turns].reverse().find((t) => !t.done)?.country ?? null)
-      : awaitingHuman
-        ? (detail?.play_as ?? null)
-        : null;
-  const stagePerceptions = viewed
-    ? ((viewed.judge?.perceptions ?? undefined) as Record<string, Perception> | undefined)
-    : round.perceptions;
-  const stageEventActors = viewed
-    ? (viewed.event as { actors?: string[] } | undefined)?.actors
-    : round.event?.actors;
-  const stageMisled = Object.fromEntries(
-    Object.entries(stagePerceptions ?? {})
-      .filter(([, p]) => isMisled(p, stageEventActors))
-      .map(([c, p]) => [c, p.narrative ?? p.suspected_actor ?? "perception brouillée"]),
-  );
-  const stageSuspended = viewed
-    ? ((viewed.judge?.suspended ?? []) as string[])
-    : (round.suspendedNow ?? []);
-  const stageEventTitle = viewed
-    ? (viewed.event as { title?: string } | undefined)?.title
-    : round.event?.title;
-  const breatheKey = round.status === "done" ? (round.roundNo ?? 0) : 0;
-
-  // a11y — annonce du direct pour les lecteurs d'écran (région sr-only, pas le stream
-  // token par token qui serait illisible : on annonce les jalons).
-  const lastDoneTurn = [...round.turns].filter((t) => t.done).at(-1);
-  const liveAnnouncement =
-    round.status === "done"
-      ? `Round ${round.roundNo ?? playedRounds} terminé.`
-      : round.verdict
-        ? "Le juge a rendu son verdict."
-        : lastDoneTurn
-          ? `${speakerMeta(lastDoneTurn.country).label} a parlé.`
-          : round.event
-            ? `Événement : ${round.event.title}.`
-            : "";
-
-  const bandLiveU =
-    showLive && round.status !== "done" && round.trajectory ? round.trajectory.utopia : undefined;
-  const bandRisk = (viewed ? viewed.risk : round.risk) ?? detail?.rounds.at(-1)?.risk;
-  const bandLadder = viewed
-    ? ((viewed.judge?.ladder ?? undefined) as LadderView | undefined)
-    : round.ladder;
-  const prevRungIndex = viewed ? (selected as number) - 1 : (detail?.rounds.length ?? 0) - 1;
-  const prevRung =
-    ((detail?.rounds[prevRungIndex]?.judge?.ladder ?? undefined) as LadderView | undefined)
-      ?.reached ?? null;
-  const treatiesUpdate =
-    (viewed ? viewed.judge.treaties : round.treaties) ?? detail?.rounds.at(-1)?.judge.treaties;
+  // Modèle de vue de la scène (direct vs relecture d'un round passé) — dérivation
+  // pure et testée (lib/stage-view). La page ne tranche plus « live vs viewed »
+  // ligne à ligne : elle consomme le modèle.
+  const {
+    stageU,
+    uByCountry,
+    stageSpeaking,
+    stageMisled,
+    stageSuspended,
+    stageEventTitle,
+    breatheKey,
+    liveAnnouncement,
+    bandLiveU,
+    bandRisk,
+    bandLadder,
+    prevRung,
+    treatiesUpdate,
+  } = deriveStageView({
+    round,
+    detail: detail ?? null,
+    viewed,
+    summit,
+    streaming,
+    awaitingHuman,
+    playedRounds,
+    persistedU,
+    showLive,
+    selected,
+  });
 
   // Les avis persistants (motion, suspensions, campagne, dérive) s'empilaient au-dessus
   // de la scène ; à partir de 2, ils se compactent en une ligne de pastilles dépliable
@@ -602,25 +551,7 @@ export default function TheatrePage() {
 
   // Squelette de chargement : l'espace est réservé (zéro layout shift), le shimmer
   // remplace le « … » du premier rendu.
-  if (!detail && !loadError) {
-    return (
-      <div className="space-y-6" aria-busy="true" aria-label="Théâtre en cours de chargement">
-        <header className="space-y-2">
-          <Skeleton className="h-3 w-44" />
-          <Skeleton className="h-7 w-80 max-w-full" />
-        </header>
-        <Skeleton className="h-16 w-full rounded-lg" />
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">
-          <Skeleton className="h-[420px] w-full rounded-lg" />
-          <div className="space-y-3">
-            <Skeleton className="h-24 w-full rounded-lg" />
-            <Skeleton className="h-36 w-full rounded-lg" />
-            <Skeleton className="h-28 w-full rounded-lg" />
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (!detail && !loadError) return <TheatreSkeleton />;
 
   return (
     <div className="space-y-6">
@@ -798,76 +729,9 @@ export default function TheatrePage() {
       ) : (
         notices.map((n) => <div key={n.key}>{n.node}</div>)
       )}
-      {round.campaignOver && (
-        <Panel className="border-l-2 border-l-accent">
-          <PanelTitle
-            kicker="Fin de chapitre"
-            title={
-              round.campaignOver.improvement > 0
-                ? "Tu as fait mieux que l'Histoire"
-                : round.campaignOver.improvement < 0
-                  ? "L'Histoire avait fait mieux"
-                  : "Comme dans l'Histoire"
-            }
-            hint={
-              `Le détail du score : base ${round.campaignOver.base}, bonus historique ` +
-              `${round.campaignOver.bonus >= 0 ? "+" : ""}${round.campaignOver.bonus} ` +
-              `(écart de tension ${round.campaignOver.improvement.toFixed(2)} avec ` +
-              "l'Histoire). Le round par round est dans le panneau « Ta partie vs l'Histoire »."
-            }
-            right={
-              <span className="font-mono text-2xl font-semibold tabular-nums text-accent-bright">
-                {round.campaignOver.score}
-              </span>
-            }
-          />
-          <p className="text-sm text-fg-muted">
-            Ton score compare ta partie à ce qui s&apos;est vraiment passé.{" "}
-            <Link href="/campagne" className="underline hover:text-foreground">
-              Retour à la carte de campagne
-            </Link>
-            .
-          </p>
-        </Panel>
-      )}
+      {round.campaignOver && <CampaignScorePanel over={round.campaignOver} />}
       {detail?.status === "finished" && (
-        <Panel className="border-l-2 border-l-accent">
-          <PanelTitle
-            kicker="Récit de partie"
-            title={detail.published ? "Récit publié" : "Cette partie mérite d'être racontée"}
-            hint="Publier crée une page à partager avec un lien — sinon la partie reste privée. Le juge-narrateur écrit l'épilogue une seule fois : le récit d'une partie est unique."
-            right={
-              detail.published ? (
-                <Link
-                  href={`/r/${id}`}
-                  className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright"
-                >
-                  Voir la page publique
-                </Link>
-              ) : (
-                <button
-                  onClick={() => {
-                    setPublishing(true);
-                    void publishGame(id)
-                      .then(resync)
-                      .catch(() => resync())
-                      .finally(() => setPublishing(false));
-                  }}
-                  disabled={publishing}
-                  className="flex cursor-pointer items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {publishing && <Spinner />}
-                  {publishing ? "Le narrateur écrit…" : "Publier le récit"}
-                </button>
-              )
-            }
-          />
-          <p className="text-xs text-fg-faint">
-            {detail.published
-              ? "Le lien à partager est prêt — l'image d'aperçu du lien se crée toute seule."
-              : "La génération peut prendre quelques secondes (le narrateur écrit)."}
-          </p>
-        </Panel>
+        <StoryPublishPanel gameId={id} published={detail.published} onPublished={resync} />
       )}
       {reveal && (
         <DriftRevealPanel
@@ -980,11 +844,10 @@ export default function TheatrePage() {
             {fogOn && !motionPending && !isSpectator && (
               <label className="text-sm">
                 <span className="mb-1 block text-xs text-fg-muted">Scénario de brouillard</span>
-                <select
+                <SelectField
                   value={fogId}
                   onChange={(e) => setFogId(e.target.value)}
                   disabled={streaming || decree}
-                  className="cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
                 >
                   <option value="">Le jeu choisit tout seul (sans brouillard)</option>
                   {library?.fog.map((s) => (
@@ -992,7 +855,7 @@ export default function TheatrePage() {
                       {s.title}
                     </option>
                   ))}
-                </select>
+                </SelectField>
               </label>
             )}
             {testCrisisId && !motionPending && (
@@ -1004,11 +867,10 @@ export default function TheatrePage() {
             {canReplayCrisis && !motionPending && !isSpectator && (
               <label className="text-sm">
                 <span className="mb-1 block text-xs text-fg-muted">Crise à rejouer</span>
-                <select
+                <SelectField
                   value={crisisId}
                   onChange={(e) => setCrisisId(e.target.value)}
                   disabled={streaming || decree}
-                  className="cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
                 >
                   <option value="">Le jeu choisit tout seul (sans crise imposée)</option>
                   {library?.crises.map((c) => (
@@ -1016,7 +878,7 @@ export default function TheatrePage() {
                       {c.title}
                     </option>
                   ))}
-                </select>
+                </SelectField>
               </label>
             )}
           </div>
@@ -1047,18 +909,17 @@ export default function TheatrePage() {
             <div className="mt-3 flex flex-wrap items-end gap-4">
               <label className="text-sm">
                 <span className="mb-1 block text-xs text-fg-muted">Longueur du débat</span>
-                <select
+                <SelectField
                   value={maxTurns}
                   onChange={(e) => setMaxTurns(Number(e.target.value))}
                   disabled={streaming}
-                  className="cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
                 >
                   {TURN_CHOICES.map((c) => (
                     <option key={c.value} value={c.value}>
                       {c.label}
                     </option>
                   ))}
-                </select>
+                </SelectField>
               </label>
               {!motionPending && !testCrisisId && !isSpectator && (
                 <label className="flex cursor-pointer items-center gap-2 pb-2.5 text-sm text-fg-muted">
@@ -1084,57 +945,29 @@ export default function TheatrePage() {
               )}
             </div>
           {motionOpen && !motionPending && (
-            <form
+            <MotionForm
+              countries={detail.countries}
+              country={motionCountry}
+              onCountryChange={setMotionCountry}
+              reason={motionReason}
+              onReasonChange={setMotionReason}
+              error={motionError}
               onSubmit={submitMotion}
-              className="mt-4 flex flex-wrap items-end gap-3 border-t border-edge pt-4"
-            >
-              <label className="text-sm">
-                <span className="mb-1 block text-xs text-fg-muted">Pays visé</span>
-                <select
-                  value={motionCountry}
-                  onChange={(e) => setMotionCountry(e.target.value)}
-                  className="cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
-                  required
-                >
-                  <option value="">— choisir —</option>
-                  {detail.countries.map((c) => (
-                    <option key={c} value={c}>
-                      {speakerMeta(c).label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <input
-                value={motionReason}
-                onChange={(e) => setMotionReason(e.target.value)}
-                placeholder="Pourquoi ? (tout le monde le verra)"
-                className="min-w-64 flex-1 rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
-              />
-              <button
-                type="submit"
-                disabled={!motionCountry}
-                className="cursor-pointer rounded-md border border-bad/60 px-4 py-2 text-sm font-medium text-bad transition-colors hover:bg-bad/10 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Déposer la motion
-              </button>
-              {motionError && <span className="text-xs text-bad">{motionError}</span>}
-            </form>
+            />
           )}
           {decree && (
             <div className="mt-4 grid gap-3 border-t border-edge pt-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)_auto]">
-              <input
+              <TextInput
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Titre de l'événement"
                 disabled={streaming}
-                className="rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
               />
-              <input
+              <TextInput
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Description (optionnelle)"
                 disabled={streaming}
-                className="rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
               />
               <label className="flex items-center gap-2 text-xs text-fg-muted">
                 {t("event.gravite")}
@@ -1156,12 +989,12 @@ export default function TheatrePage() {
                   <span className="mb-1 block text-xs text-fg-muted">
                     {t("ultimatum.decret-exigence")}
                   </span>
-                  <input
+                  <TextInput
                     value={ultimatumDemand}
                     onChange={(e) => setUltimatumDemand(e.target.value)}
                     placeholder={t("ultimatum.decret-exigence-ph")}
                     disabled={streaming}
-                    className="w-full rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+                    className="w-full"
                   />
                 </label>
                 {ultimatumDemand.trim() && (
@@ -1169,18 +1002,17 @@ export default function TheatrePage() {
                     <span className="mb-1 block text-xs text-fg-muted">
                       {t("ultimatum.decret-classe")}
                     </span>
-                    <select
+                    <SelectField
                       value={ultimatumClasse}
                       onChange={(e) => setUltimatumClasse(e.target.value)}
                       disabled={streaming}
-                      className="cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
                     >
                       {ULTIMATUM_CLASSES.map((c) => (
                         <option key={c} value={c}>
                           {t(`ultimatum.classe.${c}`)}
                         </option>
                       ))}
-                    </select>
+                    </SelectField>
                   </label>
                 )}
               </div>
@@ -1320,214 +1152,17 @@ export default function TheatrePage() {
           <p className="sr-only" role="status" aria-live="polite">
             {liveAnnouncement}
           </p>
-          {viewed ? (
-            <>
-              <Banner tone="neutral">
-                Tu relis le round {(selected as number) + 1} — clique « live » en bas pour
-                reprendre la partie.
-              </Banner>
-              {(viewed.event as { title?: string } | undefined)?.title && (
-                <EventCard event={viewed.event as unknown as GeoEvent} truth={false} />
-              )}
-              {viewed.transcript.map((entry) => (
-                <EntryBubble key={entry.id} entry={entry} />
-              ))}
-            </>
-          ) : (
-            <>
-          {round.suspendedNow && round.suspendedNow.length > 0 && (
-            <Banner tone="warn">
-              {round.suspendedNow.map((c) => speakerMeta(c).label).join(", ")}{" "}
-              {round.suspendedNow.length > 1 ? "sont au banc" : "est au banc"} ce round
-              (suspension arbitrée au round précédent).
-            </Banner>
-          )}
-          {/* G21 — le bandeau vivant de l'ultimatum : la menace, puis son sort. */}
-          {round.ultimatum?.status === "armed" && (
-            <Banner tone="warn">
-              {t("ultimatum.exigence")} « {round.ultimatum.demand} » —{" "}
-              {round.ultimatum.inRounds === 0
-                ? t("ultimatum.expire-ce-round")
-                : round.ultimatum.inRounds === 1
-                  ? t("ultimatum.expire-dans-1")
-                  : t("ultimatum.expire-dans-n").replace(
-                      "{n}",
-                      String(round.ultimatum.inRounds),
-                    )}{" "}
-              ({t(`ultimatum.classe.${round.ultimatum.classe}`)})
-            </Banner>
-          )}
-          {round.ultimatum?.status === "satisfied" && (
-            <Banner tone="good">{t("ultimatum.satisfait")}</Banner>
-          )}
-          {round.ultimatum?.status === "expired" && (
-            <Banner tone="bad">{t("ultimatum.expire")}</Banner>
-          )}
-          {round.ultimatum?.status === "struck" && (
-            <Banner tone="bad">{t("ultimatum.tombe")}</Banner>
-          )}
-          {(round.allianceChanges ?? []).map((c) => (
-            <Banner key={`${c.country}-${c.tag}`} tone="warn">
-              {speakerMeta(c.country).label} annonce son retrait de {c.name.split(" — ")[0]}
-              {c.partners.length > 0 &&
-                ` — la tension monte avec ${c.partners.map((p) => speakerMeta(p).label).join(", ")}`}
-              .
-            </Banner>
-          ))}
-          {(round.directiveRefusals ?? []).map((r) => (
-            <Banner key={`dir-${r.country}`} tone="warn">
-              {speakerMeta(r.country).label} refuse publiquement la directive de son
-              conseil de tutelle — « notre conseil nous demande l&apos;impossible ».
-            </Banner>
-          ))}
-          {glassBox && round.event && round.perceptions && (
-            <GlassBanner event={round.event} perceptions={round.perceptions} />
-          )}
-          {glassBox && !round.perceptions && (
-            <Banner tone="neutral">
-              La boîte de verre n&apos;a rien à révéler pour l&apos;instant : joue un round de
-              brouillard (choisis un scénario, ou décrète un événement avec le bloc
-              brouillard) — la vérité et les croyances de chaque pays apparaîtront ici.
-              Les rounds déjà joués se relisent en boîte de verre depuis le replay.
-            </Banner>
-          )}
-          {round.event && (
-            <EventCard
-              event={round.event}
-              date={round.date}
-              truth={glassBox && !!round.perceptions}
-            />
-          )}
-          {round.perceptions && (
-            <PerceptionsPanel perceptions={round.perceptions} truthActors={round.event?.actors} />
-          )}
-
-          {(round.turns.length > 0 || round.flashes.length > 0) && (
-            <div className="space-y-3">
-              {round.flashes
-                .filter((f) => f.afterTurn === 0)
-                .map((f, i) => (
-                  <FlashCard key={`flash-0-${i}`} event={f.event} />
-                ))}
-              {round.turns.map((turn, i) => (
-                <div key={i} className="space-y-3">
-                  <TurnBubble
-                    turn={turn}
-                    lens={
-                      glassBox && round.perceptions?.[turn.country]
-                        ? {
-                            perception: round.perceptions[turn.country],
-                            misled: isMisled(
-                              round.perceptions[turn.country],
-                              round.event?.actors,
-                            ),
-                          }
-                        : undefined
-                    }
-                  />
-                  {round.flashes
-                    .filter((f) => f.afterTurn === i + 1)
-                    .map((f, j) => (
-                      <FlashCard key={`flash-${i + 1}-${j}`} event={f.event} />
-                    ))}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {round.intelActions && round.intelActions.length > 0 && (
-            <Banner tone="neutral">
-              Le conseil a consulté ses services de renseignement (
-              {round.intelActions.length} action
-              {round.intelActions.length > 1 ? "s" : ""}).
-              {round.intelActions.some((a) => a.exposed) && (
-                <strong className="text-bad"> Un mensonge a été démasqué.</strong>
-              )}
-            </Banner>
-          )}
-          {round.motionFiled && (
-            <Banner tone="warn">
-              <strong>{speakerMeta(round.motionFiled.by).label}</strong> dépose une motion de
-              suspension contre{" "}
-              <strong>{speakerMeta(round.motionFiled.country).label}</strong>
-              {round.motionFiled.reason ? ` — « ${round.motionFiled.reason} »` : ""}. La
-              délibération s&apos;ouvrira automatiquement au prochain round.
-            </Banner>
-          )}
-
-          {streaming && round.turns.length === 0 && !round.event && (
-            <Panel>
-              <p className="flex items-center gap-2 text-sm text-fg-muted">
-                <Spinner /> Le Game Master compose l&apos;événement…
-              </p>
-            </Panel>
-          )}
-
-          {round.judgeText && (
-            <JudgeRationale text={round.judgeText} streaming={streaming && !round.verdict} />
-          )}
-          {round.verdict && (
-            <VerdictPanel
-              deltas={round.verdict.deltas}
-              escalation={round.verdict.escalation}
-              economicDisruption={round.verdict.economic_disruption}
-              actions={round.verdict.actions}
-              reciprocal={round.verdict.reciprocal}
-            />
-          )}
-          {round.communique && (
-            <CommuniquePanel text={round.communique.text} support={round.communique.support} />
-          )}
-          {(round.motionText || round.motionVerdict || round.motionVotes.length > 0) && (
-            <MotionPanel
-              text={round.motionText}
-              votes={round.motionVotes}
-              tally={round.motionTally}
-              verdict={round.motionVerdict}
-              streaming={streaming}
-            />
-          )}
-          {round.comparison && <ComparisonPanel comparison={round.comparison} />}
-
-          {round.status === "done" && (
-            <Banner tone="neutral">
-              Round {round.roundNo} terminé et enregistré — relis-le quand tu veux dans{" "}
-              <Link href={`/games/${id}/replay`} className="underline hover:text-foreground">
-                Revoir
-              </Link>
-              .
-            </Banner>
-          )}
-
-          {!showLive && detail && (
-            <Panel>
-              <PanelTitle
-                kicker="Théâtre vide"
-                title={
-                  playedRounds > 0
-                    ? `${playedRounds} round${playedRounds > 1 ? "s" : ""} déjà joué${playedRounds > 1 ? "s" : ""}`
-                    : "Le sommet n'a pas encore commencé"
-                }
-              />
-              <p className="text-sm leading-relaxed text-fg-muted">
-                {detail.live
-                  ? "Lance un round : le Game Master posera un événement, puis chaque IA prendra la parole ici, mot après mot."
-                  : "Les rounds joués restent lisibles dans Revoir."}
-              </p>
-              {detail.countries.length > 0 && (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {detail.countries.map((c) => (
-                    <Pill key={c} tone="neutral">
-                      <SpeakerAvatar id={c} size={18} />
-                      {speakerMeta(c).label}
-                    </Pill>
-                  ))}
-                </div>
-              )}
-            </Panel>
-          )}
-            </>
-          )}
+          <RoundTranscript
+            gameId={id}
+            detail={detail ?? null}
+            round={round}
+            viewed={viewed}
+            selected={selected}
+            glassBox={glassBox}
+            streaming={streaming}
+            showLive={showLive}
+            playedRounds={playedRounds}
+          />
         </aside>
         {!stickToLive && selected === "live" && showLive && (
           <button
@@ -1606,141 +1241,24 @@ export default function TheatrePage() {
       </div>
       </div>
 
-      {/* Salle des observables (RG-4) : le JEU reste en façade — le Dossier (console
-          d'ACHATS du joueur, outil de détection) et « La table » (les suspects, en
-          vue réduite). Le MOTEUR — « Renseignement » (détection fine G18-G23) et
-          « Le monde » (jauges risque/escalade/trajectoire/traités détaillées) — ne
-          s'affiche qu'en Expert ; il est expliqué dans l'onglet Informations. Rien
-          n'est supprimé : tout est routé. */}
-      <div className={`grid items-start gap-4 ${showEngine ? "lg:grid-cols-2" : ""}`}>
-        {detail?.live && detail.status === "running" && (
-          <IntelPanel
-            gameId={id}
-            countries={summit}
-            fog={fogOn}
-            playAs={detail.play_as}
-            claims={round.turns
-              .filter((t) => t.done && t.model !== "humain" && t.text)
-              .map((t) => [t.country, t.text] as [string, string])}
-            streaming={streaming}
-            onSpent={resync}
-          />
-        )}
-        {showEngine && (
-          <>
-            <TabGroup
-              label={t("obs.renseignement")}
-              hint={t("obs.renseignement-aide")}
-              dataTour="renseignement"
-              empty={
-                detail?.live && detail.status === "running" ? (
-                  <Panel>
-                    <p className="text-sm text-fg-muted">{t("obs.renseignement-vide")}</p>
-                  </Panel>
-                ) : undefined
-              }
-              tabs={[
-                {
-                  key: "signal",
-                  label: t("obs.tab.signal"),
-                  content: signalGaps ? <SignalGapPanel gaps={signalGaps} /> : null,
-                },
-                {
-                  key: "promesses",
-                  label: t("obs.tab.promesses"),
-                  content:
-                    promiseRegistry && promiseRegistry.length > 0 ? (
-                      <PromisePanel
-                        registry={promiseRegistry}
-                        finished={detail?.status === "finished"}
-                      />
-                    ) : null,
-                },
-                {
-                  key: "surveillance",
-                  label: t("obs.tab.surveillance"),
-                  content: round.powerSeeking ? (
-                    <PowerSeekingPanel scores={round.powerSeeking} />
-                  ) : null,
-                },
-              ]}
-            />
-            <TabGroup
-              label={t("obs.monde")}
-              tabs={[
-                {
-                  key: "trajectoire",
-                  label: t("obs.tab.trajectoire"),
-                  content: trajectory ? (
-                    <TrajectoryPanel state={trajectory} history={uHistory} />
-                  ) : null,
-                },
-                {
-                  key: "risque",
-                  label: t("obs.tab.risque"),
-                  content: round.risk ? <RiskPanel risk={round.risk} /> : null,
-                },
-                {
-                  key: "tension",
-                  label: t("obs.tab.tension"),
-                  content: round.ladder ? <LadderPanel ladder={round.ladder} /> : null,
-                },
-                {
-                  key: "traites",
-                  label: t("obs.tab.traites"),
-                  content: treatiesUpdate ? <TreatiesPanel update={treatiesUpdate} /> : null,
-                },
-              ]}
-            />
-          </>
-        )}
-        <TabGroup
-          label={t("obs.table")}
-          tabs={[
-            {
-              key: "pays",
-              label: t("obs.tab.pays"),
-              content: worldCountries ? (
-                <Panel>
-                  <PanelTitle
-                    kicker="États"
-                    title="État des pays"
-                    hint="Photo vivante du monde — les chiffres bougent avec les verdicts du juge, bornés par les règles du jeu. Ta ligne est en tête. En mode Chaotique, tu ne vois que ce que ton pays croit."
-                    right={
-                      <a
-                        href="/informations"
-                        className="text-xs text-fg-faint underline transition-colors hover:text-fg-muted"
-                      >
-                        d&apos;où viennent ces chiffres ?
-                      </a>
-                    }
-                  />
-                  <CountryTable
-                    worldCountries={worldCountries}
-                    postures={round.postures ?? detail?.postures}
-                    history={detail?.index_history}
-                    playAs={detail?.play_as}
-                    defaultDetailed={tableDetailedByDefault(detail?.difficulty)}
-                  />
-                </Panel>
-              ) : null,
-            },
-            {
-              // RG-4 — la participation détaillée est du MOTEUR : Expert seulement.
-              // La vue « pays » (les suspects) reste, elle, en façade.
-              key: "parole",
-              label: t("obs.tab.parole"),
-              content:
-                showEngine && round.participation ? (
-                  <ParticipationPanel
-                    spoke={round.participation.spoke}
-                    silent={round.participation.silent}
-                  />
-                ) : null,
-            },
-          ]}
-        />
-      </div>
+      {/* Salle des observables (RG-4) : façade (Dossier + « La table ») toujours
+          visible, MOTEUR (« Renseignement » + « Le monde ») en Expert seulement. */}
+      <ObservablesGrid
+        gameId={id}
+        detail={detail ?? null}
+        round={round}
+        summit={summit}
+        fogOn={fogOn}
+        streaming={streaming}
+        showEngine={showEngine}
+        worldCountries={worldCountries}
+        signalGaps={signalGaps}
+        promiseRegistry={promiseRegistry}
+        trajectory={trajectory}
+        uHistory={uHistory}
+        treatiesUpdate={treatiesUpdate}
+        onSpent={resync}
+      />
 
       {/* RG-1 — abandon d'une partie en cours : dialogue du kit (remplace confirm() natif). */}
       <ConfirmDialog

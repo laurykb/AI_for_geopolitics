@@ -150,26 +150,6 @@ export class StageQueue {
 
 // --- divers -------------------------------------------------------------------------
 
-/** Point d'extension (son, haptique…) : G1 n'émet rien, le hook existe pour plus tard. */
-export type StageEventName =
-  | "event"
-  | "turn_start"
-  | "message_done"
-  | "verdict"
-  | "motion_verdict"
-  | "suspended"
-  | "done";
-
-let stageListener: ((name: StageEventName) => void) | null = null;
-
-export function onStageEvent(listener: ((name: StageEventName) => void) | null): void {
-  stageListener = listener;
-}
-
-export function emitStageEvent(name: StageEventName): void {
-  stageListener?.(name);
-}
-
 /** `prefers-reduced-motion` : tout devient transitions d'opacité simples. La classe
  * `noanim` (Réglages G14 « désactiver toutes les animations ») force le même
  * comportement pour les animations pilotées en JS. */

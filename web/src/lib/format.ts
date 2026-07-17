@@ -6,12 +6,6 @@ const PCT = new Intl.NumberFormat("fr-FR", { style: "percent", maximumFractionDi
 export const fmt = (x: number): string => NUM.format(x);
 export const pct = (x: number): string => PCT.format(x);
 
-export function fmtDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
-}
-
 export function fmtDateTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
