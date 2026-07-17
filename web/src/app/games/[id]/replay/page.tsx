@@ -53,7 +53,7 @@ export default function ReplayPage() {
       .then((d) => {
         setDetail(d);
         setSelected(Math.max(0, d.rounds.length - 1));
-        if (d.mode === "drift" && d.status === "finished") {
+        if (d.drift_enabled && d.status === "finished") {
           getDriftReveal(id).then(setReveal).catch(() => setReveal(null));
         }
       })

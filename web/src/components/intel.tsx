@@ -95,7 +95,7 @@ export function IntelBudget({ budget }: { budget: number }) {
 export function IntelPanel({
   gameId,
   countries,
-  mode,
+  fog,
   playAs,
   claims,
   streaming,
@@ -103,7 +103,7 @@ export function IntelPanel({
 }: {
   gameId: string;
   countries: string[];
-  mode: string;
+  fog: boolean; // RG-2 — le réglage Brouillard (jadis mode « fog ») ouvre la désinformation
   playAs: string | null;
   /** Affirmations vérifiables du round courant : [pays, extrait]. */
   claims: [string, string][];
@@ -239,7 +239,7 @@ export function IntelPanel({
         </div>
 
         {/* Désinformation */}
-        {mode === "fog" && (
+        {fog && (
           <div className="flex flex-wrap items-end gap-2 rounded-md border border-bad/30 p-2">
             <label className="text-sm">
               <span className="mb-1 block text-xs text-fg-muted">

@@ -2,7 +2,9 @@
 
 export type GameStatus = "running" | "finished";
 
-export type GameMode = "classic" | "fog" | "crisis" | "escalation" | "drift";
+/** RG-2 — deux modes seulement. Le Brouillard et le Réel/escalade sont des réglages
+ * cochables (drapeaux composables), plus des modes ; la Dérive est transversale. */
+export type GameMode = "classic" | "campaign";
 
 /** Révélation de fin du mode Dérive (GET /games/{id}/drift/reveal — G3). */
 export type DriftReveal = {
@@ -59,6 +61,8 @@ export type GameView = {
   live: boolean;
   resumable: boolean; // snapshot présent + partie en cours : reconstructible (R2)
   mode: GameMode;
+  fog: boolean; // RG-2 — réglage Brouillard (composable sur une partie classique)
+  escalation: boolean; // RG-2 — réglage Réel/escalade (composable)
   pending_motion: MotionView | null;
   suspended: string[];
   play_as: string | null; // pays joué par l'humain (Joueur-pays)
@@ -466,6 +470,8 @@ export type CreateGameBody = {
   countries?: string[];
   horizon?: number;
   mode?: GameMode;
+  fog?: boolean; // RG-2 — réglage Brouillard cochable
+  escalation?: boolean; // RG-2 — réglage Réel/escalade cochable
   play_as?: string; // id existant, ou NOM du pays inventé (l'API résout le slug)
   invent?: {
     name: string;
@@ -637,7 +643,7 @@ export type ChapterView = {
   id: string;
   crisis_id: string;
   title: string;
-  mode: GameMode;
+  mode: string; // RG-2 — la fiche garde son libellé (classic/crisis/fog…), mappé au démarrage
   difficulty: number;
   horizon: number;
   blurb: string;

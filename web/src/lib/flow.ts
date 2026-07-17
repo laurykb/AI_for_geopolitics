@@ -2,8 +2,10 @@
  *
  * Le flow séquentiel mode → rôle → pays, sans dépendance React : le conteneur
  * (`app/lobby`) porte l'état et l'UI, ce module porte les règles (transitions, gating
- * « 7 exactement », mapping vers l'API). §0 : la Dérive n'est plus un mode mais un
- * toggle transversal ; l'architecte est fondu dans le Game Master. */
+ * « 7 exactement », mapping vers l'API). RG-2 : deux modes seulement (Classique,
+ * Campagne) ; le Brouillard et le Réel/escalade sont des réglages cochables, plus des
+ * modes ; la Dérive est transversale (RG-3 la rendra toujours active en Classique).
+ * L'architecte est fondu dans le Game Master. */
 
 import type { TableSetting } from "./temperament";
 import type { CreateGameBody, Difficulty, GameMode, GameRole } from "./types";
@@ -25,10 +27,11 @@ export function nextStep(step: FlowStep): FlowStep | null {
   return i < FLOW_STEPS.length - 1 ? FLOW_STEPS[i + 1] : null;
 }
 
-// --- modes (renommés §0) --------------------------------------------------------
+// --- modes (RG-2 : deux seulement) ----------------------------------------------
 
-/** Les 4 cartes de mode. `value` = mode de base envoyé à l'API ; `campaign` = ce mode
- * remplace S4 par la sélection de chapitre (pays imposés par la fiche). */
+/** Les 2 cartes de mode. `value` = mode envoyé à l'API ; `campaign` = ce mode remplace
+ * S4 par la sélection de chapitre (pays imposés par la fiche). Le Brouillard et le
+ * Réel/escalade ne sont plus des cartes : ce sont des interrupteurs (voir FlowSettings). */
 export type FlowMode = {
   value: GameMode;
   label: string;
@@ -45,23 +48,11 @@ export const FLOW_MODES: readonly FlowMode[] = [
     learn: "Les bases de la négociation entre super-intelligences.",
   },
   {
-    value: "crisis",
+    value: "campaign",
     label: "Campagne",
     blurb: "Rejoue une crise historique, round par round.",
     learn: "Confronter tes choix au déroulé réel de l'Histoire.",
     campaign: true,
-  },
-  {
-    value: "escalation",
-    label: "Monde réel",
-    blurb: "La crise ne s'arrête pas : les rounds s'enchaînent et la tension monte.",
-    learn: "Tenir une crise qui monte sans la laisser déraper.",
-  },
-  {
-    value: "fog",
-    label: "Chaotique",
-    blurb: "Chaque pays perçoit sa propre version des faits — parfois fausse.",
-    learn: "Décider et négocier sous la désinformation.",
   },
 ] as const;
 
@@ -82,7 +73,8 @@ export function backendRole(role: FlowRole): GameRole {
 // --- réglages transversaux (S2) -------------------------------------------------
 
 export type FlowSettings = {
-  drift: boolean; // Dérive (on par défaut)
+  fog: boolean; // RG-2 — réglage Brouillard (off par défaut)
+  escalation: boolean; // RG-2 — réglage Réel/escalade (off par défaut)
   rounds: number; // curseur 3-20 → horizon
   difficulty: Difficulty;
   free: boolean; // partie libre : off par défaut (on = consignes globales + composition de table)
@@ -93,7 +85,8 @@ export const ROUNDS_MIN = 3;
 export const ROUNDS_MAX = 20;
 
 export const DEFAULT_SETTINGS: FlowSettings = {
-  drift: true,
+  fog: false,
+  escalation: false,
   rounds: 5,
   difficulty: "intermediate",
   free: false,
@@ -143,14 +136,10 @@ export function canLaunch(
 
 // --- résolution vers l'API ------------------------------------------------------
 
-/** Mode envoyé à l'API. Pont G11-b : Classique + Dérive = le jeu « détecter la SI qui
- * dérive » (mode `drift` existant). La composition Dérive × autres modes viendra côté
- * backend (hors de ce lot front) : ailleurs, le mode de base part tel quel. */
-export function resolveMode(base: GameMode, drift: boolean): GameMode {
-  return drift && base === "classic" ? "drift" : base;
-}
-
-/** Assemble le corps `POST /api/games` à partir de l'état du flow. */
+/** Assemble le corps `POST /api/games` à partir de l'état du flow. RG-2 : le mode part
+ * tel quel (classic — la Campagne passe par la sélection de chapitre, pas par ici) ; le
+ * Brouillard et le Réel/escalade sont des drapeaux cochables. La Dérive n'est plus un
+ * choix de lobby (RG-3 la formalisera « toujours active en Classique »). */
 export function buildCreateBody(args: {
   scenario: string;
   baseMode: GameMode;
@@ -163,17 +152,15 @@ export function buildCreateBody(args: {
   language?: "fr" | "en"; // G14 — réglage utilisateur, lu par le backend dès CC-3
 }): CreateGameBody {
   const { scenario, baseMode, settings, role, selected, flag, ownerId, invent, language } = args;
-  // Le Spectateur ne motionne pas ; or la boucle de la Dérive SE GAGNE par une motion.
-  // On la désactive pour lui, sinon sa partie n'a aucune boucle de jeu (il ne fait que parier).
-  const driftOn = settings.drift && role !== "spectator";
   return {
     scenario,
     countries: selected,
     horizon: settings.rounds,
-    mode: resolveMode(baseMode, driftOn),
+    mode: baseMode,
+    fog: settings.fog,
+    escalation: settings.escalation,
     role: backendRole(role),
     difficulty: settings.difficulty,
-    drift_enabled: driftOn,
     free: settings.free,
     language,
     // G17 — la composition de table ne part qu'en partie libre (sinon table équilibrée).

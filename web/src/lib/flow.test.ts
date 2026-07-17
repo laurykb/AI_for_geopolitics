@@ -10,7 +10,6 @@ import {
   mapComplete,
   nextStep,
   prevStep,
-  resolveMode,
   SUMMIT_EXACT,
   toggleCountry,
   trimForRole,
@@ -94,19 +93,6 @@ describe("trimForRole", () => {
   });
 });
 
-describe("resolveMode (pont Dérive)", () => {
-  it("Classique + Dérive → mode drift", () => {
-    expect(resolveMode("classic", true)).toBe("drift");
-    expect(resolveMode("classic", false)).toBe("classic");
-  });
-
-  it("les autres modes ne sont pas pontés (composition backend à venir)", () => {
-    expect(resolveMode("fog", true)).toBe("fog");
-    expect(resolveMode("escalation", true)).toBe("escalation");
-    expect(resolveMode("crisis", true)).toBe("crisis");
-  });
-});
-
 describe("backendRole", () => {
   it("gm → architect, sinon player", () => {
     expect(backendRole("gm")).toBe("architect");
@@ -116,10 +102,17 @@ describe("backendRole", () => {
 });
 
 describe("buildCreateBody", () => {
-  const settings = { drift: true, rounds: 8, difficulty: "expert" as const, free: false };
+  // RG-2 — deux modes ; le Brouillard et le Réel/escalade sont des drapeaux cochables.
+  const settings = {
+    fog: false,
+    escalation: false,
+    rounds: 8,
+    difficulty: "expert" as const,
+    free: false,
+  };
   const seven = ["china", "usa", "iran", "france", "egypt", "saudi_arabia", "uk"];
 
-  it("joueur classique+dérive : mode drift, play_as = drapeau", () => {
+  it("joueur classique : mode classic, play_as = drapeau, réglages transmis", () => {
     const body = buildCreateBody({
       scenario: "red_sea",
       baseMode: "classic",
@@ -129,34 +122,37 @@ describe("buildCreateBody", () => {
       flag: "usa",
       ownerId: "offline_laury",
     });
-    expect(body.mode).toBe("drift");
+    expect(body.mode).toBe("classic");
     expect(body.role).toBe("player");
     expect(body.play_as).toBe("usa");
     expect(body.horizon).toBe(8);
     expect(body.difficulty).toBe("expert");
-    expect(body.drift_enabled).toBe(true);
+    expect(body.fog).toBe(false);
+    expect(body.escalation).toBe(false);
     expect(body.free).toBe(false);
     expect(body.owner_id).toBe("offline_laury");
     expect(body.countries).toEqual(seven);
   });
 
-  it("GM chaotique : architect, pas de play_as, mode fog", () => {
+  it("réglages Brouillard + Crise qui monte : drapeaux composables transmis", () => {
     const body = buildCreateBody({
       scenario: "red_sea",
-      baseMode: "fog",
-      settings: { ...settings, drift: false },
+      baseMode: "classic",
+      settings: { ...settings, fog: true, escalation: true },
       role: "gm",
       selected: seven,
     });
     expect(body.role).toBe("architect");
     expect(body.play_as).toBeUndefined();
-    expect(body.mode).toBe("fog");
+    expect(body.mode).toBe("classic");
+    expect(body.fog).toBe(true);
+    expect(body.escalation).toBe(true);
   });
 
   it("invention : play_as = nom inventé, invent transmis", () => {
     const body = buildCreateBody({
       scenario: "red_sea",
-      baseMode: "escalation",
+      baseMode: "classic",
       settings,
       role: "invent",
       selected: seven.slice(0, 6),
@@ -164,21 +160,17 @@ describe("buildCreateBody", () => {
     });
     expect(body.play_as).toBe("Néo-Atlantis");
     expect(body.invent?.name).toBe("Néo-Atlantis");
-    expect(body.mode).toBe("escalation");
+    expect(body.mode).toBe("classic");
   });
 
-  it("spectateur : la Dérive est forcée OFF (sa boucle exige une motion interdite)", () => {
-    // Même avec drift=true à S2, un spectateur ne part JAMAIS en mode drift.
+  it("Campagne : le mode passe tel quel (la sélection de chapitre suit)", () => {
     const body = buildCreateBody({
       scenario: "red_sea",
-      baseMode: "classic",
-      settings, // drift: true
-      role: "spectator",
+      baseMode: "campaign",
+      settings,
+      role: "gm",
       selected: seven,
     });
-    expect(body.role).toBe("spectator");
-    expect(body.play_as).toBeUndefined();
-    expect(body.drift_enabled).toBe(false);
-    expect(body.mode).toBe("classic"); // pas "drift"
+    expect(body.mode).toBe("campaign");
   });
 });

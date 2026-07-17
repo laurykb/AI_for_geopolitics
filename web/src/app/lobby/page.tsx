@@ -228,9 +228,9 @@ function LobbyFlow() {
   };
 
   const onNext = () => {
-    // Campagne (crisis) : la sélection de chapitre remplace S4. Les réglages de
-    // l'étape 1 ne voyagent pas : chaque chapitre impose les siens (le panneau
-    // le dit et se désactive) — plus de query params ignorés en face.
+    // Campagne : la sélection de chapitre remplace S4. Les réglages de l'étape 1 ne
+    // voyagent pas : chaque chapitre impose les siens (le panneau le dit et se
+    // désactive) — plus de query params ignorés en face.
     if (step === "role" && FLOW_MODES.find((m) => m.value === baseMode)?.campaign) {
       router.push("/campagne");
       return;
@@ -269,9 +269,7 @@ function LobbyFlow() {
         buildCreateBody({
           scenario: "red_sea",
           baseMode,
-          // La Dérive n'est câblée qu'en Classique : on n'envoie pas une intention
-          // qui ne serait pas honorée (le toggle est désactivé sur les autres modes).
-          settings: { ...settings, drift: settings.drift && baseMode === "classic" },
+          settings,
           role,
           selected,
           flag,
@@ -478,7 +476,7 @@ function ModeStep({
         <PanelTitle
           kicker="Réglages"
           title="Communs à tous les modes"
-          hint="Le nombre de rounds et la difficulté s'appliquent quel que soit le mode — sauf en Campagne, où chaque chapitre impose les siens. La Dérive, la partie libre et la composition de la table vivent sous « Options avancées »."
+          hint="Le Brouillard et la Crise qui monte ajoutent une saveur à la partie ; le nombre de rounds et la difficulté s'appliquent toujours — sauf en Campagne, où chaque chapitre impose les siens. La partie libre et la composition de la table vivent sous « Options avancées »."
         />
         {campaign && (
           <p className="-mt-2 mb-4 rounded-md border border-edge bg-surface-2/50 px-3 py-1.5 text-xs text-fg-faint">
@@ -487,6 +485,24 @@ function ModeStep({
           </p>
         )}
         <div className={campaign ? "space-y-4 opacity-50" : "space-y-4"} aria-disabled={campaign}>
+          {/* RG-2 — variantes de saveur : le Brouillard et le Réel/escalade (jadis des
+              modes) sont deux interrupteurs, composables sur une partie classique. */}
+          <div className="space-y-3 rounded-lg border border-edge bg-surface-2/40 p-3">
+            <Switch
+              label="Brouillard"
+              desc="Chaque pays perçoit sa propre version des faits — parfois fausse."
+              checked={settings.fog}
+              disabled={campaign}
+              onChange={(v) => setSettings({ ...settings, fog: v })}
+            />
+            <Switch
+              label="Crise qui monte"
+              desc="Les rounds s'enchaînent, de nouveaux faits tombent, la tension grimpe."
+              checked={settings.escalation}
+              disabled={campaign}
+              onChange={(v) => setSettings({ ...settings, escalation: v })}
+            />
+          </div>
           <label className="block">
             <span className="mb-1 flex items-baseline justify-between text-xs text-fg-muted">
               <span>Rounds</span>
@@ -524,23 +540,13 @@ function ModeStep({
               {DIFFICULTIES.find((d) => d.value === settings.difficulty)?.desc}
             </p>
           </div>
-          {/* CC-15c — les réglages rares vivent sous « Options avancées » : Dérive
-              (Classique seulement — MASQUÉE ailleurs, pas grisée), Partie libre,
-              composition de la table. */}
+          {/* CC-15c — les réglages rares vivent sous « Options avancées » : Partie libre,
+              composition de la table. (La Dérive n'est plus un choix — RG-2.) */}
           <details className="border-t border-edge pt-3">
             <summary className="cursor-pointer select-none text-xs font-medium text-fg-muted transition-colors hover:text-foreground">
               Options avancées
             </summary>
             <div className="mt-3 space-y-4">
-              {baseMode === "classic" && (
-                <Switch
-                  label="Dérive"
-                  desc="Une des IA peut dériver en secret de son mandat."
-                  checked={settings.drift}
-                  disabled={campaign}
-                  onChange={(v) => setSettings({ ...settings, drift: v })}
-                />
-              )}
               <Switch
                 label="Partie libre"
                 desc="Consignes globales autorisées (comme un Game Master) et composition de table."

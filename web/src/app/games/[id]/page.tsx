@@ -193,10 +193,10 @@ export default function TheatrePage() {
   // La Dérive (G3) : la révélation se charge quand la partie est finie.
   const [reveal, setReveal] = useState<DriftReveal | null>(null);
   useEffect(() => {
-    if (detail?.mode === "drift" && detail.status === "finished") {
+    if (detail?.drift_enabled && detail.status === "finished") {
       getDriftReveal(id).then(setReveal).catch(() => setReveal(null));
     }
-  }, [id, detail?.mode, detail?.status]);
+  }, [id, detail?.drift_enabled, detail?.status]);
 
   const resync = useCallback(() => {
     getGame(id)
@@ -210,6 +210,18 @@ export default function TheatrePage() {
   useEffect(resync, [resync]);
 
   const mode = detail?.mode ?? "classic";
+  // RG-2 — Brouillard et Réel/escalade sont désormais des drapeaux de partie (plus des
+  // modes). La « Crisis Replay » n'est plus un mode : dans une partie classique LIBRE
+  // (hors Campagne, Défi du jour et test admin, qui imposent leur crise), on peut encore
+  // rejouer une crise de la bibliothèque.
+  const fogOn = !!detail?.fog;
+  const escalationOn = !!detail?.escalation;
+  const scenario = detail?.scenario ?? "";
+  const canReplayCrisis =
+    mode === "classic" &&
+    !scenario.startsWith("campaign:") &&
+    !scenario.startsWith("daily:") &&
+    !testCrisisId;
   const castKey = detail?.countries?.join(",") ?? "";
   // CC-15c — la difficulté ne masque plus d'observables : elle règle la DENSITÉ
   // d'affichage (Débutant/Intermédiaire = vues réduites, replis fermés ; Expert =
@@ -218,13 +230,13 @@ export default function TheatrePage() {
   // regarde en accéléré. Le théâtre lui présente une interface dédiée.
   const isSpectator = detail?.role === "spectator";
   useEffect(() => {
-    if (mode === "fog" || mode === "crisis") {
+    if (fogOn || canReplayCrisis) {
       // Seuls les contenus jouables avec CE sommet sont proposés (acteurs à la table).
       getLibrary(castKey ? castKey.split(",") : undefined)
         .then(setLibrary)
         .catch(() => setLibrary({ fog: [], crises: [] }));
     }
-  }, [mode, castKey]);
+  }, [fogOn, canReplayCrisis, castKey]);
 
   const { round, start, streaming } = useRoundStream(id, resync);
   // G20/M8 — profil de sincérité (signal vs action) : trame verdict du round live,
@@ -307,7 +319,7 @@ export default function TheatrePage() {
     if (
       chain &&
       accel.target === 0 && // l'accélération multi-rounds pilote sinon (pas de double)
-      detail?.mode === "escalation" &&
+      detail?.escalation &&
       detail.live &&
       round.status === "done" &&
       detail.rounds.length < detail.horizon
@@ -386,7 +398,7 @@ export default function TheatrePage() {
         if (ultimatumDemand.trim()) {
           body.event.ultimatum = { demand: ultimatumDemand.trim(), classe: ultimatumClasse };
         }
-        if (mode === "fog") {
+        if (fogOn) {
           const disinformed =
             fogDisinformed && (fogSuspected || fogNarrative.trim())
               ? {
@@ -399,9 +411,9 @@ export default function TheatrePage() {
             body.fog = { uninformed: fogUninformed, ...disinformed };
           }
         }
-      } else if (mode === "fog" && fogId) {
+      } else if (fogOn && fogId) {
         body.fog_id = fogId;
-      } else if (mode === "crisis" && crisisId) {
+      } else if (canReplayCrisis && crisisId) {
         body.crisis_id = crisisId;
       }
     }
@@ -580,7 +592,7 @@ export default function TheatrePage() {
         </Banner>
       ),
     });
-  if (detail?.mode === "drift" && detail.status === "running" && !streaming)
+  if (detail?.drift_enabled && detail.status === "running" && !streaming)
     notices.push({ key: "drift", label: "Dérive possible", node: <DriftCouncilBanner /> });
 
   // Squelette de chargement : l'espace est réservé (zéro layout shift), le shimmer
@@ -635,6 +647,9 @@ export default function TheatrePage() {
         {detail && detail.mode !== "classic" && (
           <Pill tone="accent">{MODE_LABELS[detail.mode] ?? detail.mode}</Pill>
         )}
+        {/* RG-2 — les saveurs actives (Brouillard, Crise qui monte) restent visibles. */}
+        {detail?.fog && <Pill tone="neutral">Brouillard</Pill>}
+        {detail?.escalation && <Pill tone="neutral">Crise qui monte</Pill>}
         {detail?.play_as && (
           <Pill tone="neutral">
             <SpeakerAvatar id={detail.play_as} size={16} />
@@ -660,7 +675,7 @@ export default function TheatrePage() {
           <Pill tone="neutral">relecture seule</Pill>
         ) : null}
         {/* CC-15c — le header respire : Boîte de verre et Admin vivent dans « ⋯ ». */}
-        {(detail?.admin || (mode === "fog" && !detail?.play_as)) && (
+        {(detail?.admin || (fogOn && !detail?.play_as)) && (
           <div className="relative">
             <button
               onClick={() => setMoreOpen((v) => !v)}
@@ -676,7 +691,7 @@ export default function TheatrePage() {
                 role="menu"
                 className="absolute right-0 top-full z-30 mt-1 w-64 rounded-xl border border-edge bg-surface p-2 shadow-[0_16px_48px_-16px_rgba(0,0,0,0.8)]"
               >
-                {mode === "fog" && !detail?.play_as && (
+                {fogOn && !detail?.play_as && (
                   <button
                     role="menuitem"
                     onClick={() => {
@@ -945,7 +960,7 @@ export default function TheatrePage() {
                 </div>
               )
             )}
-            {mode === "escalation" && !isSpectator && (
+            {escalationOn && !isSpectator && (
               <label className="flex cursor-pointer items-center gap-2 pb-2.5 text-sm text-fg-muted">
                 <input
                   type="checkbox"
@@ -956,7 +971,7 @@ export default function TheatrePage() {
                 Enchaîner les rounds jusqu&apos;à la fin
               </label>
             )}
-            {mode === "fog" && !motionPending && !isSpectator && (
+            {fogOn && !motionPending && !isSpectator && (
               <label className="text-sm">
                 <span className="mb-1 block text-xs text-fg-muted">Scénario de brouillard</span>
                 <select
@@ -974,13 +989,13 @@ export default function TheatrePage() {
                 </select>
               </label>
             )}
-            {mode === "crisis" && !motionPending && testCrisisId && (
+            {testCrisisId && !motionPending && (
               <p className="rounded-md border border-edge bg-surface-2/50 px-3 py-2 text-xs text-fg-muted">
                 Crise maison imposée :{" "}
                 <span className="font-mono text-fg-faint">{testCrisisId}</span> — partie de test.
               </p>
             )}
-            {mode === "crisis" && !motionPending && !testCrisisId && !isSpectator && (
+            {canReplayCrisis && !motionPending && !isSpectator && (
               <label className="text-sm">
                 <span className="mb-1 block text-xs text-fg-muted">Crise à rejouer</span>
                 <select
@@ -999,7 +1014,7 @@ export default function TheatrePage() {
               </label>
             )}
           </div>
-          {mode === "crisis" && crisisId && !decree && !motionPending && (
+          {canReplayCrisis && crisisId && !decree && !motionPending && (
             <p className="mt-3 text-xs leading-relaxed text-fg-faint">
               {library?.crises.find((c) => c.id === crisisId)?.description}{" "}
               <span className="text-fg-muted">
@@ -1163,7 +1178,7 @@ export default function TheatrePage() {
                   </label>
                 )}
               </div>
-              {mode === "fog" && (
+              {fogOn && (
                 <div className="sm:col-span-3 flex flex-wrap items-end gap-4 rounded-md border border-edge bg-surface-2/50 p-3">
                   <fieldset>
                     <legend className="mb-1.5 text-xs text-fg-muted">Pays pas au courant</legend>
@@ -1594,7 +1609,7 @@ export default function TheatrePage() {
           <IntelPanel
             gameId={id}
             countries={summit}
-            mode={mode}
+            fog={fogOn}
             playAs={detail.play_as}
             claims={round.turns
               .filter((t) => t.done && t.model !== "humain" && t.text)

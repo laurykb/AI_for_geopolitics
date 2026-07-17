@@ -2,9 +2,8 @@
 
 import type { GameMode } from "./types";
 
-// Libellés §0 (G11) : Classique / Campagne / Monde réel / Chaotique. La Dérive n'est
-// plus un mode mais un toggle transversal — l'entrée « drift » reste pour les parties
-// où Classique + Dérive a été ponté vers le jeu « détecter la SI qui dérive ».
+// RG-2 — deux modes seulement : Classique et Campagne. Le Brouillard et le Réel/escalade
+// sont devenus des réglages cochables (voir `flow.ts`), plus des modes.
 export const MODES: { value: GameMode; label: string; blurb: string }[] = [
   {
     value: "classic",
@@ -12,25 +11,9 @@ export const MODES: { value: GameMode; label: string; blurb: string }[] = [
     blurb: "Le Game Master pose l'événement, le sommet négocie.",
   },
   {
-    value: "crisis",
+    value: "campaign",
     label: "Campagne",
     blurb: "Rejouer une crise historique round par round et comparer à l'Histoire.",
-  },
-  {
-    value: "escalation",
-    label: "Monde réel",
-    blurb: "La crise ne s'arrête pas : les rounds s'enchaînent et la tension monte.",
-  },
-  {
-    value: "fog",
-    label: "Chaotique",
-    blurb: "Chaque pays perçoit sa propre version des faits — parfois fausse.",
-  },
-  {
-    value: "drift",
-    label: "La Dérive",
-    blurb:
-      "Une IA dérive en secret de son mandat — démasque-la et fais-la suspendre au bon moment.",
   },
 ];
 
