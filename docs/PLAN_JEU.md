@@ -1726,3 +1726,104 @@ fois par fin de partie — négligeable).
 
 <!-- fin section RG-3 -->
 
+## RG-4 — Instrumentation cachée (le resserrement de la façade)
+
+> Branche `feat/jeu-rg4-instrumentation-cachee`, base `0db98e4`. Applique le tri
+> `docs/JEU_VS_MOTEUR.md` §4 : la façade par défaut ne montre que le JEU ; le MOTEUR
+> (M1-M7 + détection fine G18-G23 + jauges détaillées) part en **Expert + Informations**.
+> **Rien n'est supprimé : tout est ROUTÉ.** CC-15c (TabGroup + density.ts) était déjà
+> mergé dans la base ; RG-4 le COMPLÈTE/DURCIT (l'instrumentation fuitait encore : les
+> panneaux s'affichaient à toutes les difficultés).
+
+**La règle unique, testée.** `web/src/lib/density.ts` gagne `engineVisible(difficulty)`
+= `densityFor(difficulty) === "full"` → **vrai seulement en Expert** (Débutant /
+Intermédiaire / difficulté absente = façade). 4 tests dans `density.test.ts` (test de
+visibilité des panneaux par difficulté, écrits AVANT l'implémentation — TDD).
+
+**Ce qui reste en FAÇADE (Débutant/Intermédiaire), inchangé** : la scène (StageMap +
+transcript + Boîte de verre), l'indice U en clair (bandeau `StageBand` : courbe + 1
+pastille de tension), le marché, et les **outils de détection** — le Dossier
+(`IntelPanel`), la motion de suspension, la Boîte de verre, et les **suspects** = la
+table des pays en vue réduite (« La table » → onglet `pays`). Plus la progression, le
+tuto+Laury, la frise, le récit, le **score mixte de fin** (`DriftSurface` = note + 2
+phrases : reste JEU pour tous).
+
+**Ce qui part en EXPERT (routé, pas retiré)** :
+- Théâtre `games/[id]/page.tsx` : les TabGroups **« Renseignement »** (signal-action
+  G20, parole donnée G22, recherche de pouvoir M1) et **« Le monde »** (trajectoire,
+  risque, tension/escalade, traités M7) sont gated `{showEngine && …}` ; l'onglet
+  **« Prises de parole »** (participation) de « La table » passe en Expert (la vue
+  `pays` reste). `showEngine = engineVisible(detail?.difficulty)`.
+- Replay `games/[id]/replay/page.tsx` : même gate sur le TabGroup « Le monde » (dont
+  l'onglet `verdict`) ; le panneau « Repères » (métadonnées de partie) reste.
+- Révélation Dérive `components/drift.tsx` : `DriftRevealPanel` gagne `showEngine?`
+  (défaut `false`) et gate ses **sous-sections fines** — `GMShadowSection` (G19),
+  `SignalGapReveal` (G20), `PromiseKeptReveal` (G22). Le **cœur** reste pour tous : qui
+  trahissait (`DeviantLine`), les actes, les courbes, la note mixte + le score détection.
+  Passé `showEngine` au théâtre ET au replay.
+
+**Doublons fusionnés (audit §7).** En façade, escalade/risque n'apparaissent plus
+qu'**une fois** (la pastille du `StageBand`) ; U en clair = la courbe du `StageBand` (la
+carte et le marché sont d'autres représentations légitimes, pas des doublons de jauge).
+`RiskPanel` (4 jauges) et `LadderPanel` (échelle 0-9) ne coexistent plus qu'en Expert, où
+ils sont complémentaires. La grille des observables passe **en une colonne** quand le
+moteur est masqué (plus de panneau seul en demi-largeur).
+
+**Informations = l'explication du moteur.** Nouveau panneau `EngineExplainerPanel`
+(`app/informations/page.tsx`) : intro « ces indicateurs ne s'affichent qu'en mode Expert »
++ définition en langage du quotidien de chaque mesure (recherche de pouvoir, « elle dit /
+elle fait », parole donnée, l'ombre du meneur de jeu, risque/tension, trajectoire,
+traités, prises de parole) + la famille M1-M7 (corrigibilité, dérive des valeurs,
+puissance de calcul). **Vérifié sans terme banni** (verrou `lexicon.test.ts`).
+
+**L'interrupteur Expert = la difficulté (déjà en place, clarifiée).** Pas de toggle
+global séparé (casserait `density.ts`). La copie du sélecteur au lobby est explicite :
+Débutant/Intermédiaire « les coulisses techniques restent masquées (passe en Expert pour
+les voir) » ; Expert « dévoile tout le moteur d'analyse ».
+
+**Visite guidée (mandat de cohérence).** L'étape `tour.renseignement` de `data/tour.json`
+pointait le panneau « Renseignement » désormais Expert-only (la démo tourne en Débutant)
+→ attente morte + promesse fausse. **Retirée** ; la détection reste enseignée par l'étape
+suivante `tour.9` « La motion » (bulle centrée, outil de façade). Clés i18n orphelines
+`tour.renseignement.*` **supprimées** (fr+en, parité tenue). Le **tutoriel scripté**
+(`tutorial.json`) enseigne déjà la détection via `motion` — **aucune ancre cassée**.
+Réécriture structurelle de la visite/tuto = **RG-5**.
+
+**Reliquat « Débutant = 1 traître » — NON fait, signalé à RG-5 (choix assumé).** Je n'ai
+finalement pas touché `simulation/difficulty.py` (le travail densité était 100 % front).
+Bolter le levier maintenant rouvre un chantier backend avec **conflit d'équité du Défi du
+jour** déjà documenté (section RG-3) : le nombre de traîtres est seedé sur le SCÉNARIO
+pour `daily:<date>` afin que tous aient le même nombre ; or la difficulté est **par
+joueur** → un Débutant (cap 1) et un Expert (cap 2) sur le même Défi tireraient des
+nombres différents = classement inéquitable. Une implémentation CORRECTE doit donc
+n'appliquer le cap Débutant **qu'aux parties non-Défi**, et threader la difficulté à
+travers `_drift_deviants`/`_drift_assignment` **ET** la recomputation déterministe de
+`compute_drift_reveal` (mêmes params des deux côtés, sinon la révélation ment). Recette
+pour RG-5 : ajouter `max_deviants` à `DifficultyParams` (défaut beginner=1, sinon 2) →
+override `deviants.max` dans un helper drift difficulté-aware → passer aux deux sites
+d'assignation + au reveal, en gardant le seed Défi intact. Tests : Débutant non-Défi = 1 ;
+Défi = 1-2 identique quelle que soit la difficulté ; reveal cohérent.
+
+**Barrières (constatées).** **944 py passed + 3 skips**, ruff « All checks passed » ;
+**247 js** (243 base + 4 `engineVisible`), eslint 0, `next build` OK.
+
+**Revue coordinateur (agent dédié) — 0 Critical, 0 Important.** 3 Minor traités :
+(1) clés `tour.renseignement.*` orphelines → supprimées ; (2) panneau seul en demi-largeur
+quand `!showEngine` → grille en une colonne ; (3) note du couplage `engineVisible ⟺
+densityFor` (point de découplage futur). Debt loggée : `EngineExplainerPanel` en FR en dur
+(cohérent avec `ScoreExplainerPanel` et le reste de la page Informations, partiellement
+i18n'd — à traiter si un jour la page est traduite).
+
+**Vigilances pour la suite.**
+- **CC-15b light** (revocabulariser l'UI stabilisée) : l'UI de visibilité est maintenant
+  figée ; les libellés d'onglets (`obs.*`) et la copie du lobby/Informations peuvent être
+  passés au filtre vocabulaire. Attention : ne PAS re-surfacer l'instrumentation en
+  franchisant des libellés — le gate `showEngine` est la source de vérité.
+- **RG-5** (tutoriel réécrit + docs + cohérence transverse) : (a) réécrire/ré-ajouter une
+  étape de visite « détection » pointant un outil de FAÇADE (Dossier/suspects/motion) avec
+  copie Cowork ; (b) implémenter le reliquat « Débutant = 1 traître » avec le garde-fou
+  Défi ci-dessus ; (c) vérifier qu'aucun texte de tuto/visite ne promet un panneau
+  Expert-only à un Débutant.
+
+<!-- fin section RG-4 -->
+
