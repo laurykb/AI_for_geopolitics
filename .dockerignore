@@ -1,0 +1,41 @@
+# Contexte de build de l'image API (racine). Exclut tout ce qui n'a pas à
+# entrer dans l'image : environnements, artefacts, front, secrets, bases locales.
+
+# Environnements Python
+.venv/
+venv/
+env/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Front Next.js (image séparée : web/Dockerfile)
+web/
+
+# Bases locales / états (jamais dans l'image)
+*.db
+*.sqlite
+*.sqlite3
+data/**/*.db
+
+# Git & CI
+.git/
+.github/
+.gitignore
+
+# Infra & docs volumineux (inutiles au runtime API)
+infra/
+docs/
+*.pdf
+*.docx
+
+# Divers dev
+.env
+.env.*
+.vscode/
+.idea/
+*.log
+scratchpad/

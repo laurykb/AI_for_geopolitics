@@ -1,0 +1,27 @@
+# Contexte de build de l'image front (web/). Garde le contexte minimal :
+# node_modules et .next sont reconstruits dans l'image, jamais copiés depuis l'hôte.
+
+node_modules/
+.next/
+out/
+build/
+dist/
+
+# Git & tooling
+.git/
+.gitignore
+
+# Env & secrets (les NEXT_PUBLIC_* passent par --build-arg / ConfigMap)
+.env
+.env.*
+
+# Caches & logs
+.vercel/
+*.log
+npm-debug.log*
+.eslintcache
+
+# Divers
+.vscode/
+.idea/
+README.md
