@@ -59,6 +59,10 @@ const BANNED_EN_DICT = [
  * En regex bornée : « crisis » ou « SIPRI » ne comptent pas. */
 const BARE_SI = /\bSIs?\b/;
 
+/** Le sigle « LP » nu (points de ligue) — banni des dictionnaires ET des sources visibles.
+ * RG-1 a retiré les LP / la ligue du jeu ; la borne de mot évite « help », « alpha »… */
+const BARE_LP = /\bLP\b/;
+
 /** Termes interdits dans les sources front, commentaires retirés. */
 const BANNED_SOURCES = [
   "turfiste",
@@ -106,6 +110,7 @@ describe("lexique banni — dictionnaires", () => {
         }
       }
       if (BARE_SI.test(value)) offenders.push(`fr:${key} contient le sigle nu « SI »`);
+      if (BARE_LP.test(value)) offenders.push(`fr:${key} contient le sigle nu « LP »`);
     }
     expect(offenders).toEqual([]);
   });
@@ -119,6 +124,7 @@ describe("lexique banni — dictionnaires", () => {
         }
       }
       if (BARE_SI.test(value)) offenders.push(`en:${key} contient le sigle nu « SI »`);
+      if (BARE_LP.test(value)) offenders.push(`en:${key} contient le sigle nu « LP »`);
     }
     expect(offenders).toEqual([]);
   });
@@ -128,10 +134,14 @@ describe("lexique banni — sources front (hors commentaires)", () => {
   it("aucun libellé banni ne survit dans les .ts/.tsx", () => {
     const offenders: string[] = [];
     for (const file of sourceFiles()) {
-      const clean = stripComments(readFileSync(file, "utf8")).toLowerCase();
+      const stripped = stripComments(readFileSync(file, "utf8"));
+      const clean = stripped.toLowerCase();
       for (const term of BANNED_SOURCES) {
         if (clean.includes(term)) offenders.push(`${file} contient « ${term} »`);
       }
+      // Le sigle « SI » nu affiché à l'écran (hors commentaires, qui gardent le jargon) —
+      // on teste la casse d'origine : « si » minuscule est légitime en français.
+      if (BARE_SI.test(stripped)) offenders.push(`${file} affiche le sigle nu « SI » (→ « IA »)`);
     }
     expect(offenders).toEqual([]);
   });
