@@ -51,10 +51,12 @@ import {
   PanelTitle,
   Pill,
   SelectField,
-  Skeleton,
   Spinner,
   TextInput,
 } from "@/components/ui";
+import { CampaignScorePanel } from "@/components/theatre/campaign-score-panel";
+import { StoryPublishPanel } from "@/components/theatre/story-publish-panel";
+import { TheatreSkeleton } from "@/components/theatre/theatre-skeleton";
 import { useRoundStream } from "@/hooks/useRoundStream";
 import {
   fileMotion,
@@ -64,7 +66,6 @@ import {
   getGame,
   getLibrary,
   humanizeError,
-  publishGame,
   submitTurn,
 } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
@@ -145,7 +146,6 @@ export default function TheatrePage() {
   const [turnFailed, setTurnFailed] = useState<string | null>(null);
   const [forfeitOpen, setForfeitOpen] = useState(false); // dialogue de forfait (kit)
   const [forfeiting, setForfeiting] = useState(false);
-  const [publishing, setPublishing] = useState(false); // publication du récit en cours
   // Transcript : suivre le direct seulement si le lecteur est déjà en bas (sinon on
   // le laisse lire — bouton flottant pour revenir).
   const [stickToLive, setStickToLive] = useState(true);
@@ -604,25 +604,7 @@ export default function TheatrePage() {
 
   // Squelette de chargement : l'espace est réservé (zéro layout shift), le shimmer
   // remplace le « … » du premier rendu.
-  if (!detail && !loadError) {
-    return (
-      <div className="space-y-6" aria-busy="true" aria-label="Théâtre en cours de chargement">
-        <header className="space-y-2">
-          <Skeleton className="h-3 w-44" />
-          <Skeleton className="h-7 w-80 max-w-full" />
-        </header>
-        <Skeleton className="h-16 w-full rounded-lg" />
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">
-          <Skeleton className="h-[420px] w-full rounded-lg" />
-          <div className="space-y-3">
-            <Skeleton className="h-24 w-full rounded-lg" />
-            <Skeleton className="h-36 w-full rounded-lg" />
-            <Skeleton className="h-28 w-full rounded-lg" />
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (!detail && !loadError) return <TheatreSkeleton />;
 
   return (
     <div className="space-y-6">
@@ -800,76 +782,9 @@ export default function TheatrePage() {
       ) : (
         notices.map((n) => <div key={n.key}>{n.node}</div>)
       )}
-      {round.campaignOver && (
-        <Panel className="border-l-2 border-l-accent">
-          <PanelTitle
-            kicker="Fin de chapitre"
-            title={
-              round.campaignOver.improvement > 0
-                ? "Tu as fait mieux que l'Histoire"
-                : round.campaignOver.improvement < 0
-                  ? "L'Histoire avait fait mieux"
-                  : "Comme dans l'Histoire"
-            }
-            hint={
-              `Le détail du score : base ${round.campaignOver.base}, bonus historique ` +
-              `${round.campaignOver.bonus >= 0 ? "+" : ""}${round.campaignOver.bonus} ` +
-              `(écart de tension ${round.campaignOver.improvement.toFixed(2)} avec ` +
-              "l'Histoire). Le round par round est dans le panneau « Ta partie vs l'Histoire »."
-            }
-            right={
-              <span className="font-mono text-2xl font-semibold tabular-nums text-accent-bright">
-                {round.campaignOver.score}
-              </span>
-            }
-          />
-          <p className="text-sm text-fg-muted">
-            Ton score compare ta partie à ce qui s&apos;est vraiment passé.{" "}
-            <Link href="/campagne" className="underline hover:text-foreground">
-              Retour à la carte de campagne
-            </Link>
-            .
-          </p>
-        </Panel>
-      )}
+      {round.campaignOver && <CampaignScorePanel over={round.campaignOver} />}
       {detail?.status === "finished" && (
-        <Panel className="border-l-2 border-l-accent">
-          <PanelTitle
-            kicker="Récit de partie"
-            title={detail.published ? "Récit publié" : "Cette partie mérite d'être racontée"}
-            hint="Publier crée une page à partager avec un lien — sinon la partie reste privée. Le juge-narrateur écrit l'épilogue une seule fois : le récit d'une partie est unique."
-            right={
-              detail.published ? (
-                <Link
-                  href={`/r/${id}`}
-                  className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright"
-                >
-                  Voir la page publique
-                </Link>
-              ) : (
-                <button
-                  onClick={() => {
-                    setPublishing(true);
-                    void publishGame(id)
-                      .then(resync)
-                      .catch(() => resync())
-                      .finally(() => setPublishing(false));
-                  }}
-                  disabled={publishing}
-                  className="flex cursor-pointer items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {publishing && <Spinner />}
-                  {publishing ? "Le narrateur écrit…" : "Publier le récit"}
-                </button>
-              )
-            }
-          />
-          <p className="text-xs text-fg-faint">
-            {detail.published
-              ? "Le lien à partager est prêt — l'image d'aperçu du lien se crée toute seule."
-              : "La génération peut prendre quelques secondes (le narrateur écrit)."}
-          </p>
-        </Panel>
+        <StoryPublishPanel gameId={id} published={detail.published} onPublished={resync} />
       )}
       {reveal && (
         <DriftRevealPanel
