@@ -1666,12 +1666,29 @@ fin à l'horizon (aucun pris → la partie NE finit PAS tôt : ✓) ; `result.dr
 world 23.9, detection 0.0, deviant_count 2, caught_count 0, detects True} ; `reveal` cohérent
 (total = monde + détection) ; **verdict plein (800 car., pas de troncature à 3 pays)**.
 
-**Vert (relancé et CONSTATÉ, état final).** pytest **939 passed, 3 skipped** (base 917 +
-score/derive/daily) ; ruff **All checks passed** ; vitest **241 passed** ; eslint **0** ;
-`next build` OK (TypeScript clean). Smoke mistral RÉEL 3 pays ×2 : nombre caché **1** (france,
-world 27,8) ET **2** (world 28,9) constatés, `total = monde + détection`, verdict plein
-(1247 car.). Commits : `b471e91` (score pur), `f070b02` (Dérive câblée), `afec142` (surface),
-`bb8a058` (tempéraments isolés), `d707244` (invariant total), `591c699` (revue adversariale).
+**Revue COORDINATEUR (2e passe, 5 lentilles) — 4 défauts confirmés CORRIGÉS (TDD).**
+1. [Important] Prise par une SI → écran contradictoire + victoire niée. La révélation est
+   rendue **véridique** en 3 états par traître (`DeviantReveal.caught_by_you` + `benched_count`) :
+   « démasqué PAR TOI » / « mis au banc autrement » / « resté dans l'ombre » ; titre,
+   DeviantLine et 2 phrases toujours concordants (`revealTitle`, `reveal.detection.aucun_neutralise`/
+   `partiel_neutralise`). La **VICTOIRE** est fondée sur la **note mixte ≥ seuil** (`victory_threshold`
+   55, `data/score/params.json`) — source de vérité unique. 2. [Mineur] Spectateur/Architecte :
+   victoire = note ≥ seuil, valable TOUS rôles (le Spectateur peut gagner si le monde finit bien —
+   avant : jamais → régression corrigée). 3. [Important] **Grade FR en dur** fuitait dans l'UI EN :
+   le backend expose un `grade_slug` stable (diplomate|stratege|conseiller|depasse), clés
+   `reveal.grade.*` fr+en, rendu via `t()` (fin + drift.tsx). Parité `lexicon.test` verte.
+   4. [Mineur] Barre « monde » du Spectateur : `detects=False` → `world=total`, `world_max=100`
+   (barre et titre sur la même échelle). Réfutés (non touchés) : « 2 traîtres n'expliquent que le
+   pivot », cache lru, « 1 sur 1 du tally ».
+
+**Vert (relancé et CONSTATÉ, état final).** pytest **944 passed, 3 skipped** (base 917 +
+score/derive/daily + 5 fixes 2e passe) ; ruff **All checks passed** ; vitest **243 passed** ;
+eslint **0** ; `next build` OK (TypeScript clean). Smoke mistral RÉEL 3 pays ×3 : nombre caché
+**1** (iran/france) ET **2** constatés, `total = monde + détection`, `grade_slug`/`benched_count`
+présents, **victoire = note ≥ 55** (28,2 → False), verdict plein (1352 car., pas de troncature).
+Commits : `b471e91` (score pur), `f070b02` (Dérive câblée), `afec142` (surface), `bb8a058`
+(tempéraments isolés), `d707244` (invariant total), `591c699` (revue adversariale agent),
+`ed0e705` (doc), **`<2e-passe>`** (revue coordinateur : reveal véridique + victoire=note + grade i18n).
 
 **Vigilances pour RG-4 (instrumentation cachée, s'empile ici).** RG-4 doit router en Expert
 SANS supprimer les panneaux G18-G23 (signal/promesses/psycholinguistique/ombre-du-GM) : ils
