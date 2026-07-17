@@ -43,23 +43,25 @@ import type { AllianceInfo, CountrySources, Difficulty, GameMode } from "@/lib/t
 const TRANSITION_MS = 1200; // rotation du globe entre écrans (≤ 1,5 s, spec)
 const INVENT_ALLIANCES_MAX = 3;
 
-// CC-15c — la difficulté règle le moteur (budget, juge, enjeux) et la DENSITÉ de
-// l'écran (Débutant = vues simples, Expert = tout affiché) ; elle ne cache plus rien.
+// RG-4 — la difficulté règle le moteur (budget, juge, enjeux) ET sert d'interrupteur
+// des « coulisses » : Débutant/Intermédiaire gardent une façade épurée (scène, indice
+// du monde, marché, outils de détection) ; Expert dévoile le banc d'essai (toutes les
+// mesures d'analyse), aussi expliqué dans l'onglet Informations.
 const DIFFICULTIES: { value: Difficulty; label: string; desc: string }[] = [
   {
     value: "beginner",
     label: "Débutant",
-    desc: "Le jeu pardonne (gros budget de renseignement, moins de points en jeu) et l'écran va à l'essentiel.",
+    desc: "Le jeu pardonne (gros budget de renseignement, moins de points en jeu) et l'écran va à l'essentiel : les coulisses techniques restent masquées.",
   },
   {
     value: "intermediate",
     label: "Intermédiaire",
-    desc: "L'équilibre standard : budget mesuré, écran à l'essentiel — le détail reste à un clic.",
+    desc: "L'équilibre standard : budget mesuré, écran épuré — les coulisses techniques restent masquées (passe en Expert pour les voir).",
   },
   {
     value: "expert",
     label: "Expert",
-    desc: "Le jeu est exigeant (budget serré, juge sévère, gros enjeux) et l'écran affiche tout, chiffres compris.",
+    desc: "Le jeu est exigeant (budget serré, juge sévère, gros enjeux) et l'écran dévoile tout le moteur d'analyse — chiffres et jauges compris.",
   },
 ];
 
