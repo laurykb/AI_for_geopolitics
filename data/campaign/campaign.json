@@ -14,7 +14,7 @@
       "difficulty": 1,
       "horizon": 3,
       "countries": ["usa", "china", "iran", "france"],
-      "blurb": "Apprendre à jouer : 3 rounds guidés et imperdables — le round, la motion, le vote. (Textes du guide : TODO_COWORK.)",
+      "blurb": "Apprendre à jouer : 3 rounds guidés et imperdables — le round, la motion contre l'IA qui trahit, le vote, la note finale.",
       "requires": [],
       "tutorial": true
     },
