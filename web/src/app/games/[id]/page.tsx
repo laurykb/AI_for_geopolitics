@@ -597,7 +597,7 @@ export default function TheatrePage() {
       ),
     });
   if (detail?.drift_enabled && detail.status === "running" && !streaming)
-    notices.push({ key: "drift", label: "Dérive possible", node: <DriftCouncilBanner /> });
+    notices.push({ key: "drift", label: t("drift.council.notice"), node: <DriftCouncilBanner /> });
 
   // Squelette de chargement : l'espace est réservé (zéro layout shift), le shimmer
   // remplace le « … » du premier rendu.

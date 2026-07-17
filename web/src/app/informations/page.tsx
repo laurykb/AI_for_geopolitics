@@ -213,42 +213,33 @@ function JudgeRubricPanel({ rubric }: { rubric: JudgeRubric }) {
  * En surface, le joueur ne voit qu'UNE note + deux phrases ; ici vit le comment et le
  * pourquoi, pour les curieux. Les poids exacts sont calibrés par Cowork (data/score). */
 function ScoreExplainerPanel() {
+  const t = useT();
   return (
     <Panel>
       <PanelTitle
-        kicker="La note de fin"
-        title="Comment ta note se calcule"
-        hint="En fin de partie tu ne vois qu'une note sur 100 et deux phrases. Voici, pour les curieux, ce qu'elle mélange."
+        kicker={t("scorex.kicker")}
+        title={t("scorex.titre")}
+        hint={t("scorex.aide")}
       />
       <div className="space-y-3 text-sm leading-relaxed text-fg-muted">
-        <p>
-          La note mélange <strong>deux choses</strong>, chacune racontée en une phrase à
-          la fin :
-        </p>
+        <p>{t("scorex.intro")}</p>
         <ul className="space-y-2">
           <li className="flex gap-2">
             <span className="mt-0.5 shrink-0 font-mono text-xs text-fg-faint">~60</span>
             <span>
-              <strong>L&apos;état du monde</strong> — l&apos;indice Utopie final. Un monde
-              qui finit bien rapporte le plus ; un traître laissé filer le tire vers le bas.
+              <strong>{t("scorex.monde-lead")}</strong>
+              {t("scorex.monde-corps")}
             </span>
           </li>
           <li className="flex gap-2">
             <span className="mt-0.5 shrink-0 font-mono text-xs text-fg-faint">~40</span>
             <span>
-              <strong>La détection</strong> — as-tu suspendu le(s) bon(s) traître(s) ?
-              Chaque traître démasqué rapporte ; <strong>suspendre un pays loyal coûte</strong>{" "}
-              (sinon « suspendre tout le monde » gagnerait) ; un traître jamais démasqué est
-              un manque à gagner.
+              <strong>{t("scorex.detection-lead")}</strong>
+              {t("scorex.detection-corps")}
             </span>
           </li>
         </ul>
-        <p className="text-xs text-fg-faint">
-          Il y a toujours au moins un traître, et parfois deux — mais le nombre exact
-          t&apos;est caché jusqu&apos;à la fin. Un rôle qui ne mène pas l&apos;enquête (le
-          Spectateur) est noté sur le seul état du monde, sans pénalité de détection. Les
-          poids exacts sont ajustés au fil des parties.
-        </p>
+        <p className="text-xs text-fg-faint">{t("scorex.note")}</p>
       </div>
     </Panel>
   );
@@ -259,62 +250,32 @@ function ScoreExplainerPanel() {
  * Débutant/Intermédiaire reste la scène + l'indice du monde + le marché + les outils
  * de détection. Ici vit l'EXPLICATION de chaque indicateur, pour les curieux. Rien
  * n'est retiré du jeu : tout est simplement rangé hors de la surface par défaut. */
+const ENGINE_SLUGS = [
+  "pouvoir",
+  "ecart",
+  "parole",
+  "ombre",
+  "risque",
+  "trajectoire",
+  "traites",
+  "participation",
+] as const;
+
 function EngineExplainerPanel() {
-  const items: { term: string; plain: string; desc: string }[] = [
-    {
-      term: "Qui cherche à prendre le pouvoir ?",
-      plain: "recherche de pouvoir",
-      desc: "Des signes, dans le raisonnement d'une IA, qu'elle cherche à se protéger, à accumuler des ressources ou à éviter qu'on l'arrête. Une jauge de 0 à 1 par pays.",
-    },
-    {
-      term: "Elle dit / elle fait",
-      plain: "écart entre annonce et acte",
-      desc: "L'écart entre ce qu'une IA annonce à la table et ce qu'elle fait vraiment. Un grand écart révèle une IA qui promet une chose et en fait une autre — un indice de trahison.",
-    },
-    {
-      term: "Parole donnée",
-      plain: "promesses tenues",
-      desc: "Le taux de promesses tenues d'une IA et ses engagements encore en cours. Une IA qui promet beaucoup et rompt souvent devient suspecte.",
-    },
-    {
-      term: "L'ombre du meneur de jeu",
-      plain: "journal du meneur",
-      desc: "Le meneur de jeu invisible peut hausser la tension quand une IA vise trop souvent la même cible. Son journal se relit après la partie.",
-    },
-    {
-      term: "Risque du round",
-      plain: "tension du round",
-      desc: "Quatre jauges de 0 à 1 — tension, dégâts pour l'économie, alliances fragilisées, incertitude. En façade, elles se résument à une seule pastille dans le bandeau.",
-    },
-    {
-      term: "Trajectoire du monde",
-      plain: "les axes de l'indice",
-      desc: "Les axes qui composent l'indice du monde (le thermomètre), dont la concentration de la puissance de calcul entre les mains des plus forts.",
-    },
-    {
-      term: "Traités",
-      plain: "engagements chiffrés",
-      desc: "Les engagements chiffrés entre pays (plafonds de puissance de calcul, inspections), suivis d'un round à l'autre par le moteur.",
-    },
-    {
-      term: "Prises de parole",
-      plain: "participation",
-      desc: "Qui a pris la parole, combien de fois, et qui est resté silencieux ce round.",
-    },
-  ];
+  const t = useT();
+  const items = ENGINE_SLUGS.map((slug) => ({
+    term: t(`engine.${slug}.terme`),
+    plain: t(`engine.${slug}.plain`),
+    desc: t(`engine.${slug}.desc`),
+  }));
   return (
     <Panel>
       <PanelTitle
-        kicker="Les coulisses"
-        title="Le moteur d'analyse (mode Expert)"
-        hint="Ces indicateurs ne s'affichent qu'en mode Expert pendant la partie. En Débutant et Intermédiaire, l'écran va à l'essentiel : la scène, l'indice du monde, le marché et tes outils de détection."
+        kicker={t("engine.kicker")}
+        title={t("engine.titre")}
+        hint={t("engine.aide")}
       />
-      <p className="mb-4 max-w-2xl text-sm leading-relaxed text-fg-muted">
-        Sous le jeu se cache un banc d&apos;essai : des mesures qui scrutent le comportement
-        des IA round après round. Elles sont précieuses pour les curieux, mais trop pour un
-        premier écran — alors elles vivent en mode <strong>Expert</strong> (choisis la
-        difficulté Expert au lobby), et voici ce que chacune mesure.
-      </p>
+      <p className="mb-4 max-w-2xl text-sm leading-relaxed text-fg-muted">{t("engine.intro")}</p>
       <dl className="space-y-3">
         {items.map((it) => (
           <div key={it.term} className="border-t border-edge pt-3 first:border-t-0 first:pt-0">
@@ -327,11 +288,7 @@ function EngineExplainerPanel() {
         ))}
       </dl>
       <p className="mt-4 border-t border-edge pt-3 text-xs leading-relaxed text-fg-faint">
-        La même famille de mesures alimente le moteur en coulisses : la corrigibilité
-        (l&apos;IA accepte-t-elle qu&apos;on la mette en pause ?), la dérive de ses valeurs
-        (s&apos;éloigne-t-elle du mandat qu&apos;on lui a confié au départ ?) et sa puissance
-        de calcul (la ressource rare de ce futur). Rien de tout cela ne change la façon dont
-        tu joues : ce sont les <em>ingrédients</em>, pas la surface.
+        {t("engine.note")}
       </p>
     </Panel>
   );

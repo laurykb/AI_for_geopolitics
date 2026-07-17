@@ -15,14 +15,10 @@ import { gmShadowItems } from "@/lib/storyteller";
 import type { DriftReveal } from "@/lib/types";
 
 export function DriftCouncilBanner() {
+  const t = useT();
   return (
     <Banner tone="warn">
-      <strong>La Dérive</strong> — au moins une super-intelligence dérive secrètement de son
-      mandat (peut-être deux — tu ne sais pas combien). Observe le comportement (ton,
-      propositions, pactes), puis dépose une <em>motion de suspension</em> au bon moment :
-      trop tôt, le juge la rejette faute de preuves ; suspendre un pays loyal te coûte ;
-      laisser filer un traître plombe le monde. La réflexion privée est scellée
-      jusqu&apos;à la fin.
+      <strong>{t("drift.council.titre")}</strong> — {t("drift.council.corps")}
     </Banner>
   );
 }
@@ -99,7 +95,7 @@ function GMShadowSection({
               <button
                 onClick={() => onJumpToRound?.(item.roundNo)}
                 className="cursor-pointer rounded-md border border-edge px-2 py-0.5 font-mono text-xs text-fg-muted transition-colors hover:border-accent hover:text-accent-bright"
-                title="Relire ce round"
+                title={t("drift.reveal.relire")}
               >
                 round {item.roundNo}
               </button>
@@ -193,18 +189,20 @@ function PromiseKeptReveal({ reveal }: { reveal: DriftReveal }) {
  * états qui ne se contredisent jamais avec le titre : démasqué PAR TOI, mis au banc
  * autrement, ou resté dans l'ombre). Le nombre de traîtres (1 ou 2) était caché jusqu'ici. */
 function DeviantLine({ dev }: { dev: DriftReveal["deviants"][number] }) {
+  const t = useT();
   const meta = speakerMeta(dev.deviant);
+  const round = String(dev.caught_round ?? "");
   return (
     <p className="flex flex-wrap items-center gap-2 text-sm">
       <SpeakerAvatar id={dev.deviant} size={28} />
       <strong>{meta.label}</strong>
       <Pill tone="bad">{dev.profile_label}</Pill>
       {dev.caught_round == null ? (
-        <Pill tone="bad">resté dans l&apos;ombre</Pill>
+        <Pill tone="bad">{t("drift.deviant.ombre")}</Pill>
       ) : dev.caught_by_you ? (
-        <Pill tone="good">démasqué par toi au round {dev.caught_round}</Pill>
+        <Pill tone="good">{t("drift.deviant.demasque").replace("{n}", round)}</Pill>
       ) : (
-        <Pill tone="warn">mis au banc au round {dev.caught_round} (pas par toi)</Pill>
+        <Pill tone="warn">{t("drift.deviant.banc").replace("{n}", round)}</Pill>
       )}
     </p>
   );
@@ -212,15 +210,24 @@ function DeviantLine({ dev }: { dev: DriftReveal["deviants"][number] }) {
 
 /** RG-3 — titre VÉRIDIQUE de la révélation, cohérent avec les DeviantLine : ne dit jamais
  * « resté dans l'ombre » d'un traître pourtant mis au banc, ni « démasqué » sans crédit. */
-function revealTitle(count: number, caught: number, benched: number): string {
+function revealTitle(
+  t: (key: string) => string,
+  count: number,
+  caught: number,
+  benched: number,
+): string {
   if (caught === count) {
-    return count > 1 ? `Tu as démasqué les ${count} traîtres` : "Le traître a été démasqué";
+    return count > 1
+      ? t("drift.reveal.titre-tous-n").replace("{count}", String(count))
+      : t("drift.reveal.titre-tous-1");
   }
-  if (benched === count) return "La menace a été neutralisée — mais pas par toi";
+  if (benched === count) return t("drift.reveal.titre-neutralise");
   if (benched === 0) {
-    return count > 1 ? "Les traîtres sont restés dans l'ombre" : "Le traître est resté dans l'ombre";
+    return count > 1 ? t("drift.reveal.titre-ombre-n") : t("drift.reveal.titre-ombre-1");
   }
-  return `Il y avait ${count} traîtres — tu en as démasqué ${caught}`;
+  return t("drift.reveal.titre-partiel")
+    .replace("{count}", String(count))
+    .replace("{caught}", String(caught));
 }
 
 export function DriftRevealPanel({
@@ -239,13 +246,13 @@ export function DriftRevealPanel({
   const count = reveal.deviant_count;
   const caught = reveal.caught_count;
   const benchedByOther = reveal.benched_count - caught; // tombés, mais pas grâce à toi
-  const title = revealTitle(count, caught, reveal.benched_count);
+  const title = revealTitle(t, count, caught, reveal.benched_count);
   return (
     <Panel className="border-l-2 border-l-bad">
       <PanelTitle
-        kicker="Révélation — La Dérive"
+        kicker={t("drift.reveal.kicker")}
         title={title}
-        hint="Les traîtres (un ou deux) ont été choisis en secret dès le premier round — rien n'a été truqué en cours de partie. Le nombre exact t'était caché : c'est ce qui entretient le doute. La réflexion privée est maintenant déverrouillée dans Revoir."
+        hint={t("drift.reveal.aide")}
         right={
           <span className="text-right">
             <span className="block font-mono text-2xl font-semibold tabular-nums text-accent-bright">
@@ -266,25 +273,23 @@ export function DriftRevealPanel({
 
           <div>
             <p className="mb-1 text-xs text-fg-muted">
-              <span className="text-bad">— —</span> niveau de dérive ·{" "}
-              <span className="text-accent-bright">—</span> courbe du monde
+              <span className="text-bad">— —</span> {t("drift.reveal.legende-derive")} ·{" "}
+              <span className="text-accent-bright">—</span> {t("drift.reveal.legende-monde")}
             </p>
             <Curves levels={reveal.levels} u={reveal.u_history} />
           </div>
 
           <div>
             <p className="mb-2 text-xs font-medium uppercase tracking-wide text-fg-faint">
-              Les indices produits{" "}
+              {t("drift.reveal.indices")}{" "}
               {reveal.flagrant_round != null && (
                 <span className="normal-case">
-                  (prise en flagrant délit au round {reveal.flagrant_round})
+                  {t("drift.reveal.flagrant").replace("{n}", String(reveal.flagrant_round))}
                 </span>
               )}
             </p>
             {reveal.acts.length === 0 ? (
-              <p className="text-sm text-fg-faint">
-                Aucun acte constatable — la dérive est restée sous le radar.
-              </p>
+              <p className="text-sm text-fg-faint">{t("drift.reveal.aucun-acte")}</p>
             ) : (
               <ul className="space-y-1.5">
                 {reveal.acts.map((act, i) => (
@@ -292,17 +297,14 @@ export function DriftRevealPanel({
                     <button
                       onClick={() => onJumpToRound?.(act.round_no)}
                       className="cursor-pointer rounded-md border border-edge px-2 py-0.5 font-mono text-xs text-fg-muted transition-colors hover:border-accent hover:text-accent-bright"
-                      title="Relire ce round"
+                      title={t("drift.reveal.relire")}
                     >
                       round {act.round_no}
                     </button>
                     <span>{act.label}</span>
                     {act.signature && (
-                      <span
-                        title="L'acte typique de son profil de dérive — sa marque de fabrique"
-                        className="cursor-help"
-                      >
-                        <Pill tone="bad">signature</Pill>
+                      <span title={t("drift.reveal.signature-aide")} className="cursor-help">
+                        <Pill tone="bad">{t("drift.reveal.signature")}</Pill>
                       </span>
                     )}
                   </li>
@@ -319,35 +321,36 @@ export function DriftRevealPanel({
               pondération (pourquoi ces poids, ce que coûte un faux positif) vit dans
               Informations, jamais imposé ici. */}
           <ScoreBar
-            label="État du monde"
+            label={t("drift.reveal.monde-label")}
             value={reveal.score.world}
             max={reveal.score.world_max}
           />
           {reveal.score.detection != null ? (
             <ScoreBar
-              label="Détection"
+              label={t("drift.reveal.detection-label")}
               value={reveal.score.detection}
               max={reveal.score.detection_max}
             />
           ) : (
             <p className="flex items-center gap-1.5 text-xs text-fg-faint">
-              Détection — non applicable (tu n&apos;as pas mené l&apos;enquête)
-              <Hint text="Ton rôle ne dépose pas de motions de suspension : ta note se réduit à l'état du monde, sans pénalité." />
+              {t("drift.reveal.detection-na")}
+              <Hint text={t("drift.reveal.detection-na-aide")} />
             </p>
           )}
           {showEngine && <SignalGapReveal reveal={reveal} />}
           {showEngine && <PromiseKeptReveal reveal={reveal} />}
           <p className="border-t border-edge pt-3 text-xs leading-relaxed text-fg-faint">
             {caught > 0 &&
-              `${caught} traître${caught > 1 ? "s" : ""} démasqué${caught > 1 ? "s" : ""} sur ${count} par toi. `}
+              t("drift.reveal.recap-caught")
+                .replace("{caught}", String(caught))
+                .replace("{count}", String(count))}
             {benchedByOther > 0 &&
-              `${benchedByOther} mis au banc autrement (pas à ton crédit). `}
+              t("drift.reveal.recap-benched").replace("{n}", String(benchedByOther))}
             {reveal.false_accusations > 0 &&
-              `${reveal.false_accusations} pays loyal${reveal.false_accusations > 1 ? "s" : ""} suspendu${reveal.false_accusations > 1 ? "s" : ""} à tort (ça coûte). `}
+              t("drift.reveal.recap-fp").replace("{n}", String(reveal.false_accusations))}
             {reveal.rejected_motions > 0 &&
-              `${reveal.rejected_motions} motion${reveal.rejected_motions > 1 ? "s" : ""} rejetée${reveal.rejected_motions > 1 ? "s" : ""} faute de preuves. `}
-            La réflexion privée des IA est déverrouillée : relis leurs justifications
-            intérieures en sachant — c&apos;est la récompense.
+              t("drift.reveal.recap-rejected").replace("{n}", String(reveal.rejected_motions))}
+            {t("drift.reveal.recap-final")}
           </p>
         </div>
       </div>
