@@ -210,6 +210,9 @@ class GameSession:
     fog: bool = False
     escalation: bool = False
     drift_enabled: bool = False
+    # RG-3 — graine de la Dérive : `game_id` en général, le SCÉNARIO pour le Défi du jour
+    # (même sommet pour tous ⇒ mêmes traîtres ⇒ classement équitable). Cf. `_drift_seed`.
+    drift_seed: str = ""
     human_country: str | None = None  # Joueur-pays : ce pays est joué par l'humain
     turn_seconds: int = 90  # G2 — délai du tour humain (les SI n'attendent pas)
     recent: list[str] = field(default_factory=list)
@@ -663,6 +666,7 @@ def _rebuild_session(
         fog=game.fog,
         escalation=game.escalation,
         drift_enabled=game.drift_enabled,
+        drift_seed=_drift_seed(game.scenario, game.id),  # RG-3 — recalculé (rien à persister)
         human_country=snapshot.play_as,
         admin=game.admin,
         prompt_sink=prompt_sink,
@@ -871,18 +875,27 @@ def _add_entry(
 # --- mode Dérive (G3) : la SI déviante, ses actes, la révélation --------------------
 
 
-def _drift_assignment(game_id: str, countries: list[str], play_as: str | None) -> tuple[str, str]:
-    """(traître principal, profil) — recalculé à l'identique partout (seed = game_id).
-    Le pivot (premier traître) suffit aux appels qui ne visent qu'un traître (façade,
-    vérification d'une prise de parole)."""
-    return drift_game.assign(game_id, sorted(countries), exclude=play_as)
+def _drift_seed(scenario: str, game_id: str) -> str:
+    """Graine de la Dérive (RG-3). Pour le **Défi du jour** (`daily:<date>`), le même
+    sommet est proposé à TOUT le monde : on seede alors sur le SCÉNARIO, pour que le(s)
+    traître(s) — identité ET nombre caché — soient identiques pour tous (classement du
+    jour équitable, sinon un joueur pourrait tirer 1 traître et un autre 2, jusqu'à 40
+    points d'écart). Toute autre partie garde sa propre graine (`game_id`) : variété
+    d'une partie à l'autre. Non-Défi ⇒ comportement inchangé (seed == game_id)."""
+    return scenario if scenario.startswith(daily_mod.DATE_PREFIX) else game_id
+
+
+def _drift_assignment(seed: str, countries: list[str], play_as: str | None) -> tuple[str, str]:
+    """(traître principal, profil) — recalculé à l'identique partout depuis la graine.
+    Le pivot (premier traître) suffit aux appels qui ne visent qu'un traître."""
+    return drift_game.assign(seed, sorted(countries), exclude=play_as)
 
 
 def _drift_deviants(
-    game_id: str, countries: list[str], play_as: str | None
+    seed: str, countries: list[str], play_as: str | None
 ) -> list[tuple[str, str]]:
     """Tous les traîtres (1 ou 2) et leurs profils — nombre CACHÉ seedé (RG-3)."""
-    return drift_game.assign_deviants(game_id, sorted(countries), exclude=play_as)
+    return drift_game.assign_deviants(seed, sorted(countries), exclude=play_as)
 
 
 def _storyteller_signals(
@@ -1232,6 +1245,7 @@ def _prepare_drift(
     Renvoie (preuves de la motion, consignes de vote, rubrique Storyteller) —
     (None, {}, None) hors mode Dérive."""
     session, record, store, game_id = run.session, run.record, run.store, run.game_id
+    seed = session.drift_seed  # graine de la Dérive (scénario pour le Défi, game_id sinon)
     evidence: bool | None = None
     vote_notes: dict[str, str] = {}
     gm_rubric: str | None = None
@@ -1239,11 +1253,11 @@ def _prepare_drift(
         return evidence, vote_notes, gm_rubric
     # G11-d §4 — la difficulté pilote la vitesse de dérive k et le seuil d'actes du juge.
     dparams = difficulty_mod.drift_params(session.difficulty)
-    deviants = _drift_deviants(game_id, sorted(session.world.countries), session.human_country)
+    deviants = _drift_deviants(seed, sorted(session.world.countries), session.human_country)
     # Le pivot sert le GM-Storyteller (couverture d'UN traître mis en scène) et le vote.
     deviant, profile = deviants[0]
     directives = drift_game.round_directives(
-        game_id, round_id, deviants, sorted(session.world.countries), params=dparams
+        seed, round_id, deviants, sorted(session.world.countries), params=dparams
     )
     for cid, note in directives.notes.items():
         if cid in note_parts:
@@ -1262,7 +1276,7 @@ def _prepare_drift(
         for dev, prof in deviants:
             if dev == motion.country:
                 continue
-            note, act = drift_game.vote_directive(game_id, round_id, dev, prof)
+            note, act = drift_game.vote_directive(seed, round_id, dev, prof)
             if note:
                 vote_notes[dev] = (
                     "CONSIGNE CONFIDENTIELLE (jamais mentionnée, jamais avouée) : " + note
@@ -1293,7 +1307,7 @@ def _prepare_drift(
     cover: str | None = None
     if kind == storyteller_mod.KIND_COVER:
         cover = storyteller_mod.cover_target(
-            game_id,
+            seed,
             round_id,
             sorted(session.world.countries),
             deviant=deviant,
@@ -2317,7 +2331,7 @@ def _finish_drift_if_over(run: RoundRun) -> Iterator[str]:
         return
     deviant_ids = {
         d for d, _ in _drift_deviants(
-            run.game_id, sorted(run.session.world.countries), run.session.human_country
+            run.session.drift_seed, sorted(run.session.world.countries), run.session.human_country
         )
     }
     caught_ids = {
@@ -2450,9 +2464,12 @@ def create_game(
             detail="la Dérive exige au moins 3 pays (une motion doit pouvoir se débattre)",
         )
     # RG-3 — la Dérive est le CŒUR du jeu : TOUJOURS active en Classique (≥3 pays, pour
-    # qu'une motion puisse se débattre). La Campagne n'est PAS forcée ici (elle suit la
-    # pédagogie de ses chapitres : chapitre 0 = 1 traître, crises historiques inchangées).
-    # Un classic à 2 pays (tests moteur) reste sans Dérive plutôt que d'être rejeté.
+    # qu'une motion puisse se débattre). La Campagne n'est PAS forcée ici : elle n'arme la
+    # Dérive que si sa fiche de chapitre le demande (`from_legacy_mode(chapter.mode)`) — les
+    # crises historiques gardent leur structure. (Aujourd'hui aucun chapitre n'arme la
+    # Dérive ; épingler un chapitre à UN traître pédagogique reste un réglage Cowork, cf.
+    # docs/PLAN_JEU.md « Nuance chapitre 0 ».) Un classic à 2 pays (tests moteur) reste sans
+    # Dérive plutôt que d'être rejeté.
     drift_enabled = body.drift_enabled or (body.mode == "classic" and len(world.countries) >= 3)
     # Les rivalités du casting ouvrent la partie tendue (sinon toutes les paires = 0
     # et la sélection des pays n'aurait aucun effet sur la dynamique).
@@ -2487,6 +2504,8 @@ def create_game(
     # du Défi du jour (une tentative classée / jour ; un re-run libre ne rescore pas) et
     # la garantie d'une table équilibrée pour cette tentative. Inerte hors défi.
     ranked = role == "player" and body.invent is None and not admin and not body.free
+    # RG-3 — graine de la Dérive (scénario pour le Défi du jour, game_id sinon).
+    drift_seed = _drift_seed(body.scenario, game_id)
 
     # G17 — tempéraments : tirage seedé par la partie (une CLASSÉE joue toujours la
     # table équilibrée), la fiche de crise peut imposer les siens, et en Dérive la
@@ -2504,8 +2523,8 @@ def create_game(
                 if cid in world.countries and t in temperament_mod.TEMPERAMENTS
             }
         )
-    if drift_enabled and temperament_mod.drift_facade(game_id):
-        for deviant, _ in _drift_deviants(game_id, sorted(world.countries), play_as):
+    if drift_enabled and temperament_mod.drift_facade(drift_seed):
+        for deviant, _ in _drift_deviants(drift_seed, sorted(world.countries), play_as):
             assignments[deviant] = "colombe"
     for cid, assigned in assignments.items():
         world.countries[cid].temperament = assigned
@@ -2539,6 +2558,7 @@ def create_game(
         fog=body.fog,
         escalation=body.escalation,
         drift_enabled=drift_enabled,
+        drift_seed=drift_seed,
         human_country=play_as,
         turn_seconds=body.turn_seconds,
         admin=admin,
@@ -2812,15 +2832,18 @@ def compute_drift_reveal(game_id: str, store: GameStore) -> DriftRevealView:
     if snapshot is None:
         raise HTTPException(status_code=409, detail="snapshot absent — partie irrécupérable")
 
+    game = store.get_game(game_id)
+    seed = _drift_seed(game.scenario, game_id) if game else game_id
     countries = sorted(snapshot.world.get("countries", {}))
-    deviant_pairs = _drift_deviants(game_id, countries, snapshot.play_as)
+    deviant_pairs = _drift_deviants(seed, countries, snapshot.play_as)
     deviant, profile = deviant_pairs[0]  # traître PIVOT (récit, courbes, vote)
     deviant_ids = {d for d, _ in deviant_pairs}
     params = drift_game.load_params()
     rounds = store.list_rounds(game_id)
     acts = _drift_acts(rounds)
 
-    caught_rounds: dict[str, int] = {}  # traître -> round de sa suspension retenue
+    caught_rounds: dict[str, int] = {}  # traître -> round où il a été mis au banc (récit)
+    human_caught: set[str] = set()  # traîtres démasqués par une motion HUMAINE (le score)
     false_positive_ids: set[str] = set()  # pays LOYAUX suspendus à tort par l'humain
     rejected = 0
     pivot_lucky = False
@@ -2829,22 +2852,24 @@ def compute_drift_reveal(game_id: str, store: GameStore) -> DriftRevealView:
         if not suspension:
             continue
         country = suspension.get("country")
-        # Seules les motions du conseil (humain) engagent sa crédibilité — une SI qui
-        # accuse à tort n'est pas une faute du joueur.
+        # Seules les actions du conseil (humain) comptent pour SA note : ni le crédit d'une
+        # prise portée par une SI, ni le coût d'une accusation à tort portée par une SI.
         human_filed = suspension.get("filed_by", HUMAN_FILER) == HUMAN_FILER
         if not suspension.get("upheld"):
             rejected += 1 if human_filed else 0
         elif country in deviant_ids:
             if country not in caught_rounds:
-                caught_rounds[country] = r.round_no
+                caught_rounds[country] = r.round_no  # récit : quand il est tombé
                 if country == deviant:
                     before = [a for a in acts if a.round_no < r.round_no]
                     pivot_lucky = drift_game.lucky_catch(before, params)
+            if human_filed:
+                human_caught.add(country)  # score : le joueur en a le mérite
         elif human_filed:
             false_positive_ids.add(country)
 
     caught_round = caught_rounds.get(deviant)
-    caught_count = len(caught_rounds)
+    caught_count = len(human_caught)  # « combien TU en as démasqués » (surface + score)
     false_accusations = len(false_positive_ids)
 
     u_history = [
@@ -2863,7 +2888,6 @@ def compute_drift_reveal(game_id: str, store: GameStore) -> DriftRevealView:
     )
     # RG-3 — la détection s'applique au HUMAIN qui suspend : un Spectateur/Architecte ne
     # motionne pas → sa note se réduit à l'état du monde (détection ABSENTE, pas un 0 punitif).
-    game = store.get_game(game_id)
     detects = (game.role if game else "council") in ("player", "council")
     score = score_mod.mixed_score(
         u_final=u_history[-1] if u_history else 0.5,
@@ -3041,11 +3065,15 @@ def buy_intel(
             raise HTTPException(status_code=422, detail="claim et speaker sont requis")
         suspicious = False
         if session.drift_enabled:
-            deviant, _profile = _drift_assignment(
-                game_id, sorted(session.world.countries), session.human_country
-            )
+            # RG-3 — 1 ou 2 traîtres : la vérification doit flairer N'IMPORTE lequel
+            # (pas seulement le pivot), sinon l'outil rendrait un traître #2 « propre ».
+            deviant_ids = {
+                d for d, _ in _drift_deviants(
+                    session.drift_seed, sorted(session.world.countries), session.human_country
+                )
+            }
             acts = _drift_acts(store.list_rounds(game_id))
-            suspicious = body.speaker == deviant and any(
+            suspicious = body.speaker in deviant_ids and any(
                 a.country == body.speaker for a in acts
             )
         hits = _intel_retriever().retrieve(body.claim, k=1)

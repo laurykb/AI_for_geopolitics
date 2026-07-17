@@ -1594,3 +1594,115 @@ en Classique (forcer côté back à la création `classic` est le plus simple).
 pour tous les chapitres) noté et jugé plus cohérent, aucun test cassé.
 
 <!-- fin section RG-2 -->
+
+## RG-3 — La Dérive au cœur (le gros morceau)
+
+> Branche `feat/jeu-rg3-derive-coeur` (base `225fa56`). Réf : `docs/JEU_VS_MOTEUR.md` §1.
+> Le jeu devient **UN** jeu : démasquer l'IA qui trahit tout en gardant le monde debout.
+> La Dérive n'est plus un mode — c'est le cœur de chaque partie Classique.
+
+**Conception du score MIXTE (brainstorming + TDD).** Fonction PURE `simulation/score.py`
+`mixed_score(u_final, deviants, caught, false_positives, detects)` → `MixedScore`
+{world, detection, total 0-100, grade, + narratif}. Formule (pondérations calibrables
+`data/score/params.json`, défauts) :
+- **monde** = `world_max(60) × clamp((U−0,15)/(0,85−0,15), 0, 1)` — l'état du monde.
+- **détection** (si le rôle détecte) = `clamp(caught × 40/deviants − 15 × faux_positifs, 0, 40)`.
+- `total = monde + détection` ; rôle sans détection (Spectateur/Architecte) → `total = 100 ×
+  part de monde` (monde seul, JAMAIS puni d'un faux 0).
+- **Cas limites testés AVANT le code** (TDD rouge d'abord) : faux positif pénalisé ;
+  « suspends tout le monde » (détection plancher 0) < déduction ciblée ; 2 traîtres tous
+  pris = détection pleine ; aucun raté = plein ; traître raté = manque à gagner ; caught
+  borné à deviants ; deviants=0 sûr ; monde/total bornés ; Spectateur = monde seul.
+  → 15 tests `tests/test_score.py`. **Le faux positif DOIT coûter** : test rouge écrit en 1er.
+
+**Dérive always-on Classique + nombre caché 1-2 (seedé).** `simulation/drift_game.py` :
+`assign_deviants(game_id, countries, exclude)` → liste de 1 **ou 2** `(traître, profil)`,
+nombre **caché** `deviant_count` seedé `drift-count:{game_id}` (cap = `min(2, éligibles−1)`
+→ laisse **toujours** un pays loyal, sinon le faux positif serait impossible). Le PREMIER
+traître est dérivé exactement comme l'ancien `assign` (rétro-compat : parties déjà jouées
+gardent leur coupable) ; le 2e sur une graine séparée `drift-2:{game_id}`. `round_directives`
+prend la LISTE (sortie **identique** à un seul traître). `create_game` **force**
+`drift_enabled` quand `mode=="classic"` et ≥3 pays (Campagne non forcée ; duo 2-pays laissé
+sans Dérive pour les tests moteur). Fin de partie (`_finish_drift_if_over`) : la partie finit
+quand **TOUS** les traîtres sont pris (ou horizon/effondrement) — prendre l'un ne finit pas
+si l'autre court : le doute « en ai-je raté un ? » se joue jusqu'au bout.
+
+**Reveal adapté (`compute_drift_reveal` + `DriftRevealView`).** Expose `deviants[]`
+(par-traître : id, profil, `caught_round`), `deviant_count`, `caught_count`, et `score` =
+`MixedScore`. `false_accusations` = pays LOYAUX suspendus à tort par l'humain (les faux
+positifs). L'ancien `drift_game.score()`/`DriftScore` (trajectoire/détection/crédibilité) est
+**retiré** au profit du mixte. Le bilan de fin (`_build_result`) porte `result["drift"]`
+(note + composition) → surface + Défi du jour. `_victory`(Dérive) = au moins un démasqué.
+
+**Surface (règle 12-65).** Front : `web/src/lib/reveal.ts` (PUR, testé vitest 8) compose
+DEUX phrases (monde + détection, « 1 sur 2 ») via `t()` + interpolation `{caught}/{deviants}/{n}`.
+`fin/page.tsx` `DriftSurface` : UNE note /100 + grade + 2 phrases. `DriftRevealPanel` :
+liste par-traître (1 ou 2), barres **monde/détection** (dimensionnées sur `world_max`/
+`detection_max` exposés par la note), « détection non applicable » pour le Spectateur.
+La **pondération détaillée** vit dans **Informations** (panneau « Comment ta note se calcule »).
+Textes fr+en = 1er jet **TODO_COWORK** (clés `reveal.*`).
+
+**Cohérence Défi du jour + rôles.** Défi (`start_daily`, classic ranked) = 1-2 traîtres
+cachés + score mixte ; `_record_daily_score` range par la note mixte (`result["drift"]["score"]`,
+déjà branché) — classement du jour cohérent. Rôles : la détection s'applique au HUMAIN qui
+suspend (player/council) ; Spectateur/Architecte → `detects=False` = monde seul (pas de faux
+0 punitif). La **façade** « colombe » du traître s'applique désormais à toute partie Classique
+(dont le Défi) : clue de détection intacte.
+
+**Findings des revues + corrections.** (a) `superpowers:brainstorming` → formule + cas limites
+figés (design record). (b) `ui-ux-pro-max` → figures tabulaires pour la note, couleur JAMAIS
+seule (label texte), disclosure (pondération → Informations). (c) TDD → faux positif rouge en
+1er. (d) Tests obsolètes corrigés (le Classique arme la Dérive) : `test_reveal_gates` /
+`test_rubric_in_gm_prompt_only_in_drift` (parties SANS Dérive = duo 2-pays) ;
+`test_motion_flow_upheld` / `test_suspension_lasts_exactly_one_round` (mécanique de motion
+NUE = hors-Dérive/Campagne, car en Dérive le verdict est soumis aux PREUVES) ;
+`test_temperament` × 3 (table isolée de la façade via Campagne). Ancres tour/tuto : aucune
+touchée (aucune étape ne visait le reveal/drift). (e) `superpowers:requesting-code-review`
+(agent dédié) : findings traités ci-dessous.
+
+**Smoke mistral RÉEL CONSTATÉ (3 pays, TestClient in-process).** Partie Classique →
+`drift_enabled=True` auto ; **nombre caché = 2** ce coup-ci (iran=hegemon, usa=manipulateur) ;
+fin à l'horizon (aucun pris → la partie NE finit PAS tôt : ✓) ; `result.drift` = {score 23.9,
+world 23.9, detection 0.0, deviant_count 2, caught_count 0, detects True} ; `reveal` cohérent
+(total = monde + détection) ; **verdict plein (800 car., pas de troncature à 3 pays)**.
+
+**Vert (relancé et CONSTATÉ).** pytest **RERUN_PY** ; ruff **All checks passed** ; vitest
+**241 passed** ; eslint **0** ; `next build` OK (TypeScript clean). Commits : `b471e91`
+(score pur), `f070b02` (Dérive câblée), `afec142` (surface), `<temperament>`.
+
+**Vigilances pour RG-4 (instrumentation cachée, s'empile ici).** RG-4 doit router en Expert
+SANS supprimer les panneaux G18-G23 (signal/promesses/psycholinguistique/ombre-du-GM) : ils
+restent dans le `DriftRevealView` (`signal_gap_*`, `promise_kept_*`, `gm_*`) et le
+`DriftRevealPanel` (`SignalGapReveal`/`PromiseKeptReveal`/`GMShadowSection`) — les garder mais
+les réserver à l'Expert/Informations. Le score mixte `world`/`detection` reste JEU (visible) ;
+l'ancien détail chiffré (trajectoire/crédibilité) est retiré. Tutoriel : la Dérive étant
+désormais le cœur, le tuto DEVRA l'enseigner comme tel (à réécrire côté RG-5 — aucune ancre
+cassée par RG-3). Le `false_positive_penalty` (15) et les poids 60/40 sont des DÉFAUTS de
+calibrage Cowork (`data/score/params.json`).
+
+**Nuance chapitre 0 (pour Cowork).** Le nombre de traîtres est global 1-2 (spec §1) ; la
+difficulté ne le pilote PAS (elle pilote k / seuil d'actes / amplitude). Le chapitre 0
+`sommet-inaugural` est `mode="classic"` → `from_legacy_mode` donne `drift=False` → **il n'a
+aujourd'hui AUCUN traître** (pas de régression RG-3 : c'était déjà le cas). Pour tenir « le
+chapitre 0 enseigne la Dérive avec UN traître » : soit épingler globalement
+`data/drift/params.json` `deviants:{min:1,max:1}` (affecte TOUTES les parties — déconseillé),
+soit — recommandé — ajouter une règle **Débutant → 1 traître** (levier `max_deviants` dans
+`simulation/difficulty.py`, routé dans le count via `_drift_deviants`), qui sert aussi le
+« Débutant imperdable » du CLAUDE.md. Non fait ici (hors périmètre explicite RG-3 : « chapitre
+0 = Cowork ») pour ne pas déstabiliser l'état vert ; petit suivi propre.
+
+**Revue adversariale (agent dédié) — findings TRAITÉS.** (Important) 1. Défi du jour
+équitable : la Dérive est désormais seedée sur le SCÉNARIO pour `daily:<date>` (`_drift_seed`,
+`GameSession.drift_seed`) → mêmes traîtres (identité + nombre caché) pour tous, quel que soit
+le game_id (les autres parties gardent `game_id` : ZÉRO changement hors Défi). Test
+`test_daily_challenge_seeds_same_traitors_for_everyone`. 2. Intel VERIFY flairait le pivot
+seul → flaire désormais N'IMPORTE quel traître (set complet). (Minor) 3. `mixed_score.total`
+clampé [0,100] (garde-fou même si un calibrage casse monde+détection=100) + test. 4. Le
+CRÉDIT d'une prise est désormais human-attribué comme le coût d'un faux positif (symétrie :
+`human_caught` pour le score, `caught_rounds` pour le récit). 5. Commentaire chapitre 0
+corrigé (décrit ce que le code FAIT) + test du pivot rendu non tautologique (reconstruction
+RNG indépendante). (Cosmétique) double appel `compute_drift_reveal` au finalize laissé (une
+fois par fin de partie — négligeable).
+
+<!-- fin section RG-3 -->
+

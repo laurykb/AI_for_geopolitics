@@ -379,7 +379,6 @@ export default function InformationsPage() {
 
           <ScoreExplainerPanel />
 
-
           <Panel>
             <PanelTitle
               kicker="Registre sourcé"

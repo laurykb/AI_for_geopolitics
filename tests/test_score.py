@@ -96,6 +96,14 @@ def test_total_equals_world_plus_detection_exactly():
         assert s.total == round(s.world + s.detection, 1)
 
 
+def test_total_is_clamped_even_with_miscalibrated_weights():
+    """La note reste dans [0,100] même si un calibrage Cowork casse la convention
+    monde+détection=100 (garde-fou, pas seulement la convention du fichier)."""
+    bad = ScoreWeights(world_max=70, detection_max=40)  # somme 110 : mal calibré
+    s = mixed_score(u_final=1.0, deviants=1, caught=1, false_positives=0, weights=bad)
+    assert s.total == 100.0
+
+
 def test_total_is_bounded_0_100():
     best = mixed_score(u_final=1.0, deviants=1, caught=1, false_positives=0)
     assert best.total == 100.0

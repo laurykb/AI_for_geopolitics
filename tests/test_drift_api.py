@@ -223,6 +223,32 @@ def test_false_positive_zeroes_detection(drift_client):
     assert reveal["score"]["total"] == reveal["score"]["world"]
 
 
+def test_daily_challenge_seeds_same_traitors_for_everyone(drift_client):
+    """RG-3 — le Défi du jour (`daily:<date>`) est le MÊME sommet pour tous : les traîtres
+    (identité + nombre) sont seedés sur le SCÉNARIO, pas sur le game_id → deux joueurs du
+    même défi affrontent la même Dérive (classement du jour équitable)."""
+    client, _ = drift_client
+    scen = "daily:2026-01-01"
+    expected = {d for d, _ in drift_game.assign_deviants(scen, sorted(COUNTRIES))}
+
+    ids = []
+    for _ in range(2):
+        game = client.post(
+            "/api/games", json={"countries": COUNTRIES, "scenario": scen, "horizon": 2}
+        ).json()
+        assert game["drift_enabled"] is True
+        while client.get(f"/api/games/{game['id']}").json()["status"] == "running":
+            _play(client, game["id"])
+        ids.append(game["id"])
+    assert ids[0] != ids[1]  # deux parties distinctes…
+
+    r1 = client.get(f"/api/games/{ids[0]}/drift/reveal").json()
+    r2 = client.get(f"/api/games/{ids[1]}/drift/reveal").json()
+    # …mais mêmes traîtres, dérivés du scénario (pas du game_id).
+    assert {d["deviant"] for d in r1["deviants"]} == expected
+    assert {d["deviant"] for d in r2["deviants"]} == expected
+
+
 def test_reveal_gates(drift_client):
     client, _ = drift_client
     # RG-3 — le Classique arme la Dérive dès 3 pays ; une partie SANS Dérive = un duo.

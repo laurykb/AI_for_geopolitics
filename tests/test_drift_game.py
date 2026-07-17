@@ -181,11 +181,23 @@ def test_deviant_count_can_be_forced():
 # --- assignation de 1 ou 2 traîtres -----------------------------------------------------
 
 
-def test_assign_deviants_primary_matches_legacy_assign():
-    """Rétro-compat : le PREMIER traître d'`assign_deviants` == l'ancien `assign` (même
-    dérivation seedée) — les parties déjà jouées gardent leur coupable."""
+def _legacy_primary(game_id: str, countries: list[str]) -> tuple[str, str]:
+    """Reconstruction INDÉPENDANTE de l'ancienne dérivation (avant multi-traîtres) :
+    `Random("drift:<id>").choice(eligible)` puis `.choice(sorted(profils))`. Sert de
+    témoin pour détecter toute régression future de la séquence RNG du pivot."""
+    import random as _random
+
+    rng = _random.Random(f"drift:{game_id}")
+    return rng.choice(sorted(countries)), rng.choice(sorted(load_params().profiles))
+
+
+def test_assign_deviants_primary_matches_legacy_derivation():
+    """Rétro-compat : le PREMIER traître (et son profil) == l'ancienne dérivation seedée,
+    reconstruite ici à la main — les parties déjà jouées gardent leur coupable, et une
+    régression de la séquence RNG serait attrapée."""
     for gid in ("abcdef123456", "zzz", "game-7"):
-        assert assign_deviants(gid, COUNTRIES)[0] == assign(gid, COUNTRIES)
+        assert assign_deviants(gid, COUNTRIES)[0] == _legacy_primary(gid, COUNTRIES)
+        assert assign(gid, COUNTRIES) == _legacy_primary(gid, COUNTRIES)
 
 
 def test_assign_two_deviants_are_distinct_and_valid():

@@ -157,7 +157,9 @@ def mixed_score(
     # barre détection, à l'exactitude (pas d'écart d'arrondi entre total et composantes).
     world_r = round(world, 1)
     detection_r = round(detection, 1)
-    total = round(world_r + detection_r, 1)
+    # Garde-fou : la note tient dans [0,100] même si un calibrage casse la convention
+    # monde+détection=100 (on ne fait pas confiance qu'au fichier de poids).
+    total = _clamp(round(world_r + detection_r, 1), 0.0, 100.0)
     return MixedScore(
         world=world_r,
         detection=detection_r,
