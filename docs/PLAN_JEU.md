@@ -2148,3 +2148,80 @@ comportement du jeu** (branche `chore/cleanup-a-hygiene`, base `e1ec82a`). Bilan
 
 <!-- fin section CLEANUP-A -->
 
+## CLEANUP-B — Backend, simplification & outillage (2026-07-17)
+
+Passe « vitrine GitHub » côté **backend + outillage racine** (branche `chore/cleanup-b`,
+base `f898274`). Comportement du jeu **strictement préservé** (la suite est le filet).
+Quatre volets, quatre commits atomiques.
+
+### Volet 1 — Retrait du prototype `legacy/` (code mort) — `4c3ae75`
+CLEANUP-A avait **conservé** `legacy/` car `tests/test_legacy_game.py` importait
+`legacy.game` (garde-fou « import vivant »). CLEANUP-B avait mandat explicite de retirer le
+**tout, test compris**. Preuve de mort revérifiée : aucun fichier du chemin vivant (`app/`,
+`simulation/`, `core/`, `agents/`, `rag/`, `inference/`, `storage/`, `market/`) n'importe
+`legacy.*` ; seul `tests/test_legacy_game.py` le faisait ; `legacy/app.py` était le **seul**
+consommateur de `streamlit`/`plotly` du dépôt. Retiré : dossier `legacy/` (3 fichiers dont
+`app.py` 82 Ko), `tests/test_legacy_game.py`, l'extra `ui` de `pyproject.toml` (streamlit +
+plotly), la config `legacy-ui` de `.claude/launch.json`, `legacy*` des packages, et la mention
+`legacy/` de la docstring `app/main.py`. **949 → 944 tests** (les 5 tests legacy partent avec
+leur code). ⚠️ **Passe D** : les docs qui décrivent `legacy/`/Streamlit comme « archivé, encore
+testé » (`DETTE_TECHNIQUE.md` §D8, `REFONTE_PLAN.md`, `SESSION_HANDOFF.md`, `README.md`) sont
+désormais **caduques** → à rafraîchir.
+
+### Volet 2 — Dédup & découpe (comportement préservé)
+- **`_extract_json` factorisé** (`5d649cb`, dette D2.1) : les **4 copies identiques**
+  (`agents/llm_agent`, `market/forecaster`, `simulation/country_forge`,
+  `simulation/dialogue_integrity/message`) → un point unique `inference/json_extract.py`
+  (`extract_json`, module neutre stdlib, importable sans cycle). Consommateurs recâblés (dont
+  `judge`, `game_master`, `motions`, `metered_backend` : leurs 2 imports tardifs « anti-cycle »
+  deviennent directs ; `message` garde un import tardif car son en-tête promet « pas de dép
+  runtime sur inference »). Nouveau `tests/test_json_extract.py` (dont `None` + JSON non-objet).
+- **`game_api.py` amorcé** (`92b5eba`, dette D1, **4118 → 3883 l.**) : deux extractions PURES
+  ré-exportées — `app/game_schemas.py` (les ~22 modèles Pydantic requête/vue + alias, aucun
+  validator) et `app/game_sse.py` (`_jsonable`/`step_event`/`sse_frame`). **Aucune** API publique
+  renommée ; `GameView` (campaign/daily), `step_event`/`sse_frame` (tests) restent importables
+  depuis `app.game_api`.
+  **NON découpé par prudence (avant merge) → reste dette D1** : la couche session
+  (`GameSession`/snapshot/rebuild/horloge/`Deadline`), l'orchestration de round
+  (`_start_round`/`_handle_step`/`_run_stream` — l'ordre sémantique motion > conséquence > crise
+  > événement > fog et l'ordre des trames SSE sont des invariants à **verrouiller par test AVANT**
+  de bouger), les endpoints par domaine, et les DTO **locaux aux handlers**
+  (drift/intel/bot/flash/crises/directives/players — laissés près de leur route). Le découpage
+  restant = une session dédiée, pas un big-bang de fin de passe.
+
+### Volet 3 — Commentaires & lisibilité
+Constat : le backend a **0 module sans docstring** (scan AST sur 9 paquets) — la doc était déjà
+saine (cf. DETTE « dette structurelle, pas de laisser-aller »). Les 3 nouveaux modules
+(`json_extract`, `game_schemas`, `game_sse`) et `serve.py` sont dotés de docstrings de module +
+fonction ; les seams de `game_api` portent un bandeau pointant vers les modules extraits. Pas de
+sur-commentaire du trivial (consigne).
+
+### Volet 4 — Outillage : lanceur une-ligne + requirements.txt — `007db4d`
+- **`serve.py`** (racine, **stdlib SEULE**) : `python serve.py` démarre l'API (uvicorn :8000) ET
+  le front (Next.js :3000). Résout le Python du venv (repli interpréteur courant), `npm install`
+  si `web/node_modules` manque, PORT du front via variable d'env, **avertit** si Ollama absent
+  (127.0.0.1:11434) sans planter, logs préfixés `[api]`/`[web]`/`[serve]`, **Ctrl+C (et Ctrl+Break
+  sous Windows) arrête proprement les deux enfants ET leur arbre**. Ports configurables
+  (`--api-port`/`--web-port`) + `--api-only`/`--web-only`/`--no-ollama-check`.
+  ⚠️ **Leçon Windows** : `next dev` se **re-parente** hors de l'arbre `npm.cmd` (un `cmd.exe`
+  intermédiaire sort) → un `taskkill /T` sur le PID enregistré rate le serveur. Filet retenu :
+  `taskkill /T` sur les PID **plus** un balayage des PID qui écoutent encore nos ports (via
+  `netstat -ano`, décodé tolérant car code page OEM ≠ UTF-8). POSIX : SIGTERM→SIGKILL au groupe
+  (`start_new_session`, pas d'orphelin).
+- **`requirements.txt`** (racine, absent avant) : miroir des deps CORE de `pyproject.toml`
+  (source canonique), extra RAG noté en en-tête.
+- **Smoke réel** sur ports **alternatifs 8010/3010** (jamais 8000/3000) : API `/health` → 200,
+  front répond, `npm install` déclenché, Ctrl+C → arrêt propre (rc 0, **aucun port orphelin**).
+
+### Barrières vertes (constatées)
+- **pytest : 947 passed, 3 skipped** (216 s) — 949 base −5 legacy (+ leur code) +3 `test_json_extract`.
+- **ruff : All checks passed** (imports morts retirés au fil des dédups).
+- **serve.py** : smoke 8010/3010 vert (deux process démarrés, teardown propre).
+
+### Pour la passe D (docs — le contrat à documenter)
+- `serve.py` + `requirements.txt` à documenter dans le **README** selon le CONTRAT ci-dessus
+  (une commande `python serve.py` ; `pip install -r requirements.txt`).
+- `legacy/`/Streamlit **retiré** → purger les mentions « archivé/encore testé » des docs.
+
+<!-- fin section CLEANUP-B -->
+
