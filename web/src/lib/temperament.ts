@@ -23,5 +23,5 @@ export const TABLES: { value: TableSetting; label: string; desc: string }[] = [
   { value: "equilibree", label: "Équilibrée", desc: "2 colombes, 2 faucons, le reste opportuniste." },
   { value: "colombes", label: "Colombes", desc: "Toutes cherchent le compromis — le monde respire." },
   { value: "faucons", label: "Faucons", desc: "Toutes croient au rapport de force — ça va monter." },
-  { value: "aleatoire", label: "Aléatoire", desc: "Chaque SI tire son tempérament au sort." },
+  { value: "aleatoire", label: "Aléatoire", desc: "Chaque IA tire son tempérament au sort." },
 ];

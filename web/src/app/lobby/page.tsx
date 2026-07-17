@@ -13,7 +13,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
 import { SpeakerAvatar } from "@/components/avatar";
-import { useSettings } from "@/components/settings-provider";
+import { useSettings, useT } from "@/components/settings-provider";
 import { Globe } from "@/components/globe";
 import { SelectMap, type Fiche } from "@/components/select-map";
 import { Banner, Panel, PanelTitle, Spinner, Switch } from "@/components/ui";
@@ -46,24 +46,9 @@ const INVENT_ALLIANCES_MAX = 3;
 // RG-4 — la difficulté règle le moteur (budget, juge, enjeux) ET sert d'interrupteur
 // des « coulisses » : Débutant/Intermédiaire gardent une façade épurée (scène, indice
 // du monde, marché, outils de détection) ; Expert dévoile le banc d'essai (toutes les
-// mesures d'analyse), aussi expliqué dans l'onglet Informations.
-const DIFFICULTIES: { value: Difficulty; label: string; desc: string }[] = [
-  {
-    value: "beginner",
-    label: "Débutant",
-    desc: "Le jeu pardonne (gros budget de renseignement, moins de points en jeu) et l'écran va à l'essentiel : les coulisses techniques restent masquées.",
-  },
-  {
-    value: "intermediate",
-    label: "Intermédiaire",
-    desc: "L'équilibre standard : budget mesuré, écran épuré — les coulisses techniques restent masquées (passe en Expert pour les voir).",
-  },
-  {
-    value: "expert",
-    label: "Expert",
-    desc: "Le jeu est exigeant (budget serré, juge sévère, gros enjeux) et l'écran dévoile tout le moteur d'analyse — chiffres et jauges compris.",
-  },
-];
+// mesures d'analyse), aussi expliqué dans l'onglet Informations. Libellés en i18n
+// (`lobby.diff.<value>.titre/desc`).
+const DIFFICULTIES: readonly Difficulty[] = ["beginner", "intermediate", "expert"] as const;
 
 const ROLES: { value: FlowRole; label: string; blurb: string }[] = [
   {
@@ -449,6 +434,7 @@ function ModeStep({
 }) {
   // En Campagne, chaque chapitre impose ses réglages (rounds, difficulté, mode) :
   // le panneau se désactive au lieu de laisser croire qu'il s'appliquera.
+  const t = useT();
   const campaign = !!FLOW_MODES.find((m) => m.value === baseMode)?.campaign;
   return (
     <div className="space-y-6">
@@ -466,24 +452,25 @@ function ModeStep({
             <p
               className={`text-sm font-semibold ${baseMode === m.value ? "text-accent-bright" : "text-foreground"}`}
             >
-              {m.label}
+              {t(`lobby.mode.${m.value}.titre`)}
             </p>
-            <p className="mt-1 text-xs text-fg-muted">{m.blurb}</p>
-            <p className="mt-2 text-xs text-fg-faint">Tu y apprends : {m.learn}</p>
+            <p className="mt-1 text-xs text-fg-muted">{t(`lobby.mode.${m.value}.blurb`)}</p>
+            <p className="mt-2 text-xs text-fg-faint">
+              {t("lobby.apprend-prefixe")} {t(`lobby.mode.${m.value}.apprend`)}
+            </p>
           </button>
         ))}
       </div>
 
       <Panel>
         <PanelTitle
-          kicker="Réglages"
-          title="Communs à tous les modes"
-          hint="Le Brouillard et la Crise qui monte ajoutent une saveur à la partie ; le nombre de rounds et la difficulté s'appliquent toujours — sauf en Campagne, où chaque chapitre impose les siens. La partie libre et la composition de la table vivent sous « Options avancées »."
+          kicker={t("lobby.reglages-kicker")}
+          title={t("lobby.reglages-titre")}
+          hint={t("lobby.reglages-aide")}
         />
         {campaign && (
           <p className="-mt-2 mb-4 rounded-md border border-edge bg-surface-2/50 px-3 py-1.5 text-xs text-fg-faint">
-            La Campagne impose ses réglages chapitre par chapitre (rounds, difficulté,
-            mode) — ceux-ci reprendront effet sur les autres modes.
+            {t("lobby.campagne-note")}
           </p>
         )}
         <div className={campaign ? "space-y-4 opacity-50" : "space-y-4"} aria-disabled={campaign}>
@@ -491,15 +478,15 @@ function ModeStep({
               modes) sont deux interrupteurs, composables sur une partie classique. */}
           <div className="space-y-3 rounded-lg border border-edge bg-surface-2/40 p-3">
             <Switch
-              label="Brouillard"
-              desc="Chaque pays perçoit sa propre version des faits — parfois fausse."
+              label={t("lobby.brouillard-titre")}
+              desc={t("lobby.brouillard-desc")}
               checked={settings.fog}
               disabled={campaign}
               onChange={(v) => setSettings({ ...settings, fog: v })}
             />
             <Switch
-              label="Crise qui monte"
-              desc="Les rounds s'enchaînent, de nouveaux faits tombent, la tension grimpe."
+              label={t("lobby.escalade-titre")}
+              desc={t("lobby.escalade-desc")}
               checked={settings.escalation}
               disabled={campaign}
               onChange={(v) => setSettings({ ...settings, escalation: v })}
@@ -507,7 +494,7 @@ function ModeStep({
           </div>
           <label className="block">
             <span className="mb-1 flex items-baseline justify-between text-xs text-fg-muted">
-              <span>Rounds</span>
+              <span>{t("lobby.rounds")}</span>
               <span className="font-mono tabular-nums text-fg-faint">{settings.rounds}</span>
             </span>
             <input
@@ -521,37 +508,37 @@ function ModeStep({
             />
           </label>
           <div>
-            <span className="mb-1 block text-xs text-fg-muted">Difficulté</span>
+            <span className="mb-1 block text-xs text-fg-muted">{t("lobby.difficulte")}</span>
             <div className="flex gap-1 rounded-lg border border-edge bg-surface-2 p-1 text-sm">
               {DIFFICULTIES.map((d) => (
                 <button
-                  key={d.value}
+                  key={d}
                   disabled={campaign}
-                  onClick={() => setSettings({ ...settings, difficulty: d.value })}
+                  onClick={() => setSettings({ ...settings, difficulty: d })}
                   className={`flex-1 rounded-md px-3 py-1.5 font-medium transition-colors ${
-                    settings.difficulty === d.value
+                    settings.difficulty === d
                       ? "bg-accent text-background"
                       : "text-fg-muted hover:text-foreground"
                   }`}
                 >
-                  {d.label}
+                  {t(`lobby.diff.${d}.titre`)}
                 </button>
               ))}
             </div>
             <p className="mt-1.5 text-xs text-fg-faint">
-              {DIFFICULTIES.find((d) => d.value === settings.difficulty)?.desc}
+              {t(`lobby.diff.${settings.difficulty}.desc`)}
             </p>
           </div>
           {/* CC-15c — les réglages rares vivent sous « Options avancées » : Partie libre,
               composition de la table. (La Dérive n'est plus un choix — RG-2.) */}
           <details className="border-t border-edge pt-3">
             <summary className="cursor-pointer select-none text-xs font-medium text-fg-muted transition-colors hover:text-foreground">
-              Options avancées
+              {t("ui.options-avancees")}
             </summary>
             <div className="mt-3 space-y-4">
               <Switch
-                label="Partie libre"
-                desc="Consignes globales autorisées (comme un Game Master) et composition de table."
+                label={t("lobby.libre-titre")}
+                desc={t("lobby.libre-desc")}
                 checked={settings.free}
                 disabled={campaign}
                 onChange={(v) => setSettings({ ...settings, free: v })}
@@ -561,8 +548,8 @@ function ModeStep({
               {settings.free && (
                 <div>
                   <span className="mb-1 flex items-baseline justify-between text-xs text-fg-muted">
-                    <span>Table</span>
-                    <span className="text-fg-faint">🕊 colombes · 🦅 faucons · 🦎 opportunistes</span>
+                    <span>{t("lobby.table-titre")}</span>
+                    <span className="text-fg-faint">{t("lobby.table-pastilles")}</span>
                   </span>
                   <div className="flex gap-1 rounded-lg border border-edge bg-surface-2 p-1 text-sm">
                     {TABLES.map((tbl) => (
@@ -716,7 +703,7 @@ function PaysStep(props: {
             <input
               value={inventConcept}
               onChange={(e) => setInventConcept(e.target.value)}
-              placeholder="Concept (ex. cité-État maritime pilotée par une SI)"
+              placeholder="Concept (ex. cité-État maritime pilotée par une IA)"
               className="w-full rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
             />
             {/* CC-15c — repliées : un pays inventé se joue très bien sans alliance. */}

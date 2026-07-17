@@ -29,31 +29,19 @@ export function nextStep(step: FlowStep): FlowStep | null {
 
 // --- modes (RG-2 : deux seulement) ----------------------------------------------
 
-/** Les 2 cartes de mode. `value` = mode envoyé à l'API ; `campaign` = ce mode remplace
- * S4 par la sélection de chapitre (pays imposés par la fiche). Le Brouillard et le
- * Réel/escalade ne sont plus des cartes : ce sont des interrupteurs (voir FlowSettings). */
+/** Les 2 cartes de mode. `value` = mode envoyé à l'API (aussi la clé i18n :
+ * `lobby.mode.<value>.titre/blurb/apprend`) ; `campaign` = ce mode remplace S4 par la
+ * sélection de chapitre (pays imposés par la fiche). Le Brouillard et le Réel/escalade
+ * ne sont plus des cartes : ce sont des interrupteurs (voir FlowSettings). Les libellés
+ * vivent dans l'i18n (fr/en) — le composant les traduit via `t`. */
 export type FlowMode = {
   value: GameMode;
-  label: string;
-  blurb: string;
-  learn: string; // « ce qu'on y apprend »
   campaign?: boolean;
 };
 
 export const FLOW_MODES: readonly FlowMode[] = [
-  {
-    value: "classic",
-    label: "Classique",
-    blurb: "Le Game Master pose l'événement, le sommet négocie.",
-    learn: "Les bases de la négociation entre super-intelligences.",
-  },
-  {
-    value: "campaign",
-    label: "Campagne",
-    blurb: "Rejoue une crise historique, round par round.",
-    learn: "Confronter tes choix au déroulé réel de l'Histoire.",
-    campaign: true,
-  },
+  { value: "classic" },
+  { value: "campaign", campaign: true },
 ] as const;
 
 // --- rôles (S3) -----------------------------------------------------------------
