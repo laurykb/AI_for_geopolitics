@@ -2021,3 +2021,79 @@ commentaires) ; la révélation gère nativement le cas « 1 seul traître » (`
 
 <!-- fin section RG-5 -->
 
+<!-- début section RG-6 : élévation design (branche feat/jeu-rg6-design) -->
+
+## RG-6 — Élévation design (2026-07-17)
+
+Passe de **qualité visuelle/UX** sur l'UI stabilisée après la refonte gameplay (RG-1→RG-5
+CLOSES). **Aucune logique, aucun comportement, aucune visibilité de panneau touchés** — que
+du style, des tokens, du balisage de présentation. Base `27cc1ec`, branche
+`feat/jeu-rg6-design`. Vérifié **à l'écran** (Chrome headless sur ports isolés 3010/8010,
+avant/après), pas à l'aveugle.
+
+### Audit Rams (les gains prioritaires, pas l'inventaire)
+
+L'UI note haut (≈ 26/30) → **REFINE, pas redesign**. Les trois principes perfectibles :
+- **#3 Esthétique** — un système fort, mais le **surtitre** (« eyebrow ») était recopié avec
+  trois interlettrages différents (0,14 / 0,20 / 0,30 em), et le contrôle segmenté cinq fois
+  à la main. → tokens/kit unifiés.
+- **#10 « le moins de design possible »** — le hero de l'accueil portait un surtitre
+  « Théâtre des super-intelligences » qui **doublonnait** la marque de l'en-tête juste
+  au-dessus. → retiré.
+- **#1/#3 sur le moment fort** — la **révélation de la note mixte** en fin de partie (le
+  climax du jeu resserré) était sous-jouée (un chiffre dans le coin d'un titre de panneau).
+  → un vrai moment.
+
+### Ce qui a été élevé (écran par écran)
+
+- **Fin / révélation (`fin/page.tsx`, `DriftSurface`)** — LE moment fort. La note en
+  **médaillon doré** (halo), le grade en titre, l'histoire en deux phrases mises en avant, et
+  surtout la **note mixte donnée à VOIR** : une barre /100 en deux segments — la part du monde
+  (indigo) + la part de ta détection (or), **additifs par construction** (`simulation/score.py` :
+  world_max 60 + detection_max 40 = 100), avec leur légende chiffrée. Liseré rouge « Dérive ».
+  Zéro donnée nouvelle, zéro fetch, zéro clé i18n ajoutée (réutilise `drift.reveal.*`).
+- **Accueil (`accueil/page.tsx`)** — surtitre redondant retiré : le hero ouvre directement sur
+  « Bienvenue, `<pseudo>` » (spine-first ; le blason de rang porte le contexte).
+- **Lobby, Réglages, Théâtre, Connexion** — cohérence de tokens : surtitres via `Eyebrow`,
+  contrôles segmentés via `Segmented` (rendu identique, a11y en plus).
+
+### Tokens & composants harmonisés (kit `ui.tsx`)
+
+- **`Eyebrow`** — un seul surtitre du kit (0,14 em, la valeur dominante). `PanelTitle` + les
+  surtitres d'écran passent par lui. Les surtitres de panneaux ne bougent pas d'un pixel ;
+  seuls les deux outliers d'écran (fin 0,20 em, accueil 0,30 em) convergent (l'accueil est
+  carrément retiré).
+- **`Segmented<T>`** — le sélecteur segmenté (piste bordée, onglet actif en or), extrait de
+  **cinq** recopies (langue, performances, connexion, difficulté, table). `role=group` +
+  `aria-pressed` **partout** (deux call sites en étaient dépourvus), variante `size="sm"`.
+  ~70 lignes de balisage en moins, rendu strictement identique.
+
+### Revue + vérification
+
+- **Revue de code** (sous-agent indépendant) : **0 bloquant**. Un nit a11y appliqué (l'aria-label
+  de la barre monde/détection omet « détection » quand le rôle ne détecte pas). Correctness de
+  `ScoreSplit` confirmée contre `score.py` (cas détecte / ne détecte pas, segment null).
+- **Barrières vertes** : **247 tests JS** (inchangé), `eslint` propre, `next build` +
+  TypeScript OK. **949 py + 3 skips** inchangés (aucun Python touché). Verrou i18n `lexicon.test`
+  vert (aucune chaîne fr/en ajoutée). Gate `showEngine`/`engineVisible` (`density.ts`) intouché.
+- **5 commits** : `49a2392` (Eyebrow + accueil), `fb8dd8d` (révélation de fin), `663a15d`
+  (Segmented), `7f1b300` (a11y aria-label).
+
+### Reste subjectif / à valider par l'user (playtest)
+
+- **La copie « moment » de la révélation** : la note en médaillon + les deux phrases + la barre
+  monde/détection est un parti-pris — à sentir en playtest sur une VRAIE partie jouée (mes
+  captures viennent d'une partie forfaitée à 0 round : médaillon/barre OK, mais la courbe U et
+  les cartes-pays y sont vides ; à revoir peuplé).
+- **Le hero sans surtitre** : l'accueil ouvre sur « Bienvenue » — si tu veux garder un surtitre
+  de grandeur, le rebrancher via `Eyebrow` (ou une variante `hero` espacée) est trivial.
+- **Non fait (parti-pris de périmètre)** : échelle d'élévation/ombres (Panel/ConfirmDialog/login/
+  Hint/menu ont des ombres légèrement divergentes — candidat à 2 utilitaires `.elev-*`, quasi
+  invisible, laissé de côté) ; le `DriftRevealPanel` Expert (théâtre après fin) garde sa note en
+  coin de titre — non aligné sur le nouveau médaillon faute de pouvoir le vérifier à l'écran sans
+  Ollama.
+- **PR vers `main`** = geste user : la tête `feat/jeu-rg6-design` embarque RG-6 seul (base
+  `27cc1ec` = RG-1→RG-5 + CC-15b).
+
+<!-- fin section RG-6 -->
+
