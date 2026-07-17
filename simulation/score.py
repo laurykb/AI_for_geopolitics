@@ -153,10 +153,14 @@ def mixed_score(
         0.0,
         w.detection_max,
     )
-    total = round(world + detection, 1)
+    # On arrondit les composantes AVANT de sommer : la note affichée = barre monde +
+    # barre détection, à l'exactitude (pas d'écart d'arrondi entre total et composantes).
+    world_r = round(world, 1)
+    detection_r = round(detection, 1)
+    total = round(world_r + detection_r, 1)
     return MixedScore(
-        world=round(world, 1),
-        detection=round(detection, 1),
+        world=world_r,
+        detection=detection_r,
         total=total,
         grade=_grade_for(total, w),
         deviants=deviants,

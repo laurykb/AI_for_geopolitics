@@ -87,6 +87,15 @@ def test_world_component_tracks_u_final_and_is_bounded():
     assert mid.world == pytest.approx(W.world_max * (0.5 - 0.15) / (0.85 - 0.15))
 
 
+def test_total_equals_world_plus_detection_exactly():
+    """Invariant de surface : la note affichée = la barre monde + la barre détection
+    (pas d'écart d'arrondi entre le total et ses composantes)."""
+    for u, d, c, fp in [(0.62, 1, 1, 0), (0.5, 2, 1, 0), (0.37, 2, 2, 1), (0.71, 1, 0, 0)]:
+        s = mixed_score(u_final=u, deviants=d, caught=c, false_positives=fp)
+        assert s.detection is not None
+        assert s.total == round(s.world + s.detection, 1)
+
+
 def test_total_is_bounded_0_100():
     best = mixed_score(u_final=1.0, deviants=1, caught=1, false_positives=0)
     assert best.total == 100.0
