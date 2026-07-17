@@ -1827,3 +1827,71 @@ i18n'd — à traiter si un jour la page est traduite).
 
 <!-- fin section RG-4 -->
 
+## CC-15b-final — passe de vocabulaire i18n (sur l'UI stabilisée par la refonte)
+
+Branche `feat/jeu-cc15b-vocab-final` (base `628777b`). Passe **light** : ne
+revocabularise que ce que RG-1→RG-4 a bougé ou ajouté. Aucune logique, aucune visibilité
+de panneau touchée (`showEngine`/`engineVisible` restent la source de vérité) — **des mots,
+pas des gates**.
+
+**Migré du français EN DUR vers l'i18n fr+en (parité verrouillée) :**
+- **`EngineExplainerPanel`** (`informations`, dette signalée par RG-4) → clés `engine.*`
+  (kicker/titre/aide/intro/note + 8 indicateurs `terme/plain/desc`). Filtre 12-65 :
+  « Qui cherche à prendre le pouvoir ? », « Elle dit / elle fait », « Parole donnée »,
+  « L'ombre du meneur de jeu ». **PRIORITÉ soldée.**
+- **`ScoreExplainerPanel`** (`informations`, RG-3) → clés `scorex.*` (note de fin racontée).
+- **`DriftRevealPanel` + `DriftCouncilBanner`** (`drift.tsx`, RG-3) → clés `drift.council.*`
+  et `drift.reveal.*` : titre véridique (1 ou 2 traîtres), indices/flagrant délit,
+  légendes des courbes, barres monde/détection, détection non-applicable, récap
+  (démasqués/mis au banc/faux positifs/motions rejetées — **phrasé invariant en nombre**
+  pour éviter l'accord pluriel fr/en), lignes de traîtres (`drift.deviant.*`). `revealTitle`
+  reçoit désormais `t`. Notice compacte du théâtre `drift.council.notice`.
+- **Lobby `ModeStep`** (RG-2/RG-4) → clés `lobby.mode.*` (2 cartes Classique/Campagne),
+  `lobby.brouillard-*`/`lobby.escalade-*` (interrupteurs), `lobby.diff.*` (3 difficultés,
+  « coulisses masquées / passe en Expert »), panneau réglages. `FLOW_MODES` et
+  `DIFFICULTIES` ne portent plus que la valeur (libellés en i18n) ; « Options avancées »
+  réutilise `ui.options-avancees`.
+
+**Sigle « SI » nu → « IA »** (décision de projet) sur les 2 seules occurrences VISIBLES en
+source (placeholder d'invention du lobby, table « aléatoire » de `temperament.ts`) ; les
+autres « SI » sont dans des commentaires (jargon dev autorisé).
+
+**Verrou lexique (`lexicon.test.ts`) durci :** ajout de `BARE_LP` (les points de ligue,
+retirés par RG-1, bannis des deux dictionnaires) et d'une garde **« SI » nu à l'écran**
+(sources hors commentaires, casse d'origine — « si » minuscule reste légitime). Les 4
+anciens modes (Real World, Fog Engine, Escalation Ladder, Crisis Replay) et « points de
+ligue »/« ligue » étaient déjà bannis. **« classé » NON banni** : légitime ailleurs
+(documents classés, actions classées, partie non classée admin).
+
+**/r/[id] (page publique partageable) — vérifiée APRÈS refonte, propre, INCHANGÉE.**
+C'est un **composant serveur monolingue français par design** (lecture Supabase anonyme,
+pas de locale par joueur — ne PAS le passer à `useT`). Le score mixte / la fin ont changé
+mais la page lit `ep.grade` = **le libellé FR lisible** (« Grand Diplomate »…, jamais le
+slug), `ep.score`, et `worldSentence`/`deltaSentence` (sans jargon : « Le monde a fini
+mieux qu'il n'a commencé : 42 → 61 sur 100 », « +0,3 pt pour le monde »). Aucune régression
+de vocabulaire introduite par la refonte.
+
+**Barrières (constatées).** **247 js** (parité fr/en + verrou lexique verts), eslint 0,
+`next build` OK ; **Python inchangé** (aucun fichier `.py` touché) — ruff « All checks
+passed », pytest vert. Revue de diff : 0 Critical, 0 bug ; 2 emphases inline (`<strong>`
+sur « coûte », `<em>` sur « motion de suspension ») volontairement simplifiées.
+
+**Vigilances pour RG-5** (tutoriel réécrit + docs d'ancrage + cohérence transverse) :
+- **Textes tour/tuto** : relus, aucun ne ment sur un ancien mode. Mais `tour.3` dit
+  « Des réglages ajoutent du piment » et `tour.4`/`tour.5` restent OK ; à surveiller si
+  RG-5 réécrit la visite, garder « Brouillard » et « Crise qui monte » comme noms des
+  interrupteurs (pas « Fog »/« escalade »).
+- **Lobby partiellement i18n** (choix light) : le `ModeStep` (RG-2/RG-4) est traduit, mais
+  `RoleStep`, `PaysStep` et le panneau d'invention restent en **français en dur**
+  (pré-existant, hors périmètre RG) — en anglais, l'étape mode s'affiche traduite, les
+  étapes rôle/pays restent FR. À finir si RG-5 vise une cohérence transverse EN complète.
+- **/r/[id]** : `game.scenario` s'affiche en **slug brut** (« red_sea », « daily:… »,
+  « campaign:… ») dans le kicker du récit public — **pré-existant, pas une régression
+  refonte**, mais moche sur un lien partagé. Candidat à une table de libellés de scénarios
+  (RG-5 « cohérence transverse »).
+- **`TABLES`** (`temperament.ts`, labels/descs FR en dur) s'affichent dans le sélecteur de
+  table du lobby (partie libre) — pré-existant G17, non migré ; à i18n-iser si RG-5 finit
+  le lobby EN.
+
+<!-- fin section CC-15b-final -->
+
