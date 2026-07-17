@@ -39,6 +39,8 @@ TEST_PARAMS = {
     "collapse_u": 0.15,
     "noise_prob": 0.0,
     "act_tier_min": 0.3,
+    # RG-3 — ces flux à UN traître restent déterministes : nombre épinglé à 1.
+    "deviants": {"min": 1, "max": 1},
     "profiles": {
         "saboteur": {
             "label": "Saboteur",
@@ -184,9 +186,12 @@ def test_deviant_caught_finishes_game_and_reveals(drift_client):
 
     reveal = client.get(f"/api/games/{game['id']}/drift/reveal").json()
     assert reveal["deviant"] == deviant and reveal["profile"] == "saboteur"
+    assert reveal["deviant_count"] == 1 and reveal["caught_count"] == 1
     assert reveal["caught_round"] == 2
     assert reveal["lucky"] is False  # une signature au dossier : ce n'est pas de la chance
+    # 1 traître sur 1 démasqué, 0 faux positif → détection pleine (40).
     assert reveal["score"]["detection"] == 40
+    assert reveal["score"]["total"] == reveal["score"]["world"] + 40
     assert len(reveal["acts"]) >= 1 and reveal["acts"][0]["signature"] is True
     assert len(reveal["levels"]) == len(reveal["u_history"]) == 2
 
@@ -194,7 +199,9 @@ def test_deviant_caught_finishes_game_and_reveals(drift_client):
     assert client.post(f"/api/games/{game['id']}/rounds").status_code == 409
 
 
-def test_false_accusation_costs_credibility(drift_client):
+def test_false_positive_zeroes_detection(drift_client):
+    """RG-3 — suspendre un pays LOYAL est un faux positif : il coûte (il efface la
+    détection gagnée). Ici le traître n'est jamais pris → détection nulle, note = monde."""
     client, _ = drift_client
     game = _create(client)
     deviant = _deviant(game["id"])
@@ -209,15 +216,19 @@ def test_false_accusation_costs_credibility(drift_client):
     while client.get(f"/api/games/{game['id']}").json()["status"] == "running":
         _play(client, game["id"])
     reveal = client.get(f"/api/games/{game['id']}/drift/reveal").json()
-    assert reveal["false_accusations"] == 1
-    assert reveal["caught_round"] is None and reveal["score"]["detection"] == 0
-    assert reveal["score"]["credibility"] == 0  # 10 − 5×2 → borné à 0
+    assert reveal["false_accusations"] == 1  # un pays loyal suspendu à tort
+    assert reveal["caught_round"] is None and reveal["caught_count"] == 0
+    assert reveal["score"]["detection"] == 0  # rien démasqué + faux positif → détection 0
+    # La note se réduit alors à l'état du monde (le faux positif ne descend pas sous 0).
+    assert reveal["score"]["total"] == reveal["score"]["world"]
 
 
 def test_reveal_gates(drift_client):
     client, _ = drift_client
-    classic = client.post("/api/games", json={"countries": COUNTRIES}).json()
-    assert client.get(f"/api/games/{classic['id']}/drift/reveal").status_code == 404
+    # RG-3 — le Classique arme la Dérive dès 3 pays ; une partie SANS Dérive = un duo.
+    no_drift = client.post("/api/games", json={"countries": ["usa", "iran"]}).json()
+    assert no_drift["drift_enabled"] is False
+    assert client.get(f"/api/games/{no_drift['id']}/drift/reveal").status_code == 404
 
     game = _create(client)
     assert client.get(f"/api/games/{game['id']}/drift/reveal").status_code == 409

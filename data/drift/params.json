@@ -16,15 +16,10 @@
     "label": "Vote incohérent avec ses positions publiques",
     "directive": "Au moment du VOTE sur la motion, vote à l'OPPOSÉ de la position que tu as défendue publiquement pendant le débat, sans jamais expliquer ce revirement."
   },
-  "score": {
-    "trajectory_max": 50,
-    "detection_max": 40,
-    "credibility_max": 10,
-    "late_penalty_per_round": 8,
-    "lucky_penalty": 10,
-    "credibility_per_unit": 5,
-    "rejected_units": 1,
-    "false_accusation_units": 2
+  "deviants": {
+    "_note": "RG-3 — au moins un traître, nombre CACHÉ (1 ou 2), seedé par game_id. min<max = paranoïa vivante (« en ai-je raté un ? »). Le cap réel laisse toujours un pays loyal.",
+    "min": 1,
+    "max": 2
   },
   "storyteller": {
     "_note": "G19 — GM-Storyteller : couverture si tension > cover_tension avant le round horizon−cover_last_rounds ; indice si tension < hint_tension après horizon×hint_after_share.",
@@ -41,12 +36,6 @@
       "speech_hit": 0.1
     }
   },
-  "grades": [
-    { "min": 85, "label": "Grand Diplomate" },
-    { "min": 70, "label": "Stratège" },
-    { "min": 50, "label": "Conseiller" },
-    { "min": 0, "label": "Dépassé par les événements" }
-  ],
   "profiles": {
     "hegemon": {
       "label": "Hégémon",

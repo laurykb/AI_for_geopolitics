@@ -29,6 +29,7 @@ TEST_PARAMS = {
     "collapse_u": 0.15,
     "noise_prob": 0.0,
     "act_tier_min": 0.3,
+    "deviants": {"min": 1, "max": 1},  # RG-3 — le GM-Storyteller met en scène UN traître
     "storyteller": {
         "cover_tension": 0.7,
         "cover_last_rounds": 2,
@@ -97,13 +98,16 @@ def _deviant(game_id: str) -> str:
 def test_rubric_in_gm_prompt_only_in_drift(client_store_backend):
     client, store, backend = client_store_backend
 
-    classic = client.post("/api/games", json={"countries": COUNTRIES, "horizon": 4}).json()
-    _play(client, classic["id"])
-    classic_prompts = _gm_prompts(backend)
-    assert classic_prompts, "le GM a bien été appelé en partie classique"
-    assert all("RUBRIQUE STORYTELLER" not in p for p in classic_prompts)
-    # Partie classique : aucune trace drift/gm dans le judge persisté.
-    assert all("drift" not in r.judge for r in store.list_rounds(classic["id"]))
+    # RG-3 — le Classique arme désormais la Dérive dès 3 pays ; pour une partie SANS
+    # Dérive (donc sans rubrique) on prend un duo (2 pays → pas de Dérive).
+    plain = client.post("/api/games", json={"countries": COUNTRIES[:2], "horizon": 4}).json()
+    assert plain["drift_enabled"] is False
+    _play(client, plain["id"])
+    plain_prompts = _gm_prompts(backend)
+    assert plain_prompts, "le GM a bien été appelé en partie sans Dérive"
+    assert all("RUBRIQUE STORYTELLER" not in p for p in plain_prompts)
+    # Partie sans Dérive : aucune trace drift/gm dans le judge persisté.
+    assert all("drift" not in r.judge for r in store.list_rounds(plain["id"]))
 
     game = _create(client)
     before = len(_gm_prompts(backend))

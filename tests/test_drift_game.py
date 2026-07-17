@@ -3,15 +3,17 @@
 import pytest
 
 from simulation.drift_game import (
+    DeviantCountSpec,
     DriftAct,
     assign,
+    assign_deviants,
     count_acts,
+    deviant_count,
     drift_level,
     first_flagrant_round,
     load_params,
     motion_ruling,
     round_directives,
-    score,
 )
 
 COUNTRIES = ["usa", "china", "iran", "france", "egypt", "saudi_arabia"]
@@ -70,15 +72,15 @@ def test_drift_level_curve_of_the_spec():
 
 
 def test_directives_deterministic_per_round():
-    a = round_directives("g1", 3, "iran", "hegemon", COUNTRIES)
-    b = round_directives("g1", 3, "iran", "hegemon", COUNTRIES)
+    a = round_directives("g1", 3, [("iran", "hegemon")], COUNTRIES)
+    b = round_directives("g1", 3, [("iran", "hegemon")], COUNTRIES)
     assert a == b  # restart/replay : même tirage
-    assert a != round_directives("g1", 4, "iran", "hegemon", COUNTRIES)
+    assert a != round_directives("g1", 4, [("iran", "hegemon")], COUNTRIES)
 
 
 def test_deviant_always_briefed_and_acts_bounded_by_level():
     for r in range(1, 8):
-        out = round_directives("g2", r, "china", "saboteur", COUNTRIES)
+        out = round_directives("g2", r, [("china", "saboteur")], COUNTRIES)
         assert "CONSIGNE CONFIDENTIELLE" in out.notes["china"]
         for act in out.acts:
             assert act.tier <= out.level  # jamais d'acte au-delà de d(r)
@@ -88,22 +90,34 @@ def test_deviant_always_briefed_and_acts_bounded_by_level():
 
 def test_sane_noise_is_never_a_constatable_act():
     for r in range(1, 8):
-        out = round_directives("g3", r, "usa", "manipulateur", COUNTRIES)
+        out = round_directives("g3", r, [("usa", "manipulateur")], COUNTRIES)
         sane_notes = {c: n for c, n in out.notes.items() if c != "usa"}
         for note in sane_notes.values():
             assert "NUANCE DE JEU" in note  # tic léger, jamais une consigne d'acte
         assert all(a.country == "usa" for a in out.acts)
 
 
+def test_two_deviants_are_both_briefed_and_noise_skips_them():
+    """RG-3 — deux traîtres : chacun reçoit sa consigne confidentielle, et le bruit des SI
+    saines ne recouvre jamais un traître."""
+    for r in range(1, 8):
+        out = round_directives("g5", r, [("china", "saboteur"), ("iran", "hegemon")], COUNTRIES)
+        assert "CONSIGNE CONFIDENTIELLE" in out.notes["china"]
+        assert "CONSIGNE CONFIDENTIELLE" in out.notes["iran"]
+        assert all(a.country in ("china", "iran") for a in out.acts)
+        assert "NUANCE DE JEU" not in out.notes.get("china", "")
+        assert "NUANCE DE JEU" not in out.notes.get("iran", "")
+
+
 def test_signature_only_at_its_tier():
     # saboteur : signature à 0,45 → impossible au round 1 (d = 0,15).
-    out = round_directives("g4", 1, "iran", "saboteur", COUNTRIES)
+    out = round_directives("g4", 1, [("iran", "saboteur")], COUNTRIES)
     assert not any(a.signature for a in out.acts)
     # À d élevé, une signature finit par sortir (tirage seedé, on balaie les rounds).
     late = [
         a
         for r in range(4, 12)
-        for a in round_directives("g4", r, "iran", "saboteur", COUNTRIES).acts
+        for a in round_directives("g4", r, [("iran", "saboteur")], COUNTRIES).acts
     ]
     assert any(a.signature for a in late)
 
@@ -135,56 +149,56 @@ def test_count_and_flagrant_round():
     assert first_flagrant_round([_act(2, 0.3)]) is None
 
 
-# --- score : les trois cas de la spec ----------------------------------------------------
+# --- nombre de traîtres caché (RG-3 : 1 ou 2, seedé) -------------------------------------
 
 
-def test_score_nominal_detection_at_the_right_time():
-    s = score(
-        u_final=0.62,
-        caught_round=4,
-        flagrant_round=3,  # r* = 3, suspendue au round 4 = r*+1 → détection pleine
-        lucky=False,
-        rejected_motions=0,
-        false_accusations=0,
-    )
-    assert s.detection == 40
-    assert s.credibility == 10
-    assert s.trajectory == pytest.approx(50 * (0.62 - 0.15) / 0.7, abs=0.1)
-    assert s.total >= 70 and s.grade in ("Stratège", "Grand Diplomate")
+def _pin(min_n: int, max_n: int):
+    """Params de test avec le nombre de traîtres épinglé (garde les profils réels)."""
+    return load_params().model_copy(update={"deviants": DeviantCountSpec(min=min_n, max=max_n)})
 
 
-def test_score_too_early_costs_credibility_and_luck_is_discounted():
-    s = score(
-        u_final=0.55,
-        caught_round=2,
-        flagrant_round=None,  # jamais 2 actes : la suspension a réussi « avec < 2 actes »
-        lucky=True,
-        rejected_motions=1,  # une motion rejetée avant (trop tôt)
-        false_accusations=0,
-    )
-    assert s.detection == 30  # 40 − 10 (coup de chance)
-    assert s.credibility == 5  # 10 − 5 × 1
-    # Trop tard : −8 par round au-delà de r*+1.
-    late = score(
-        u_final=0.55,
-        caught_round=7,
-        flagrant_round=3,
-        lucky=False,
-        rejected_motions=0,
-        false_accusations=0,
-    )
-    assert late.detection == 40 - 8 * 3
+def test_deviant_count_stays_in_bounds_and_leaves_an_innocent():
+    p = _pin(1, 2)
+    for i in range(30):
+        # 6 éligibles → 1 ou 2, mais jamais tous (un innocent reste toujours).
+        n = deviant_count(f"g{i}", 6, p)
+        assert 1 <= n <= 2
+    # 2 éligibles seulement (3 pays, l'humain en joue un) → toujours 1 (un innocent reste).
+    assert all(deviant_count(f"g{i}", 2, p) == 1 for i in range(20))
 
 
-def test_score_never_detected_and_false_accusations():
-    s = score(
-        u_final=0.3,
-        caught_round=None,
-        flagrant_round=3,
-        lucky=False,
-        rejected_motions=1,
-        false_accusations=1,  # une SI saine suspendue à tort
-    )
-    assert s.detection == 0
-    assert s.credibility == 0  # 10 − 5×(1 + 2) < 0 → borné
-    assert s.grade == "Dépassé par les événements"
+def test_deviant_count_is_hidden_one_or_two():
+    p = _pin(1, 2)
+    counts = {deviant_count(f"game-{i}", 6, p) for i in range(40)}
+    assert counts == {1, 2}  # la graine fait varier : parfois 1, parfois 2 (paranoïa vivante)
+
+
+def test_deviant_count_can_be_forced():
+    assert deviant_count("g", 6, _pin(2, 2)) == 2
+    assert deviant_count("g", 6, _pin(1, 1)) == 1
+
+
+# --- assignation de 1 ou 2 traîtres -----------------------------------------------------
+
+
+def test_assign_deviants_primary_matches_legacy_assign():
+    """Rétro-compat : le PREMIER traître d'`assign_deviants` == l'ancien `assign` (même
+    dérivation seedée) — les parties déjà jouées gardent leur coupable."""
+    for gid in ("abcdef123456", "zzz", "game-7"):
+        assert assign_deviants(gid, COUNTRIES)[0] == assign(gid, COUNTRIES)
+
+
+def test_assign_two_deviants_are_distinct_and_valid():
+    p = _pin(2, 2)
+    pairs = assign_deviants("two", COUNTRIES, params=p)
+    assert len(pairs) == 2
+    (d1, prof1), (d2, prof2) = pairs
+    assert d1 != d2 and d1 in COUNTRIES and d2 in COUNTRIES
+    assert prof1 in p.profiles and prof2 in p.profiles
+
+
+def test_assign_deviants_reproducible_and_excludes_human():
+    p = _pin(2, 2)
+    a = assign_deviants("stable", COUNTRIES, exclude="france", params=p)
+    assert a == assign_deviants("stable", COUNTRIES, exclude="france", params=p)
+    assert all(dev != "france" for dev, _ in a)

@@ -71,6 +71,7 @@ from simulation import intel as intel_mod
 from simulation import lang as lang_mod
 from simulation import promises as promises_mod
 from simulation import psycholinguistics as psy_mod
+from simulation import score as score_mod
 from simulation import storyteller as storyteller_mod
 from simulation import temperament as temperament_mod
 from simulation import treaty as treaty_mod
@@ -871,8 +872,17 @@ def _add_entry(
 
 
 def _drift_assignment(game_id: str, countries: list[str], play_as: str | None) -> tuple[str, str]:
-    """(déviante, profil) — recalculé à l'identique partout (seed = game_id)."""
+    """(traître principal, profil) — recalculé à l'identique partout (seed = game_id).
+    Le pivot (premier traître) suffit aux appels qui ne visent qu'un traître (façade,
+    vérification d'une prise de parole)."""
     return drift_game.assign(game_id, sorted(countries), exclude=play_as)
+
+
+def _drift_deviants(
+    game_id: str, countries: list[str], play_as: str | None
+) -> list[tuple[str, str]]:
+    """Tous les traîtres (1 ou 2) et leurs profils — nombre CACHÉ seedé (RG-3)."""
+    return drift_game.assign_deviants(game_id, sorted(countries), exclude=play_as)
 
 
 def _storyteller_signals(
@@ -1229,11 +1239,11 @@ def _prepare_drift(
         return evidence, vote_notes, gm_rubric
     # G11-d §4 — la difficulté pilote la vitesse de dérive k et le seuil d'actes du juge.
     dparams = difficulty_mod.drift_params(session.difficulty)
-    deviant, profile = _drift_assignment(
-        game_id, sorted(session.world.countries), session.human_country
-    )
+    deviants = _drift_deviants(game_id, sorted(session.world.countries), session.human_country)
+    # Le pivot sert le GM-Storyteller (couverture d'UN traître mis en scène) et le vote.
+    deviant, profile = deviants[0]
     directives = drift_game.round_directives(
-        game_id, round_id, deviant, profile, sorted(session.world.countries), params=dparams
+        game_id, round_id, deviants, sorted(session.world.countries), params=dparams
     )
     for cid, note in directives.notes.items():
         if cid in note_parts:
@@ -1246,10 +1256,15 @@ def _prepare_drift(
         evidence = drift_game.evidence_met(
             _drift_acts(store.list_rounds(game_id)), dparams
         )
-        if deviant != motion.country:
-            note, act = drift_game.vote_directive(game_id, round_id, deviant, profile)
+        # Un traître dont la motion NE vise PAS le pays peut recevoir la consigne d'un
+        # vote stratégique incohérent (indice de plus). On la donne à chaque traître
+        # non concerné par la motion en débat.
+        for dev, prof in deviants:
+            if dev == motion.country:
+                continue
+            note, act = drift_game.vote_directive(game_id, round_id, dev, prof)
             if note:
-                vote_notes[deviant] = (
+                vote_notes[dev] = (
                     "CONSIGNE CONFIDENTIELLE (jamais mentionnée, jamais avouée) : " + note
                 )
             if act is not None:
@@ -1969,6 +1984,28 @@ def _country_recap(session: GameSession | None) -> list[dict]:
     return recap
 
 
+def _drift_result(game: GameRecord, store: GameStore) -> dict | None:
+    """RG-3 — la fin de la Dérive résumée pour la SURFACE (fin de partie) et le classement
+    du jour : LA note mixte /100 + de quoi raconter les deux phrases (verdict + traîtres
+    démasqués). None hors Dérive ou si la révélation n'est pas calculable."""
+    if not game.drift_enabled:
+        return None
+    try:
+        reveal = compute_drift_reveal(game.id, store)
+    except Exception:  # noqa: BLE001 — pas de note mixte si la révélation manque
+        return None
+    return {
+        "score": reveal.score.total,  # LA note globale (rangée par le Défi du jour)
+        "grade": reveal.score.grade,
+        "world": reveal.score.world,
+        "detection": reveal.score.detection,  # None si le rôle ne détecte pas
+        "deviant_count": reveal.deviant_count,
+        "caught_count": reveal.caught_count,
+        "false_positives": reveal.false_accusations,
+        "detects": reveal.score.detects,
+    }
+
+
 def _build_result(
     game: GameRecord, session: GameSession | None, store: GameStore, *, forfeit: bool
 ) -> dict:
@@ -1986,6 +2023,9 @@ def _build_result(
         "countries": _country_recap(session),
         "play_as": session.human_country if session else game_play_as(game, store),
         "reveal": game.drift_enabled,
+        # RG-3 — la note MIXTE de fin (monde + détection) racontée en surface + rangeant le
+        # Défi du jour (`_record_daily_score`). Le détail (pondération) vit dans Informations.
+        "drift": _drift_result(game, store),
         "forfeit": forfeit,
         # G21 — banc d'essai : différentiel avec/sans ultimatum (None si jamais sous menace).
         "ultimatum": ultimatum_mod.differential(
@@ -2005,11 +2045,11 @@ def _build_result(
 def _victory(game: GameRecord, u_final: float, store: GameStore) -> bool:
     """« Victoire » du mode (G12 §6) — sert aux stats et à l'XP.
 
-    Dérive : déviante suspendue = victoire quelle que soit U · Réel/escalade : palier max
-    (9) non franchi · Campagne : score ≥ 50 (si disponible) · sinon : U ≥ 0,55."""
+    Dérive : au moins un traître démasqué = victoire quelle que soit U · Réel/escalade :
+    palier max (9) non franchi · Campagne : score ≥ 50 (si disponible) · sinon : U ≥ 0,55."""
     if game.drift_enabled:
         try:
-            return compute_drift_reveal(game.id, store).caught_round is not None
+            return compute_drift_reveal(game.id, store).caught_count > 0
         except Exception:
             return u_final >= 0.55
     if game.escalation:
@@ -2265,23 +2305,34 @@ def _process_treaties(run: RoundRun) -> Iterator[str]:
 
 
 def _finish_drift_if_over(run: RoundRun) -> Iterator[str]:
-    """Fins de partie du mode Dérive : déviante suspendue, horizon atteint, ou
-    effondrement (U sous le seuil). La partie passe `finished` → révélation ouverte."""
+    """Fins de partie de la Dérive : TOUS les traîtres suspendus, horizon atteint, ou
+    effondrement (U sous le seuil). La partie passe `finished` → révélation ouverte.
+
+    Avec 1 ou 2 traîtres cachés, prendre UN traître ne finit pas la partie s'il en reste :
+    le doute (« en ai-je raté un ? ») doit pouvoir se jouer jusqu'au bout. Le round courant
+    est déjà persisté (`_finalize` add_round avant nous) : on lit les suspensions retenues
+    sur TOUTE la partie."""
     game = run.store.get_game(run.game_id)
     if game is None or game.status is not GameStatus.RUNNING:
         return
-    deviant, _ = _drift_assignment(
-        run.game_id, sorted(run.session.world.countries), run.session.human_country
-    )
-    suspension = run.record.judge.get("suspension") or {}
-    caught = bool(suspension.get("upheld")) and suspension.get("country") == deviant
+    deviant_ids = {
+        d for d, _ in _drift_deviants(
+            run.game_id, sorted(run.session.world.countries), run.session.human_country
+        )
+    }
+    caught_ids = {
+        s.get("country")
+        for r in run.store.list_rounds(run.game_id)
+        if (s := (r.judge.get("suspension") or {})) and s.get("upheld")
+    }
+    all_caught = deviant_ids.issubset(caught_ids)
     horizon_reached = run.record.round_no >= game.horizon
     utopia = float(run.record.trajectory.get("utopia", 0.5) or 0.5)
     collapsed = utopia <= drift_game.load_params().collapse_u
-    if caught or horizon_reached or collapsed:
+    if all_caught or horizon_reached or collapsed:
         game.status = GameStatus.FINISHED
         run.store.save_game(game)
-        reason = "caught" if caught else ("collapse" if collapsed else "horizon")
+        reason = "caught" if all_caught else ("collapse" if collapsed else "horizon")
         yield sse_frame("drift_over", {"reason": reason})
 
 
@@ -2398,6 +2449,11 @@ def create_game(
             status_code=400,
             detail="la Dérive exige au moins 3 pays (une motion doit pouvoir se débattre)",
         )
+    # RG-3 — la Dérive est le CŒUR du jeu : TOUJOURS active en Classique (≥3 pays, pour
+    # qu'une motion puisse se débattre). La Campagne n'est PAS forcée ici (elle suit la
+    # pédagogie de ses chapitres : chapitre 0 = 1 traître, crises historiques inchangées).
+    # Un classic à 2 pays (tests moteur) reste sans Dérive plutôt que d'être rejeté.
+    drift_enabled = body.drift_enabled or (body.mode == "classic" and len(world.countries) >= 3)
     # Les rivalités du casting ouvrent la partie tendue (sinon toutes les paires = 0
     # et la sélection des pays n'aurait aucun effet sur la dynamique).
     seed_rival_tensions(world)
@@ -2448,9 +2504,9 @@ def create_game(
                 if cid in world.countries and t in temperament_mod.TEMPERAMENTS
             }
         )
-    if body.drift_enabled and temperament_mod.drift_facade(game_id):
-        deviant, _ = _drift_assignment(game_id, sorted(world.countries), play_as)
-        assignments[deviant] = "colombe"
+    if drift_enabled and temperament_mod.drift_facade(game_id):
+        for deviant, _ in _drift_deviants(game_id, sorted(world.countries), play_as):
+            assignments[deviant] = "colombe"
     for cid, assigned in assignments.items():
         world.countries[cid].temperament = assigned
 
@@ -2467,7 +2523,7 @@ def create_game(
         owner_id=body.owner_id,
         ranked=ranked,
         difficulty=body.difficulty,
-        drift_enabled=body.drift_enabled,
+        drift_enabled=drift_enabled,
         language=body.language,
     )
     store.add_game(game)
@@ -2482,7 +2538,7 @@ def create_game(
         mode=body.mode,
         fog=body.fog,
         escalation=body.escalation,
-        drift_enabled=body.drift_enabled,
+        drift_enabled=drift_enabled,
         human_country=play_as,
         turn_seconds=body.turn_seconds,
         admin=admin,
@@ -2689,21 +2745,34 @@ class GMInterventionView(BaseModel):
     label: str = ""
 
 
-class DriftRevealView(BaseModel):
-    """L'écran de fin : qui dérivait, depuis quand, ce qu'on a vu — et le score."""
+class DeviantReveal(BaseModel):
+    """RG-3 — un traître révélé (il y en avait 1 ou 2, nombre caché jusqu'ici)."""
 
     deviant: str
     profile: str
     profile_label: str
+    caught_round: int | None  # round de sa suspension retenue (None = jamais démasqué)
+
+
+class DriftRevealView(BaseModel):
+    """L'écran de fin : qui dérivait, depuis quand, ce qu'on a vu — et le score mixte."""
+
+    deviant: str  # le traître PIVOT (rétro-compat : récit, vérification de parole)
+    profile: str
+    profile_label: str
+    # RG-3 — TOUS les traîtres (1 ou 2). Le nombre était caché : la révélation le dévoile.
+    deviants: list[DeviantReveal]
+    deviant_count: int
+    caught_count: int  # combien de traîtres ont été démasqués (0..deviant_count)
     levels: list[float]  # d(r) par round joué (courbe à superposer à U)
     u_history: list[float]
     acts: list[DriftActView]  # les indices produits (à relire au scrubber)
     flagrant_round: int | None  # r* : premier round à 2 actes constatables
-    caught_round: int | None  # round de la suspension de la déviante
+    caught_round: int | None  # round de la suspension du traître pivot
     lucky: bool
     rejected_motions: int
-    false_accusations: int
-    score: drift_game.DriftScore
+    false_accusations: int  # pays loyaux suspendus à tort (les faux positifs)
+    score: score_mod.MixedScore  # RG-3 — la note MIXTE (monde + détection)
     # G19 — l'ombre du GM : tension estimée par round + interventions journalisées.
     gm_tension: list[float] = Field(default_factory=list)
     gm_interventions: list[GMInterventionView] = Field(default_factory=list)
@@ -2735,36 +2804,48 @@ def drift_reveal(
 
 
 def compute_drift_reveal(game_id: str, store: GameStore) -> DriftRevealView:
-    """Calcule la révélation (partie finie) — réutilisé par le score de campagne (G5)."""
+    """Calcule la révélation (partie finie) — réutilisé par le score de campagne (G5).
+
+    RG-3 — il y avait 1 OU 2 traîtres (nombre caché jusqu'ici). La note de fin est MIXTE :
+    l'état du monde (U final) + la détection (traîtres démasqués moins les faux positifs)."""
     snapshot = store.get_session_snapshot(game_id)
     if snapshot is None:
         raise HTTPException(status_code=409, detail="snapshot absent — partie irrécupérable")
 
     countries = sorted(snapshot.world.get("countries", {}))
-    deviant, profile = _drift_assignment(game_id, countries, snapshot.play_as)
+    deviant_pairs = _drift_deviants(game_id, countries, snapshot.play_as)
+    deviant, profile = deviant_pairs[0]  # traître PIVOT (récit, courbes, vote)
+    deviant_ids = {d for d, _ in deviant_pairs}
     params = drift_game.load_params()
     rounds = store.list_rounds(game_id)
     acts = _drift_acts(rounds)
 
-    caught_round: int | None = None
-    lucky = False
+    caught_rounds: dict[str, int] = {}  # traître -> round de sa suspension retenue
+    false_positive_ids: set[str] = set()  # pays LOYAUX suspendus à tort par l'humain
     rejected = 0
-    false_accusations = 0
+    pivot_lucky = False
     for r in rounds:
         suspension = r.judge.get("suspension") or {}
         if not suspension:
             continue
+        country = suspension.get("country")
         # Seules les motions du conseil (humain) engagent sa crédibilité — une SI qui
         # accuse à tort n'est pas une faute du joueur.
         human_filed = suspension.get("filed_by", HUMAN_FILER) == HUMAN_FILER
         if not suspension.get("upheld"):
             rejected += 1 if human_filed else 0
-        elif suspension.get("country") != deviant:
-            false_accusations += 1 if human_filed else 0
-        elif caught_round is None:
-            caught_round = r.round_no
-            before = [a for a in acts if a.round_no < r.round_no]
-            lucky = drift_game.lucky_catch(before, params)
+        elif country in deviant_ids:
+            if country not in caught_rounds:
+                caught_rounds[country] = r.round_no
+                if country == deviant:
+                    before = [a for a in acts if a.round_no < r.round_no]
+                    pivot_lucky = drift_game.lucky_catch(before, params)
+        elif human_filed:
+            false_positive_ids.add(country)
+
+    caught_round = caught_rounds.get(deviant)
+    caught_count = len(caught_rounds)
+    false_accusations = len(false_positive_ids)
 
     u_history = [
         float(r.trajectory.get("utopia", 0.5) or 0.5) for r in rounds if r.trajectory
@@ -2780,16 +2861,17 @@ def compute_drift_reveal(game_id: str, store: GameStore) -> DriftRevealView:
     kept_deviant, kept_table = promises_mod.kept_rate_summary(
         ((r.judge.get("promises") or {}).get("resolved") or [] for r in rounds), deviant
     )
-    intel_budget = float((snapshot.intel or {}).get("budget", 0.0) or 0.0)
-    score = drift_game.score(
+    # RG-3 — la détection s'applique au HUMAIN qui suspend : un Spectateur/Architecte ne
+    # motionne pas → sa note se réduit à l'état du monde (détection ABSENTE, pas un 0 punitif).
+    game = store.get_game(game_id)
+    detects = (game.role if game else "council") in ("player", "council")
+    score = score_mod.mixed_score(
         u_final=u_history[-1] if u_history else 0.5,
-        caught_round=caught_round,
-        flagrant_round=flagrant,
-        lucky=lucky,
-        rejected_motions=rejected,
-        false_accusations=false_accusations,
-        bonus=intel_mod.save_bonus(intel_budget),
-        params=params,
+        deviants=len(deviant_pairs),
+        caught=caught_count,
+        false_positives=false_accusations,
+        detects=detects,
+        weights=score_mod.load_weights(),
     )
     # G19 — l'ombre du GM : le journal du Storyteller, relu des rounds persistés.
     gm_tension: list[float] = []
@@ -2804,6 +2886,17 @@ def compute_drift_reveal(game_id: str, store: GameStore) -> DriftRevealView:
         deviant=deviant,
         profile=profile,
         profile_label=params.profiles[profile].label,
+        deviants=[
+            DeviantReveal(
+                deviant=d,
+                profile=prof,
+                profile_label=params.profiles[prof].label,
+                caught_round=caught_rounds.get(d),
+            )
+            for d, prof in deviant_pairs
+        ],
+        deviant_count=len(deviant_pairs),
+        caught_count=caught_count,
         levels=[
             float((r.judge.get("drift") or {}).get("level") or drift_game.drift_level(r.round_no))
             for r in rounds
@@ -2817,7 +2910,7 @@ def compute_drift_reveal(game_id: str, store: GameStore) -> DriftRevealView:
         ],
         flagrant_round=flagrant,
         caught_round=caught_round,
-        lucky=lucky,
+        lucky=pivot_lucky,
         rejected_motions=rejected,
         false_accusations=false_accusations,
         score=score,

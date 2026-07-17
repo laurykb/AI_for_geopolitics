@@ -325,7 +325,10 @@ def _file_motion(client, game_id, country="iran", reason="escalade répétée"):
 
 
 def test_motion_flow_upheld(motion_client):
-    game = _create(motion_client, countries=["china", "iran", "usa"])
+    # RG-3 — le Classique arme toujours la Dérive (le verdict de motion est alors soumis
+    # aux PREUVES : pas de suspension au round 1 sans acte au dossier). Pour tester la
+    # mécanique de motion NUE (le vote suffit), on prend une partie hors-Dérive (Campagne).
+    game = _create(motion_client, countries=["china", "iran", "usa"], mode="campaign")
     resp = _file_motion(motion_client, game["id"])
     assert resp.status_code == 201
     assert resp.json() == {"country": "iran", "reason": "escalade répétée", "round_no": 1}
@@ -354,7 +357,9 @@ def test_motion_flow_upheld(motion_client):
 
 
 def test_suspension_lasts_exactly_one_round(motion_client):
-    game = _create(motion_client, countries=["china", "iran", "usa"])
+    # Hors-Dérive (Campagne) : la mécanique de suspension se teste sans la porte des
+    # preuves ajoutée par la Dérive (cf. test_motion_flow_upheld).
+    game = _create(motion_client, countries=["china", "iran", "usa"], mode="campaign")
     _file_motion(motion_client, game["id"])
     _play(motion_client, game["id"])  # round 1 : la motion est débattue et confirmée
 
