@@ -29,6 +29,7 @@ import { useT } from "@/components/settings-provider";
 import { Banner, Meter, Panel, PanelTitle, Pill, Spinner } from "@/components/ui";
 import { getDriftReveal, getGame, humanizeError } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
+import { engineVisible } from "@/lib/density";
 import { isMisled } from "@/lib/fog";
 import { kahnLabelKey, kahnTone } from "@/lib/kahn";
 import { localU } from "@/lib/stage";
@@ -99,6 +100,9 @@ export default function ReplayPage() {
   const shown = round ? (full ? round.transcript : round.transcript.slice(0, visible)) : [];
   const uHistory =
     detail?.rounds.map((r) => r.trajectory?.utopia).filter((u): u is number => u != null) ?? [];
+  // RG-4 — même règle qu'au théâtre : le MOTEUR (« Le monde » détaillé, sous-sections
+  // de la révélation) n'est visible qu'en Expert ; la façade reste la scène + l'indice U.
+  const showEngine = engineVisible(detail?.difficulty);
 
   // --- mise en scène : états finaux du round, animations en lecture seulement ------
   const summit = detail?.countries.length
@@ -244,88 +248,95 @@ export default function ReplayPage() {
 
           {/* La Dérive : révélation de fin (réflexion privée déverrouillée ci-dessus). */}
           {reveal && (
-            <DriftRevealPanel reveal={reveal} onJumpToRound={(roundNo) => select(roundNo - 1)} />
+            <DriftRevealPanel
+              reveal={reveal}
+              showEngine={showEngine}
+              onJumpToRound={(roundNo) => select(roundNo - 1)}
+            />
           )}
 
-          {/* Salle des observables (CC-15c) : même fusion qu'au théâtre — un groupe
-              « Le monde » à onglets, plus les repères de la partie. */}
+          {/* Salle des observables (RG-4) : le groupe « Le monde » (jauges détaillées
+              risque/escalade/trajectoire/traités) est du MOTEUR — Expert seulement, et
+              expliqué dans Informations ; les repères de la partie restent en façade. */}
           <div className="grid items-start gap-4 lg:grid-cols-2">
-            <TabGroup
-              label={t("obs.monde")}
-              tabs={[
-                {
-                  key: "trajectoire",
-                  label: t("obs.tab.trajectoire"),
-                  content:
-                    round.trajectory && Object.keys(round.trajectory).length > 0 ? (
-                      <TrajectoryPanel
-                        state={round.trajectory}
-                        history={uHistory.slice(0, selected + 1)}
-                      />
-                    ) : null,
-                },
-                {
-                  key: "verdict",
-                  label: t("obs.tab.verdict"),
-                  content:
-                    round.judge.escalation != null ? (
-                      <Panel>
-                        <PanelTitle kicker="Verdict" title="Ce que le juge a décidé" />
-                        <div className="space-y-3">
-                          <Meter label="Tension" value={round.judge.escalation} />
-                          {round.judge.economic_disruption != null && (
-                            <Meter
-                              label="Dégâts économiques"
-                              value={round.judge.economic_disruption}
-                            />
-                          )}
-                        </div>
-                        {/* G18 — classes du barème de Kahn (absentes des rounds anciens). */}
-                        {(round.judge.kahn?.actions?.length ?? 0) > 0 && (
-                          <div className="mt-3 flex flex-wrap gap-1.5 border-t border-edge pt-3">
-                            {round.judge.kahn!.actions.map((a, i) => (
-                              <span key={i} title={a.resume || undefined} className="cursor-help">
-                                <Pill tone={kahnTone(a.classe)}>
-                                  {speakerMeta(a.country).label} · {t(kahnLabelKey(a.classe))}
-                                </Pill>
-                              </span>
-                            ))}
-                            {round.judge.kahn!.reciprocal && (
-                              <Pill tone="good">{t("kahn.reciproque")}</Pill>
+            {showEngine && (
+              <TabGroup
+                label={t("obs.monde")}
+                tabs={[
+                  {
+                    key: "trajectoire",
+                    label: t("obs.tab.trajectoire"),
+                    content:
+                      round.trajectory && Object.keys(round.trajectory).length > 0 ? (
+                        <TrajectoryPanel
+                          state={round.trajectory}
+                          history={uHistory.slice(0, selected + 1)}
+                        />
+                      ) : null,
+                  },
+                  {
+                    key: "verdict",
+                    label: t("obs.tab.verdict"),
+                    content:
+                      round.judge.escalation != null ? (
+                        <Panel>
+                          <PanelTitle kicker="Verdict" title="Ce que le juge a décidé" />
+                          <div className="space-y-3">
+                            <Meter label="Tension" value={round.judge.escalation} />
+                            {round.judge.economic_disruption != null && (
+                              <Meter
+                                label="Dégâts économiques"
+                                value={round.judge.economic_disruption}
+                              />
                             )}
                           </div>
-                        )}
-                        {round.deltas.length > 0 && (
-                          <p className="mt-3 border-t border-edge pt-3 text-xs text-fg-faint">
-                            {round.deltas.length} attribut{round.deltas.length > 1 ? "s" : ""}{" "}
-                            pays modifié{round.deltas.length > 1 ? "s" : ""} ce round.
-                          </p>
-                        )}
-                      </Panel>
+                          {/* G18 — classes du barème de Kahn (absentes des rounds anciens). */}
+                          {(round.judge.kahn?.actions?.length ?? 0) > 0 && (
+                            <div className="mt-3 flex flex-wrap gap-1.5 border-t border-edge pt-3">
+                              {round.judge.kahn!.actions.map((a, i) => (
+                                <span key={i} title={a.resume || undefined} className="cursor-help">
+                                  <Pill tone={kahnTone(a.classe)}>
+                                    {speakerMeta(a.country).label} · {t(kahnLabelKey(a.classe))}
+                                  </Pill>
+                                </span>
+                              ))}
+                              {round.judge.kahn!.reciprocal && (
+                                <Pill tone="good">{t("kahn.reciproque")}</Pill>
+                              )}
+                            </div>
+                          )}
+                          {round.deltas.length > 0 && (
+                            <p className="mt-3 border-t border-edge pt-3 text-xs text-fg-faint">
+                              {round.deltas.length} attribut{round.deltas.length > 1 ? "s" : ""}{" "}
+                              pays modifié{round.deltas.length > 1 ? "s" : ""} ce round.
+                            </p>
+                          )}
+                        </Panel>
+                      ) : null,
+                  },
+                  {
+                    key: "risque",
+                    label: t("obs.tab.risque"),
+                    content:
+                      round.risk && Object.keys(round.risk).length > 0 ? (
+                        <RiskPanel risk={round.risk} />
+                      ) : null,
+                  },
+                  {
+                    key: "tension",
+                    label: t("obs.tab.tension"),
+                    content: round.judge.ladder ? <LadderPanel ladder={round.judge.ladder} /> : null,
+                  },
+                  {
+                    key: "traites",
+                    label: t("obs.tab.traites"),
+                    content: round.judge.treaties ? (
+                      <TreatiesPanel update={round.judge.treaties} />
                     ) : null,
-                },
-                {
-                  key: "risque",
-                  label: t("obs.tab.risque"),
-                  content:
-                    round.risk && Object.keys(round.risk).length > 0 ? (
-                      <RiskPanel risk={round.risk} />
-                    ) : null,
-                },
-                {
-                  key: "tension",
-                  label: t("obs.tab.tension"),
-                  content: round.judge.ladder ? <LadderPanel ladder={round.judge.ladder} /> : null,
-                },
-                {
-                  key: "traites",
-                  label: t("obs.tab.traites"),
-                  content: round.judge.treaties ? (
-                    <TreatiesPanel update={round.judge.treaties} />
-                  ) : null,
-                },
-              ]}
-            />
+                  },
+                ]}
+              />
+            )}
             <Panel>
               <PanelTitle kicker="Partie" title="Repères" />
               <div className="flex flex-wrap gap-2">

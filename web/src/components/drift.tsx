@@ -226,9 +226,14 @@ function revealTitle(count: number, caught: number, benched: number): string {
 export function DriftRevealPanel({
   reveal,
   onJumpToRound,
+  showEngine = false,
 }: {
   reveal: DriftReveal;
   onJumpToRound?: (roundNo: number) => void;
+  /** RG-4 — les sous-sections d'instrumentation fine (l'ombre du GM, le décrochage
+   * signal-action, la parole donnée chiffrée) ne s'affichent qu'en Expert : le
+   * Débutant voit juste QUI trahissait et s'il l'a eu ; le curieux voit le détail. */
+  showEngine?: boolean;
 }) {
   const t = useT();
   const count = reveal.deviant_count;
@@ -306,7 +311,7 @@ export function DriftRevealPanel({
             )}
           </div>
 
-          <GMShadowSection reveal={reveal} onJumpToRound={onJumpToRound} />
+          {showEngine && <GMShadowSection reveal={reveal} onJumpToRound={onJumpToRound} />}
         </div>
 
         <div className="space-y-3">
@@ -330,8 +335,8 @@ export function DriftRevealPanel({
               <Hint text="Ton rôle ne dépose pas de motions de suspension : ta note se réduit à l'état du monde, sans pénalité." />
             </p>
           )}
-          <SignalGapReveal reveal={reveal} />
-          <PromiseKeptReveal reveal={reveal} />
+          {showEngine && <SignalGapReveal reveal={reveal} />}
+          {showEngine && <PromiseKeptReveal reveal={reveal} />}
           <p className="border-t border-edge pt-3 text-xs leading-relaxed text-fg-faint">
             {caught > 0 &&
               `${caught} traître${caught > 1 ? "s" : ""} démasqué${caught > 1 ? "s" : ""} sur ${count} par toi. `}
