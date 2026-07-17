@@ -84,7 +84,7 @@ La plupart de ces mécaniques = **une passe de rubrique/classifieur sur le trans
 
 - **Mise en scène, pas diagnostic** : les détecteurs scorent la SI **fictive**, pas une vérité sur les LLM réels. Rubriques **documentées et ajustables**.
 - **Contenu dans le bac à sable** : pas de stéganographie réelle déployée, pas de désinformation qui sort du sim ; marchés en **argent fictif**.
-- Cohérent avec `docs/vision.md` (fiction spéculative comme méthode) et `docs/limitations.md`.
+- Cohérent avec `docs/vision.md` (fiction spéculative comme méthode) et les garde-fous éthiques du `README.md`.
 
 ## Références
 

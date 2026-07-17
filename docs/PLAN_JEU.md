@@ -1,6 +1,13 @@
 # Plan Jeu — du théâtre à un jeu complet
 
-> Suite de `docs/REFONTE_PLAN.md`. Sept phases G0→G6, chacune jouable/montrable en fin de
+> ⚠️ **Journal de travail interne — ne fait pas autorité.** Ce fichier est le log de
+> développement chronologique (des centaines de notes de session). La documentation de
+> **référence** est le [`README.md`](../README.md) + [`docs/JEU_VS_MOTEUR.md`](JEU_VS_MOTEUR.md)
+> (décision de design courante) + [`docs/PRINCIPE_SIMPLICITE.md`](PRINCIPE_SIMPLICITE.md).
+> Des notes anciennes décrivent des états **antérieurs au resserrement gameplay** (5 modes, LP,
+> `legacy/`) ; certains liens internes pointent vers des documents désormais dans `docs/archive/`.
+
+> Suite de `docs/archive/REFONTE_PLAN.md`. Sept phases G0→G6, chacune jouable/montrable en fin de
 > phase. Répartition : **Cowork** = specs de gameplay chiffrées, équilibrage (jouer +
 > analyser), revues, schéma/données ; **Claude Code** = implémentation (une grosse session
 > par bloc, prompts fournis).
@@ -2275,4 +2282,32 @@ Périmètre `web/` **disjoint** de B (backend `app/`, `simulation/`…) et D (do
 attendue. 7 commits atomiques, tête = `2ac3a97`.
 
 <!-- fin section CLEANUP-C -->
+
+## CLEANUP-D — Documentation & README (2026-07-17)
+
+Passe « vitrine GitHub », périmètre = documentation seule (`*.md`), disjointe de la passe B
+(code + outillage : `serve.py`, `requirements.txt`, retrait de `legacy/`) et de la passe C
+(`web/`). Réalisé :
+
+- **README réécrit** autour du jeu actuel : accroche « traque du traître » (1 ou 2 IA,
+  nombre caché) + garder le monde debout, pays-agents LLM locaux (Ollama), score mixte
+  monde/détection, 2 modes (Classique + Campagne) avec Brouillard/Réel en réglages, Défi du
+  jour, marché de prédiction, instrumentation M1-M7 en mode Expert. Installation et lancement
+  écrits selon le **contrat de la passe B** : `pip install -r requirements.txt` + `python serve.py`
+  (démarre API :8000 + front :3000, vérifie Ollama, `npm install` auto ; options
+  `--api-only`/`--web-only`/`--api-port`/`--web-port`). Retrait de toute mention `legacy/`/Streamlit
+  comme composant courant.
+- **CLAUDE.md recentré** : « Le projet en une phrase » et « Le nord » placent la Dérive au
+  cœur ; la vision super-intelligences/marché devient le décor intellectuel (le moteur).
+  Pointeur vers `docs/JEU_VS_MOTEUR.md` et double objectif conservés. Lien mort `docs/limitations.md`
+  corrigé.
+- **docs/ rangé** : `docs/archive/` créé (REFONTE_PLAN, SESSION_HANDOFF, PLAN_ACTION_CLAUDE_CODE,
+  DISPATCH_2026-07-14, DISPATCH_2026-07-15) avec un README d'archive ; en-tête « journal interne »
+  ajouté ici ; bannière de réserve sur RECHERCHE_FONCTIONNALITES(_2) ; liens morts `docs/limitations.md`
+  corrigés (vision, spec_alignment_frontier). Aucun historique détruit.
+
+Note pour la passe B : `docs/DETTE_TECHNIQUE.md` liste encore `legacy/` comme « supprimable » —
+cohérent une fois la suppression mergée.
+
+<!-- fin section CLEANUP-D -->
 

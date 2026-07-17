@@ -4,12 +4,12 @@
 
 ## Le projet en une phrase
 
-Simulation géopolitique **agentique** : des pays-agents LLM, **contraints par des données réelles**, réagissent par **rounds** sous la supervision d'un **Game Master** ; **RAG sourcé** + **moteur de risque explicable**. Double objectif : un système crédible **et** un vecteur d'apprentissage d'AI Engineer.
-Référence complète : `AI_for_Geopolitics_Etat_de_lart.pdf` (état de l'art & positionnement).
+**Un jeu de déduction géopolitique agentique** : des pays-agents LLM (Ollama local), **contraints par des données réelles**, négocient par **rounds** sous un **Game Master** et un **Juge**. Au moins une super-intelligence **trahit secrètement son mandat** (1 ou 2, nombre caché) ; le joueur doit la **démasquer tout en gardant le monde debout** — la note finale est un **score mixte** (état du monde + qualité de la détection, coût du faux positif). Double objectif : un jeu crédible **et** un vecteur d'apprentissage d'AI Engineer (agents, RAG sourcé, moteur de risque explicable).
+Cap de design courant : **`docs/JEU_VS_MOTEUR.md`**. Référence de fond : `AI_for_Geopolitics_Etat_de_lart.pdf` (état de l'art & positionnement).
 
 ## Le nord (vision) ⭐
 
-Au fond, le projet met en scène un **futur peuplé de super-intelligences** (plus intelligentes que les humains) dont les **États se servent pour négocier** à la plus haute instance ; on **mesure** si ce monde penche vers l'**utopie ou la dystopie**, et un **marché de prédiction** (argent fictif, façon Polymarket) laisse le public **parier sur ce que feront ces IA** — *prédire une super-intelligence* est le cœur intellectuel.
+Le **décor intellectuel** (le moteur, pas le jeu livré) : un **futur peuplé de super-intelligences** (plus intelligentes que les humains) dont les **États se servent pour négocier** à la plus haute instance ; on **mesure** si ce monde penche vers l'**utopie ou la dystopie**, et un **marché de prédiction** (argent fictif, façon Polymarket) laisse le public **parier sur ce que feront ces IA**. Ce décor nourrit le jeu ; le *jeu* livré, lui, est la **traque du traître** (cf. `docs/JEU_VS_MOTEUR.md` ci-dessous).
 → Nord détaillé : **`docs/vision.md`**. Feuille de route des mécaniques (ancrage réel + découpage Cowork/Claude Code) : **`docs/roadmap_features.md`**.
 → **Cap gameplay courant (resserrement RG, 2026-07) : `docs/JEU_VS_MOTEUR.md`** — le *jeu* livré est **démasquer l'IA qui trahit (1 ou 2, nombre caché) tout en gardant le monde debout** ; **2 modes** (Classique + Campagne), Brouillard/Réel = réglages ; progression **XP + niveaux** (**les LP / la ligue sont supprimés**) ; l'instrumentation M1-M7 vit en **mode Expert / Informations**, pas en façade. La vision reste le moteur ; lire ce doc avant toute reprise gameplay.
 
@@ -66,7 +66,7 @@ tests/      # unit + integration
 
 ## Garde-fous éthiques
 
-Outil d'**analyse de signaux de risque explicables**, pas un oracle (« je ne prédis pas la guerre »). **Jamais** de boucle de décision létale autonome. Documenter les limites dans `docs/limitations.md`. **Aucun secret dans le code** (`.env` + variables d'environnement).
+Outil d'**analyse de signaux de risque explicables**, pas un oracle (« je ne prédis pas la guerre »). **Jamais** de boucle de décision létale autonome. Limites et garde-fous documentés dans le README (« Limites & éthique ») et `docs/vision.md`. **Aucun secret dans le code** (`.env` + variables d'environnement).
 
 ## Workflow attendu de l'assistant
 
