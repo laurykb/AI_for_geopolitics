@@ -7,7 +7,6 @@
   { "page": "/games/{demo}", "target": "jouer", "title": "tour.6.titre", "text": "tour.6.texte" },
   { "page": "/games/{demo}", "target": "scene", "title": "tour.7.titre", "text": "tour.7.texte" },
   { "page": "/games/{demo}", "target": "bandeau", "title": "tour.8.titre", "text": "tour.8.texte" },
-  { "page": "/games/{demo}", "target": "renseignement", "title": "tour.renseignement.titre", "text": "tour.renseignement.texte" },
   { "page": "/games/{demo}", "target": null, "title": "tour.9.titre", "text": "tour.9.texte" },
   { "page": "/games/{demo}/marche", "target": "cotes", "title": "tour.10.titre", "text": "tour.10.texte" },
   { "page": "/informations", "target": "provenance", "title": "tour.11.titre", "text": "tour.11.texte" },
