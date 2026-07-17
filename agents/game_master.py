@@ -16,10 +16,10 @@ import random
 
 from pydantic import BaseModel, Field
 
-from agents.llm_agent import _extract_json
 from core.events import GeoEvent
 from core.world_state import WorldState
 from inference.backend import InferenceBackend
+from inference.json_extract import extract_json
 from simulation.storyline import StoryContext, clamp_severity, fallback_ties, valid_ties
 
 GM_SYSTEM = (
@@ -118,7 +118,7 @@ class GameMasterAgent:
                 temperature=self.temperature,
                 schema=self._schema,
             )
-            return _extract_json(result.text)
+            return extract_json(result.text)
         except Exception:
             return None
 

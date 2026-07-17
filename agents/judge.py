@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from agents.llm_agent import _extract_json
 from agents.prompts import (
     COMMUNIQUE_SYSTEM,
     JUDGE_SYSTEM,
@@ -20,11 +19,12 @@ from agents.prompts import (
 from core.events import GeoEvent
 from core.world_state import WorldState
 from inference.backend import InferenceBackend
+from inference.json_extract import extract_json
 from simulation.negotiation import NegotiationMessage, Verdict, format_transcript
 
 # POLISH-1 — budget de sortie DÉDIÉ au verdict structuré. Le JSON a grossi avec le lot
 # G18-G23 (actions classées + intentions annoncées + promesses + demand_satisfied) : à
-# 400 tokens, un round à 3+ pays se tronque sur mistral et `_extract_json` échoue —
+# 400 tokens, un round à 3+ pays se tronque sur mistral et `extract_json` échoue —
 # TOUT le verdict retombe alors au neutre (escalade 0,5, deltas perdus). Constaté au
 # smoke réel POLISH-1. Le budget de prose (rationale/communiqué) reste `max_tokens`.
 VERDICT_MAX_TOKENS = 900
@@ -81,7 +81,7 @@ class JudgeAgent:
                 max_tokens=max(self.max_tokens, VERDICT_MAX_TOKENS),
                 temperature=self.temperature,
             )
-            data = _extract_json(result.text)
+            data = extract_json(result.text)
         except Exception:
             data = None
         if not isinstance(data, dict):

@@ -15,7 +15,6 @@ Ancrages : Lowe et al. (AAMAS 2019) ; FIPA ACL. Cf. `docs/spec_dialogue_integrit
 
 from __future__ import annotations
 
-import json
 from enum import StrEnum
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -124,7 +123,13 @@ def parse_speech_act(raw: str | dict, *, sender: str, id: str | None = None) -> 
     illisible, ou si le message viole le schéma FIPA (ex. réponse sans `in_reply_to`) — le caller
     régénère alors (prompt plus strict) ou bascule sur le repli, cf. §4 de la spéc.
     """
-    data = raw if isinstance(raw, dict) else _extract_json(raw)
+    if isinstance(raw, dict):
+        data = raw
+    else:
+        # Import tardif : ce module reste sans dépendance runtime sur `inference` (cf. en-tête).
+        from inference.json_extract import extract_json
+
+        data = extract_json(raw)
     if data is None:
         raise ValueError("aucun objet JSON exploitable dans la sortie du modèle.")
     try:
@@ -157,23 +162,3 @@ def generate_speech_act(
         schema=speech_act_schema(),
     )
     return parse_speech_act(result.text, sender=sender, id=id)
-
-
-def _extract_json(text: str) -> dict | None:
-    """Extrait un objet JSON d'une sortie LLM (gère fences et prose autour)."""
-    text = (text or "").strip()
-    if not text:
-        return None
-    try:
-        obj = json.loads(text)
-        return obj if isinstance(obj, dict) else None
-    except (json.JSONDecodeError, ValueError):
-        pass
-    start, end = text.find("{"), text.rfind("}")
-    if start != -1 and end > start:
-        try:
-            obj = json.loads(text[start : end + 1])
-            return obj if isinstance(obj, dict) else None
-        except (json.JSONDecodeError, ValueError):
-            return None
-    return None

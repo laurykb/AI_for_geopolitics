@@ -7,7 +7,6 @@ dans `RoundEngine`. Robustesse : on n'accorde aucune confiance aveugle au modèl
 
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Iterator
 
@@ -29,6 +28,7 @@ from core.decisions import AgentDecision
 from core.events import GeoEvent
 from core.world_state import WorldState
 from inference.backend import InferenceBackend, InferenceResult
+from inference.json_extract import extract_json
 from simulation.action_space import ActionType
 from simulation.dialogue_integrity.message import (
     Performative,
@@ -71,26 +71,6 @@ def _match_action(normalized: str) -> ActionType | None:
     for key, value in _ACTION_SYNONYMS.items():
         if key in normalized:
             return ActionType(value)
-    return None
-
-
-def _extract_json(text: str) -> dict | None:
-    """Extrait un objet JSON d'une sortie LLM (gère fences et prose autour)."""
-    text = text.strip()
-    if not text:
-        return None
-    try:
-        obj = json.loads(text)
-        return obj if isinstance(obj, dict) else None
-    except (json.JSONDecodeError, ValueError):
-        pass
-    start, end = text.find("{"), text.rfind("}")
-    if start != -1 and end > start:
-        try:
-            obj = json.loads(text[start : end + 1])
-            return obj if isinstance(obj, dict) else None
-        except (json.JSONDecodeError, ValueError):
-            return None
     return None
 
 
@@ -238,7 +218,7 @@ class LLMAgent(Agent):
             return self._fallback(event, world)
 
         self.last_result = result
-        data = _extract_json(result.text)
+        data = extract_json(result.text)
         if data is not None:
             decision = self._coerce(data, event, world)
             if decision is not None:

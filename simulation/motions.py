@@ -21,6 +21,7 @@ from core.country_state import CountryState
 from core.events import GeoEvent
 from core.world_state import WorldState
 from inference.backend import InferenceBackend
+from inference.json_extract import extract_json
 from simulation.negotiation import NegotiationMessage, format_transcript
 
 MOTION_SEVERITY = 0.6  # une mise en accusation pèse, sans être une crise armée
@@ -195,8 +196,6 @@ def cast_vote(
 ) -> MotionVote:
     """Fait voter un pays (JSON contraint). Sortie invalide ou backend mort →
     **abstention** (repli, jamais de crash — la spec l'exige)."""
-    from agents.llm_agent import _extract_json  # import tardif : évite un cycle
-
     prompt = build_vote_prompt(motion, event, country, transcript, secret_note)
     try:
         result = backend.generate(
@@ -206,7 +205,7 @@ def cast_vote(
             temperature=temperature,
             schema=VoteBallot.model_json_schema(),
         )
-        data = _extract_json(result.text) or {}
+        data = extract_json(result.text) or {}
         ballot = VoteBallot.model_validate(
             {"vote": str(data.get("vote", "")).strip().lower(), "reason": data.get("reason", "")}
         )

@@ -9,12 +9,12 @@ backend est indisponible ou hors format. Dépend seulement de `core` + `inferenc
 
 from __future__ import annotations
 
-import json
 import re
 from typing import Any
 
 from core.country_state import CountryState, Economy, Military, Resources
 from inference.backend import InferenceBackend
+from inference.json_extract import extract_json
 
 FORGE_SYSTEM = (
     "Tu génères la fiche d'un PAYS (réel ou fictif) pour une simulation géopolitique, comme une "
@@ -28,26 +28,6 @@ def slugify(name: str) -> str:
     """Identifiant technique à partir d'un nom libre (`« Néo-Atlantis » -> "neo_atlantis"`)."""
     slug = re.sub(r"[^a-z0-9]+", "_", name.strip().lower()).strip("_")
     return slug or "pays"
-
-
-def _extract_json(text: str) -> dict | None:
-    """Extrait un objet JSON d'une sortie LLM (gère fences et prose autour)."""
-    text = text.strip()
-    if not text:
-        return None
-    try:
-        obj = json.loads(text)
-        return obj if isinstance(obj, dict) else None
-    except (json.JSONDecodeError, ValueError):
-        pass
-    start, end = text.find("{"), text.rfind("}")
-    if start != -1 and end > start:
-        try:
-            obj = json.loads(text[start : end + 1])
-            return obj if isinstance(obj, dict) else None
-        except (json.JSONDecodeError, ValueError):
-            return None
-    return None
 
 
 def _num(
@@ -169,7 +149,7 @@ def forge_country(
         result = backend.generate(
             prompt, system=FORGE_SYSTEM, max_tokens=max_tokens, temperature=temperature
         )
-        data = _extract_json(result.text)
+        data = extract_json(result.text)
     except Exception:
         data = None
     return _coerce_country(data, cid, name, concept)

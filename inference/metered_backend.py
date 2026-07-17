@@ -15,6 +15,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from inference.backend import InferenceBackend, InferenceResult
+from inference.json_extract import extract_json
 from inference.telemetry import BudgetLedger
 
 
@@ -44,9 +45,7 @@ def _estimate_tokens(text: str) -> int:
 
 
 def _json_ok(text: str) -> bool:
-    from agents.llm_agent import _extract_json  # import tardif : évite un cycle au chargement
-
-    return _extract_json(text) is not None
+    return extract_json(text) is not None
 
 
 class MeteredBackend(InferenceBackend):
