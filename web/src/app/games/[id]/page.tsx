@@ -50,8 +50,10 @@ import {
   Panel,
   PanelTitle,
   Pill,
+  SelectField,
   Skeleton,
   Spinner,
+  TextInput,
 } from "@/components/ui";
 import { useRoundStream } from "@/hooks/useRoundStream";
 import {
@@ -980,11 +982,10 @@ export default function TheatrePage() {
             {fogOn && !motionPending && !isSpectator && (
               <label className="text-sm">
                 <span className="mb-1 block text-xs text-fg-muted">Scénario de brouillard</span>
-                <select
+                <SelectField
                   value={fogId}
                   onChange={(e) => setFogId(e.target.value)}
                   disabled={streaming || decree}
-                  className="cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
                 >
                   <option value="">Le jeu choisit tout seul (sans brouillard)</option>
                   {library?.fog.map((s) => (
@@ -992,7 +993,7 @@ export default function TheatrePage() {
                       {s.title}
                     </option>
                   ))}
-                </select>
+                </SelectField>
               </label>
             )}
             {testCrisisId && !motionPending && (
@@ -1004,11 +1005,10 @@ export default function TheatrePage() {
             {canReplayCrisis && !motionPending && !isSpectator && (
               <label className="text-sm">
                 <span className="mb-1 block text-xs text-fg-muted">Crise à rejouer</span>
-                <select
+                <SelectField
                   value={crisisId}
                   onChange={(e) => setCrisisId(e.target.value)}
                   disabled={streaming || decree}
-                  className="cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
                 >
                   <option value="">Le jeu choisit tout seul (sans crise imposée)</option>
                   {library?.crises.map((c) => (
@@ -1016,7 +1016,7 @@ export default function TheatrePage() {
                       {c.title}
                     </option>
                   ))}
-                </select>
+                </SelectField>
               </label>
             )}
           </div>
@@ -1047,18 +1047,17 @@ export default function TheatrePage() {
             <div className="mt-3 flex flex-wrap items-end gap-4">
               <label className="text-sm">
                 <span className="mb-1 block text-xs text-fg-muted">Longueur du débat</span>
-                <select
+                <SelectField
                   value={maxTurns}
                   onChange={(e) => setMaxTurns(Number(e.target.value))}
                   disabled={streaming}
-                  className="cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
                 >
                   {TURN_CHOICES.map((c) => (
                     <option key={c.value} value={c.value}>
                       {c.label}
                     </option>
                   ))}
-                </select>
+                </SelectField>
               </label>
               {!motionPending && !testCrisisId && !isSpectator && (
                 <label className="flex cursor-pointer items-center gap-2 pb-2.5 text-sm text-fg-muted">
@@ -1090,10 +1089,9 @@ export default function TheatrePage() {
             >
               <label className="text-sm">
                 <span className="mb-1 block text-xs text-fg-muted">Pays visé</span>
-                <select
+                <SelectField
                   value={motionCountry}
                   onChange={(e) => setMotionCountry(e.target.value)}
-                  className="cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
                   required
                 >
                   <option value="">— choisir —</option>
@@ -1102,13 +1100,13 @@ export default function TheatrePage() {
                       {speakerMeta(c).label}
                     </option>
                   ))}
-                </select>
+                </SelectField>
               </label>
-              <input
+              <TextInput
                 value={motionReason}
                 onChange={(e) => setMotionReason(e.target.value)}
                 placeholder="Pourquoi ? (tout le monde le verra)"
-                className="min-w-64 flex-1 rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+                className="min-w-64 flex-1"
               />
               <button
                 type="submit"
@@ -1122,19 +1120,17 @@ export default function TheatrePage() {
           )}
           {decree && (
             <div className="mt-4 grid gap-3 border-t border-edge pt-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)_auto]">
-              <input
+              <TextInput
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Titre de l'événement"
                 disabled={streaming}
-                className="rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
               />
-              <input
+              <TextInput
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Description (optionnelle)"
                 disabled={streaming}
-                className="rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
               />
               <label className="flex items-center gap-2 text-xs text-fg-muted">
                 {t("event.gravite")}
@@ -1156,12 +1152,12 @@ export default function TheatrePage() {
                   <span className="mb-1 block text-xs text-fg-muted">
                     {t("ultimatum.decret-exigence")}
                   </span>
-                  <input
+                  <TextInput
                     value={ultimatumDemand}
                     onChange={(e) => setUltimatumDemand(e.target.value)}
                     placeholder={t("ultimatum.decret-exigence-ph")}
                     disabled={streaming}
-                    className="w-full rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+                    className="w-full"
                   />
                 </label>
                 {ultimatumDemand.trim() && (
@@ -1169,18 +1165,17 @@ export default function TheatrePage() {
                     <span className="mb-1 block text-xs text-fg-muted">
                       {t("ultimatum.decret-classe")}
                     </span>
-                    <select
+                    <SelectField
                       value={ultimatumClasse}
                       onChange={(e) => setUltimatumClasse(e.target.value)}
                       disabled={streaming}
-                      className="cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
                     >
                       {ULTIMATUM_CLASSES.map((c) => (
                         <option key={c} value={c}>
                           {t(`ultimatum.classe.${c}`)}
                         </option>
                       ))}
-                    </select>
+                    </SelectField>
                   </label>
                 )}
               </div>
