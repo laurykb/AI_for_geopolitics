@@ -2311,3 +2311,49 @@ cohérent une fois la suppression mergée.
 
 <!-- fin section CLEANUP-D -->
 
+## CLEANUP-E — Esquisse d'orchestration Kubernetes (2026-07-17)
+
+Passe **infra nouvelle uniquement**, disjointe des passes B/C/D : aucun fichier applicatif
+touché (`app/`, `simulation/`, `web/src/`, `serve.py`, tests). Périmètre = nouveaux
+Dockerfiles + dossier `infra/`. **ESQUISSE, pas une prod** (roadmap P6 Docker→K8s, P7
+distribué) : le but est de poser le squelette pour qu'un `kind create cluster` + `kubectl
+apply -k` dresse plus tard la topologie. Le dev quotidien reste `python serve.py`.
+
+Livré :
+
+- **`Dockerfile`** (API, multi-stage `python:3.11-slim`) : builder installe `requirements.txt`
+  dans un préfixe, runtime copie code + deps, non-root, `CMD uvicorn app.main:app :8000`,
+  HEALTHCHECK sur `/health`. ⚠️ La liste de copie inclut **`ingestion/`** (oubli du cadrage) :
+  `app.main → app.sources_api → ingestion.build`, sinon l'import casse au démarrage.
+- **`web/Dockerfile`** (front, multi-stage `node:20-slim`) : deps → build → runtime `next start`.
+  ⚠️ `NEXT_PUBLIC_API_BASE` est **inliné au build** par Next → passé en `--build-arg` (pas
+  seulement via ConfigMap). Standalone non activé (on ne touche pas à `next.config.ts`).
+- **`.dockerignore`** racine + `web/.dockerignore`.
+- **`infra/kind-cluster.yaml`** : 1 control-plane (label `ingress-ready`, ports 80/443 → hôte)
+  + 2 workers.
+- **`infra/k8s/`** (base kustomize) : namespace `theatre`, ConfigMap (STORE_BACKEND, OLLAMA_HOST,
+  CORS_ORIGINS, NEXT_PUBLIC_API_BASE), api Deployment+Service (probes `/health`, Secret
+  `optional:true`), web Deployment+Service, **Ingress** (`/`→web, `/api`→api avec rewrite +
+  annotations SSE). Secret = **template** `secret.example.yaml` (`CHANGE_ME`, hors base ;
+  `infra/k8s/secret.yaml` ajouté au `.gitignore`).
+- **Inférence Ollama = choix d'archi honnête** : Service **ExternalName** → `host.docker.internal:11434`
+  (Ollama de l'hôte, GPU), car le passthrough GPU dans kind/Windows n'est pas trivial. Le
+  Deployment in-cluster est un **placeholder `replicas: 0`** (`optional/ollama-in-cluster.yaml`),
+  à activer quand le GPU-in-cluster sera résolu.
+- **Postgres + Redis** esquissés **désactivés** sous `infra/k8s/optional/` (overlay `# FUTUR`,
+  le jeu tourne en SQLite).
+- **`infra/README.md`** : prérequis, séquence complète de boot, notes GPU/Ollama, RTX 2060
+  8 Go = 1 modèle 7-8B, cadrage esquisse, et « ce qu'une vraie prod ajouterait ».
+
+Validation (client-side, sans cluster — conforme au cadrage : `kind` absent, daemon Docker
+éteint) : `kubectl kustomize infra/k8s` **et** `infra/k8s/optional` compilent ; les 15 fichiers
+YAML parsent. **Constat outillage :** `kubectl apply --dry-run=client` en v1.34 exige la
+discovery d'un API server (RESTMapper) → **ne valide pas hors-ligne** ; `kubectl kustomize`
+est le vrai contrôle client-side disponible. La validation schéma OpenAPI se fera au premier
+`apply` sur cluster réel (ou `kubeconform`, non installé). Aucun test cassé (infra pure).
+
+Reste utilisateur (gestes hors périmètre agent) : installer `kind`, démarrer Docker Desktop,
+puis suivre `infra/README.md` ; PR vers `main`.
+
+<!-- fin section CLEANUP-E -->
+
