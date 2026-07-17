@@ -20,6 +20,22 @@ export function densityFor(difficulty: Difficulty | undefined): Density {
   return (difficulty ?? "intermediate") === "expert" ? "full" : "reduced";
 }
 
+/** RG-4 — l'instrumentation (le MOTEUR) n'est visible qu'en Expert.
+ *
+ * Le tri « jeu vs moteur » (`docs/JEU_VS_MOTEUR.md` §4) : la façade par défaut
+ * (Débutant/Intermédiaire) ne montre que le JEU — la scène (carte + transcript),
+ * l'indice U en clair, le marché, et les outils de détection (motion, Boîte de
+ * verre, Dossier, suspects). Tout le MOTEUR — les métriques M1-M7 (recherche de
+ * pouvoir, corrigibilité, dérive des valeurs, compute, traités), les jauges
+ * risque/escalade/trajectoire/participation détaillées, les panneaux de détection
+ * fine (« elle dit / elle fait », « parole donnée », « l'ombre du GM ») — ne
+ * s'affiche qu'en Expert, et n'est expliqué que dans l'onglet Informations.
+ *
+ * Rien n'est SUPPRIMÉ : le lot G18-G23 et M1-M7 sont ROUTÉS, pas retirés. */
+export function engineVisible(difficulty: Difficulty | undefined): boolean {
+  return densityFor(difficulty) === "full";
+}
+
 /** Table des pays : vue réduite (pays + posture + tendance) par défaut, sauf en
  * Expert où les 5 colonnes s'affichent d'un coup. Le clic bascule dans les deux cas. */
 export function tableDetailedByDefault(difficulty: Difficulty | undefined): boolean {
