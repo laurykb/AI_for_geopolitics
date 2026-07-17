@@ -34,6 +34,7 @@ import {
   TextInput,
 } from "@/components/ui";
 import { CampaignScorePanel } from "@/components/theatre/campaign-score-panel";
+import { MotionForm } from "@/components/theatre/motion-form";
 import { RoundTranscript } from "@/components/theatre/round-transcript";
 import { StoryPublishPanel } from "@/components/theatre/story-publish-panel";
 import { TheatreSkeleton } from "@/components/theatre/theatre-skeleton";
@@ -944,40 +945,15 @@ export default function TheatrePage() {
               )}
             </div>
           {motionOpen && !motionPending && (
-            <form
+            <MotionForm
+              countries={detail.countries}
+              country={motionCountry}
+              onCountryChange={setMotionCountry}
+              reason={motionReason}
+              onReasonChange={setMotionReason}
+              error={motionError}
               onSubmit={submitMotion}
-              className="mt-4 flex flex-wrap items-end gap-3 border-t border-edge pt-4"
-            >
-              <label className="text-sm">
-                <span className="mb-1 block text-xs text-fg-muted">Pays visé</span>
-                <SelectField
-                  value={motionCountry}
-                  onChange={(e) => setMotionCountry(e.target.value)}
-                  required
-                >
-                  <option value="">— choisir —</option>
-                  {detail.countries.map((c) => (
-                    <option key={c} value={c}>
-                      {speakerMeta(c).label}
-                    </option>
-                  ))}
-                </SelectField>
-              </label>
-              <TextInput
-                value={motionReason}
-                onChange={(e) => setMotionReason(e.target.value)}
-                placeholder="Pourquoi ? (tout le monde le verra)"
-                className="min-w-64 flex-1"
-              />
-              <button
-                type="submit"
-                disabled={!motionCountry}
-                className="cursor-pointer rounded-md border border-bad/60 px-4 py-2 text-sm font-medium text-bad transition-colors hover:bg-bad/10 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Déposer la motion
-              </button>
-              {motionError && <span className="text-xs text-bad">{motionError}</span>}
-            </form>
+            />
           )}
           {decree && (
             <div className="mt-4 grid gap-3 border-t border-edge pt-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)_auto]">
