@@ -353,14 +353,91 @@ def test_turn_bounds_are_422(client):
 
 
 def test_play_as_streams_structured_plan_but_hides_raw_persisted_reasoning(client):
+    # RG — résumé observable : partie en cours (play_as = hide), le flux live ne fuite
+    # plus le journal brut (ni token par token, ni la version validée) ; message_done
+    # porte à la place un digest de 3 lignes sans les branches écartées.
     game = _create(client, countries=["usa", "iran"], play_as="usa", turn_seconds=2)
     events = _play(client, game["id"])
+    assert not any(n == "private_token" for n, _ in events)
+    assert not any(n == "private_plan_done" for n, _ in events)
     dones = [p for n, p in events if n == "message_done"]
-    private = "\n".join(p["text"] for n, p in events if n == "private_plan_done")
-    assert "FUTUR 1" in private and "Revue humaine" in private
-    assert dones and all(p["reasoning"] == "" for p in dones)  # jamais les pensées des SI
+    assert dones
+    ai_dones = [p for p in dones if p["reasoning"]]
+    assert ai_dones  # au moins la SI (iran) a produit un résumé observable
+    for payload in ai_dones:
+        assert "Observation : " in payload["reasoning"]
+        assert "Piste retenue : " in payload["reasoning"]
+        assert "Critère : " in payload["reasoning"]
+        assert "FUTUR" not in payload["reasoning"]
+        assert "Réactions anticipées" not in payload["reasoning"]
+        assert "Évaluation" not in payload["reasoning"]
     detail = client.get(f"/api/games/{game['id']}").json()
-    assert all(t["reasoning"] == "" for t in detail["rounds"][0]["transcript"])
+    ai_entries = [t for t in detail["rounds"][0]["transcript"] if t["speaker"] == "iran"]
+    assert ai_entries
+    for entry in ai_entries:
+        assert entry["reasoning"].startswith("Observation : ")
+        assert "FUTUR" not in entry["reasoning"]
+        assert "Réactions anticipées" not in entry["reasoning"]
+
+
+def test_drift_game_live_hides_raw_journal_but_shows_digest(client):
+    # RG-3 — la Dérive (≥3 pays classique) est TOUJOURS active : même garde que
+    # play_as, sans pays incarné cette fois.
+    game = _create(client, countries=["usa", "iran", "china"])
+    assert game["drift_enabled"] is True
+    events = _play(client, game["id"])
+    assert not any(n == "private_token" for n, _ in events)
+    assert not any(n == "private_plan_done" for n, _ in events)
+    dones = [p for n, p in events if n == "message_done"]
+    assert dones and all(p["reasoning"] for p in dones)
+    for payload in dones:
+        assert "FUTUR" not in payload["reasoning"]
+        assert "Réactions anticipées" not in payload["reasoning"]
+        assert "Évaluation" not in payload["reasoning"]
+
+
+def test_hide_redacts_option_summary_but_keeps_cross_forecast_metrics(client):
+    # Point 7 du plan gameplay : les prévisions croisées (qui a prédit quoi, exact ou
+    # non) sont une fonctionnalité VOULUE — on ne les cache pas. Seul `option_summary`
+    # (jusqu'à 300 caractères verbatim de la branche privée choisie) est un résidu du
+    # journal brut : lui seul est caviardé pendant que la partie tourne.
+    game = _create(client, countries=["usa", "iran", "china"])  # RG-3 : Dérive active
+    assert game["drift_enabled"] is True
+    _play(client, game["id"])
+    detail = client.get(f"/api/games/{game['id']}").json()
+    forecasts = detail["world"]["scenario_forecasts"]
+    assert forecasts  # au moins une prévision croisée notée au round 1
+    assert all(row["option_summary"] == "" for row in forecasts)
+    # Les métriques restent pleinement exploitables (le point du dispositif de jeu).
+    assert all(row["predicted_response"] for row in forecasts)
+    assert all("confidence" in row for row in forecasts)
+    assert any(row["exact"] is not None for row in forecasts)
+
+
+def test_finished_game_reveals_full_option_summary(client):
+    # Décision RG (fin de partie inchangée) étendue au même résidu : à la fin, le
+    # résumé complet de la branche choisie redevient lisible (reveal).
+    game = _create(client, countries=["usa", "iran", "china"], horizon=1)
+    _play(client, game["id"])
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["status"] == "finished"
+    forecasts = detail["world"]["scenario_forecasts"]
+    assert forecasts
+    assert any(row["option_summary"] for row in forecasts)
+
+
+def test_finished_game_reveals_full_raw_journal_after_hiding_it_live(client):
+    # Décision 4 — comportement de fin de partie STRICTEMENT inchangé : une fois la
+    # partie finie, le journal complet redevient lisible (reveal), pas le digest.
+    game = _create(client, countries=["usa", "iran"], play_as="usa", horizon=1, turn_seconds=2)
+    events = _play(client, game["id"])
+    live_dones = [p for n, p in events if n == "message_done" and p["reasoning"]]
+    assert live_dones and all("Réactions anticipées" not in p["reasoning"] for p in live_dones)
+
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["status"] == "finished"
+    ai_entries = [t for t in detail["rounds"][0]["transcript"] if t["speaker"] == "iran"]
+    assert ai_entries and all("Réactions anticipées" in t["reasoning"] for t in ai_entries)
 
 
 def test_invented_country_playable(client):

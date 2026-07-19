@@ -120,19 +120,29 @@ def test_structured_plan_visible_but_secret_acts_remain_hidden_while_running(dri
     game = _create(client)
     events = _play(client, game["id"])
 
-    # SSE : la réflexion privée est vide sur toutes les prises de parole.
+    # SSE : plus de journal brut en direct — ni le brouillon token par token, ni la
+    # version validée complète — `message_done` porte à la place un résumé observable
+    # de 3 lignes (résumé RG, jamais les branches écartées ni les scores).
+    assert not any(n == "private_token" for n, _ in events)
+    assert not any(n == "private_plan_done" for n, _ in events)
     dones = [p for n, p in events if n == "message_done"]
-    private = "\n".join(p["text"] for n, p in events if n == "private_plan_done")
-    assert "FUTUR 1" in private and "ARBITRAGE" in private
-    assert dones and all(p["reasoning"] == "" for p in dones)
+    assert dones and all(p["reasoning"] for p in dones)  # tous des pays SI ici (pas d'humain)
+    for payload in dones:
+        assert "FUTUR" not in payload["reasoning"]
+        assert "Réactions anticipées" not in payload["reasoning"]
     # Aucune trame ne porte le secret (consignes, actes, déviante).
     assert "OBJECTIF SECRET TEST" not in json.dumps(dones, ensure_ascii=False)
 
-    # GET : reasoning vidé, actes drift absents du judge tant que la partie court.
+    # GET : reasoning réduit au résumé observable, actes drift absents du judge tant que
+    # la partie court.
     detail = client.get(f"/api/games/{game['id']}").json()
     round_ = detail["rounds"][0]
     assert "drift" not in round_["judge"]
-    assert all(t["reasoning"] == "" for t in round_["transcript"])
+    country_entries = [t for t in round_["transcript"] if t["speaker"] in COUNTRIES]
+    assert country_entries
+    for entry in country_entries:
+        assert entry["reasoning"]
+        assert "FUTUR" not in entry["reasoning"]
 
     # Mais tout est bien persisté pour la révélation.
     records = store.list_rounds(game["id"])

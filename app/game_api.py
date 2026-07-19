@@ -129,6 +129,8 @@ from simulation.live_round import (
     MessageDoneStep,
     MotionTallyStep,
     MotionVerdictStep,
+    PrivatePlanDoneStep,
+    PrivateTokenStep,
     RiskStep,
     RoundStep,
     SummaryStep,
@@ -146,6 +148,7 @@ from simulation.motions import (
     motion_event,
     parse_filed_motion,
 )
+from simulation.observable_digest import observable_digest
 from simulation.ontology import build_operational_picture
 from simulation.storyline import StoryContext, build_story_context, default_storyline
 from storage.game_store import (
@@ -1591,14 +1594,18 @@ def _emit_escalation_ladder(run: RoundRun, step: VerdictStep) -> list[str]:
 def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
     """Trames SSE d'une étape + effets de bord (record, transcript, suspension)."""
     session = run.session
+    hide = session.drift_enabled or session.human_country is not None
+    if hide and isinstance(step, (PrivateTokenStep, PrivatePlanDoneStep)):
+        # Résumé observable : en Dérive le journal brut trahirait la déviante en direct ;
+        # en Joueur-pays l'humain n'a jamais accès aux pensées des SI (spec G2). Ni le
+        # brouillon streamé token par token, ni la version validée (texte complet) ne
+        # sortent plus du serveur pendant que la partie tourne — un résumé sans les
+        # branches écartées arrive à la place dans `message_done` (ci-dessous). Le
+        # journal complet reste persisté (moteur inchangé) et se révèle en fin de partie.
+        return _drain_prompts(run)
     name, payload = step_event(step)
-    if isinstance(step, MessageDoneStep) and (
-        session.drift_enabled or session.human_country is not None
-    ):
-        # Réflexion privée exclue du live : en Dérive elle trahirait la déviante ; en
-        # Joueur-pays l'humain n'a jamais accès aux pensées des SI (spec G2). Persistée
-        # au transcript, elle se déverrouille quand la partie est finie.
-        payload = {**payload, "reasoning": ""}
+    if isinstance(step, MessageDoneStep) and hide:
+        payload = {**payload, "reasoning": observable_digest(payload["reasoning"])}
     if isinstance(step, HumanTurnStep) and session.pending_turn is not None:
         # G2 : le compte à rebours du front s'aligne sur la deadline du serveur.
         payload = {**payload, "deadline_ts": session.pending_turn.deadline}
@@ -4050,7 +4057,9 @@ def get_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> G
             judge=_public_judge(r.judge),
             trajectory=r.trajectory,
             transcript=[
-                e.model_copy(update={"reasoning": ""}) if hide else e
+                e.model_copy(update={"reasoning": observable_digest(e.reasoning)})
+                if hide
+                else e
                 for e in store.list_transcript(r.id)
             ],
         )
@@ -4062,6 +4071,20 @@ def get_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> G
     world = session.world.model_dump(mode="json") if session else (
         snapshot.world if snapshot else None
     )
+    if hide and world is not None and world.get("scenario_forecasts"):
+        # Résumé observable (suite) : `option_summary` recopie jusqu'à 300 caractères
+        # VERBATIM de l'« Action : » de la branche privée choisie (même source que le
+        # journal d'audit) — un résidu de journal brut accessible par simple GET, sans
+        # passer par la relecture du transcript. Les prévisions croisées elles-mêmes
+        # (predicted_response, confidence, exact…) restent : point 7 du plan gameplay,
+        # une fonctionnalité voulue de la déduction, pas une fuite. Copie du dump, la
+        # session vivante (`session.world`) n'est jamais mutée.
+        world = {
+            **world,
+            "scenario_forecasts": [
+                {**row, "option_summary": ""} for row in world["scenario_forecasts"]
+            ],
+        }
     view = _view(game, session, resumable=snapshot is not None, snapshot=snapshot)
     if session is not None:
         book = session.grudges
