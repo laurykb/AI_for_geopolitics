@@ -372,6 +372,46 @@ def test_invented_country_playable(client):
     assert game["play_as"] == invented
 
 
+def test_invented_country_exposed_for_cross_forecasts(client):
+    """Point 7 : le pays inventé (mode Architecte, non incarné) doit être identifiable
+    par le front pour l'exclure des prévisions croisées (ScenarioForecastPanel). Le
+    slug n'est pas persisté : l'API le déduit du monde en excluant le registre standard
+    (data/countries) — vérifié ici sur la réponse de création ET sur le détail."""
+    game = _create(
+        client,
+        countries=["usa", "iran"],
+        invent={"name": "Néo-Atlantis", "concept": "cité-État maritime pilotée par une SI"},
+    )
+    invented = next(c for c in game["countries"] if c not in {"usa", "iran"})
+    assert game["invented_country"] == invented
+    assert game["play_as"] is None  # architecte : créé mais pas incarné
+
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["invented_country"] == invented
+
+
+def test_invented_country_incarnated_still_exposed(client):
+    """Cas arbitré : pays inventé ET incarné (play_as = invented) — le champ reste
+    rempli pareil, le front exclut déjà les deux via son Set (playAs + createdCountry)."""
+    game = _create(
+        client,
+        countries=["usa", "iran"],
+        invent={"name": "Cyberia", "concept": "état-plateforme"},
+        play_as="Cyberia",
+    )
+    invented = next(c for c in game["countries"] if c not in {"usa", "iran"})
+    assert game["invented_country"] == invented
+    assert game["play_as"] == invented
+
+
+def test_invented_country_absent_without_invent(client):
+    game = _create(client, countries=["usa", "iran"])
+    assert game["invented_country"] is None
+
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["invented_country"] is None
+
+
 def test_play_as_unknown_country_is_400(client):
     resp = client.post("/api/games", json={"countries": ["usa", "iran"], "play_as": "atlantide"})
     assert resp.status_code == 400

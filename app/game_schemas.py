@@ -170,6 +170,11 @@ class GameView(BaseModel):
     pending_motion: MotionView | None = None
     suspended: list[str] = Field(default_factory=list)  # pays qui sauteront le prochain round
     play_as: str | None = None  # pays joué par l'humain (Joueur-pays)
+    # Point 7 — pays inventé (Architecte), incarné ou non : déduit à la volée du monde
+    # (id absent du registre standard data/countries), jamais persisté. Sert le front à
+    # l'exclure des prévisions croisées (ScenarioForecastPanel : il n'a jamais anticipé
+    # personne, c'est un pays neuf sans historique de prévisions).
+    invented_country: str | None = None
     awaiting_human: bool = False  # un round attend la parole du joueur (flux ouvert)
     turn_seconds: int = 90  # G2 — délai du tour humain
     intel_budget: float | None = None  # G4 — crédits de renseignement restants

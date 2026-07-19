@@ -1192,7 +1192,11 @@ export default function TheatrePage() {
           {/* Budget de surface (docs/PRINCIPE_SIMPLICITE.md) : casting des modèles = jargon moteur,
               réservé au mode Expert. La façade garde carte + pastilles + échéances + intrigue. */}
           {showEngine && <ModelCastPanel cast={detail?.model_cast} />}
-          <ScenarioForecastPanel world={detail?.world} playAs={detail?.play_as ?? null} />
+          <ScenarioForecastPanel
+            world={detail?.world}
+            playAs={detail?.play_as ?? null}
+            createdCountry={detail?.invented_country ?? null}
+          />
           {(round.storyline || detail?.storyline) && (
             <p className="mt-2 text-xs italic text-fg-faint">
               Intrigue de la partie : {round.storyline ?? detail?.storyline}

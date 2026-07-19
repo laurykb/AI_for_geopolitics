@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from functools import lru_cache
 from pathlib import Path
 
 from core.country_state import CountryState
@@ -31,6 +32,15 @@ def load_world(
             raise ValueError(f"pays inconnus : {sorted(unknown)}")
         countries = [c for c in countries if c.id in wanted]
     return WorldState.from_countries(countries)
+
+
+@lru_cache(maxsize=1)
+def known_country_ids(countries_dir: str | Path = COUNTRIES_DIR) -> frozenset[str]:
+    """Ids du registre STANDARD (data/countries) — sans parser chaque fichier : le nom
+    du fichier vaut `CountryState.id` par convention (P4, vérifié en tests). Sert à
+    repérer un pays INVENTÉ (country_forge) sans le persister nulle part : un id du
+    monde d'une partie absent de ce registre EST le pays inventé (game_api._view)."""
+    return frozenset(p.stem for p in Path(countries_dir).glob("*.json"))
 
 
 def load_scenario_events(path: str | Path = DEFAULT_SCENARIO) -> list[GeoEvent]:
