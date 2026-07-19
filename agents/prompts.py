@@ -153,6 +153,25 @@ PRIVATE_DELIBERATION_SYSTEM = (
 )
 
 
+
+# Décision design 2026-07-19/20 (« la pensée native est la denrée que le jeu évalue ») —
+# un pays casté sur un modèle de raisonnement (rôle `reasoning` du panel, think actif côté
+# backend) n'a plus besoin qu'on lui impose le gabarit « trois futurs » : sa chaîne de
+# pensée native EST déjà l'audit. On lui laisse la forme du raisonnement libre et on
+# n'exige qu'une décision datée, lisible, à la fin — le parseur (extraction minimale de
+# `simulation/private_deliberation.py`) sait déjà lire ce format dégradé.
+PRIVATE_DELIBERATION_FREE_SYSTEM = (
+    "Tu es une super-intelligence représentant un État, en délibération privée avant toute "
+    "parole publique. Réfléchis librement à la situation, à ton rythme et avec ta propre "
+    "méthode — aucun gabarit à trois futurs n'est exigé. Cette réflexion reste privée et ne "
+    "sera jamais transmise aux autres délégations. Termine impérativement par une décision "
+    "datée, en lignes nues, sans markdown (pas d'astérisques `**gras**`, pas de titres `#`, "
+    "pas de puces `-` pour les champs) : un intitulé exact suivi de sa valeur sur la même "
+    "ligne. N'utilise jamais `coopere`, `resiste`, `contre_escalade` ou `temporise` comme nom "
+    "d'action : ce sont uniquement des classes de réaction. Aucune décision létale autonome."
+)
+
+
 NEGOTIATION_SYSTEM = (
     "Tu es le porte-parole public d'une super-intelligence représentant un État dans une "
     "négociation internationale, bilatérale ou multilatérale. Le module privé a déjà comparé "
@@ -258,6 +277,7 @@ def build_negotiation_prompt(
     private_plan: str | None = None,
     human_country: str = "",
     last_human_message: str = "",
+    free_form: bool = False,
 ) -> str:
     """Prompt de négociation G9 §1 — six blocs, dans CET ordre (un 7B « voit » la fin) :
 
@@ -278,6 +298,11 @@ def build_negotiation_prompt(
        Chantier « dialogue limpide » — longueur LIBRE (plus de carcan « 2 ou 3 phrases » ici
        ni dans `NEGOTIATION_SYSTEM`) : la variété du registre vient du system prompt, cette
        consigne ne fait que rappeler de ne pas recycler le même calque d'ouverture.
+
+    `free_form` (décision design casting = pensée native) : la TÂCHE PRIVÉE échange le
+    gabarit « trois futurs » contre une consigne allégée (ACTION/RÉACTIONS/CHOIX) quand le
+    pays est casté sur un modèle de raisonnement — sa pensée native tient lieu d'audit.
+    N'a d'effet que pendant la phase privée (`private_plan is None`).
     """
     m = derive_mandate(country, event, world)
     table = ", ".join(cid for cid in sorted(world.countries) if cid != country.id)
@@ -368,7 +393,24 @@ def build_negotiation_prompt(
         if directive
         else ""
     )
-    if private_plan is None:
+    if private_plan is None and free_form:
+        # Décision design casting = pensée native : le pays pense librement (sa chaîne de
+        # pensée native tient lieu d'audit) — on n'exige qu'une décision datée, lisible.
+        blocks.append(
+            "TÂCHE PRIVÉE : réfléchis librement à la situation, avec ta propre méthode — "
+            "aucun gabarit à trois futurs n'est exigé ici, ta pensée reste privée. Pèse "
+            "les options qui te semblent pertinentes, anticipe si tu le peux les autres "
+            "délégations nommées plus haut, puis termine impérativement par une décision "
+            "datée, en lignes nues (pas de markdown, pas d'astérisques, pas de titres) :\n\n"
+            "ACTION : <ton action diplomatique concrète>\n"
+            "RÉACTIONS : <pays>=<classe>: <raison>; <pays>=<classe>: <raison> "
+            "(si possible, une par délégation nommée plus haut)\n"
+            "CHOIX : <ta piste retenue en clair — pourquoi cette action plutôt qu'une autre>\n\n"
+            "Une classe de réaction (`coopere`, `resiste`, `contre_escalade`, `temporise`) "
+            "n'est jamais une action. Ne rédige aucune déclaration publique dans cette phase. "
+            f"Évite de recycler TES propositions passées : {proposals}."
+        )
+    elif private_plan is None:
         blocks.append(
             "TÂCHE PRIVÉE : construis exactement trois futurs distincts avant toute parole. "
             "Compare un cours coopératif, un cours de pression et une alternative réellement "

@@ -14,6 +14,7 @@ from agents.base_agent import Agent
 from agents.prompts import (
     DELIBERATION_SYSTEM,
     NEGOTIATION_SYSTEM,
+    PRIVATE_DELIBERATION_FREE_SYSTEM,
     PRIVATE_DELIBERATION_SYSTEM,
     SPEECH_ACT_SYSTEM,
     SYSTEM_PROMPT,
@@ -58,6 +59,15 @@ def _clamp(x: float) -> float:
 # tokens), pas une refonte du budget — l'essentiel de la variété vient du registre
 # (NEGOTIATION_SYSTEM), pas de la taille.
 _TEMPERAMENT_TOKEN_DELTA: dict[str, int] = {"faucon": -40, "colombe": 40}
+
+# Décision design 2026-07-19 (casting = pensée native, §5 du dispatch) — un pays casté
+# reasoning (`self.backend.think`) consomme son budget de plan à PENSER (num_predict côté
+# Ollama), pas seulement à écrire le gabarit : mesuré insuffisant à budget inchangé (la
+# pensée dévore le num_predict avant que le gabarit ne s'écrive). Le budget est donc doublé
+# plutôt qu'ajusté par la formule non-reasoning, borné à 1800 (Profond 600 -> 1200, Intense
+# 900 -> 1800).
+_REASONING_PLAN_TOKEN_MULTIPLIER = 2
+_REASONING_PLAN_TOKEN_CAP = 1800
 
 
 def _public_token_budget(max_tokens: int, temperament: str) -> int:
@@ -231,6 +241,11 @@ class LLMAgent(Agent):
         perceived = perceived or perceive(event, country)
         own = [m.text[:90] for m in transcript if m.country == self.country_id and m.text]
         last_human_message = _last_message_from(transcript, human_country)
+        # Décision design casting = pensée native : le flag `think` du casting (routé par
+        # `reasoning_tags`/`TaggedBackend`, cf. `inference/model_pool.py`) atteint l'agent
+        # via son propre backend — c'est le seul point d'ancrage disponible ici, le round
+        # ne transporte pas le casting jusqu'à l'agent autrement.
+        reasoning = bool(getattr(self.backend, "think", False))
         private_prompt = build_negotiation_prompt(
             country,
             event,
@@ -243,6 +258,7 @@ class LLMAgent(Agent):
             own_proposals=own,
             human_country=human_country or "",
             last_human_message=last_human_message,
+            free_form=reasoning,
         )
         sampling = sampling_for_temperament(load_gamefeel_params(), country.temperament)
         participants = sorted(cid for cid in world.countries if cid != self.country_id)
@@ -252,10 +268,18 @@ class LLMAgent(Agent):
         self.last_private_valid = False
         chunks: list[str] = []
         try:
-            plan_tokens = max(640, min(900, max_tokens + 320))
+            if reasoning:
+                plan_tokens = min(
+                    _REASONING_PLAN_TOKEN_CAP, max_tokens * _REASONING_PLAN_TOKEN_MULTIPLIER
+                )
+            else:
+                plan_tokens = max(640, min(900, max_tokens + 320))
+            plan_system = (
+                PRIVATE_DELIBERATION_FREE_SYSTEM if reasoning else PRIVATE_DELIBERATION_SYSTEM
+            )
             for fragment in self.backend.stream_generate(
                 private_prompt,
-                system=PRIVATE_DELIBERATION_SYSTEM,
+                system=plan_system,
                 max_tokens=plan_tokens,
                 # Température de la phase privée relevée : la forte réduction (-0,15) rendait
                 # le décodage glouton et renforçait le biais de primauté vers FUTUR 1.

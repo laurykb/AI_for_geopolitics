@@ -66,6 +66,7 @@ from core.world_state import WorldState
 from inference.backend import InferenceBackend
 from inference.capturing_backend import CapturedPrompt, CapturingBackend
 from inference.model_pool import routed_backends
+from inference.ollama_backend import DEFAULT_MODEL as _OLLAMA_DEFAULT_MODEL
 from inference.ollama_backend import OllamaBackend
 from market import flash as flash_mod
 from market.engine import MarketEngine
@@ -140,7 +141,7 @@ from simulation.live_round import (
     run_negotiation_round,
 )
 from simulation.loader import known_country_ids, load_world
-from simulation.model_cast import prepare_model_cast
+from simulation.model_cast import ModelCastRequest, ModelCastState, prepare_model_cast
 from simulation.motions import (
     HUMAN_FILER,
     MOTION_CAPABILITY_NOTE,
@@ -451,6 +452,49 @@ def _build_cast(
             wrap("judge", "judge", cast.judge_model if cast is not None else "")
         ),
     )
+
+
+# Décision design 2026-07-19 (« la pensée native est la denrée que le jeu évalue ») : sans
+# casting explicite, un pays incarne par défaut un modèle de raisonnement — le Game Master
+# et le juge restent sur le backend générique historique (`OllamaBackend.DEFAULT_MODEL`,
+# mistral, think coupé pour eux par design). Échappatoire réservée aux tests/smoke qui
+# valident le MOTEUR plutôt que le casting (ex. `scripts/smoke_theatre_mistral.py`) : ce
+# script teste le théâtre, pas la politique de casting, et doit rester rapide sur mistral
+# pour tous les rôles — couture la plus simple qui préserve les deux : produit = reasoning
+# par défaut, smoke = mistral explicite via cette garde documentée.
+_DEFAULT_REASONING_TAG = "deepseek-r1:7b"
+_ALLOW_GENERALIST_CAST_ENV = "GAME_ALLOW_GENERALIST_CAST"
+
+
+def _default_reasoning_cast(
+    world: WorldState, human_country: str | None, game_id: str
+) -> ModelCastState | None:
+    """Casting implicite (aucun `model_cast` dans la requête) : pays -> deepseek-r1:7b,
+    GM/juge -> mistral. Retourne None si l'un des deux modèles n'est pas installé (repli
+    silencieux sur le backend unique historique — ne casse jamais la création de partie
+    hors-ligne/CI sans Ollama)."""
+
+    ai_countries = [cid for cid in world.countries if cid != human_country]
+    if not ai_countries:
+        return None
+    try:
+        # `ModelCastRequest.assignments` est plafonné à 32 entrées (garde-fou lobby) : un
+        # roster complet (33+ pays, ex. tests moteur sans filtre) dépasse ce plafond en
+        # stratégie manuelle — repli silencieux sur le backend unique historique, comme
+        # un digest manquant. La construction de la requête doit donc rester DANS ce
+        # bloc try (une ValidationError Pydantic EST une ValueError, cf. héritage v2).
+        request = ModelCastRequest(
+            strategy="manual",
+            models=[_DEFAULT_REASONING_TAG, _OLLAMA_DEFAULT_MODEL],
+            assignments=dict.fromkeys(ai_countries, _DEFAULT_REASONING_TAG),
+            game_master_model=_OLLAMA_DEFAULT_MODEL,
+            judge_model=_OLLAMA_DEFAULT_MODEL,
+        )
+        return prepare_model_cast(
+            request, list(world.countries), human_country=human_country, game_id=game_id
+        )
+    except ValueError:
+        return None
 
 
 def _rebuild_session(
@@ -2560,6 +2604,11 @@ def create_game(
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+    elif body.mode in ("classic", "campaign") and os.getenv(_ALLOW_GENERALIST_CAST_ENV, "") != "1":
+        # Aucun casting explicite : voir `_default_reasoning_cast` ci-dessus. Silencieux
+        # si deepseek-r1:7b/mistral ne sont pas installés (panel/Ollama hors ligne) —
+        # `world.model_cast` reste None, comportement historique inchangé.
+        world.model_cast = _default_reasoning_cast(world, play_as, game_id)
     # RG-1 — `ranked` ne pilote plus de LP : c'est le drapeau « tentative qui COMPTE »
     # du Défi du jour (une tentative classée / jour ; un re-run libre ne rescore pas) et
     # la garantie d'une table équilibrée pour cette tentative. Inerte hors défi.

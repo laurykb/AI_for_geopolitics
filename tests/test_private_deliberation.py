@@ -485,3 +485,65 @@ def test_minimal_extraction_never_selects_a_padded_branch_even_if_choix_names_it
         "proposer une inspection conjointe du site",
         "exiger un retrait immédiat des vedettes",
     )
+
+
+# --- Délibération libre (décision design casting = pensée native, §8) -----------
+# Format dégradé attendu du system prompt PRIVATE_DELIBERATION_FREE_SYSTEM : pensée
+# libre en prose, puis une décision datée ACTION/RÉACTIONS/CHOIX — sans section FUTUR.
+
+
+def test_free_form_action_reactions_choix_parses_without_futur_sections():
+    raw = (
+        "Le Brésil montre des signes d'hésitation depuis le dernier échange ; sa posture "
+        "publique reste ambiguë alors que ses actes suggèrent un rapprochement discret "
+        "avec l'Iran. Je pense que la fenêtre pour une médiation crédible se referme vite "
+        "si personne ne bouge en premier.\n\n"
+        "ACTION : proposer une médiation multilatérale sous supervision de l'ONU\n"
+        "RÉACTIONS : iran=coopere: réduit son isolement diplomatique; usa=resiste: "
+        "craint de perdre l'initiative\n"
+        "CHOIX : la médiation limite le risque d'escalade tout en préservant notre "
+        "crédibilité auprès des deux camps\n"
+    )
+    plan = parse_private_plan(raw, ["iran", "usa"])
+    assert plan is not None
+    assert plan.fallback_used is False
+    assert plan.minimal_extraction is True
+    assert plan.selected.course_of_action == (
+        "proposer une médiation multilatérale sous supervision de l'ONU"
+    )
+    forecasts = {f.country: f.response for f in plan.selected.forecasts}
+    assert forecasts["iran"] == "coopere"
+    assert forecasts["usa"] == "resiste"
+    assert "médiation limite le risque d'escalade" in plan.selection_criterion
+    assert len(plan.branches) == 3
+
+
+def test_free_form_action_field_takes_priority_over_incidental_prose_sentences():
+    # Une phrase "je propose…" traîne dans la pensée libre AVANT le champ ACTION explicite
+    # : le champ étiqueté doit primer sur la phrase devinée (c'est la décision réelle).
+    raw = (
+        "Je propose d'abord d'écouter les autres avant de me prononcer, mais en y "
+        "réfléchissant davantage cette option est trop passive pour la situation.\n\n"
+        "ACTION : exiger un cessez-le-feu vérifiable sous 24 heures\n"
+        "CHOIX : seule une exigence claire et datée a une chance d'être respectée\n"
+    )
+    plan = parse_private_plan(raw, ["iran"])
+    assert plan is not None
+    assert plan.selected.course_of_action == "exiger un cessez-le-feu vérifiable sous 24 heures"
+
+
+def test_free_form_digest_is_non_empty_and_readable():
+    # Le résumé observable doit rester lisible sur un plan issu du format dégradé — même
+    # avec une seule branche réelle (les deux autres sont des compléments marqués).
+    from simulation.observable_digest import observable_digest
+
+    raw = (
+        "ACTION : renforcer la coopération technique avec la coalition régionale\n"
+        "CHOIX : cette option consolide nos alliances sans provoquer l'escalade\n"
+    )
+    plan = parse_private_plan(raw, ["iran"])
+    assert plan is not None
+    digest = observable_digest(plan.audit_summary())
+    assert digest != ""
+    assert "Piste retenue : renforcer la coopération technique" in digest
+    assert "Critère : cette option consolide nos alliances" in digest
