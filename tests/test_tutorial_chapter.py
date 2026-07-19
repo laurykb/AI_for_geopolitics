@@ -72,6 +72,22 @@ def test_start_tutorial_is_a_beginner_game_and_flag_is_exposed(client_store):
     assert body["horizon"] == 3
     # Imperdable : la difficulté Débutant plafonne l'amplitude des verdicts.
     assert store.get_game(body["id"]).difficulty == "beginner"
+    assert body["play_as"] == "france"  # le tutoriel fait réellement parler et voter
+
+
+def test_tutorial_keeps_the_guest_owner_and_human_delegation(client_store):
+    client, store = client_store
+    game = client.post(
+        f"/api/campaign/{TUTORIAL_CHAPTER}/start",
+        json={"owner_id": "guest_demo", "play_as": "france"},
+    )
+
+    assert game.status_code == 201
+    body = game.json()
+    record = store.get_game(body["id"])
+    assert record.owner_id == "guest_demo"
+    assert body["play_as"] == "france"
+    assert body["role"] == "player"
 
 
 def test_scripted_crisis_advances_one_event_per_round(client_store):

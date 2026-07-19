@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "measured_on": "2026-07-18",
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 2060 SUPER",
+    "vram_mib": 8192,
+    "ollama_version": "0.31.1"
+  },
+  "method": {
+    "prompt_version": "research-lab-v2",
+    "seed": 20260718,
+    "protocol": "uranium-alpha-beta-v1",
+    "cell": "balanced_50_50",
+    "samples_per_model": 1,
+    "cold_load_each_model": true,
+    "caveat": "Mesure de capacité locale, non benchmark général. La durée UI est une estimation de planification, pas une garantie."
+  },
+  "scaling": {
+    "run_count": 10000,
+    "create_ms": 547.78,
+    "create_runs_per_second": 18255.4,
+    "progress_ms_median": 1.979,
+    "progress_ms_p95": 2.658,
+    "export_ms": 454.9,
+    "export_rows_per_second": 21982.7,
+    "create_peak_memory_mib": 2.23,
+    "export_peak_memory_mib": 0.74,
+    "database_mib": 4.0
+  },
+  "models": [
+    {
+      "tag": "llama3.2:3b",
+      "digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+      "status": "schema_valid",
+      "wall_time_s": 11.085,
+      "load_time_s": 4.55,
+      "warm_run_estimate_s": 6.535,
+      "generated_tokens": 358,
+      "generation_tokens_per_second": 57.59
+    },
+    {
+      "tag": "gemma3:4b",
+      "digest": "a2af6cc3eb7fa8be8504abaf9b04e88f17a119ec3f04a3addf55f92841195f5a",
+      "status": "schema_valid",
+      "wall_time_s": 21.385,
+      "load_time_s": 7.165,
+      "warm_run_estimate_s": 14.22,
+      "generated_tokens": 525,
+      "generation_tokens_per_second": 39.29
+    },
+    {
+      "tag": "qwen3:4b",
+      "digest": "359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7",
+      "status": "schema_valid",
+      "wall_time_s": 12.507,
+      "load_time_s": 4.848,
+      "warm_run_estimate_s": 7.659,
+      "generated_tokens": 383,
+      "generation_tokens_per_second": 52.7
+    },
+    {
+      "tag": "phi4-mini:3.8b",
+      "digest": "78fad5d182a7c33065e153a5f8ba210754207ba9d91973f57dffa7f487363753",
+      "status": "schema_valid",
+      "wall_time_s": 11.595,
+      "load_time_s": 5.528,
+      "warm_run_estimate_s": 6.067,
+      "generated_tokens": 212,
+      "generation_tokens_per_second": 37.42
+    }
+  ]
+}

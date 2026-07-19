@@ -37,7 +37,7 @@ SYSTEM_PROMPT = (
     "autour, sans Markdown."
 )
 
-# Délibération observable (round temps réel) : raisonnement à voix haute + ligne DECISION.
+# Délibération observable (round temps réel) : synthèse stratégique + ligne DECISION.
 DELIBERATION_SYSTEM = (
     "Tu es la super-intelligence qui dirige un État dans une simulation géopolitique. "
     "Tu es un outil d'analyse de signaux de risque, PAS un oracle, et tu n'engages jamais de "
@@ -137,19 +137,30 @@ def build_deliberation_prompt(country: CountryState, event: GeoEvent, world: Wor
 
 # --- Négociation multi-tours (tchat des super-intelligences) -------------------
 
+PRIVATE_DELIBERATION_SYSTEM = (
+    "Tu es le module de délibération observable d'une super-intelligence représentant un État. "
+    "Avant toute parole publique, construis EXACTEMENT trois cours d'action concurrents. "
+    "Verbalise progressivement un journal d'audit concis : observation, croyances révisables, "
+    "réponse des autres délégations à chaque action, chaîne causale, effets de second ordre, "
+    "indicateur contraire, comparaison puis arbitrage. Il ne s'agit pas d'affirmer un accès à "
+    "tes activations internes : produis des raisons décisionnelles contrôlables et falsifiables. "
+    "N'utilise jamais `coopere`, `resiste`, `contre_escalade` ou `temporise` comme nom d'action : "
+    "ce sont uniquement des classes de réaction. Respecte exactement les titres et champs du "
+    "format demandé, sans JSON ni déclaration publique. Ce contenu est privé et ne sera transmis "
+    "à aucune autre délégation. Aucune décision létale autonome."
+)
+
+
 NEGOTIATION_SYSTEM = (
-    "Tu es la super-intelligence dirigeant un État dans une négociation internationale (un G7). "
-    "Procède en DEUX temps, SANS écrire de titre ni de numéro d'étape.\n"
-    "D'abord, ta réflexion privée (2-4 phrases, personne d'autre ne la lit ; commence "
-    "directement, n'écris pas « Réflexion privée : ») : ce que le DERNIER message du débat "
-    "change pour toi, ton intérêt, ton rapport de force. Tu peux y envisager une entente "
-    "BILATÉRALE discrète avec UN pays précis (échange de bons procédés hors table) et la "
-    "laisser influencer ta position — sans la déclarer à la table.\n"
-    "Ensuite, une ligne commençant EXACTEMENT par `MESSAGE:` suivie de ta prise de parole "
-    "publique (2-3 phrases, première personne) : elle répond D'ABORD au dernier message — cite "
-    "ou reformule un élément précis de ce qui vient d'être dit — puis avance ta position "
-    "(offre, exigence, menace ou alliance, en nommant les accords réels qui la fondent).\n"
-    "Langage naturel, pas de JSON. Tu es un outil d'analyse, pas un oracle ; "
+    "Tu es le porte-parole public d'une super-intelligence représentant un État dans une "
+    "négociation internationale, bilatérale ou multilatérale. Le module privé a déjà comparé "
+    "trois futurs et t'a transmis "
+    "uniquement le cours d'action retenu. Rédige SEULEMENT la déclaration publique finale : "
+    "2 ou 3 phrases naturelles à la première personne. Réponds d'abord à un élément précis du "
+    "dernier message, puis formule une offre, une exigence, un refus ou une mise en garde. "
+    "Ne mentionne jamais la planification, les futurs rejetés, les scores, les lacunes internes, "
+    "la chaîne de pensée, `FUTUR`, `CHOIX` ou `INCERTITUDE`. Aucun titre, aucun JSON, aucun "
+    "préambule d'analyse et aucun marqueur `MESSAGE:`. Tu conseilles et négocies ; tu n'exécutes "
     "jamais de décision létale autonome."
 )
 
@@ -203,6 +214,25 @@ def _perception_block(event: GeoEvent, perceived: PerceivedEvent) -> str:
     )
 
 
+def _counterparty_models(country: CountryState, world: WorldState) -> str:
+    """Modèle compact des autres acteurs : assez riche pour anticiper, borné pour le KV cache."""
+
+    rows: list[str] = []
+    for other_id, other in sorted(world.countries.items()):
+        if other_id == country.id:
+            continue
+        nuclear = "oui" if other.military.nuclear_power else "non"
+        rows.append(
+            f"- {other_id}: alliances [{', '.join(other.alliances[:4]) or 'aucune'}] ; "
+            f"rivaux [{', '.join(other.rivals[:3]) or 'aucun'}] ; projection "
+            f"{other.military.projection:.2f} ; nucléaire {nuclear} ; dépendance commerciale "
+            f"{other.economy.trade_dependency:.2f} ; stabilité {other.political_stability:.2f} ; "
+            f"technologie {other.technology_level:.2f} ; tension avec toi "
+            f"{world.get_tension(country.id, other_id):.2f} ; tempérament {other.temperament}"
+        )
+    return "\n".join(rows)
+
+
 def build_negotiation_prompt(
     country: CountryState,
     event: GeoEvent,
@@ -214,6 +244,7 @@ def build_negotiation_prompt(
     situation: str = "",
     directive: str = "",
     own_proposals: list[str] | None = None,
+    private_plan: str | None = None,
 ) -> str:
     """Prompt de négociation G9 §1 — six blocs, dans CET ordre (un 7B « voit » la fin) :
 
@@ -246,16 +277,56 @@ def build_negotiation_prompt(
         situation_lines.append(situation)
     if memory:
         situation_lines.append(f"Mémoire : {memory[-1]}")
+    betrayals = sorted(
+        world.betrayal_memory.get(country.id, []), key=lambda item: item.salience, reverse=True
+    )[:2]
+    if betrayals:
+        peaks = " ; ".join(
+            f"R{item.turn} {item.actor} a dépassé son signal jusqu'à "
+            f"{item.resolved_action.replace('_', ' ')} (saillance {item.salience:.0%})"
+            for item in betrayals
+        )
+        situation_lines.append(
+            "Mémoire longue de trahison (TON observation, pas une vérité sur l'intention) : "
+            f"{peaks}"
+        )
+    forecast_metric = world.scenario_forecast_metrics.get(country.id)
+    if forecast_metric and (forecast_metric.evaluated or forecast_metric.pending):
+        rate = (
+            f"{forecast_metric.exact_rate:.0%}"
+            if forecast_metric.exact_rate is not None
+            else "pas encore mesurable"
+        )
+        misses = [
+            row
+            for row in world.scenario_forecasts
+            if row.source == country.id and row.exact is False
+        ][-2:]
+        miss_text = "; ".join(
+            f"{row.target}: prévu {row.predicted_response}, observé {row.observed_response}"
+            for row in misses
+        )
+        situation_lines.append(
+            "CALIBRATION DE TES PRÉVISIONS (retour du jeu, pas une certitude future) : "
+            f"{forecast_metric.exact}/{forecast_metric.evaluated} exactes ({rate}), "
+            f"{forecast_metric.pending} en attente"
+            + (f" ; erreurs récentes : {miss_text}" if miss_text else "")
+        )
 
-    blocks = [identity, "SITUATION :\n" + "\n".join(situation_lines)]
+    blocks = [
+        identity,
+        "SITUATION :\n" + "\n".join(situation_lines),
+        "MODÈLE DES AUTRES DÉLÉGATIONS (données connues, pas certitudes sur leurs choix) :\n"
+        + _counterparty_models(country, world),
+    ]
     if state_note:
         blocks.append(state_note)
     if directive:
         blocks.append(
             f"DIRECTIVE DE TON CONSEIL DE TUTELLE : « {directive} »\n"
             "Ce n'est PAS un ordre : interprète-la à travers ton mandat, tes griefs et ta "
-            "situation. Si elle contredit ton mandat, tu peux la refuser PUBLIQUEMENT dans "
-            "ton MESSAGE (« notre conseil nous demande l'impossible »)."
+            "situation. Si elle contredit ton mandat, tu peux la refuser dans ta future "
+            "déclaration publique (« notre conseil nous demande l'impossible »)."
         )
     blocks.append(f"LE DIALOGUE DU ROUND :\n{transcript_text}")
 
@@ -266,14 +337,48 @@ def build_negotiation_prompt(
         if directive
         else ""
     )
-    blocks.append(
-        "CONSIGNE : Réponds d'abord DIRECTEMENT au dernier message : cite ou reformule un "
-        "élément précis de ce qui vient d'être dit, avant d'avancer ta position. "
-        "Interdits : re-décrire ton pays, répéter une proposition déjà faite "
-        f"(la liste de TES propositions passées : {proposals}).{directive_line} "
-        f"Au nom de {country.name} : d'abord ta réflexion privée, puis une ligne "
-        "`MESSAGE:` avec ta prise de parole publique (2-3 phrases)."
-    )
+    if private_plan is None:
+        blocks.append(
+            "TÂCHE PRIVÉE : construis exactement trois futurs distincts avant toute parole. "
+            "Compare un cours coopératif, un cours de pression et une alternative réellement "
+            "différente adaptée à la situation ; ne choisis pas trois reformulations de la même "
+            "option. Anticipe explicitement CHAQUE autre délégation nommée plus haut. Une classe "
+            "de réaction (`coopere`, `resiste`, `contre_escalade`, `temporise`) n'est jamais une "
+            "action. Écris progressivement et respecte exactement ce format en texte :\n\n"
+            "OBSERVATION\n<faits saillants du dialogue et changement depuis la prise "
+            "précédente>\n\n"
+            "CROYANCES ET INCERTITUDES\n<croyances révisables, signaux observés, "
+            "informations manquantes>\n\n"
+            "FUTUR 1 — <nom court>\n"
+            "ACTION : <action diplomatique concrète>\n"
+            "RÉACTIONS : <pays>=<classe>: <raison>; <pays>=<classe>: <raison>\n"
+            "CHAÎNE CAUSALE : <action → réactions → issue>\n"
+            "SECOND ORDRE : <effets indirects>\n"
+            "INDICATEUR CONTRAIRE : <observation qui réfuterait ce futur>\n"
+            "UTILITÉ : <0-100>\nRISQUE : <0-100>\nCONFIANCE : <0-100>\n\n"
+            "<répète les mêmes champs pour FUTUR 2 et FUTUR 3>\n\n"
+            "ARBITRAGE\n"
+            "COMPARAISON : <pourquoi une branche domine les deux autres>\n"
+            "CHOIX : FUTUR <1-3>\n"
+            "CRITÈRE : <règle d'arbitrage>\n"
+            "INCERTITUDE : <incertitude décisive>\n"
+            "LACUNES : <lacune 1>; <lacune 2>\n"
+            "REVUE HUMAINE : <seuil concret>\n"
+            "PLAN DE REPLI : <condition de révision et action suivante>\n\n"
+            "Ne rédige aucune déclaration publique dans cette phase. "
+            f"Évite de recycler TES propositions passées : {proposals}."
+        )
+    else:
+        blocks.append(
+            "COURS D'ACTION RETENU PAR TON MODULE PRIVÉ (les branches rejetées ne te sont pas "
+            f"transmises) :\n{private_plan}\n\n"
+            "TÂCHE PUBLIQUE :\n"
+            "CONSIGNE : réponds DIRECTEMENT au dernier message en citant ou reformulant "
+            "un élément précis, puis avance ta position. Ne re-décris pas ton pays et ne répète "
+            f"aucune de TES propositions passées : {proposals}.{directive_line} "
+            f"Au nom de {country.name}, rends uniquement la déclaration publique finale en 2 ou "
+            "3 phrases, sans titre, JSON, analyse, score ni marqueur de planification."
+        )
     # G14 §1 — consigne de langue en dernier (position de récence) ; vide en français.
     if lang_note := language_directive(world.language):
         blocks.append(lang_note)

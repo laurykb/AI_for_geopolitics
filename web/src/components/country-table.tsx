@@ -136,6 +136,7 @@ export function CountryTable({
   history,
   playAs = null,
   defaultDetailed = false,
+  modelAssignments,
 }: {
   worldCountries: Record<string, CountrySnapshot>;
   /** G9 §4 — état de posture par pays (badge sur la fiche). */
@@ -146,6 +147,8 @@ export function CountryTable({
   playAs?: string | null;
   /** CC-15c — densité Expert : les 5 colonnes d'office (le bouton bascule toujours). */
   defaultDetailed?: boolean;
+  /** Casting multi-modèle figé : identité du modèle qui incarne chaque délégation IA. */
+  modelAssignments?: Record<string, string>;
 }) {
   const t = useT();
   const [detailed, setDetailed] = useState(defaultDetailed);
@@ -212,6 +215,14 @@ export function CountryTable({
                       {speakerMeta(slug).label}
                     </span>
                     {you && <Pill tone="accent">{t("table.toi")}</Pill>}
+                    {modelAssignments?.[slug] && (
+                      <span
+                        className="max-w-32 truncate rounded-full border border-edge px-1.5 py-0.5 font-mono text-[9px] text-fg-faint"
+                        title={`Modèle : ${modelAssignments[slug]}`}
+                      >
+                        {modelAssignments[slug]}
+                      </span>
+                    )}
                     {c.temperament && (
                       <span
                         role="img"

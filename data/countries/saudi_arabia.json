@@ -18,7 +18,8 @@
   "alliances": [
     "ArabLeague",
     "BRICS",
-    "GCC"
+    "GCC",
+    "OPEC"
   ],
   "rivals": [
     "iran"
@@ -36,6 +37,7 @@
     "regional_security",
     "containment_of_iran"
   ],
+  "temperament": "opportuniste",
   "memory_summary": "",
   "mandate": {}
 }

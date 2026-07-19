@@ -21,6 +21,7 @@ Injection : `get_backend` (Ollama par défaut, MockBackend en test) et `get_stor
 
 from __future__ import annotations
 
+import copy
 import os
 import re
 import threading
@@ -51,6 +52,7 @@ from app.game_schemas import (
     LibraryView,
     MotionRequest,
     MotionView,
+    MotionVoteRequest,
     PlayRoundRequest,
     PromptRoundView,
     PromptsView,
@@ -63,6 +65,7 @@ from core.events import GeoEvent
 from core.world_state import WorldState
 from inference.backend import InferenceBackend
 from inference.capturing_backend import CapturedPrompt, CapturingBackend
+from inference.model_pool import routed_backends
 from inference.ollama_backend import OllamaBackend
 from market import flash as flash_mod
 from market.engine import MarketEngine
@@ -119,6 +122,7 @@ from simulation.live_round import (
     CommuniqueStep,
     EventStep,
     FlashStep,
+    HumanMotionVoteStep,
     HumanTurnStep,
     MessageDoneStep,
     MotionTallyStep,
@@ -132,6 +136,7 @@ from simulation.live_round import (
     run_negotiation_round,
 )
 from simulation.loader import load_world
+from simulation.model_cast import prepare_model_cast
 from simulation.motions import (
     HUMAN_FILER,
     MOTION_CAPABILITY_NOTE,
@@ -139,6 +144,7 @@ from simulation.motions import (
     motion_event,
     parse_filed_motion,
 )
+from simulation.ontology import build_operational_picture
 from simulation.storyline import StoryContext, build_story_context, default_storyline
 from storage.game_store import (
     CampaignScore,
@@ -209,6 +215,21 @@ class PendingTurn:
     event: threading.Event = field(default_factory=threading.Event)
     text: str = ""
     done: bool = False  # une seule soumission (comme les SI)
+    submission_lock: threading.Lock = field(default_factory=threading.Lock)
+
+
+@dataclass
+class PendingMotionVote:
+    """Bulletin humain en attente. À la deadline, l'abstention par défaut est envoyée
+    au moteur pour que la partie ne puisse jamais rester bloquée."""
+
+    country: str
+    target: str
+    deadline: float
+    event: threading.Event = field(default_factory=threading.Event)
+    vote: str = "abstention"
+    done: bool = False
+    submission_lock: threading.Lock = field(default_factory=threading.Lock)
 
 
 @dataclass
@@ -237,6 +258,7 @@ class GameSession:
     treaties: list[treaty_mod.Treaty] = field(default_factory=list)  # règles ratifiées (M7)
     intel: intel_mod.IntelState = field(default_factory=intel_mod.IntelState.fresh)  # G4
     pending_turn: PendingTurn | None = None  # tour humain en attente (le flux vit)
+    pending_motion_vote: PendingMotionVote | None = None  # bulletin humain en attente
     # G7-c — mode admin : les backends des agents sont enveloppés d'une capture qui
     # pousse chaque prompt complet ici ; drainé/persisté par le round en cours.
     admin: bool = False
@@ -385,13 +407,40 @@ def _build_cast(
     d'une capture étiquetée : les prompts complets (système + contexte) arrivent dans
     le sink de session. Hors admin : backends nus, rien n'est capturé."""
 
-    def wrap(country: str, role: str) -> InferenceBackend:
-        if sink is None:
-            return backend
-        return CapturingBackend(backend, sink, country=country, role=role)
+    cast = world.model_cast
+    tags = (
+        {
+            *cast.assignments.values(),
+            cast.game_master_model,
+            cast.judge_model,
+        }
+        if cast is not None
+        else set()
+    )
+    routes = routed_backends(backend, tags) if tags else {}
 
-    agents = {cid: LLMAgent(cid, wrap(cid, "country")) for cid in world.countries}
-    return agents, GameMasterAgent(wrap("gm", "gm")), JudgeAgent(wrap("judge", "judge"))
+    def wrap(country: str, role: str, model: str = "") -> InferenceBackend:
+        selected = routes.get(model, backend)
+        if sink is None:
+            return selected
+        return CapturingBackend(selected, sink, country=country, role=role)
+
+    agents = {
+        cid: LLMAgent(
+            cid,
+            wrap(cid, "country", cast.assignments.get(cid, "") if cast is not None else ""),
+        )
+        for cid in world.countries
+    }
+    return (
+        agents,
+        GameMasterAgent(
+            wrap("gm", "gm", cast.game_master_model if cast is not None else "")
+        ),
+        JudgeAgent(
+            wrap("judge", "judge", cast.judge_model if cast is not None else "")
+        ),
+    )
 
 
 def _rebuild_session(
@@ -553,16 +602,39 @@ def _authored_fog(spec: HumanFogInput, event: GeoEvent) -> FogScenario:
 
 
 def _view(
-    game: GameRecord, session: GameSession | None, *, resumable: bool = False
+    game: GameRecord,
+    session: GameSession | None,
+    *,
+    resumable: bool = False,
+    snapshot: SessionSnapshot | None = None,
 ) -> GameView:
     pending = session.pending_motion if session else None
+    snapshot_world = snapshot.world if snapshot else {}
+    snapshot_countries = snapshot_world.get("countries", {}) if snapshot_world else {}
+    if game.status is GameStatus.FINISHED:
+        phase = "game_complete"
+    elif session is None:
+        phase = "replay_only"
+    elif session.pending_motion_vote is not None:
+        phase = "awaiting_vote"
+    elif session.pending_turn is not None:
+        phase = "awaiting_player"
+    elif session.lock.locked():
+        phase = "round_running"
+    elif session.world.current_round > 0:
+        phase = "round_complete"
+    else:
+        phase = "ready"
     return GameView(
         id=game.id,
         scenario=game.scenario,
         horizon=game.horizon,
         status=game.status.value,
+        phase=phase,
         created_at=game.created_at,
-        countries=sorted(session.world.countries) if session else [],
+        countries=(
+            sorted(session.world.countries) if session else sorted(snapshot_countries)
+        ),
         live=session is not None,
         resumable=game.status is GameStatus.RUNNING and (session is not None or resumable),
         mode=session.mode if session else game.mode,
@@ -577,8 +649,10 @@ def _view(
             if session and pending
             else None
         ),
-        suspended=sorted(session.suspended) if session else [],
-        play_as=session.human_country if session else None,
+        suspended=(
+            sorted(session.suspended) if session else sorted(snapshot.suspended) if snapshot else []
+        ),
+        play_as=session.human_country if session else snapshot.play_as if snapshot else None,
         awaiting_human=session.pending_turn is not None if session else False,
         turn_seconds=session.turn_seconds if session else 90,
         intel_budget=session.intel.budget if session else None,
@@ -591,7 +665,80 @@ def _view(
         drift_enabled=game.drift_enabled,
         result=game.result,
         language=game.language,
+        model_cast=(
+            session.world.model_cast
+            if session
+            else snapshot.world.get("model_cast") if snapshot else None
+        ),
     )
+
+
+@dataclass
+class RoundCheckpoint:
+    """État mutable à restaurer si le flux meurt avant la persistance du round."""
+
+    world: WorldState
+    clock: SimClock
+    recent: list[str]
+    pending_motion: Motion | None
+    suspended: set[str]
+    treaties: list[treaty_mod.Treaty]
+    intel: intel_mod.IntelState
+    grudges: GrudgeBook
+    deadlines: list[Deadline]
+    pending_directives: dict[str, str]
+    index_history: IndexHistory
+    storyline: str
+    ultimatum: ultimatum_mod.UltimatumState | None
+    free_briefs_used: int
+    free_briefs_round: int
+    prompt_count: int
+
+
+def _checkpoint_session(session: GameSession) -> RoundCheckpoint:
+    return RoundCheckpoint(
+        world=session.world.model_copy(deep=True),
+        clock=copy.deepcopy(session.clock),
+        recent=list(session.recent),
+        pending_motion=copy.deepcopy(session.pending_motion),
+        suspended=set(session.suspended),
+        treaties=copy.deepcopy(session.treaties),
+        intel=session.intel.model_copy(deep=True),
+        grudges=session.grudges.model_copy(deep=True),
+        deadlines=copy.deepcopy(session.deadlines),
+        pending_directives=dict(session.pending_directives),
+        index_history=session.index_history.model_copy(deep=True),
+        storyline=session.storyline,
+        ultimatum=copy.deepcopy(session.ultimatum),
+        free_briefs_used=session.free_briefs_used,
+        free_briefs_round=session.free_briefs_round,
+        prompt_count=len(session.prompt_sink),
+    )
+
+
+def _restore_checkpoint(session: GameSession, checkpoint: RoundCheckpoint | None) -> None:
+    if checkpoint is None:
+        return
+    session.world = checkpoint.world
+    session.clock = checkpoint.clock
+    session.recent = checkpoint.recent
+    session.pending_motion = checkpoint.pending_motion
+    session.suspended = checkpoint.suspended
+    session.treaties = checkpoint.treaties
+    session.intel = checkpoint.intel
+    session.grudges = checkpoint.grudges
+    session.deadlines = checkpoint.deadlines
+    session.pending_directives = checkpoint.pending_directives
+    session.index_history = checkpoint.index_history
+    session.storyline = checkpoint.storyline
+    session.ultimatum = checkpoint.ultimatum
+    session.free_briefs_used = checkpoint.free_briefs_used
+    session.free_briefs_round = checkpoint.free_briefs_round
+    del session.prompt_sink[checkpoint.prompt_count:]
+    session.pending_turn = None
+    session.pending_motion_vote = None
+    for agent in session.agents.values():
+        agent.last_decision = None
 
 
 @dataclass
@@ -618,6 +765,7 @@ class RoundRun:
     directives: dict[str, str] = field(default_factory=dict)  # G8 — appliquées ce round
     refusal_checked: set[str] = field(default_factory=set)  # G8 — un contrôle par pays
     ultimatum_due: bool = False  # G21 — l'échéance est CE round (le juge constate)
+    checkpoint: RoundCheckpoint | None = None
 
 
 def _add_entry(
@@ -1397,6 +1545,8 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
     if isinstance(step, HumanTurnStep) and session.pending_turn is not None:
         # G2 : le compte à rebours du front s'aligne sur la deadline du serveur.
         payload = {**payload, "deadline_ts": session.pending_turn.deadline}
+    elif isinstance(step, HumanMotionVoteStep) and session.pending_motion_vote is not None:
+        payload = {**payload, "deadline_ts": session.pending_motion_vote.deadline}
     frames = [sse_frame(name, payload)]
     if isinstance(step, EventStep):
         run.current_event = step.event
@@ -1968,6 +2118,9 @@ def _finish_game_if_over(run: RoundRun) -> Iterator[str]:
         return
     result = _finalize_game(game, run.session, run.store, forfeit=False)
     yield sse_frame("game_over", result)
+    # Le snapshot suffit à toute relecture. Libérer agents/backends et mémoire du monde
+    # évite une croissance sans borne quand le process héberge beaucoup de parties finies.
+    _sessions.pop(run.game_id, None)
 
 
 def _finish_campaign_if_over(run: RoundRun) -> Iterator[str]:
@@ -2171,27 +2324,51 @@ def _run_stream(run: RoundRun) -> Iterator[str]:
                 session.pending_turn = None
                 step = run.steps.send(turn.text)
                 continue
+            if isinstance(step, HumanMotionVoteStep):
+                ballot = PendingMotionVote(
+                    country=step.country,
+                    target=step.target,
+                    deadline=time.time() + session.turn_seconds,
+                )
+                session.pending_motion_vote = ballot
+                yield from _handle_step(run, step)
+                while not ballot.done and time.time() < ballot.deadline:
+                    remaining = ballot.deadline - time.time()
+                    if ballot.event.wait(timeout=min(15.0, max(0.1, remaining))):
+                        break
+                    if not ballot.done and time.time() < ballot.deadline:
+                        yield ": ping\n\n"
+                session.pending_motion_vote = None
+                step = run.steps.send(ballot.vote)
+                continue
             yield from _handle_step(run, step)
             step = next(run.steps)
     except StopIteration:
         finished = True
     except GeneratorExit:
-        # Client parti en plein round : round abandonné, verrou relâché.
-        session.pending_turn = None
+        # Le round n'a pas atteint son point de commit durable.
+        _restore_checkpoint(session, run.checkpoint)
         session.lock.release()
         raise
     except Exception as exc:  # noqa: BLE001 — la panne est signalée au client avant de fermer
-        yield sse_frame("error", {"detail": str(exc)})
-        session.pending_turn = None
+        _restore_checkpoint(session, run.checkpoint)
         session.lock.release()
+        # Nettoyer avant le yield : une seconde coupure ne peut plus bloquer la partie.
+        yield sse_frame("error", {"detail": str(exc)})
         return
     if finished:
         try:
             yield from _finalize(run)
         except Exception as exc:  # noqa: BLE001
+            # add_round est le point de commit durable. Avant lui, toute la manche est
+            # annulée ; après lui, conserver le monde évite de diverger de l'historique.
+            persisted = any(r.id == run.record.id for r in run.store.list_rounds(run.game_id))
+            if not persisted:
+                _restore_checkpoint(session, run.checkpoint)
             yield sse_frame("error", {"detail": str(exc)})
         finally:
             session.pending_turn = None
+            session.pending_motion_vote = None
             session.lock.release()
 
 
@@ -2294,10 +2471,31 @@ def create_game(
     # G7-c — mode admin : demandé à la création ou forcé par l'environnement (debug).
     admin = body.admin or os.getenv("GAME_ADMIN", "") == "1"
     game_id = uuid4().hex[:12]
+    if body.model_cast is not None:
+        if body.mode not in ("classic", "campaign"):
+            raise HTTPException(
+                status_code=400,
+                detail="le casting multi-modèle est réservé aux modes classique et campagne",
+            )
+        try:
+            world.model_cast = prepare_model_cast(
+                body.model_cast,
+                list(world.countries),
+                human_country=play_as,
+                game_id=game_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     # RG-1 — `ranked` ne pilote plus de LP : c'est le drapeau « tentative qui COMPTE »
     # du Défi du jour (une tentative classée / jour ; un re-run libre ne rescore pas) et
     # la garantie d'une table équilibrée pour cette tentative. Inerte hors défi.
-    ranked = role == "player" and body.invent is None and not admin and not body.free
+    ranked = (
+        role == "player"
+        and body.invent is None
+        and not admin
+        and not body.free
+        and body.model_cast is None
+    )
     # RG-3 — graine de la Dérive (scénario pour le Défi du jour, game_id sinon).
     drift_seed = _drift_seed(body.scenario, game_id)
 
@@ -2393,11 +2591,10 @@ def play_round(
             status_code=409,
             detail="session irrécupérable (partie finie ou sans snapshot) — relecture seule",
         )
-    if session.pending_turn is not None:
+    if session.pending_turn is not None or session.pending_motion_vote is not None:
         raise HTTPException(
             status_code=409,
-            detail="un tour humain est en attente — parler via POST "
-            f"/api/games/{game_id}/turn",
+            detail="une décision humaine est déjà en attente sur ce round",
         )
     body = body or PlayRoundRequest()
 
@@ -2452,9 +2649,12 @@ def play_round(
     # Le verrou n'est relâché que par _run_stream (ses finally). Si _start_round échoue AVANT
     # que le flux ne soit construit, il faut le relâcher ici — sinon la partie reste bloquée
     # en 409 « un round est déjà en cours » à jamais.
+    checkpoint = _checkpoint_session(session)
     try:
         run = _start_round(game_id, session, store, body, fog=fog, crisis=crisis)
+        run.checkpoint = checkpoint
     except BaseException:
+        _restore_checkpoint(session, checkpoint)
         session.lock.release()
         raise
     return StreamingResponse(_run_stream(run), media_type="text/event-stream")
@@ -2483,14 +2683,41 @@ def submit_turn(
     turn = session.pending_turn
     if turn is None:
         raise HTTPException(status_code=409, detail="aucun tour humain en attente")
-    if turn.done:
-        raise HTTPException(
-            status_code=409, detail="message déjà envoyé — une seule prise de parole"
-        )
-    turn.text = body.message.strip()
-    turn.done = True
-    turn.event.set()
+    with turn.submission_lock:
+        if turn.done:
+            raise HTTPException(
+                status_code=409, detail="message déjà envoyé — une seule prise de parole"
+            )
+        turn.text = body.message.strip()
+        turn.done = True
+        turn.event.set()
     return {"accepted": True, "country": turn.country}
+
+
+@router.post("/games/{game_id}/motion-vote")
+def submit_motion_vote(
+    game_id: str,
+    body: MotionVoteRequest,
+    store: Annotated[GameStore, Depends(get_store)],
+) -> dict:
+    """Bulletin du pays joué. Le pays visé n'atteint jamais cette étape et ne peut
+    donc pas voter ; une seule soumission est acceptée."""
+    game = store.get_game(game_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail=f"partie inconnue : {game_id}")
+    session = _sessions.get(game_id)
+    if session is None:
+        raise HTTPException(status_code=409, detail="session de jeu indisponible")
+    ballot = session.pending_motion_vote
+    if ballot is None:
+        raise HTTPException(status_code=409, detail="aucun vote humain en attente")
+    with ballot.submission_lock:
+        if ballot.done:
+            raise HTTPException(status_code=409, detail="bulletin déjà validé")
+        ballot.vote = body.vote
+        ballot.done = True
+        ballot.event.set()
+    return {"accepted": True, "country": ballot.country, "vote": ballot.vote}
 
 
 @router.post("/games/{game_id}/motions", response_model=MotionView, status_code=201)
@@ -2763,9 +2990,9 @@ def _intel_retriever() -> HybridRetriever:
 
 class IntelRequest(BaseModel):
     action: Literal["brief", "verify", "disinfo", "analyze"]
-    target: str | None = None  # brief : id pays (None = dernier événement) ; analyze : la SI
+    target: str | None = Field(None, max_length=80)  # pays (None = dernier événement)
     claim: str | None = Field(None, max_length=2000)  # verify : l'affirmation à vérifier
-    speaker: str | None = None  # verify : qui l'a affirmée
+    speaker: str | None = Field(None, max_length=80)  # verify : qui l'a affirmée
     disinfo: HumanFogInput | None = None  # disinfo : la fausse perception à injecter
 
 
@@ -3167,32 +3394,34 @@ def run_market_bot(
             status_code=409, detail="monde introuvable (ni session ni snapshot) — relecture seule"
         )
 
-    open_markets = engine.store.list_markets(game_id=game_id, status=MarketStatus.OPEN)
-    opened = False
-    if open_markets:
-        market = open_markets[0]
-    else:
-        if engine.store.list_markets(game_id=game_id):
-            raise HTTPException(
-                status_code=409, detail="le marché de la partie est déjà résolu"
+    with engine.lock:
+        open_markets = engine.store.list_markets(game_id=game_id, status=MarketStatus.OPEN)
+        opened = False
+        if open_markets:
+            market = open_markets[0]
+        else:
+            if engine.store.list_markets(game_id=game_id):
+                raise HTTPException(
+                    status_code=409, detail="le marché de la partie est déjà résolu"
+                )
+            market = engine.open_binary_market(
+                # round_id : même dérivation que le front (compat résolution par round).
+                round_id=int(game_id[:7], 16),
+                game_id=game_id,
+                question=f"{GAME_MARKET_QUESTION} — partie {game_id}",
+                b=GAME_MARKET_B,
+                criterion=ResolutionCriterion(kind=ResolutionKind.TRAJECTORY),
             )
-        market = engine.open_binary_market(
-            # round_id : même dérivation que le front (compat résolution par round).
-            round_id=int(game_id[:7], 16),
-            game_id=game_id,
-            question=f"{GAME_MARKET_QUESTION} — partie {game_id}",
-            b=GAME_MARKET_B,
-            criterion=ResolutionCriterion(kind=ResolutionKind.TRAJECTORY),
-        )
-        opened = True
+            opened = True
 
     rounds = store.list_rounds(game_id)
     event = _last_event(rounds)
 
     forecaster = LLMForecaster(backend)
     account_id = _bot_account_id(forecaster.model_tag)
-    if engine.store.get_account(account_id) is None:
-        engine.create_account(forecaster.model_tag, kind=AccountKind.BOT, account_id=account_id)
+    with engine.lock:
+        if engine.store.get_account(account_id) is None:
+            engine.create_account(forecaster.model_tag, kind=AccountKind.BOT, account_id=account_id)
     probs, trade = forecaster.quote_and_bet(engine, account_id, market, world, event)
 
     prices = engine.prices(market.id)
@@ -3317,11 +3546,14 @@ def open_flash_markets(
     session = _sessions.get(game_id)
     rounds = store.list_rounds(game_id)
     round_no = session.world.current_round if session else len(rounds)
-    existing = [
-        m
-        for m in engine.store.list_markets(game_id=game_id, status=MarketStatus.OPEN)
-        if m.criterion and m.criterion.kind is ResolutionKind.PREDICATE and m.round_id == round_no
-    ]
+    with engine.lock:
+        existing = [
+            m
+            for m in engine.store.list_markets(game_id=game_id, status=MarketStatus.OPEN)
+            if m.criterion
+            and m.criterion.kind is ResolutionKind.PREDICATE
+            and m.round_id == round_no
+        ]
     if existing:
         return [_flash_view(engine, m) for m in existing]
 
@@ -3354,19 +3586,36 @@ def open_flash_markets(
 
     forecaster = LLMForecaster(backend)
     bot = _bot_account_id(forecaster.model_tag)
-    if engine.store.get_account(bot) is None:
-        engine.create_account(forecaster.model_tag, kind=AccountKind.BOT, account_id=bot)
+    # Une seconde requête a pu générer les mêmes specs pendant l'appel LLM : relecture
+    # puis création de TOUS les books dans la même section critique.
+    with engine.lock:
+        existing = [
+            m
+            for m in engine.store.list_markets(game_id=game_id, status=MarketStatus.OPEN)
+            if m.criterion
+            and m.criterion.kind is ResolutionKind.PREDICATE
+            and m.round_id == round_no
+        ]
+        if existing:
+            return [_flash_view(engine, m) for m in existing]
+        if engine.store.get_account(bot) is None:
+            engine.create_account(forecaster.model_tag, kind=AccountKind.BOT, account_id=bot)
+        markets = [
+            engine.open_binary_market(
+                round_id=round_no,
+                game_id=game_id,
+                question=spec.question,
+                b=GAME_MARKET_B,
+                criterion=ResolutionCriterion(
+                    kind=ResolutionKind.PREDICATE,
+                    predicate=spec.predicate,
+                    params=spec.params,
+                ),
+            )
+            for spec in specs
+        ]
     opened: list[FlashMarketView] = []
-    for spec in specs:
-        market = engine.open_binary_market(
-            round_id=round_no,
-            game_id=game_id,
-            question=spec.question,
-            b=GAME_MARKET_B,
-            criterion=ResolutionCriterion(
-                kind=ResolutionKind.PREDICATE, predicate=spec.predicate, params=spec.params
-            ),
-        )
+    for market in markets:
         try:
             forecaster.quote_and_bet(engine, bot, market, world, event)  # cotes vivantes
         except Exception:  # noqa: BLE001 — le book s'ouvre même si le bot échoue
@@ -3388,19 +3637,20 @@ def resolve_flash_markets(
         raise HTTPException(status_code=404, detail=f"partie inconnue : {game_id}")
     ctx = _market_context(game, _sessions.get(game_id), store)
     resolved: list[FlashMarketView] = []
-    for market in engine.store.list_markets(game_id=game_id, status=MarketStatus.OPEN):
-        if not (market.criterion and market.criterion.kind is ResolutionKind.PREDICATE):
-            continue
-        label = flash_mod.resolve_flash(market.criterion, ctx)
-        if label is None:
-            continue
-        outcome_id = next((o.id for o in market.outcomes if o.label == label), None)
-        if outcome_id is None:
-            continue
-        settle_market(engine.store, market, outcome_id)
-        settled = engine.store.get_market(market.id)
-        if settled is not None:
-            resolved.append(_flash_view(engine, settled))
+    with engine.lock:
+        for market in engine.store.list_markets(game_id=game_id, status=MarketStatus.OPEN):
+            if not (market.criterion and market.criterion.kind is ResolutionKind.PREDICATE):
+                continue
+            label = flash_mod.resolve_flash(market.criterion, ctx)
+            if label is None:
+                continue
+            outcome_id = next((o.id for o in market.outcomes if o.label == label), None)
+            if outcome_id is None:
+                continue
+            settle_market(engine.store, market, outcome_id)
+            settled = engine.store.get_market(market.id)
+            if settled is not None:
+                resolved.append(_flash_view(engine, settled))
     return resolved
 
 
@@ -3450,7 +3700,7 @@ class CustomCrisisView(BaseModel):
 class CustomCrisisInput(BaseModel):
     """Payload de l'éditeur : propriétaire + JSON de crise (schéma `simulation.crisis.Crisis`)."""
 
-    owner_id: str = Field(min_length=1)
+    owner_id: str = Field(min_length=1, max_length=128)
     crisis: dict
 
 
@@ -3556,8 +3806,8 @@ def test_admin_crisis(
 class DirectiveInput(BaseModel):
     """G8 — une directive : consigne courte adressée à la SI d'un pays."""
 
-    country: str
-    text: str = Field(min_length=1)
+    country: str = Field(min_length=1, max_length=80)
+    text: str = Field(min_length=1, max_length=2000)
 
 
 @router.post("/games/{game_id}/directives", status_code=201)
@@ -3684,7 +3934,7 @@ def get_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> G
     world = session.world.model_dump(mode="json") if session else (
         snapshot.world if snapshot else None
     )
-    view = _view(game, session, resumable=snapshot is not None)
+    view = _view(game, session, resumable=snapshot is not None, snapshot=snapshot)
     if session is not None:
         book = session.grudges
         deadlines = [d.model_dump() for d in session.deadlines]
@@ -3707,6 +3957,7 @@ def get_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> G
         postures={cid: posture(history, cid) for cid in countries},
         index_history=history.model_dump(mode="json").get("values", {}),
         storyline=storyline,
+        operational_picture=build_operational_picture(world or {}, rounds).model_dump(mode="json"),
     )
 
 
@@ -3748,7 +3999,7 @@ class PlayerView(BaseModel):
 
 
 class UpsertPlayerBody(BaseModel):
-    id: str
+    id: str = Field(min_length=1, max_length=128)
     pseudo: str = Field(min_length=1, max_length=40)
 
 
@@ -3873,11 +4124,13 @@ def forfeit_game(
     if game is None:
         raise HTTPException(status_code=404, detail="partie inconnue")
     if game.result is not None:  # déjà finie : idempotent
-        return _view(game, _sessions.get(game_id))
+        session = _sessions.get(game_id)
+        snapshot = None if session else store.get_session_snapshot(game_id)
+        return _view(game, session, snapshot=snapshot)
     if game.status is not GameStatus.RUNNING:
         raise HTTPException(
             status_code=409, detail="seule une partie en cours peut être abandonnée"
         )
     _finalize_game(game, _sessions.get(game_id), store, forfeit=True)
     _sessions.pop(game_id, None)  # la partie est close : plus de round jouable
-    return _view(game, None)
+    return _view(game, None, snapshot=store.get_session_snapshot(game_id))

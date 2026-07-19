@@ -16,7 +16,9 @@
     "energy_independence": 0.6
   },
   "alliances": [
-    "BRICS"
+    "AfricanUnion",
+    "BRICS",
+    "SADC"
   ],
   "rivals": [],
   "political_system": "democracy",
@@ -32,6 +34,7 @@
     "energy_crisis_management",
     "minerals_diplomacy"
   ],
+  "temperament": "opportuniste",
   "memory_summary": "",
   "mandate": {}
 }

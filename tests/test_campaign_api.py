@@ -10,6 +10,7 @@ from app.game_api import get_backend, get_store
 from app.main import app
 from inference.mock_backend import MockBackend
 from simulation import campaign as campaign_mod
+from simulation.model_cast import CastModel, ModelCastState
 from storage.game_store import SQLiteGameStore
 from tests.sse import play as _play
 
@@ -138,6 +139,44 @@ def test_campaign_map_and_locking(client_store):
 
     assert client.post("/api/campaign/c2/start").status_code == 409  # verrouillé
     assert client.post("/api/campaign/zzz/start").status_code == 404
+
+    lab = client.get("/api/lab")
+    assert lab.status_code == 200
+    protocols = lab.json()["protocols"]
+    assert protocols and all(protocol["scenario_beats"] for protocol in protocols)
+    assert all(protocol["hypotheses"] for protocol in protocols)
+    assert "ai-arms-dyadic-tournament-v1" in {protocol["id"] for protocol in protocols}
+
+
+def test_campaign_chapter_accepts_a_frozen_multi_model_cast(client_store, monkeypatch):
+    client, _ = client_store
+    frozen = ModelCastState(
+        models=[
+            CastModel(tag="model-a:4b", family="A", digest="sha-a", size_gb=3.0),
+            CastModel(tag="model-b:7b", family="B", digest="sha-b", size_gb=5.0),
+        ],
+        assignments={"france": "model-a:4b", "iran": "model-b:7b", "usa": "model-a:4b"},
+        game_master_model="model-a:4b",
+        judge_model="model-b:7b",
+    )
+    monkeypatch.setattr(game_api, "prepare_model_cast", lambda *args, **kwargs: frozen)
+
+    response = client.post(
+        "/api/campaign/c1/start",
+        json={
+            "model_cast": {
+                "strategy": "balanced",
+                "models": ["model-a:4b", "model-b:7b"],
+                "game_master_model": "model-a:4b",
+                "judge_model": "model-b:7b",
+            }
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["mode"] == "campaign"
+    assert body["model_cast"]["judge_model"] == "model-b:7b"
 
 
 def test_chapter_game_scores_and_unlocks(client_store):

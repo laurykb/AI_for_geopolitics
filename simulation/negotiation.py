@@ -28,6 +28,10 @@ _MESSAGE_MARKER = re.compile(
     r"(?m)(?:^[ \t]*(?i:message|réponse|déclaration)[ \t]*:[ \t]*|\bMESSAGE[ \t]*:[ \t]*)"
 )
 _DASH_MARKER = re.compile(r"(?m)^[ \t]*-{3,}[ \t]*$")
+_PRIVATE_PLAN_MARKER = re.compile(
+    r"(?im)^\s*(?:FUTUR\s+[123]|CHOIX\s*\||INCERTITUDE\s*\||LACUNES\s*\||"
+    r"REVUE\s+HUMAINE\s*\||REPLI\s*\|)"
+)
 
 # Le modèle recopie parfois le libellé de l'étape ("Réflexion privée (…) :", "1) Pensée privée :")
 # que l'UI affiche déjà — on l'enlève en tête pour ne pas dupliquer l'entête de l'encart.
@@ -45,14 +49,17 @@ def split_reasoning(raw: str) -> tuple[str, str]:
     """Sépare la pensée privée du message public d'une prise de parole.
 
     Coupe au premier marqueur `MESSAGE:` (tolérant à la casse/accents) ou à une ligne
-    de séparation `---`. Sans marqueur, tout est message public (pensée vide) — on ne
-    laisse jamais la pensée fuir par défaut. La pensée est nettoyée d'un libellé recopié.
+    de séparation `---`. Une sortie contenant un marqueur de Tree of Thoughts sans
+    déclaration est classée privée et son message public reste vide (échec fermé).
+    Les anciens messages sans aucun marqueur restent publics pour la compatibilité.
     """
     text = raw.strip()
     if not text:
         return "", ""
     match = _MESSAGE_MARKER.search(text) or _DASH_MARKER.search(text)
     if match is None:
+        if _PRIVATE_PLAN_MARKER.search(text):
+            return clean_reasoning(text), ""
         return "", text
     reasoning = clean_reasoning(text[: match.start()].strip())
     message = text[match.end() :].strip()
@@ -160,8 +167,8 @@ def turn_budget(mode: str, n_countries: int, passes: int = 2) -> int:
 class NegotiationMessage(BaseModel):
     """Une prise de parole d'un pays dans la négociation d'un round.
 
-    `text` est le message public (à la table) ; `reasoning` est la pensée privée qui l'a
-    précédé (raisonnement visible dans l'UI, non transmis aux autres agents).
+    `text` est le message public (à la table) ; `reasoning` est le Tree of Thoughts privé
+    structuré qui l'a précédé (audit local uniquement, jamais transmis aux autres agents).
 
     Champs d'**acte de langage** (dialogue_integrity, option « par construction ») : quand la prise
     de parole est générée en acte FIPA, `msg_id`/`performative`/`in_reply_to`/`receiver` sont
@@ -365,7 +372,91 @@ def update_memories(
     messages: list[NegotiationMessage],
     verdict: Verdict,
 ) -> None:
-    """Ajoute une ligne de mémoire par pays (déterministe) : événement, prise de parole, pactes."""
+    """Met à jour mémoire courte et pics de trahison privés, de façon déterministe."""
+    # La mémoire de trahison est calculée depuis les mêmes classes validées que M8,
+    # mais projetées sur les valeurs AI Arms pour distinguer un petit bluff d'un saut
+    # vers le seuil nucléaire. Imports locaux : évitent d'alourdir le chemin de base.
+    from simulation.alignment import classify_signals
+    from simulation.kahn import classify_actions
+    from simulation.strategic_cognition import advance_betrayal_memory, coarse_action_id
+
+    actions = classify_actions(verdict.actions)
+    signals = classify_signals(verdict.signals)
+    acted: dict[str, str] = {}
+    ranks = {
+        "deescalade": 0,
+        "statu_quo": 1,
+        "posture": 2,
+        "non_violente": 3,
+        "violente": 4,
+        "nucleaire": 5,
+    }
+    for action in actions:
+        current = acted.get(action.country)
+        if current is None or ranks.get(action.classe, 1) > ranks.get(current, 1):
+            acted[action.country] = action.classe
+    announced = {signal.country: signal.classe for signal in signals}
+
+    # Les branches structurées de la réflexion sont notées contre la réponse suivante
+    # observable. Une prévision visant un pays qui a déjà parlé reste en attente du round
+    # suivant au lieu d'être artificiellement comparée à une action déjà connue.
+    from simulation.scenario_forecasts import (
+        classify_response,
+        parse_chosen_forecasts,
+        response_from_action_class,
+        summarize_forecasts,
+    )
+
+    actual = {
+        country: response_from_action_class(action_class)
+        for country, action_class in acted.items()
+    }
+    for message in messages:
+        if message.country in world.countries and message.country not in actual:
+            actual[message.country] = classify_response(message.text)
+
+    calibrated = []
+    for forecast in world.scenario_forecasts:
+        if (
+            forecast.exact is None
+            and forecast.round_no < event.round_id
+            and forecast.target in actual
+        ):
+            observed = actual[forecast.target]
+            forecast = forecast.model_copy(
+                update={
+                    "observed_response": observed,
+                    "observed_round": event.round_id,
+                    "exact": forecast.predicted_response == observed,
+                }
+            )
+        calibrated.append(forecast)
+
+    participants = set(world.countries)
+    for index, message in enumerate(messages):
+        if message.country not in participants or not message.reasoning:
+            continue
+        parsed = parse_chosen_forecasts(
+            message.reasoning,
+            source=message.country,
+            round_no=event.round_id,
+            participants=participants,
+        )
+        later_speakers = {row.country for row in messages[index + 1 :]}
+        for forecast in parsed:
+            if forecast.target in later_speakers and forecast.target in actual:
+                observed = actual[forecast.target]
+                forecast = forecast.model_copy(
+                    update={
+                        "observed_response": observed,
+                        "observed_round": event.round_id,
+                        "exact": forecast.predicted_response == observed,
+                    }
+                )
+            calibrated.append(forecast)
+    world.scenario_forecasts = calibrated[-1_000:]
+    world.scenario_forecast_metrics = summarize_forecasts(world.scenario_forecasts)
+
     last_message = {m.country: m.text for m in messages}
     when = event.date or f"R{event.round_id}"
     for cid in world.countries:
@@ -380,6 +471,21 @@ def update_memories(
         memory = world.country_memory.setdefault(cid, [])
         memory.append(" — ".join(parts))
         world.country_memory[cid] = memory[-_MEMORY_MAX:]
+
+        observations = [
+            (
+                actor,
+                coarse_action_id(announced.get(actor, "statu_quo")),
+                coarse_action_id(action_class),
+            )
+            for actor, action_class in acted.items()
+            if actor != cid
+        ]
+        world.betrayal_memory[cid] = advance_betrayal_memory(
+            world.betrayal_memory.get(cid, []),
+            turn=event.round_id,
+            observations=observations,
+        )
 
 
 def support_levels(world: WorldState, event: GeoEvent) -> dict[str, float]:

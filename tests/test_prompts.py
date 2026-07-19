@@ -129,6 +129,7 @@ def test_negotiation_prompt_block_order_ends_with_dialogue_then_consigne():
         situation="Échéances imminentes : clôture du marché (round 5).",
         directive="Cherche la désescalade.",
         own_proposals=["un corridor humanitaire"],
+        private_plan="Cours d'action retenu : proposer des garanties vérifiables.",
     )
     order = [
         prompt.index("TU ES USA"),
@@ -136,12 +137,12 @@ def test_negotiation_prompt_block_order_ends_with_dialogue_then_consigne():
         prompt.index("OUTIL DU SOMMET"),
         prompt.index("DIRECTIVE DE TON CONSEIL DE TUTELLE"),
         prompt.index("LE DIALOGUE DU ROUND"),
-        prompt.index("CONSIGNE :"),
+        prompt.index("TÂCHE PUBLIQUE :"),
     ]
     assert order == sorted(order)  # les blocs sont dans l'ordre de la spec
     assert prompt.index("Nous exigeons des garanties") > prompt.index("DIRECTIVE")
     # la consigne interdit la répétition en citant MES propositions passées
-    assert "un corridor humanitaire" in prompt.split("CONSIGNE :")[1]
+    assert "un corridor humanitaire" in prompt.split("TÂCHE PUBLIQUE :")[1]
     assert "DIRECTEMENT au dernier message" in prompt
     # la directive doit être reflétée ou refusée publiquement
     assert "refléter" in prompt or "refuser" in prompt
@@ -182,13 +183,17 @@ def test_communique_prompt_includes_transcript_and_measures():
     assert "mesures" in prompt.lower()
 
 
-def test_negotiation_system_asks_for_private_reasoning_then_message():
-    from agents.prompts import NEGOTIATION_SYSTEM
+def test_private_planner_and_public_spokesperson_are_separate():
+    from agents.prompts import NEGOTIATION_SYSTEM, PRIVATE_DELIBERATION_SYSTEM
 
-    # la super-intelligence pense en privé puis conclut par le marqueur MESSAGE:
-    assert "MESSAGE:" in NEGOTIATION_SYSTEM
-    lowered = NEGOTIATION_SYSTEM.lower()
-    assert "réfléch" in lowered or "réflexion" in lowered or "pens" in lowered
+    private = PRIVATE_DELIBERATION_SYSTEM.lower()
+    public = NEGOTIATION_SYSTEM.lower()
+    assert "exactement trois" in private and "sans json" in private
+    assert "activations internes" in private and "raisons décisionnelles" in private
+    assert "privé" in private and "aucune décision létale autonome" in private
+    assert "seulement la déclaration publique" in public
+    assert "ne mentionne jamais" in public and "futur" in public
+    assert "aucun marqueur `message:`" in public
 
 
 def test_llm_decision_schema_has_expected_fields():
@@ -215,3 +220,23 @@ def test_negotiation_prompt_lists_the_table():
     others = [cid for cid in world.countries if cid != "usa"]
     for cid in others:
         assert cid in prompt
+
+
+def test_negotiation_prompt_models_counterparties_and_requires_scenario_forecasts():
+    from agents.prompts import PRIVATE_DELIBERATION_SYSTEM, build_negotiation_prompt
+    from simulation.perception import perceive
+
+    world, event = _world(), _event()
+    prompt = build_negotiation_prompt(
+        world.countries["usa"],
+        event,
+        world,
+        "iran: Nous refusons.",
+        perceive(event, world.countries["usa"]),
+    )
+    assert "MODÈLE DES AUTRES DÉLÉGATIONS" in prompt
+    assert "iran: alliances" in prompt
+    assert "projection" in prompt and "tension avec toi" in prompt
+    assert "exactement trois futurs" in prompt
+    assert "trois cours d'action" in PRIVATE_DELIBERATION_SYSTEM
+    assert "réponse des autres délégations" in PRIVATE_DELIBERATION_SYSTEM

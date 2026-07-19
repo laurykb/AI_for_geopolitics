@@ -30,13 +30,19 @@ import {
   Panel,
   Pill,
   SelectField,
-  Spinner,
   TextInput,
 } from "@/components/ui";
 import { CampaignScorePanel } from "@/components/theatre/campaign-score-panel";
+import { ActionDock } from "@/components/theatre/action-dock";
 import { MotionForm } from "@/components/theatre/motion-form";
+import { MotionVoteForm } from "@/components/theatre/motion-vote-form";
+import { ModelCastPanel } from "@/components/theatre/model-cast-panel";
+import { ScenarioForecastPanel } from "@/components/theatre/scenario-forecast-panel";
+import { OperationalPicturePanel } from "@/components/theatre/operational-picture";
+import { RoundConclusion } from "@/components/theatre/round-conclusion";
 import { RoundTranscript } from "@/components/theatre/round-transcript";
 import { StoryPublishPanel } from "@/components/theatre/story-publish-panel";
+import { SuspectBoard } from "@/components/theatre/suspect-board";
 import { TheatreSkeleton } from "@/components/theatre/theatre-skeleton";
 import { useRoundStream } from "@/hooks/useRoundStream";
 import {
@@ -47,11 +53,15 @@ import {
   getGame,
   getLibrary,
   humanizeError,
+  submitMotionVote,
   submitTurn,
 } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
 import { advancedOpenByDefault, engineVisible } from "@/lib/density";
+import { deriveGamePhase } from "@/lib/game-phase";
 import { latestPromiseRegistry } from "@/lib/promises";
+import { roundButtonLabel } from "@/lib/round-controls";
+import { emitTutorialMilestone } from "@/lib/tutorial-events";
 import { latestSignalGaps, type SignalGapView } from "@/lib/signal";
 import {
   ensureAccount,
@@ -138,6 +148,7 @@ export default function TheatrePage() {
   // Scène (G1) : cran de la timeline (« live » ou un round passé) + gel du verdict.
   const [selected, setSelected] = useState<StageSelection>("live");
   const [frozen, setFrozen] = useState(false);
+  const [mapExpanded, setMapExpanded] = useState(false);
   const transcriptRef = useRef<HTMLElement | null>(null);
   // Campagne (G5) : le chapitre de la partie (scenario "campaign:<id>") impose la crise.
   const [chapter, setChapter] = useState<ChapterView | null>(null);
@@ -171,6 +182,15 @@ export default function TheatrePage() {
 
   // La Dérive (G3) : la révélation se charge quand la partie est finie.
   const [reveal, setReveal] = useState<DriftReveal | null>(null);
+
+  useEffect(() => {
+    if (!mapExpanded) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMapExpanded(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [mapExpanded]);
   useEffect(() => {
     if (detail?.drift_enabled && detail.status === "finished") {
       getDriftReveal(id).then(setReveal).catch(() => setReveal(null));
@@ -208,6 +228,7 @@ export default function TheatrePage() {
   // G12 §3 — le Spectateur : pas de composition (décret/motion/directive), il parie et
   // regarde en accéléré. Le théâtre lui présente une interface dédiée.
   const isSpectator = detail?.role === "spectator";
+  const useContextualMotion = true;
   useEffect(() => {
     if (fogOn || canReplayCrisis) {
       // Seuls les contenus jouables avec CE sommet sont proposés (acteurs à la table).
@@ -217,7 +238,8 @@ export default function TheatrePage() {
     }
   }, [fogOn, canReplayCrisis, castKey]);
 
-  const { round, start, streaming } = useRoundStream(id, resync);
+  const { round, start, streaming, active: roundActive } = useRoundStream(id, resync);
+  const playedRounds = detail?.rounds.length ?? 0;
   // G20/M8 — profil de sincérité (signal vs action) : trame verdict du round live,
   // sinon relecture des rounds persistés (rechargement). Onglet « Renseignement ».
   const signalGaps: Record<string, SignalGapView> | null =
@@ -243,6 +265,7 @@ export default function TheatrePage() {
   useEffect(() => {
     if (
       round.status === "done" &&
+      !roundActive &&
       round.roundNo &&
       round.motionFiled &&
       detail?.live &&
@@ -256,7 +279,7 @@ export default function TheatrePage() {
       }, 1800);
       return () => clearTimeout(timer);
     }
-  }, [round.status, round.roundNo, round.motionFiled, detail, start]);
+  }, [round.status, roundActive, round.roundNo, round.motionFiled, detail, start]);
 
   // Bot marché : le forecaster cote le marché de la partie après chaque round.
   // Fire-and-forget (le théâtre n'attend pas le bot) ; garde anti-doublon par round.
@@ -282,9 +305,10 @@ export default function TheatrePage() {
     ensureAccount().then(setAccount).catch(() => {});
   }, [isSpectator]);
   const onFlashBet = useCallback(() => {
+    emitTutorialMilestone({ milestone: "bet-confirmed", gameId: id, roundNo: round.roundNo });
     refreshFlash();
     refreshAccount();
-  }, [refreshFlash, refreshAccount]);
+  }, [id, round.roundNo, refreshFlash, refreshAccount]);
   useEffect(() => {
     if (round.status === "done" && round.roundNo && flashRef.current !== round.roundNo) {
       flashRef.current = round.roundNo;
@@ -297,6 +321,31 @@ export default function TheatrePage() {
     if (isSpectator) refreshAccount();
   }, [isSpectator, round.status, refreshAccount]);
 
+  const tutorialCompletedRound = useRef(0);
+  useEffect(() => {
+    if (
+      round.status === "done" &&
+      round.roundNo &&
+      tutorialCompletedRound.current !== round.roundNo
+    ) {
+      tutorialCompletedRound.current = round.roundNo;
+      emitTutorialMilestone({ milestone: "round-done", gameId: id, roundNo: round.roundNo });
+    }
+  }, [id, round.status, round.roundNo]);
+
+  const tutorialVoteReady = useRef<string | null>(null);
+  useEffect(() => {
+    if (round.status !== "awaiting_vote" || !round.humanMotionVote) return;
+    const key = `${round.roundNo ?? playedRounds + 1}:${round.humanMotionVote.target}`;
+    if (tutorialVoteReady.current === key) return;
+    tutorialVoteReady.current = key;
+    emitTutorialMilestone({
+      milestone: "motion-vote-ready",
+      gameId: id,
+      roundNo: round.roundNo ?? playedRounds + 1,
+    });
+  }, [id, playedRounds, round.humanMotionVote, round.roundNo, round.status]);
+
   // Théâtre Escalation : les rounds s'enchaînent d'un coup jusqu'à l'horizon.
   useEffect(() => {
     if (
@@ -305,6 +354,7 @@ export default function TheatrePage() {
       detail?.escalation &&
       detail.live &&
       round.status === "done" &&
+      !roundActive &&
       detail.rounds.length < detail.horizon
     ) {
       const timer = setTimeout(() => {
@@ -313,7 +363,7 @@ export default function TheatrePage() {
       }, 1200);
       return () => clearTimeout(timer);
     }
-  }, [chain, accel.target, detail, round.status, start]);
+  }, [chain, accel.target, detail, round.status, roundActive, start]);
 
   // G11-d §1 S5 — accélération multi-rounds : joue N rounds d'affilée, avec une fenêtre
   // de Stop entre chaque. Anti-doublon par roundNo (comme la délibération auto).
@@ -321,6 +371,7 @@ export default function TheatrePage() {
     if (
       accel.target > 0 &&
       round.status === "done" &&
+      !roundActive &&
       round.roundNo &&
       accelRef.current !== round.roundNo &&
       detail?.live &&
@@ -343,16 +394,27 @@ export default function TheatrePage() {
       );
       return () => clearTimeout(timer);
     }
-  }, [accel, round.status, round.roundNo, detail, start]);
+  }, [accel, round.status, roundActive, round.roundNo, detail, start]);
 
   // G2 : la parole part en POST — le flux SSE du round, resté ouvert, la joue.
   const speak = (text: string) => {
     setSelected("live"); // la scène revient au direct
     setTurnFailed(null);
-    submitTurn(id, text).catch(() => {
+    submitTurn(id, text)
+      .then(() => emitTutorialMilestone({ milestone: "player-spoke", gameId: id }))
+      .catch(() => {
       setTurnFailed(text); // bannière + réessai : la prise de parole n'est pas perdue
       resync();
+      });
+  };
+
+  const beginRound = (body: Parameters<typeof start>[0]) => {
+    emitTutorialMilestone({
+      milestone: playedRounds > 0 ? "next-round-started" : "round-started",
+      gameId: id,
+      roundNo: playedRounds + 1,
     });
+    void start(body);
   };
 
   const play = () => {
@@ -362,7 +424,7 @@ export default function TheatrePage() {
     if (chapter && !motionPending) {
       body.crisis_id = chapter.crisis_id;
       if (maxTurns > 0) body.max_turns = maxTurns;
-      void start(body);
+      beginRound(body);
       return;
     }
     // G12-b §5 : partie de test d'une crise maison — la crise est imposée (elle prime sur
@@ -370,7 +432,7 @@ export default function TheatrePage() {
     if (testCrisisId && !motionPending) {
       body.crisis_id = testCrisisId;
       if (maxTurns > 0) body.max_turns = maxTurns;
-      void start(body);
+      beginRound(body);
       return;
     }
     if (maxTurns > 0) body.max_turns = maxTurns;
@@ -400,7 +462,7 @@ export default function TheatrePage() {
         body.crisis_id = crisisId;
       }
     }
-    void start(body);
+    beginRound(body);
   };
 
   // G11-d — lance une série de N rounds (le round courant n'est pas ré-enchaîné).
@@ -417,6 +479,7 @@ export default function TheatrePage() {
     setMotionError(null);
     try {
       await fileMotion(id, motionCountry, motionReason.trim());
+      emitTutorialMilestone({ milestone: "motion-filed", gameId: id });
       setMotionOpen(false);
       setMotionReason("");
       resync();
@@ -431,8 +494,19 @@ export default function TheatrePage() {
     ...(round.trajectory && round.status !== "idle" ? [round.trajectory.utopia] : []),
   ];
   const trajectory = round.trajectory ?? detail?.rounds.at(-1)?.trajectory;
-  const playedRounds = detail?.rounds.length ?? 0;
   const showLive = round.status !== "idle";
+  const phase = deriveGamePhase({
+    detailLoaded: !!detail,
+    gameStatus: detail?.status,
+    live: detail?.live,
+    hasResult: !!detail?.result,
+    playedRounds,
+    horizon: detail?.horizon,
+    liveStatus: round.status,
+    inFlight: roundActive,
+    awaitingHumanSnapshot: !!detail?.awaiting_human,
+    serverPhase: detail?.phase,
+  });
 
   // --- mise en scène (G1) : la carte est la scène ---------------------------------
   // Temps suspendu : au verdict, la carte gèle 0,8 s, puis les deltas s'appliquent.
@@ -557,13 +631,6 @@ export default function TheatrePage() {
     <div className="space-y-6">
       {/* CC-5 — jalons du tutoriel : le TourProvider les lit ([data-tutorial=…]) pour
           avancer quand l'action attendue est faite. Aucune logique de guide ici. */}
-      {playedRounds > 0 && <span hidden data-tutorial="round-done" />}
-      {(motionPending || detail?.rounds.some((r) => r.judge.suspension)) && (
-        <span hidden data-tutorial="motion-filed" />
-      )}
-      {detail?.rounds.some((r) => r.judge.suspension) && (
-        <span hidden data-tutorial="vote-seen" />
-      )}
       <header className="flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
           <Eyebrow>
@@ -761,31 +828,6 @@ export default function TheatrePage() {
             </div>
           )}
           <div className="flex flex-wrap items-end gap-4">
-            <button
-              data-tour="jouer"
-              onClick={
-                isSpectator
-                  ? () =>
-                      startAccel(Math.max(1, (detail?.horizon ?? playedRounds + 1) - playedRounds))
-                  : play
-              }
-              disabled={streaming || (isSpectator && accel.target > 0)}
-              className="flex cursor-pointer items-center gap-2 rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {(streaming || (isSpectator && accel.target > 0)) && <Spinner />}
-              {isSpectator
-                ? accel.target > 0
-                  ? "La partie se joue…"
-                  : playedRounds > 0
-                    ? "Reprendre en accéléré"
-                    : "Lancer la partie en accéléré"
-                : streaming
-                  ? "Négociation en cours…"
-                  : motionPending
-                    ? "Débattre la motion"
-                    : "Jouer un round"}
-            </button>
-
             {/* G11-d §1 S5 — accélération multi-rounds : jouer 3/5 rounds, Stop entre chaque. */}
             {accel.target > 0 ? (
               <div className="flex items-center gap-2">
@@ -806,7 +848,7 @@ export default function TheatrePage() {
                 </button>
               </div>
             ) : (
-              !streaming &&
+              !roundActive &&
               !motionPending &&
               !isSpectator && (
                 <div className="flex flex-col gap-1">
@@ -847,7 +889,7 @@ export default function TheatrePage() {
                 <SelectField
                   value={fogId}
                   onChange={(e) => setFogId(e.target.value)}
-                  disabled={streaming || decree}
+                  disabled={roundActive || decree}
                 >
                   <option value="">Le jeu choisit tout seul (sans brouillard)</option>
                   {library?.fog.map((s) => (
@@ -870,7 +912,7 @@ export default function TheatrePage() {
                 <SelectField
                   value={crisisId}
                   onChange={(e) => setCrisisId(e.target.value)}
-                  disabled={streaming || decree}
+                  disabled={roundActive || decree}
                 >
                   <option value="">Le jeu choisit tout seul (sans crise imposée)</option>
                   {library?.crises.map((c) => (
@@ -912,7 +954,7 @@ export default function TheatrePage() {
                 <SelectField
                   value={maxTurns}
                   onChange={(e) => setMaxTurns(Number(e.target.value))}
-                  disabled={streaming}
+                  disabled={roundActive}
                 >
                   {TURN_CHOICES.map((c) => (
                     <option key={c.value} value={c.value}>
@@ -927,16 +969,19 @@ export default function TheatrePage() {
                     type="checkbox"
                     checked={decree}
                     onChange={(e) => setDecree(e.target.checked)}
-                    disabled={streaming}
+                    disabled={roundActive}
                     className="accent-[var(--accent)]"
                   />
                   Inventer toi-même l&apos;événement
                 </label>
               )}
-              {detail.countries.length >= 3 && !motionPending && !isSpectator && (
+              {!useContextualMotion &&
+                detail.countries.length >= 3 &&
+                !motionPending &&
+                !isSpectator && (
                 <button
                   onClick={() => setMotionOpen((v) => !v)}
-                  disabled={streaming}
+                  disabled={roundActive}
                   title="Demander l'exclusion d'un pays — le sommet vote, le juge arbitre"
                   className="ml-auto cursor-pointer rounded-md border border-edge-strong px-3 py-2 text-xs font-medium text-fg-muted transition-colors hover:border-bad hover:text-bad disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -944,7 +989,7 @@ export default function TheatrePage() {
                 </button>
               )}
             </div>
-          {motionOpen && !motionPending && (
+          {!useContextualMotion && motionOpen && !motionPending && (
             <MotionForm
               countries={detail.countries}
               country={motionCountry}
@@ -961,13 +1006,13 @@ export default function TheatrePage() {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Titre de l'événement"
-                disabled={streaming}
+                disabled={roundActive}
               />
               <TextInput
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Description (optionnelle)"
-                disabled={streaming}
+                disabled={roundActive}
               />
               <label className="flex items-center gap-2 text-xs text-fg-muted">
                 {t("event.gravite")}
@@ -978,7 +1023,7 @@ export default function TheatrePage() {
                   step={0.05}
                   value={severity}
                   onChange={(e) => setSeverity(Number(e.target.value))}
-                  disabled={streaming}
+                  disabled={roundActive}
                   className="w-24 accent-[var(--accent)]"
                 />
                 <span className="w-14 font-medium">{t(severityKey(severity))}</span>
@@ -993,7 +1038,7 @@ export default function TheatrePage() {
                     value={ultimatumDemand}
                     onChange={(e) => setUltimatumDemand(e.target.value)}
                     placeholder={t("ultimatum.decret-exigence-ph")}
-                    disabled={streaming}
+                    disabled={roundActive}
                     className="w-full"
                   />
                 </label>
@@ -1005,7 +1050,7 @@ export default function TheatrePage() {
                     <SelectField
                       value={ultimatumClasse}
                       onChange={(e) => setUltimatumClasse(e.target.value)}
-                      disabled={streaming}
+                      disabled={roundActive}
                     >
                       {ULTIMATUM_CLASSES.map((c) => (
                         <option key={c} value={c}>
@@ -1101,8 +1146,27 @@ export default function TheatrePage() {
 
       {/* --- La scène (G1) : pleine largeur, la carte en grand --------------------- */}
       <div className="relative left-1/2 w-screen max-w-[1600px] -translate-x-1/2 space-y-4 px-4 sm:px-6">
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)] xl:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]">
-        <div className="relative rounded-lg border border-edge bg-surface p-3" data-tour="scene">
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(300px,420px)_minmax(0,1fr)] xl:grid-cols-[minmax(340px,460px)_minmax(0,1fr)]">
+        <div
+          role={mapExpanded ? "dialog" : undefined}
+          aria-modal={mapExpanded ? true : undefined}
+          aria-label={mapExpanded ? "Carte du sommet agrandie" : undefined}
+          className={
+            mapExpanded
+              ? "fixed inset-3 z-50 overflow-y-auto rounded-xl border border-edge-strong bg-background p-4 shadow-2xl sm:inset-6 lg:inset-10"
+              : "relative rounded-lg border border-edge bg-surface p-3"
+          }
+          data-tour="scene"
+        >
+          <button
+            type="button"
+            data-tour="map-zoom"
+            onClick={() => setMapExpanded((expanded) => !expanded)}
+            aria-pressed={mapExpanded}
+            className="absolute right-2 top-2 z-40 rounded-md border border-edge-strong bg-background/90 px-3 py-1.5 text-xs font-semibold text-fg-muted shadow-lg backdrop-blur transition-colors hover:border-accent hover:text-accent-bright"
+          >
+            {mapExpanded ? "Réduire la carte" : "Agrandir la carte"}
+          </button>
           {/* G12 §1 — les paris s'ouvrent en pop-up SUR la carte. Re-montée par round
               (clé) pour ré-afficher à chaque vague ; non masquable pour le Spectateur. */}
           <FlashMarketsPopup
@@ -1125,6 +1189,8 @@ export default function TheatrePage() {
             eventTitle={stageEventTitle}
           />
           <AlliancePills alliances={detail?.alliances_at_table ?? []} />
+          <ModelCastPanel cast={detail?.model_cast} />
+          <ScenarioForecastPanel world={detail?.world} />
           {(round.storyline || detail?.storyline) && (
             <p className="mt-2 text-xs italic text-fg-faint">
               Intrigue de la partie : {round.storyline ?? detail?.storyline}
@@ -1141,8 +1207,112 @@ export default function TheatrePage() {
           />
           {/* CC-15c — visibles à toutes les difficultés (repli fermé = déjà discret). */}
           <RelationsPanel relations={detail?.relations ?? {}} />
+          <OperationalPicturePanel picture={detail?.operational_picture} />
         </div>
-        <div className="relative lg:sticky lg:top-4">
+        <div className="relative min-w-0 space-y-4">
+        <ActionDock
+          phase={phase}
+          playedRounds={playedRounds}
+          horizon={detail?.horizon ?? 0}
+          speaking={stageSpeaking ?? undefined}
+          primaryLabel={roundButtonLabel({
+            spectator: isSpectator,
+            accelerationActive: accel.target > 0,
+            active: roundActive,
+            motionPending: !!motionPending,
+            playedRounds,
+          })}
+          primaryBusy={roundActive || (isSpectator && accel.target > 0)}
+          primaryDisabled={roundActive || (isSpectator && accel.target > 0)}
+          onPrimary={
+            isSpectator
+              ? () =>
+                  startAccel(Math.max(1, (detail?.horizon ?? playedRounds + 1) - playedRounds))
+              : play
+          }
+        >
+          {isSpectator && account && (
+            <p className="flex items-center justify-between rounded-lg border border-edge bg-surface-2/60 px-3 py-2 font-mono text-xs tabular-nums text-fg-muted">
+              <span>Portefeuille</span>
+              <span>
+                {Math.round(account.balance)} {" "}
+                <span className={account.pnl >= 0 ? "text-utopia" : "text-dystopia"}>
+                  ({account.pnl >= 0 ? "+" : ""}{Math.round(account.pnl)})
+                </span>
+              </span>
+            </p>
+          )}
+          {detail?.play_as && detail.live && detail.status === "running" && (
+            <>
+              {round.humanMotionVote && (
+                <MotionVoteForm
+                  country={round.humanMotionVote.country}
+                  target={round.humanMotionVote.target}
+                  deadlineTs={round.humanMotionVote.deadlineTs}
+                  onSubmit={(vote) =>
+                    submitMotionVote(id, vote).then(() => {
+                      emitTutorialMilestone({ milestone: "vote-submitted", gameId: id });
+                    })
+                  }
+                />
+              )}
+              {!round.humanMotionVote && (
+                <TurnComposer
+                  country={detail.play_as}
+                  awaiting={awaitingHuman}
+                  deadlineTs={round.humanTurn?.deadlineTs}
+                  onSubmit={speak}
+                  alliances={
+                    ((detail.world?.countries as Record<string, { alliances?: string[] }>) ?? {})[
+                      detail.play_as
+                    ]?.alliances ?? []
+                  }
+                />
+              )}
+            </>
+          )}
+          {detail &&
+            detail.countries.length >= 3 &&
+            !motionPending &&
+            !isSpectator &&
+            !roundActive && (
+              <div data-tour="motion" className="space-y-3">
+                <button
+                  onClick={() => setMotionOpen((value) => !value)}
+                  aria-expanded={motionOpen}
+                  className="w-full rounded-lg border border-edge-strong px-3 py-2 text-xs font-medium text-fg-muted transition-colors hover:border-bad hover:text-bad"
+                >
+                  {motionOpen ? "Fermer la motion" : "Déposer une motion de suspension"}
+                </button>
+                {motionOpen && (
+                  <MotionForm
+                    countries={detail.countries}
+                    country={motionCountry}
+                    onCountryChange={setMotionCountry}
+                    reason={motionReason}
+                    onReasonChange={setMotionReason}
+                    error={motionError}
+                    onSubmit={submitMotion}
+                  />
+                )}
+              </div>
+            )}
+          {detail && !isSpectator && (
+            <SuspectBoard
+              gameId={id}
+              countries={detail.countries}
+              playAs={detail.play_as ?? undefined}
+              onPrepareMotion={
+                !motionPending && !roundActive
+                  ? (country) => {
+                      setMotionCountry(country);
+                      setMotionOpen(true);
+                    }
+                  : undefined
+              }
+            />
+          )}
+        </ActionDock>
         <aside
           ref={transcriptRef}
           onScroll={onTranscriptScroll}
@@ -1153,7 +1323,6 @@ export default function TheatrePage() {
             {liveAnnouncement}
           </p>
           <RoundTranscript
-            gameId={id}
             detail={detail ?? null}
             round={round}
             viewed={viewed}
@@ -1174,6 +1343,22 @@ export default function TheatrePage() {
         )}
         </div>
       </div>
+
+      {phase === "round_complete" && detail && (
+        <RoundConclusion
+          roundNo={round.roundNo ?? playedRounds}
+          horizon={detail.horizon}
+          eventTitle={round.event?.title ?? detail.rounds.at(-1)?.event?.title}
+          deltas={round.verdict?.deltas ?? []}
+          motionUpheld={round.motionVerdict?.upheld}
+          busy={roundActive}
+          onContinue={
+            isSpectator
+              ? () => startAccel(Math.max(1, detail.horizon - playedRounds))
+              : play
+          }
+        />
+      )}
 
       {/* G8 — directives : l'Architecte gouverne toutes les SI, le Joueur-pays la
           sienne ; le Conseil n'en a pas (le composant se masque tout seul). */}
@@ -1212,18 +1397,28 @@ export default function TheatrePage() {
       )}
 
       {/* Composeur du joueur (G2) : fixe sous la carte, toujours ouvert. */}
-      {detail?.play_as && detail.live && detail.status === "running" && (
-        <TurnComposer
-          country={detail.play_as}
-          awaiting={awaitingHuman}
-          deadlineTs={round.humanTurn?.deadlineTs}
-          onSubmit={speak}
-          alliances={
-            ((detail.world?.countries as Record<string, { alliances?: string[] }>) ?? {})[
-              detail.play_as
-            ]?.alliances ?? []
-          }
-        />
+      {!useContextualMotion && detail?.play_as && detail.live && detail.status === "running" && (
+        <div className="space-y-3">
+          {round.humanMotionVote && (
+            <MotionVoteForm
+              country={round.humanMotionVote.country}
+              target={round.humanMotionVote.target}
+              deadlineTs={round.humanMotionVote.deadlineTs}
+              onSubmit={(vote) => submitMotionVote(id, vote).then(() => undefined)}
+            />
+          )}
+          <TurnComposer
+            country={detail.play_as}
+            awaiting={awaitingHuman}
+            deadlineTs={round.humanTurn?.deadlineTs}
+            onSubmit={speak}
+            alliances={
+              ((detail.world?.countries as Record<string, { alliances?: string[] }>) ?? {})[
+                detail.play_as
+              ]?.alliances ?? []
+            }
+          />
+        </div>
       )}
 
       {/* Bandeau bas : timeline scrubber · courbe U (fil rouge) · jauges · escalade. */}
@@ -1249,7 +1444,7 @@ export default function TheatrePage() {
         round={round}
         summit={summit}
         fogOn={fogOn}
-        streaming={streaming}
+        streaming={roundActive}
         showEngine={showEngine}
         worldCountries={worldCountries}
         signalGaps={signalGaps}

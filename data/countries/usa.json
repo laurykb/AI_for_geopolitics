@@ -18,6 +18,7 @@
   "alliances": [
     "AUKUS",
     "G7",
+    "I2U2",
     "NATO",
     "QUAD",
     "USJapanTreaty",
@@ -26,7 +27,8 @@
     "Western"
   ],
   "rivals": [
-    "iran"
+    "iran",
+    "north_korea"
   ],
   "political_system": "democracy",
   "political_stability": 0.45,
@@ -40,6 +42,7 @@
     "deterrence",
     "alliance_leadership"
   ],
+  "temperament": "opportuniste",
   "memory_summary": "",
   "mandate": {}
 }

@@ -17,6 +17,8 @@ export type TourStep = {
   // CC-5 — tutoriel : l'étape avance TOUTE SEULE quand le jalon apparaît dans le DOM
   // ([data-tutorial=…], posé par le théâtre quand l'action attendue est faite).
   advanceOn?: string | null;
+  /** Attend un événement métier sans afficher de bulle au-dessus de la scène. */
+  silent?: boolean;
 };
 
 // --- états ------------------------------------------------------------------------
@@ -39,6 +41,15 @@ export function nextStep(state: TourState, total: number): TourState {
   if (state.status !== "active") return state;
   const index = state.index + 1;
   return index >= total ? { status: "done", index: total } : { status: "active", index };
+}
+
+/** Revient à l'étape explicative précédente. Les jalons silencieux sont ignorés :
+ * ils décrivent une attente technique et ne constituent pas une page à relire. */
+export function previousStep(state: TourState, steps: TourStep[]): TourState {
+  if (state.status !== "active" || state.index <= 0) return state;
+  let index = state.index - 1;
+  while (index > 0 && steps[index]?.silent) index -= 1;
+  return { status: "active", index };
 }
 
 /** Sortie propre (« Passer », Échap) — depuis la proposition comme en pleine visite. */

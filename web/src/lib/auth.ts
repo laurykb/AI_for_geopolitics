@@ -15,6 +15,7 @@ export type Player = {
   id: string;
   pseudo: string;
   is_admin: boolean;
+  guest?: boolean;
 };
 
 export type AuthResult = { ok: true; player: Player } | { ok: false; error: string };
@@ -24,6 +25,7 @@ export interface AuthApi {
   getPlayer(): Promise<Player | null>;
   signIn(pseudo: string, password: string): Promise<AuthResult>;
   signUp(pseudo: string, password: string): Promise<AuthResult>;
+  continueAsGuest(): Promise<AuthResult>;
   signOut(): Promise<void>;
   /** G14 §3 — l'ancien mot de passe est vérifié avant de poser le nouveau. */
   changePassword(oldPassword: string, newPassword: string): Promise<AuthResult>;
@@ -76,7 +78,11 @@ export const IS_OFFLINE = !(SUPABASE_URL && SUPABASE_ANON);
 
 // Note : l'id offline est `offline_<slug>` (pas un UUID) — les parties créées en local
 // ne sont PAS portables vers Supabase (games.owner_id y est un uuid FK sur auth.users).
-type StoredAccount = Player & { hash: number };
+type StoredAccount = Player & {
+  hash?: number | string;
+  salt?: string;
+  hash_version?: 2;
+};
 
 const LS_ACCOUNTS = "wosi.accounts";
 const LS_SESSION = "wosi.session";
@@ -93,6 +99,49 @@ function cheapHash(s: string): number {
   let h = 5381;
   for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
   return h;
+}
+
+function randomSalt(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return btoa(String.fromCharCode(...bytes));
+}
+
+async function secureHash(password: string, salt: string): Promise<string> {
+  const material = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      hash: "SHA-256",
+      salt: Uint8Array.from(atob(salt), (character) => character.charCodeAt(0)),
+      iterations: 210_000,
+    },
+    material,
+    256,
+  );
+  return btoa(String.fromCharCode(...new Uint8Array(bits)));
+}
+
+async function passwordMatches(account: StoredAccount, password: string): Promise<boolean> {
+  if (account.guest || account.hash == null) return false;
+  if (typeof account.hash === "number") return account.hash === cheapHash(password);
+  if (!account.salt) return false;
+  return account.hash === (await secureHash(password, account.salt));
+}
+
+async function secureAccount(account: StoredAccount, password: string): Promise<StoredAccount> {
+  const salt = randomSalt();
+  return {
+    ...account,
+    salt,
+    hash: await secureHash(password, salt),
+    hash_version: 2,
+  };
 }
 
 function readAccounts(): Record<string, StoredAccount> {
@@ -137,12 +186,11 @@ class OfflineAuth implements AuthApi {
     const key = slugify(pseudo);
     const accounts = readAccounts();
     if (accounts[key]) return { ok: false, error: "Ce pseudo est déjà pris." };
-    const account: StoredAccount = {
+    const account = await secureAccount({
       id: `offline_${key}`,
       pseudo: pseudo.trim(),
       is_admin: OFFLINE_ADMINS.has(key),
-      hash: cheapHash(password),
-    };
+    }, password);
     accounts[key] = account;
     writeAccounts(accounts);
     localStorage.setItem(LS_SESSION, account.id);
@@ -152,9 +200,16 @@ class OfflineAuth implements AuthApi {
   }
 
   async signIn(pseudo: string, password: string): Promise<AuthResult> {
-    const account = readAccounts()[slugify(pseudo)];
-    if (!account || account.hash !== cheapHash(password)) {
+    const key = slugify(pseudo);
+    let account = readAccounts()[key];
+    if (!account || !(await passwordMatches(account, password))) {
       return { ok: false, error: "Pseudo ou mot de passe incorrect." };
+    }
+    if (typeof account.hash === "number") {
+      account = await secureAccount(account, password);
+      const accounts = readAccounts();
+      accounts[key] = account;
+      writeAccounts(accounts);
     }
     localStorage.setItem(LS_SESSION, account.id);
     const player = stripHash(account);
@@ -163,8 +218,36 @@ class OfflineAuth implements AuthApi {
   }
 
   async signOut(): Promise<void> {
+    const id = localStorage.getItem(LS_SESSION);
+    if (id?.startsWith("guest_")) {
+      const accounts = readAccounts();
+      const key = Object.keys(accounts).find((candidate) => accounts[candidate].id === id);
+      if (key) {
+        delete accounts[key];
+        writeAccounts(accounts);
+      }
+    }
     localStorage.removeItem(LS_SESSION);
     this.emit(null);
+  }
+
+  async continueAsGuest(): Promise<AuthResult> {
+    const suffix = crypto.getRandomValues(new Uint32Array(1))[0].toString(36).slice(-4);
+    const pseudo = `Invité-${suffix.toUpperCase()}`;
+    const key = `guest-${suffix}-${Date.now().toString(36)}`;
+    const account: StoredAccount = {
+      id: `guest_${crypto.randomUUID()}`,
+      pseudo,
+      is_admin: false,
+      guest: true,
+    };
+    const accounts = readAccounts();
+    accounts[key] = account;
+    writeAccounts(accounts);
+    localStorage.setItem(LS_SESSION, account.id);
+    const player = stripHash(account);
+    this.emit(player);
+    return { ok: true, player };
   }
 
   async changePassword(oldPassword: string, newPassword: string): Promise<AuthResult> {
@@ -175,10 +258,10 @@ class OfflineAuth implements AuthApi {
     const accounts = readAccounts();
     const key = Object.keys(accounts).find((k) => accounts[k].id === id);
     if (!key) return { ok: false, error: "Session expirée — reconnecte-toi." };
-    if (accounts[key].hash !== cheapHash(oldPassword)) {
+    if (!(await passwordMatches(accounts[key], oldPassword))) {
       return { ok: false, error: "Mot de passe actuel incorrect." };
     }
-    accounts[key] = { ...accounts[key], hash: cheapHash(newPassword) };
+    accounts[key] = await secureAccount(accounts[key], newPassword);
     writeAccounts(accounts);
     return { ok: true, player: stripHash(accounts[key]) };
   }
@@ -229,13 +312,14 @@ class SupabaseAuth implements AuthApi {
       .limit(1);
     const row = rows?.[0] as Player | undefined;
     // Fiche absente (compte créé hors flux) : repli minimal sur les métadonnées.
-    return (
-      row ?? {
+    return row
+      ? { ...row, guest: (user as { is_anonymous?: boolean }).is_anonymous ?? false }
+      : {
         id: user.id,
         pseudo: (user.user_metadata?.pseudo as string) ?? user.email ?? "joueur",
         is_admin: false,
-      }
-    );
+        guest: (user as { is_anonymous?: boolean }).is_anonymous ?? false,
+      };
   }
 
   async getPlayer(): Promise<Player | null> {
@@ -276,6 +360,29 @@ class SupabaseAuth implements AuthApi {
     return player
       ? { ok: true, player }
       : { ok: false, error: "Connexion impossible — réessayez." };
+  }
+
+  async continueAsGuest(): Promise<AuthResult> {
+    const sb = await this.client();
+    const suffix = crypto.getRandomValues(new Uint32Array(1))[0].toString(36).slice(-4);
+    const pseudo = `Invité-${suffix.toUpperCase()}`;
+    const { data, error } = await sb.auth.signInAnonymously({
+      options: { data: { pseudo } },
+    });
+    if (error || !data.user) {
+      return {
+        ok: false,
+        error: "Le mode invité n'est pas activé sur ce serveur. Crée un compte pour continuer.",
+      };
+    }
+    const player: Player = {
+      id: data.user.id,
+      pseudo,
+      is_admin: false,
+      guest: true,
+    };
+    await sb.from("players").upsert({ id: player.id, pseudo }, { onConflict: "id" });
+    return { ok: true, player };
   }
 
   async signOut(): Promise<void> {

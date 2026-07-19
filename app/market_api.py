@@ -87,26 +87,27 @@ class MarketView(BaseModel):
 
 
 class OpenMarketRequest(BaseModel):
-    round_id: int
-    game_id: str | None = None  # lien vers la partie (marché « utopie finale » — R2)
-    question: str
-    b: float = Field(gt=0.0)
-    labels: list[str] = Field(default_factory=lambda: ["YES", "NO"])
+    round_id: int = Field(ge=0, le=2_147_483_647)
+    game_id: str | None = Field(None, max_length=128)  # lien partie↔marché (R2)
+    question: str = Field(min_length=1, max_length=500)
+    b: float = Field(gt=0.0, le=10_000.0, allow_inf_nan=False)
+    labels: list[str] = Field(default_factory=lambda: ["YES", "NO"], min_length=2, max_length=20)
     type: MarketType = MarketType.BINARY
     criterion: ResolutionCriterion | None = None
 
 
 class CreateAccountRequest(BaseModel):
-    name: str
+    name: str = Field(min_length=1, max_length=80)
     kind: AccountKind = AccountKind.HUMAN
-    balance: float | None = None  # None -> solde de départ par défaut
+    # Un client ne peut pas se créer un solde supérieur au capital de départ.
+    balance: float | None = Field(None, ge=0.0, le=1000.0, allow_inf_nan=False)
 
 
 class BetRequest(BaseModel):
-    account_id: str
-    market_id: str
-    outcome_id: str
-    shares: float
+    account_id: str = Field(min_length=1, max_length=128)
+    market_id: str = Field(min_length=1, max_length=128)
+    outcome_id: str = Field(min_length=1, max_length=160)
+    shares: float = Field(ge=-1000.0, le=1000.0, allow_inf_nan=False)
 
 
 class PositionView(BaseModel):
@@ -127,25 +128,33 @@ class AccountView(BaseModel):
 
 
 class DecisionInput(BaseModel):
-    country: str
-    action: str
-    target: str | None = None
+    country: str = Field(min_length=1, max_length=80)
+    action: str = Field(min_length=1, max_length=200)
+    target: str | None = Field(None, max_length=80)
 
 
 class ResolveRequest(BaseModel):
     """Contexte de résolution d'un round (fourni par l'appelant interne, ex. la simulation)."""
 
-    delta_utopia: float = 0.0
-    council_winner: str | None = None
-    decisions: list[DecisionInput] = Field(default_factory=list)
+    delta_utopia: float = Field(0.0, ge=-1.0, le=1.0, allow_inf_nan=False)
+    council_winner: str | None = Field(None, max_length=80)
+    decisions: list[DecisionInput] = Field(default_factory=list, max_length=100)
 
 
 # --- helpers ------------------------------------------------------------------
 
 
 def _market_view(engine: MarketEngine, market: Market) -> MarketView:
-    prices = engine.prices(market.id)
-    volume = sum(abs(t.shares) for t in engine.store.list_trades(market_id=market.id))
+    with engine.lock:
+        # Prix et volume proviennent du même instant logique, même sous une rafale de paris.
+        market = engine.store.get_market(market.id) or market
+        prices = engine.prices(market.id)
+        aggregate = getattr(engine.store, "trade_volume", None)
+        volume = (
+            aggregate(market.id)
+            if callable(aggregate)
+            else sum(abs(t.shares) for t in engine.store.list_trades(market_id=market.id))
+        )
     return MarketView(
         id=market.id,
         round_id=market.round_id,
@@ -238,9 +247,12 @@ def get_market(
 def create_account(
     body: CreateAccountRequest, engine: Annotated[MarketEngine, Depends(get_engine)]
 ) -> Account:
-    if body.balance is None:
-        return engine.create_account(body.name, kind=body.kind)
-    return engine.create_account(body.name, kind=body.kind, balance=body.balance)
+    try:
+        if body.balance is None:
+            return engine.create_account(body.name, kind=body.kind)
+        return engine.create_account(body.name, kind=body.kind, balance=body.balance)
+    except InvalidBet as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/accounts/{account_id}", response_model=AccountView)
@@ -290,7 +302,8 @@ def place_bet(
 def leaderboard(
     engine: Annotated[MarketEngine, Depends(get_engine)],
 ) -> list[scoring.LeaderboardEntry]:
-    return scoring.leaderboard(engine.store)
+    with engine.lock:
+        return scoring.leaderboard(engine.store)
 
 
 @router.post("/rounds/{round_id}/resolve", response_model=list[SettlementResult])
@@ -300,16 +313,19 @@ def resolve_round(
     """Règle tous les marchés non résolus d'un round (le Juge = oracle)."""
     summary = _summary_from_decisions(round_id, body.decisions)
     results: list[SettlementResult] = []
-    for market in engine.store.list_markets(round_id=round_id):
-        if market.status is MarketStatus.RESOLVED:
-            continue
-        try:
-            results.append(
-                resolve_and_settle(
-                    engine.store, market, summary,
-                    delta_utopia=body.delta_utopia, council_winner=body.council_winner,
+    # Résolution et pari ne peuvent pas s'entrecroiser : aucun pari accepté après le
+    # calcul des payouts mais avant le passage effectif du marché à RESOLVED.
+    with engine.lock:
+        for market in engine.store.list_markets(round_id=round_id):
+            if market.status is MarketStatus.RESOLVED:
+                continue
+            try:
+                results.append(
+                    resolve_and_settle(
+                        engine.store, market, summary,
+                        delta_utopia=body.delta_utopia, council_winner=body.council_winner,
+                    )
                 )
-            )
-        except ResolutionError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            except ResolutionError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
     return results

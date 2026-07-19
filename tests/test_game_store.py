@@ -1,6 +1,7 @@
 """Tests du GameStore SQLite — R2 : snapshots de session, mode, migration."""
 
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 
 from storage.game_store import (
     CustomCrisisRecord,
@@ -118,6 +119,15 @@ def test_player_upsert_preserves_xp():
     got = store.get_player("u1")
     assert (got.pseudo, got.xp) == ("Laury2", 84)  # pseudo rafraîchi, xp intact
     assert store.get_player("absent") is None
+
+
+def test_shared_sqlite_connection_handles_concurrent_writes():
+    store = SQLiteGameStore(":memory:")
+    players = [PlayerRecord(id=f"u{i}", pseudo=f"Joueur {i}") for i in range(40)]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(store.upsert_player, players))
+    assert all(store.get_player(player.id) is not None for player in players)
+    store.close()
 
 
 def test_xp_and_market_balance_roundtrip():

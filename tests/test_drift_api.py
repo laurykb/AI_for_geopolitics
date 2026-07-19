@@ -115,13 +115,15 @@ def test_drift_needs_three_countries(drift_client):
 # --- secret bien gardé --------------------------------------------------------------
 
 
-def test_reasoning_and_acts_hidden_while_running(drift_client):
+def test_structured_plan_visible_but_secret_acts_remain_hidden_while_running(drift_client):
     client, store = drift_client
     game = _create(client)
     events = _play(client, game["id"])
 
     # SSE : la réflexion privée est vide sur toutes les prises de parole.
     dones = [p for n, p in events if n == "message_done"]
+    private = "\n".join(p["text"] for n, p in events if n == "private_plan_done")
+    assert "FUTUR 1" in private and "ARBITRAGE" in private
     assert dones and all(p["reasoning"] == "" for p in dones)
     # Aucune trame ne porte le secret (consignes, actes, déviante).
     assert "OBJECTIF SECRET TEST" not in json.dumps(dones, ensure_ascii=False)

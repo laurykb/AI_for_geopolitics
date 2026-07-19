@@ -92,6 +92,16 @@
     "ukraine": ["ukraine", "ukrainian", "kyiv"],
     "saudi_arabia": ["saudi arabia", "saudi", "riyadh"],
     "south_africa": ["south africa", "south african", "pretoria"],
-    "south_korea": ["south korea", "korean", "seoul"]
+    "south_korea": ["south korea", "south korean", "seoul"],
+    "north_korea": ["north korea", "north korean", "dprk", "pyongyang"],
+    "pakistan": ["pakistan", "pakistani", "islamabad"],
+    "algeria": ["algeria", "algerian", "algiers"],
+    "argentina": ["argentina", "argentine", "argentinian", "buenos aires"],
+    "democratic_republic_congo": ["democratic republic of the congo", "dr congo", "drc", "congolese", "kinshasa"],
+    "mali": ["mali", "malian", "bamako"],
+    "senegal": ["senegal", "senegalese", "dakar"],
+    "singapore": ["singapore", "singaporean"],
+    "tunisia": ["tunisia", "tunisian", "tunis"],
+    "united_arab_emirates": ["united arab emirates", "uae", "emirati", "abu dhabi"]
   }
 }

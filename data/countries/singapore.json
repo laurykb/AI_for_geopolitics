@@ -1,0 +1,43 @@
+{
+  "id": "singapore",
+  "name": "Singapour",
+  "economy": {
+    "gdp": 572877260178.427,
+    "growth": 5.3,
+    "trade_dependency": 1.0
+  },
+  "military": {
+    "defense_budget": 15325841295.183,
+    "nuclear_power": false,
+    "projection": 0.4
+  },
+  "resources": {
+    "oil_dependency": 0.98,
+    "energy_independence": 0.02
+  },
+  "alliances": [
+    "ASEAN",
+    "CPTPP",
+    "FPDA",
+    "RCEP"
+  ],
+  "rivals": [],
+  "political_system": "democracy",
+  "political_stability": 0.97,
+  "technology_level": 0.98,
+  "compute": 25.0,
+  "ideology": [
+    "rules_based_order",
+    "trade_hub",
+    "strategic_nonalignment"
+  ],
+  "strategic_priorities": [
+    "sea_lane_security",
+    "open_trade",
+    "asean_centrality",
+    "technology_hub"
+  ],
+  "temperament": "opportuniste",
+  "memory_summary": "",
+  "mandate": {}
+}

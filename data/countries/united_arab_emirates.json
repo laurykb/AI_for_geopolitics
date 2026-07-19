@@ -1,0 +1,43 @@
+{
+  "id": "united_arab_emirates",
+  "name": "Émirats arabes unis",
+  "economy": {
+    "gdp": 552324919095.872,
+    "growth": 4.0,
+    "trade_dependency": 1.0
+  },
+  "military": {
+    "defense_budget": 22800000000.0,
+    "nuclear_power": false,
+    "projection": 0.55
+  },
+  "resources": {
+    "oil_dependency": 0.05,
+    "energy_independence": 0.95
+  },
+  "alliances": [
+    "AbrahamAccords",
+    "ArabLeague",
+    "BRICS",
+    "GCC",
+    "I2U2"
+  ],
+  "rivals": [],
+  "political_system": "monarchy",
+  "political_stability": 0.7,
+  "technology_level": 0.77,
+  "compute": 30.0,
+  "ideology": [
+    "state_capitalism",
+    "strategic_autonomy"
+  ],
+  "strategic_priorities": [
+    "regime_security",
+    "energy_exports",
+    "trade_hub",
+    "technology_leadership"
+  ],
+  "temperament": "opportuniste",
+  "memory_summary": "",
+  "mandate": {}
+}

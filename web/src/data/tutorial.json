@@ -1,10 +1,17 @@
 [
   { "page": "/games/{demo}", "target": null, "advanceOn": null, "title": "tuto.1.titre", "text": "tuto.1.texte" },
-  { "page": "/games/{demo}", "target": "scene", "advanceOn": null, "title": "tuto.2.titre", "text": "tuto.2.texte" },
-  { "page": "/games/{demo}", "target": "bandeau", "advanceOn": null, "title": "tuto.3.titre", "text": "tuto.3.texte" },
-  { "page": "/games/{demo}", "target": "jouer", "advanceOn": "round-done", "title": "tuto.4.titre", "text": "tuto.4.texte" },
-  { "page": "/games/{demo}", "target": null, "advanceOn": null, "title": "tuto.5.titre", "text": "tuto.5.texte" },
+  { "page": "/games/{demo}", "target": "map-zoom", "advanceOn": null, "title": "tuto.12.titre", "text": "tuto.12.texte" },
+  { "page": "/games/{demo}", "target": "action-dock", "advanceOn": null, "title": "tuto.2.titre", "text": "tuto.2.texte" },
+  { "page": "/games/{demo}", "target": "jouer", "advanceOn": "round-started", "title": "tuto.3.titre", "text": "tuto.3.texte" },
+  { "page": "/games/{demo}", "target": null, "advanceOn": "round-done", "silent": true, "title": "tuto.4.titre", "text": "tuto.4.texte" },
+  { "page": "/games/{demo}", "target": "scene", "advanceOn": null, "title": "tuto.15.titre", "text": "tuto.15.texte" },
+  { "page": "/games/{demo}", "target": "round-conclusion", "advanceOn": null, "title": "tuto.5.titre", "text": "tuto.5.texte" },
+  { "page": "/games/{demo}", "target": "scenario-forecasts", "advanceOn": null, "title": "tuto.13.titre", "text": "tuto.13.texte" },
+  { "page": "/games/{demo}", "target": "betting", "advanceOn": "bet-confirmed", "title": "tuto.14.titre", "text": "tuto.14.texte" },
   { "page": "/games/{demo}", "target": "motion", "advanceOn": "motion-filed", "title": "tuto.6.titre", "text": "tuto.6.texte" },
-  { "page": "/games/{demo}", "target": "jouer", "advanceOn": "vote-seen", "title": "tuto.7.titre", "text": "tuto.7.texte" },
-  { "page": "/games/{demo}", "target": null, "advanceOn": null, "title": "tuto.8.titre", "text": "tuto.8.texte" }
+  { "page": "/games/{demo}", "target": "next-round", "advanceOn": "next-round-started", "title": "tuto.7.titre", "text": "tuto.7.texte" },
+  { "page": "/games/{demo}", "target": null, "advanceOn": "motion-vote-ready", "silent": true, "title": "tuto.8.titre", "text": "tuto.8.texte" },
+  { "page": "/games/{demo}", "target": "action-dock", "advanceOn": "vote-submitted", "title": "tuto.9.titre", "text": "tuto.9.texte" },
+  { "page": "/games/{demo}", "target": null, "advanceOn": "round-done", "silent": true, "title": "tuto.10.titre", "text": "tuto.10.texte" },
+  { "page": "/games/{demo}", "target": null, "advanceOn": null, "title": "tuto.11.titre", "text": "tuto.11.texte" }
 ]

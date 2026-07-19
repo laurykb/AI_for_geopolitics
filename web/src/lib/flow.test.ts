@@ -102,7 +102,7 @@ describe("backendRole", () => {
 });
 
 describe("buildCreateBody", () => {
-  // RG-2 — deux modes ; le Brouillard et le Réel/escalade sont des drapeaux cochables.
+  // Le Brouillard et le Réel/escalade sont des drapeaux cochables du Classique.
   const settings = {
     fog: false,
     escalation: false,
@@ -172,5 +172,23 @@ describe("buildCreateBody", () => {
       selected: seven,
     });
     expect(body.mode).toBe("campaign");
+  });
+
+  it("fige le casting multi-modèle choisi pour une partie classique", () => {
+    const body = buildCreateBody({
+      scenario: "red_sea",
+      baseMode: "classic",
+      settings,
+      role: "gm",
+      selected: seven,
+      modelCast: {
+        strategy: "balanced",
+        models: ["model-a:4b", "model-b:7b"],
+        game_master_model: "model-a:4b",
+        judge_model: "model-b:7b",
+      },
+    });
+    expect(body.model_cast?.models).toEqual(["model-a:4b", "model-b:7b"]);
+    expect(body.model_cast?.judge_model).toBe("model-b:7b");
   });
 });

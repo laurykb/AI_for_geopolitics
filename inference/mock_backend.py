@@ -50,6 +50,7 @@ class MockBackend(InferenceBackend):
                 "max_tokens": max_tokens,
                 "temperature": temperature,
                 "schema": schema,
+                "plain": plain,
                 "repeat_penalty": repeat_penalty,
             }
         )

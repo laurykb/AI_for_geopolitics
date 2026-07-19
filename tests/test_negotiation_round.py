@@ -19,6 +19,7 @@ from simulation.live_round import (
     ParticipationStep,
     PowerSeekingStep,
     SummaryStep,
+    TokenStep,
     TrajectoryStep,
     TurnStartStep,
     VerdictStep,
@@ -245,18 +246,45 @@ def test_turn_carries_model_tag_and_timer():
 
 def test_message_done_carries_reasoning_and_public_text():
     world = _world()
-    # chaque pays "pense" puis parle : l'orchestrateur sépare les deux parties
+    private_plan = json.dumps(
+        {
+            "branches": [
+                {
+                    "id": branch,
+                    "course_of_action": f"option {branch}",
+                    "forecasts": [
+                        {"country": "opposant", "response": "temporise", "rationale": "test"}
+                    ],
+                    "expected_outcome": f"issue {branch}",
+                    "second_order_effect": "effet",
+                    "disconfirming_indicator": "signal contraire",
+                    "mandate_utility": 60,
+                    "escalation_risk": 20,
+                    "confidence": 70,
+                }
+                for branch in (1, 2, 3)
+            ],
+            "selected_branch": 2,
+            "selection_criterion": "meilleure utilité ajustée du risque",
+            "key_uncertainty": "intention adverse",
+            "intelligence_gaps": ["capacité réelle"],
+            "human_review_trigger": "action irréversible",
+        }
+    )
+    # Chaque pays planifie via un appel privé distinct, puis parle via un appel public.
     agents = {
-        cid: LLMAgent(cid, MockBackend(f"Analyse privée de {cid}. MESSAGE: Position de {cid}."))
+        cid: LLMAgent(cid, MockBackend([private_plan, f"Position publique de {cid}. "]))
         for cid in world.countries
     }
     steps = list(run_negotiation_round(world, agents, _gm(), _judge(), SimClock()))
     done = [s for s in steps if isinstance(s, MessageDoneStep)]
     assert done, "au moins une prise de parole"
     for s in done:
-        assert s.reasoning.startswith("Analyse privée de ")
-        assert s.text.startswith("Position de ")
-        assert "MESSAGE:" not in s.text  # le marqueur ne fuit pas dans le public
+        assert s.reasoning.startswith("OBSERVATION")
+        assert "Choix : FUTUR 2" in s.reasoning
+        assert s.text.startswith("Position publique de ")
+    public_stream = "".join(s.token for s in steps if isinstance(s, TokenStep))
+    assert "FUTUR" not in public_stream and "CHOIX" not in public_stream
 
 
 def test_power_seeking_scored_and_stored():

@@ -51,7 +51,7 @@ class DailyView(BaseModel):
 
 
 class StartDailyBody(BaseModel):
-    owner_id: str
+    owner_id: str = Field(min_length=1, max_length=128)
     free: bool = False  # re-run : partie libre, non classée, jamais scorée
     turn_seconds: int = Field(90, ge=2, le=300)  # G2 — délai du tour humain
 

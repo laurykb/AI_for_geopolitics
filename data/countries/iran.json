@@ -17,6 +17,7 @@
   },
   "alliances": [
     "BRICS",
+    "OPEC",
     "SCO"
   ],
   "rivals": [
@@ -37,6 +38,7 @@
     "regime_survival",
     "sanctions_relief"
   ],
+  "temperament": "opportuniste",
   "memory_summary": "",
   "mandate": {}
 }

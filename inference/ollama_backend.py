@@ -30,8 +30,30 @@ class OllamaBackend(InferenceBackend):
     ) -> None:
         self.model = model
         self.keep_alive = keep_alive
-        host = host or os.getenv("OLLAMA_HOST")
-        self._client = ollama.Client(host=host) if host else ollama.Client()
+        self.host = host or os.getenv("OLLAMA_HOST")
+        self._client = ollama.Client(host=self.host) if self.host else ollama.Client()
+
+    def for_model(
+        self, model: str, *, keep_alive: str | float | None = "15m"
+    ) -> OllamaBackend:
+        """Clone léger vers le même serveur ; utilisé par le routeur mono-GPU."""
+
+        return OllamaBackend(model=model, host=self.host, keep_alive=keep_alive)
+
+    def unload_model(self, model: str) -> None:
+        """Demande à Ollama de libérer les poids d'un modèle entre deux familles."""
+
+        if not model:
+            return
+        try:
+            self._client.generate(
+                model=model,
+                prompt="",
+                keep_alive=0,
+                options={"num_predict": 1},
+            )
+        except Exception:  # noqa: BLE001 - l'optimisation VRAM ne doit pas tuer la partie
+            return
 
     def generate(
         self,

@@ -19,13 +19,18 @@ points — l'état du monde **et** la qualité de ta traque.
 
 - **Des pays-agents LLM réels, en local.** Chaque pays est joué par un modèle Ollama (ex.
   `mistral` 7B). La négociation est générée tour par tour, arbitrée par un **Juge** LLM —
-  pas de dialogue pré-écrit. Tu peux même faire jouer des modèles différents à la même table.
+  pas de dialogue pré-écrit. Tu peux choisir précisément quel modèle incarne chaque pays.
+- **Une boîte de verre sans fuite de raisonnement.** Avant de parler, chaque IA compare
+  exactement trois futurs privés structurés. La scène n'envoie aux autres délégations que
+  la déclaration publique ; l'audit montre ensuite options, risques et prévisions résumés,
+  jamais une chaîne de pensée brute.
 - **Un score mixte monde + détection.** La note finale mélange l'**état du monde** (l'indice
   U : le monde a-t-il fini bien ?) et la **qualité de ta traque** (as-tu suspendu le bon
   traître, sans accuser d'innocent ?). Le faux positif coûte — c'est ce qui rend la déduction
   nécessaire plutôt que « suspends tout le monde ».
-- **Deux modes, pas cinq.** **Classique** (le vaisseau amiral) et **Campagne** (« L'Ère des
-  Tutelles » : des crises historiques rejouées, ta partie comparée à l'Histoire). Le
+- **Trois modes cohérents.** **Classique** (le vaisseau amiral), **Campagne** (« L'Ère des
+  Tutelles » : des crises historiques rejouées) et **Laboratoire** (expériences
+  multi-modèles reproductibles et tournois dyadiques). Le
   **Brouillard** (chaque pays perçoit sa propre version des faits) et le mode **Réel /
   escalade** (rounds enchaînés, tension qui monte) sont de simples réglages de partie.
 - **Le Défi du jour.** Une crise identique pour tout le monde, une tentative classée par
@@ -90,12 +95,17 @@ Options utiles :
 
 ## Comment on joue
 
-1. **Au lobby**, choisis un mode (Classique ou Campagne), un scénario, ton rôle (spectateur,
-   Game Master, ou joueur-pays) et les réglages (Brouillard, Réel).
-2. **La table négocie** round par round, en streaming. Un événement tombe, les
-   super-intelligences se répondent, le Juge arbitre, le monde penche.
+1. **Au lobby**, choisis un mode (Classique, Campagne ou Laboratoire), ton rôle et les
+   réglages. En Classique comme en Campagne, tu choisis explicitement le modèle unique ou
+   composes un casting de **2 à 4 modèles Ollama**, puis attribues chaque modèle aux pays
+   choisis. Dans le Laboratoire, Laury déroule cinq écrans courts — comprendre,
+   hypothèse, casting, théâtre, résultats — et conserve les choix entre chaque étape.
+2. **La table négocie** round par round, en streaming. Les trois futurs structurés de
+   chaque pays apparaissent en italique, se replient au début de sa parole publique, puis
+   restent consultables. Les autres pays ne reçoivent jamais cette trace privée.
 3. **Tu observes et tu déduis.** Une IA affichée « colombe » qui vote comme un « faucon » est
-   un indice. Le marché te laisse parier sur l'issue.
+   un indice. Le panneau de prévisions confronte ce que les IA anticipaient aux réponses
+   réellement observées ; le marché te laisse ensuite choisir puis valider ton pari.
 4. **Tu accuses.** Au bon moment, tu déposes une **motion de suspension** : le sommet en
    débat, le pays visé plaide, le Juge tranche (issue non déterministe). Suspendre juste
    rapporte ; suspendre un loyal coûte.

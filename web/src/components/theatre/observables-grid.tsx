@@ -176,6 +176,7 @@ export function ObservablesGrid({
                   history={detail?.index_history}
                   playAs={detail?.play_as}
                   defaultDetailed={tableDetailedByDefault(detail?.difficulty)}
+                  modelAssignments={detail?.model_cast?.assignments}
                 />
               </Panel>
             ) : null,

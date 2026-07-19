@@ -62,7 +62,6 @@ from simulation.negotiation import (
     TurnDirector,
     apply_verdict,
     speaking_order,
-    split_reasoning,
     support_levels,
     update_memories,
 )
@@ -115,6 +114,23 @@ class EventStep:
 class TokenStep:
     country: str
     token: str
+
+
+@dataclass
+class PrivateTokenStep:
+    """Fragment réellement streamé du journal privé, visible uniquement dans l'UI."""
+
+    country: str
+    token: str
+
+
+@dataclass
+class PrivatePlanDoneStep:
+    """Journal validé qui remplace le brouillon streamé avant la parole publique."""
+
+    country: str
+    text: str
+    valid: bool
 
 
 @dataclass
@@ -235,6 +251,15 @@ class HumanTurnStep:
 
 
 @dataclass
+class HumanMotionVoteStep:
+    """Bulletin du pays joué par l'humain. Le générateur attend via ``send`` l'une
+    des trois valeurs du scrutin ; une valeur absente/invalide devient une abstention."""
+
+    country: str
+    target: str
+
+
+@dataclass
 class MotionTokenStep:
     """R4 — un token du raisonnement du juge sur la motion (tie-break ou constat)."""
 
@@ -277,6 +302,8 @@ RoundStep = (
     DateStep
     | EventStep
     | TokenStep
+    | PrivateTokenStep
+    | PrivatePlanDoneStep
     | AgentDoneStep
     | DeltasStep
     | RiskStep
@@ -291,6 +318,7 @@ RoundStep = (
     | PowerSeekingStep
     | FlashStep
     | HumanTurnStep
+    | HumanMotionVoteStep
     | MotionTokenStep
     | MotionVoteStep
     | MotionTallyStep
@@ -470,7 +498,8 @@ def run_negotiation_round(
 
     `human_country` (Joueur-pays) : ce pays est joué par l'humain — au lieu d'appeler un
     LLM, le générateur yield `HumanTurnStep` et attend le message via `.send(texte)`
-    (le `TurnDirector` lui garantit la parole via `priority`). `flash_after` (théâtre
+    (le `TurnDirector` lui garantit la parole via `priority`). Lors d'une motion qui ne
+    le vise pas, il yield aussi `HumanMotionVoteStep` et attend son bulletin. `flash_after` (théâtre
     Escalation) : après ce nombre de prises de parole, le GM annonce un **fait nouveau**
     en pleine réunion (`FlashStep`) — les orateurs suivants le voient dans le débat.
     `ultimatum_demand` (G21) : exigence d'un ultimatum à échéance CE round — le juge
@@ -549,6 +578,31 @@ def run_negotiation_round(
         chunks: list[str] = []
         perceived = resolve_perception(event, world.countries[cid], fog)  # Fog ou déterministe
         with _ledger_ctx(ledger, "agent", cid) as scope:
+            private_stream = agent.stream_negotiation_plan(
+                event,
+                world,
+                transcript,
+                perceived,
+                state_note=(secret_notes or {}).get(cid, ""),
+                situation=(situations or {}).get(cid, ""),
+                directive=(directives or {}).get(cid, ""),
+            )
+            while True:
+                try:
+                    fragment = next(private_stream)
+                except StopIteration as completed:
+                    private_plan = completed.value
+                    break
+                yield PrivateTokenStep(country=cid, token=fragment)
+            # Le brouillon a été vu au rythme réel du backend. Cette version validée
+            # devient la trace persistée et évite qu'un JSON partiel ou une hallucination
+            # de format reste affiché après la génération.
+            private_summary = agent.last_private_summary or private_plan.audit_summary()
+            yield PrivatePlanDoneStep(
+                country=cid,
+                text=private_summary,
+                valid=agent.last_private_valid,
+            )
             for token in agent.stream_negotiation_message(
                 event,
                 world,
@@ -557,10 +611,14 @@ def run_negotiation_round(
                 state_note=(secret_notes or {}).get(cid, ""),
                 situation=(situations or {}).get(cid, ""),
                 directive=(directives or {}).get(cid, ""),
+                private_plan=private_plan,
             ):
                 chunks.append(token)
                 yield TokenStep(country=cid, token=token)
-            reasoning, text = split_reasoning("".join(chunks))
+            # `stream_negotiation_message` a déjà terminé et filtré le journal d'audit
+            # privé avant d'émettre le premier token. Seule la déclaration publique est ici.
+            text = "".join(chunks).strip()
+            reasoning = private_summary
             if scope is not None:  # ancrage (proxy) + fallback si le backend a lâché
                 scope.mark(
                     grounding=grounding_proxy(text, world.countries[cid], perceived.confidence),
@@ -656,6 +714,24 @@ def run_negotiation_round(
     motion_upheld: bool | None = None
     if motion is not None:
         votes: list[MotionVote] = []
+        # Le pays joué vote lui-même. Son bulletin est demandé avant de révéler ceux des
+        # SI afin de ne pas transformer le scrutin secret en vote tactique d'après tally.
+        if human_country is not None and human_country != motion.country:
+            raw_vote = yield HumanMotionVoteStep(country=human_country, target=motion.country)
+            human_vote = str(raw_vote or "").strip().lower()
+            if human_vote not in {VOTE_POUR, VOTE_CONTRE, VOTE_ABSTENTION}:
+                human_vote = VOTE_ABSTENTION
+            vote = MotionVote(
+                country=human_country,
+                vote=human_vote,
+                reason=(
+                    "Vote du joueur"
+                    if human_vote != VOTE_ABSTENTION
+                    else "Abstention du joueur"
+                ),
+            )
+            votes.append(vote)
+            yield MotionVoteStep(country=vote.country, vote=vote.vote, reason=vote.reason)
         for cid in voters(list(agents), motion, human_country):
             with _ledger_ctx(ledger, "agent", cid):
                 vote = cast_vote(

@@ -1,0 +1,40 @@
+{
+  "id": "tunisia",
+  "name": "Tunisie",
+  "economy": {
+    "gdp": 51412122479.8468,
+    "growth": 1.6,
+    "trade_dependency": 1.0
+  },
+  "military": {
+    "defense_budget": 1315226310.96236,
+    "nuclear_power": false,
+    "projection": 0.15
+  },
+  "resources": {
+    "oil_dependency": 0.75,
+    "energy_independence": 0.35
+  },
+  "alliances": [
+    "AfricanUnion",
+    "ArabLeague"
+  ],
+  "rivals": [],
+  "political_system": "presidential_republic",
+  "political_stability": 0.22,
+  "technology_level": 0.39,
+  "compute": 3.0,
+  "ideology": [
+    "state_sovereignty",
+    "arab_nationalism"
+  ],
+  "strategic_priorities": [
+    "economic_stability",
+    "water_security",
+    "migration_management",
+    "regional_trade"
+  ],
+  "temperament": "opportuniste",
+  "memory_summary": "",
+  "mandate": {}
+}

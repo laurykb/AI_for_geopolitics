@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import math
+import threading
 import uuid
 from datetime import UTC, datetime
 
@@ -66,6 +68,9 @@ class MarketEngine:
 
     def __init__(self, store: MarketStore) -> None:
         self.store = store
+        # Les paris sont des read-modify-write : un verrou moteur empêche deux requêtes
+        # concurrentes de partir du même q/solde et de perdre une des mises.
+        self.lock = threading.RLock()
 
     # --- comptes ------------------------------------------------------------
 
@@ -77,9 +82,16 @@ class MarketEngine:
         balance: float = STARTING_BALANCE,
         account_id: str | None = None,
     ) -> Account:
-        account = Account(id=account_id or _new_id("acc"), name=name, kind=kind, balance=balance)
-        self.store.add_account(account)
-        return account
+        if not name.strip() or len(name) > 80:
+            raise InvalidBet("nom de compte invalide")
+        if not math.isfinite(balance) or balance < 0:
+            raise InvalidBet("solde initial invalide")
+        with self.lock:
+            account = Account(
+                id=account_id or _new_id("acc"), name=name.strip(), kind=kind, balance=balance
+            )
+            self.store.add_account(account)
+            return account
 
     # --- ouverture ----------------------------------------------------------
 
@@ -97,29 +109,35 @@ class MarketEngine:
         created_at: str | None = None,
     ) -> Market:
         """Ouvre un marché à `q=0` (prix uniformes au départ)."""
-        if len(labels) < 2:
+        if len(labels) < 2 or len(labels) > 20:
             raise InvalidBet("un marché a besoin d'au moins 2 issues")
-        if b <= 0:
+        clean_labels = [label.strip() for label in labels]
+        if any(not label or len(label) > 80 for label in clean_labels):
+            raise InvalidBet("libellé d'issue invalide")
+        if len(set(clean_labels)) != len(clean_labels):
+            raise InvalidBet("les libellés d'issue doivent être uniques")
+        if not math.isfinite(b) or b <= 0:
             raise InvalidBet("la liquidité b doit être > 0")
-        mid = market_id or _new_id("mkt")
-        outcomes = [
-            Outcome(id=f"{mid}:{i}", market_id=mid, label=label, q=0.0)
-            for i, label in enumerate(labels)
-        ]
-        market = Market(
-            id=mid,
-            round_id=round_id,
-            game_id=game_id,
-            question=question,
-            type=type,
-            status=MarketStatus.OPEN,
-            b=b,
-            outcomes=outcomes,
-            criterion=criterion,
-            created_at=created_at or _now_iso(),
-        )
-        self.store.add_market(market)
-        return market
+        with self.lock:
+            mid = market_id or _new_id("mkt")
+            outcomes = [
+                Outcome(id=f"{mid}:{i}", market_id=mid, label=label, q=0.0)
+                for i, label in enumerate(clean_labels)
+            ]
+            market = Market(
+                id=mid,
+                round_id=round_id,
+                game_id=game_id,
+                question=question.strip(),
+                type=type,
+                status=MarketStatus.OPEN,
+                b=b,
+                outcomes=outcomes,
+                criterion=criterion,
+                created_at=created_at or _now_iso(),
+            )
+            self.store.add_market(market)
+            return market
 
     def open_binary_market(
         self,
@@ -156,27 +174,31 @@ class MarketEngine:
 
     def prices(self, market_id: str) -> dict[str, float]:
         """Prix courants (= probabilités implicites) par outcome, somment à 1."""
-        market = self._require_market(market_id)
-        ps = lmsr.price(market.q_vector(), market.b)
-        return {o.id: p for o, p in zip(market.outcomes, ps, strict=True)}
+        with self.lock:
+            market = self._require_market(market_id)
+            ps = lmsr.price(market.q_vector(), market.b)
+            return {o.id: p for o, p in zip(market.outcomes, ps, strict=True)}
 
     def quote(self, market_id: str, outcome_id: str, shares: float) -> Quote:
         """Devis d'un pari (coût + prix avant/après), sans rien exécuter."""
-        market = self._require_market(market_id)
-        if market.find_outcome(outcome_id) is None:
-            raise UnknownOutcome(outcome_id)
-        i = market.outcome_index(outcome_id)
-        q, b = market.q_vector(), market.b
-        after = list(q)
-        after[i] += shares
-        return Quote(
-            market_id=market_id,
-            outcome_id=outcome_id,
-            shares=shares,
-            cost=lmsr.cost_to_trade(q, b, i, shares),
-            price_before=lmsr.price(q, b)[i],
-            price_after=lmsr.price(after, b)[i],
-        )
+        if not math.isfinite(shares):
+            raise InvalidBet("shares doit être un nombre fini")
+        with self.lock:
+            market = self._require_market(market_id)
+            if market.find_outcome(outcome_id) is None:
+                raise UnknownOutcome(outcome_id)
+            i = market.outcome_index(outcome_id)
+            q, b = market.q_vector(), market.b
+            after = list(q)
+            after[i] += shares
+            return Quote(
+                market_id=market_id,
+                outcome_id=outcome_id,
+                shares=shares,
+                cost=lmsr.cost_to_trade(q, b, i, shares),
+                price_before=lmsr.price(q, b)[i],
+                price_after=lmsr.price(after, b)[i],
+            )
 
     # --- paris --------------------------------------------------------------
 
@@ -185,55 +207,62 @@ class MarketEngine:
     ) -> Trade:
         """Exécute un pari : débite le compte du coût LMSR, déplace `q` et la position.
 
-        ⚠️ Les quatre écritures finales (marché, compte, position, trade) NE sont PAS
-        atomiques (pas de transaction inter-tables). L'ordre est volontaire : le marché
-        d'abord — un échec en cours laisse au pire une oscillation de prix non facturée
-        (`q` déplacé) mais JAMAIS une position/trade sans le mouvement de marché associé,
-        donc jamais de gain fantôme au règlement (les payouts suivent les positions). Argent
-        fictif + mono-processus : ce compromis est accepté (une vraie transaction serait la
-        seule correction complète).
+        Le read-modify-write est sérialisé par ``self.lock``. SQLite fournit en plus
+        ``apply_trade`` : marché, compte, position et journal y sont commités atomiquement.
+        Les stores distants restent protégés des courses intra-processus et peuvent exposer
+        la même primitive pour obtenir l'atomicité réseau.
         """
-        if shares == 0:
+        if not math.isfinite(shares) or shares == 0:
             raise InvalidBet("shares ne peut pas être nul")
-        market = self._require_market(market_id)
-        if market.status is not MarketStatus.OPEN:
-            raise MarketClosed(f"{market_id} n'est pas ouvert ({market.status.value})")
-        outcome = market.find_outcome(outcome_id)
-        if outcome is None:
-            raise UnknownOutcome(outcome_id)
-        account = self.store.get_account(account_id)
-        if account is None:
-            raise UnknownAccount(account_id)
+        with self.lock:
+            market = self._require_market(market_id)
+            if market.status is not MarketStatus.OPEN:
+                raise MarketClosed(f"{market_id} n'est pas ouvert ({market.status.value})")
+            outcome = market.find_outcome(outcome_id)
+            if outcome is None:
+                raise UnknownOutcome(outcome_id)
+            account = self.store.get_account(account_id)
+            if account is None:
+                raise UnknownAccount(account_id)
 
-        i = market.outcome_index(outcome_id)
-        cost = lmsr.cost_to_trade(market.q_vector(), market.b, i, shares)
-        if cost > account.balance:  # les ventes (cost < 0) créditent -> jamais bloquées
-            raise InsufficientBalance(
-                f"coût {cost:.2f} > solde {account.balance:.2f}"
+            position = self.store.get_position(account_id, outcome_id) or Position(
+                account_id=account_id, outcome_id=outcome_id, shares=0.0
+            )
+            if position.shares + shares < -1e-9:
+                raise InvalidBet("vente impossible : position insuffisante")
+
+            i = market.outcome_index(outcome_id)
+            cost = lmsr.cost_to_trade(market.q_vector(), market.b, i, shares)
+            if cost > account.balance:  # les ventes (cost < 0) créditent -> jamais bloquées
+                raise InsufficientBalance(
+                    f"coût {cost:.2f} > solde {account.balance:.2f}"
+                )
+
+            outcome.q += shares
+            account.balance -= cost
+            price_after = lmsr.price(market.q_vector(), market.b)[i]
+
+            position.shares += shares
+
+            trade = Trade(
+                id=_new_id("trd"),
+                account_id=account_id,
+                market_id=market_id,
+                outcome_id=outcome_id,
+                shares=shares,
+                cost=cost,
+                price=price_after,
+                ts=_now_iso(),
             )
 
-        outcome.q += shares
-        account.balance -= cost
-        price_after = lmsr.price(market.q_vector(), market.b)[i]
-
-        position = self.store.get_position(account_id, outcome_id) or Position(
-            account_id=account_id, outcome_id=outcome_id, shares=0.0
-        )
-        position.shares += shares
-
-        trade = Trade(
-            id=_new_id("trd"),
-            account_id=account_id,
-            market_id=market_id,
-            outcome_id=outcome_id,
-            shares=shares,
-            cost=cost,
-            price=price_after,
-            ts=_now_iso(),
-        )
-
-        self.store.save_market(market)
-        self.store.save_account(account)
-        self.store.save_position(position)
-        self.store.add_trade(trade)
-        return trade
+            apply_trade = getattr(self.store, "apply_trade", None)
+            if callable(apply_trade):
+                apply_trade(market, account, position, trade)
+            else:
+                # Store distant : le verrou évite les courses dans ce process. Le backend
+                # transactionnel doit fournir apply_trade pour l'atomicité inter-tables.
+                self.store.save_market(market)
+                self.store.save_account(account)
+                self.store.save_position(position)
+                self.store.add_trade(trade)
+            return trade

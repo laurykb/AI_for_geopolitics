@@ -17,6 +17,7 @@
   },
   "alliances": [
     "BRICS",
+    "RussiaDPRKTreaty",
     "SCO"
   ],
   "rivals": [
@@ -36,6 +37,7 @@
     "sanctions_resilience",
     "energy_leverage"
   ],
+  "temperament": "opportuniste",
   "memory_summary": "",
   "mandate": {}
 }

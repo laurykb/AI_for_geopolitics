@@ -8,24 +8,46 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+import { useAuth } from "@/components/auth-provider";
+import {
+  completeCountryAssignments,
+  CountryModelAssignments,
+  ModelCastSelector,
+} from "@/components/model-cast-selector";
 import { Banner, Panel, Pill, Spinner } from "@/components/ui";
-import { getCampaign, humanizeError, startChapter } from "@/lib/api";
+import { getCampaign, getLab, humanizeError, startChapter } from "@/lib/api";
 import { tiersOf } from "@/lib/campaign-tree";
 import { fmt } from "@/lib/format";
-import type { CampaignView, ChapterView } from "@/lib/types";
+import type { CampaignView, ChapterView, ResearchModel } from "@/lib/types";
 
 const MEDAL_LABELS: Record<string, string> = { or: "🥇 or", argent: "🥈 argent", bronze: "🥉 bronze" };
 
 export default function CampagnePage() {
   const router = useRouter();
+  const { player } = useAuth();
   const [campaign, setCampaign] = useState<CampaignView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [researchModels, setResearchModels] = useState<ResearchModel[]>([]);
+  const [modelCastEnabled, setModelCastEnabled] = useState(false);
+  const [castModels, setCastModels] = useState<string[]>([]);
+  const [pendingChapterId, setPendingChapterId] = useState<string | null>(null);
+  const [castAssignments, setCastAssignments] = useState<Record<string, string>>({});
 
   useEffect(() => {
     getCampaign()
       .then(setCampaign)
       .catch((err) => setError(humanizeError(err)));
+    getLab()
+      .then((lab) => {
+        const eligible = lab.model_panel.models.filter(
+          (model) => model.installed && model.role !== "slow_robustness_only",
+        );
+        setResearchModels(eligible);
+        const core = eligible.filter((model) => model.role === "core_comparison");
+        setCastModels((core.length ? core : eligible).slice(0, 2).map((model) => model.tag));
+      })
+      .catch(() => undefined);
   }, []);
 
   const titleOf = useMemo(() => {
@@ -38,15 +60,51 @@ export default function CampagnePage() {
     [campaign],
   );
 
-  const play = async (chapterId: string) => {
+  const play = async (chapter: ChapterView, assignments?: Record<string, string>) => {
+    const chapterId = chapter.id;
+    const activeModels = modelCastEnabled ? castModels : castModels.slice(0, 1);
     setBusy(chapterId);
     try {
-      const game = await startChapter(chapterId);
+      const game = await startChapter(
+        chapterId,
+        player?.id,
+        undefined,
+        activeModels.length
+          ? {
+              strategy: "manual",
+              models: activeModels,
+              assignments: completeCountryAssignments(
+                chapter.countries,
+                activeModels,
+                assignments,
+                chapter.tutorial ? "france" : null,
+              ),
+              game_master_model: activeModels[0],
+              judge_model: activeModels[activeModels.length - 1],
+            }
+          : undefined,
+      );
       router.push(`/games/${game.id}`);
     } catch (err) {
       setError(humanizeError(err));
       setBusy(null);
     }
+  };
+
+  const requestPlay = (chapter: ChapterView) => {
+    if (!modelCastEnabled) {
+      void play(chapter);
+      return;
+    }
+    setPendingChapterId(chapter.id);
+    setCastAssignments(
+      completeCountryAssignments(
+        chapter.countries,
+        castModels,
+        {},
+        chapter.tutorial ? "france" : null,
+      ),
+    );
   };
 
   const orderedTiers = [...tiers.keys()].sort((a, b) => a - b);
@@ -72,6 +130,82 @@ export default function CampagnePage() {
         </p>
       )}
 
+      {campaign && (
+        <ModelCastSelector
+          models={researchModels}
+          enabled={modelCastEnabled}
+          selected={castModels}
+          onEnabled={(enabled) => {
+            setModelCastEnabled(enabled);
+            if (!enabled) setPendingChapterId(null);
+          }}
+          onSelected={setCastModels}
+          context="campaign"
+        />
+      )}
+
+      {campaign && pendingChapterId && (() => {
+        const chapter = campaign.chapters.find((item) => item.id === pendingChapterId);
+        if (!chapter) return null;
+        const humanCountry = chapter.tutorial ? "france" : null;
+        const effective = completeCountryAssignments(
+          chapter.countries,
+          castModels,
+          castAssignments,
+          humanCountry,
+        );
+        return (
+          <div className="space-y-3 rounded-xl border border-accent/45 bg-accent/5 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.14em] text-accent-bright">
+                  Avant le théâtre · {chapter.title}
+                </p>
+                <p className="text-sm text-fg-muted">
+                  Attribue les modèles, puis lance le chapitre avec ce casting figé.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPendingChapterId(null)}
+                className="rounded-md border border-edge px-3 py-1.5 text-xs text-fg-muted hover:text-foreground"
+              >
+                Annuler
+              </button>
+            </div>
+            <CountryModelAssignments
+              countries={chapter.countries}
+              humanCountry={humanCountry}
+              selectedModels={castModels}
+              assignments={castAssignments}
+              onAssignments={setCastAssignments}
+              compact
+            />
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => void play(chapter, effective)}
+                disabled={busy !== null || castModels.length < 2}
+                className="rounded-md bg-accent px-5 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:opacity-45"
+              >
+                {busy === chapter.id ? "Lancement…" : "Entrer dans le théâtre"}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
+      <header className="max-w-2xl border-t border-edge pt-6">
+        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-fg-faint">
+          Parcours jouable
+        </p>
+        <h2 className="text-xl font-semibold tracking-tight">Crises historiques</h2>
+        <p className="mt-1 text-sm text-fg-muted">
+          Chaque chapitre reste centré sur tes décisions, les négociations du sommet et
+          leurs conséquences, puis confronte ta trajectoire au déroulé historique.
+        </p>
+      </header>
+
       <div className="space-y-4">
         {orderedTiers.map((tier) => (
           <div key={tier}>
@@ -87,8 +221,15 @@ export default function CampagnePage() {
                   chapter={chapter}
                   titleOf={titleOf}
                   busy={busy === chapter.id}
-                  disabled={busy !== null}
-                  onPlay={() => play(chapter.id)}
+                  disabled={
+                    busy !== null ||
+                    (modelCastEnabled &&
+                      (castModels.length < 2 ||
+                        castModels.length >
+                          chapter.countries.length - (chapter.tutorial ? 1 : 0)))
+                  }
+                  onPlay={() => requestPlay(chapter)}
+                  configureCast={modelCastEnabled}
                 />
               ))}
             </div>
@@ -105,12 +246,14 @@ function ChapterCard({
   busy,
   disabled,
   onPlay,
+  configureCast,
 }: {
   chapter: ChapterView;
   titleOf: (id: string) => string;
   busy: boolean;
   disabled: boolean;
   onPlay: () => void;
+  configureCast: boolean;
 }) {
   const playable = chapter.unlocked && !chapter.coming_soon;
   const dim = chapter.coming_soon || !chapter.unlocked;
@@ -167,7 +310,7 @@ function ChapterCard({
             disabled={!playable || disabled}
             className="cursor-pointer rounded-md bg-accent px-4 py-1.5 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {busy ? "…" : "Jouer"}
+            {busy ? "…" : configureCast ? "Configurer les IA" : "Jouer"}
           </button>
         )}
       </div>

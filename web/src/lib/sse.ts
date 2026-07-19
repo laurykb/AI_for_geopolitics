@@ -11,6 +11,10 @@ import type { PlayRoundBody, SseEvent } from "./types";
 
 export type StreamOutcome = "done" | "interrupted" | "aborted";
 
+// Un verdict normal est très loin de 2 Mio. Ce plafond empêche un serveur/proxy
+// malformé, sans séparateur SSE, de faire croître `buffer` jusqu'à épuiser l'onglet.
+const MAX_SSE_FRAME_BYTES = 2 * 1024 * 1024;
+
 function parseFrame(frame: string): SseEvent | null {
   let name = "";
   let data = "";
@@ -63,6 +67,7 @@ async function streamSse(
   const drain = () => {
     let cut: number;
     while ((cut = buffer.indexOf("\n\n")) !== -1) {
+      if (cut > MAX_SSE_FRAME_BYTES) throw new Error("trame SSE trop volumineuse");
       const event = parseFrame(buffer.slice(0, cut));
       buffer = buffer.slice(cut + 2);
       if (event) {
@@ -80,11 +85,15 @@ async function streamSse(
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       drain();
+      if (buffer.length > MAX_SSE_FRAME_BYTES) {
+        throw new Error("trame SSE incomplète trop volumineuse");
+      }
     }
     buffer += decoder.decode();
     drain();
   } catch {
     // Coupure réseau ou annulation en plein round : pas une erreur de programmation.
+    await reader.cancel().catch(() => undefined);
     if (signal?.aborted) return "aborted";
     return sawTerminal ? "done" : "interrupted";
   }

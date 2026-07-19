@@ -1,6 +1,6 @@
 /** Identité visuelle des intervenants : libellés français, sigles, teintes stables.
  *
- * Les 23 pays de `data/countries/` sont connus ; un pays inventé (country forge)
+ * Les 33 pays de `data/countries/` sont connus ; un pays inventé (country forge)
  * retombe sur un sigle déduit de son id et une teinte dérivée par hachage. Un pays
  * retiré du roster (danemark) garde son identité ici pour les replays des parties
  * passées, mais n'apparaît plus dans `ROSTER`.
@@ -29,6 +29,8 @@ const KNOWN: Record<string, SpeakerMeta> = {
   brazil: { label: "Brésil", code: "BR", hue: "#fde047" },
   india: { label: "Inde", code: "IN", hue: "#fb7185" },
   south_africa: { label: "Afrique du Sud", code: "ZA", hue: "#c084fc" },
+  algeria: { label: "Algérie", code: "DZ", hue: "#22c55e" },
+  argentina: { label: "Argentine", code: "AR", hue: "#67e8f9" },
   australia: { label: "Australie", code: "AU", hue: "#fdba74" },
   morocco: { label: "Maroc", code: "MA", hue: "#fca5a5" },
   // denmark : retiré du roster jouable (2026-07-07) — identité conservée pour les replays.
@@ -38,6 +40,18 @@ const KNOWN: Record<string, SpeakerMeta> = {
   turkey: { label: "Turquie", code: "TR", hue: "#5eead4" },
   israel: { label: "Israël", code: "IL", hue: "#818cf8" },
   south_korea: { label: "Corée du Sud", code: "KR", hue: "#f0abfc" },
+  north_korea: { label: "Corée du Nord", code: "KP", hue: "#ef4444" },
+  pakistan: { label: "Pakistan", code: "PK", hue: "#10b981" },
+  democratic_republic_congo: {
+    label: "République démocratique du Congo",
+    code: "CD",
+    hue: "#60a5fa",
+  },
+  mali: { label: "Mali", code: "ML", hue: "#fbbf24" },
+  senegal: { label: "Sénégal", code: "SN", hue: "#34d399" },
+  singapore: { label: "Singapour", code: "SG", hue: "#fb7185" },
+  tunisia: { label: "Tunisie", code: "TN", hue: "#f43f5e" },
+  united_arab_emirates: { label: "Émirats arabes unis", code: "AE", hue: "#2dd4bf" },
   gm: { label: "Game Master", code: "GM", hue: "#eab308" },
   judge: { label: "Juge", code: "JU", hue: "#818cf8" },
 };
@@ -65,14 +79,18 @@ export function speakerMeta(id: string): SpeakerMeta {
 /** Roster complet (= data/countries/), trié par libellé français pour le lobby. */
 export const ROSTER = [
   "south_africa",
+  "algeria",
   "germany",
   "saudi_arabia",
+  "argentina",
   "australia",
   "brazil",
   "canada",
   "china",
+  "north_korea",
   "south_korea",
   "egypt",
+  "united_arab_emirates",
   "spain",
   "usa",
   "france",
@@ -81,12 +99,18 @@ export const ROSTER = [
   "israel",
   "italy",
   "japan",
+  "mali",
   "morocco",
+  "mexico",
+  "pakistan",
+  "democratic_republic_congo",
   "uk",
   "russia",
+  "senegal",
+  "singapore",
+  "tunisia",
   "turkey",
   "ukraine",
-  "mexico",
 ];
 
 /** Bornes du sommet (règle de jeu : en deçà la table est creuse, au-delà le round
@@ -109,6 +133,8 @@ export const DEFAULT_COUNTRIES = [
 /** Slug du jeu → id numérique ISO 3166-1 des features `world-atlas` (avec zéros
  * initiaux : brésil "076", australie "036"). Source de vérité des trois cartes. */
 export const ISO_NUM: Record<string, string> = {
+  algeria: "012",
+  argentina: "032",
   usa: "840",
   china: "156",
   iran: "364",
@@ -133,4 +159,16 @@ export const ISO_NUM: Record<string, string> = {
   turkey: "792",
   israel: "376",
   south_korea: "410",
+  north_korea: "408",
+  pakistan: "586",
+  democratic_republic_congo: "180",
+  mali: "466",
+  senegal: "686",
+  singapore: "702",
+  tunisia: "788",
+  united_arab_emirates: "784",
 };
+
+/** Pays trop petits pour avoir un polygone dans world-atlas 110m : ils sont rendus
+ * comme un marqueur projeté sur leur capitale dans les cartes interactives. */
+export const MAP_POINT_COUNTRIES = new Set(["singapore"]);

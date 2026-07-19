@@ -1,0 +1,40 @@
+{
+  "id": "senegal",
+  "name": "Sénégal",
+  "economy": {
+    "gdp": 32169996051.8502,
+    "growth": 6.5,
+    "trade_dependency": 0.72
+  },
+  "military": {
+    "defense_budget": 638824014.514,
+    "nuclear_power": false,
+    "projection": 0.15
+  },
+  "resources": {
+    "oil_dependency": 0.45,
+    "energy_independence": 0.55
+  },
+  "alliances": [
+    "AfricanUnion",
+    "ECOWAS"
+  ],
+  "rivals": [],
+  "political_system": "democracy",
+  "political_stability": 0.41,
+  "technology_level": 0.31,
+  "compute": 3.0,
+  "ideology": [
+    "democratic_governance",
+    "pan_africanism"
+  ],
+  "strategic_priorities": [
+    "economic_emergence",
+    "regional_stability",
+    "energy_development",
+    "maritime_security"
+  ],
+  "temperament": "opportuniste",
+  "memory_summary": "",
+  "mandate": {}
+}

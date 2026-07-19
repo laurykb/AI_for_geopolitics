@@ -6,7 +6,15 @@ import { needsDemo, type TourStep } from "./tour";
 
 /** Les jalons que le théâtre pose en attributs data-tutorial (aucune logique en dur
  * dans la page — même philosophie que data-tour). */
-const MARKERS = ["round-done", "motion-filed", "vote-seen"];
+const MARKERS = [
+  "round-started",
+  "round-done",
+  "motion-filed",
+  "next-round-started",
+  "motion-vote-ready",
+  "vote-submitted",
+  "bet-confirmed",
+];
 
 type TutorialStep = TourStep & { advanceOn?: string | null };
 
@@ -40,6 +48,15 @@ describe("les étapes du tutoriel (chapitre 0)", () => {
 
   it("le parcours couvre le verrou du chapitre : round joué, motion, vote", () => {
     const actions = all.map((s) => s.advanceOn).filter(Boolean);
-    expect(actions).toEqual(["round-done", "motion-filed", "vote-seen"]);
+    expect(actions).toEqual([
+      "round-started",
+      "round-done",
+      "bet-confirmed",
+      "motion-filed",
+      "next-round-started",
+      "motion-vote-ready",
+      "vote-submitted",
+      "round-done",
+    ]);
   });
 });

@@ -17,11 +17,13 @@
   },
   "alliances": [
     "BRICS",
+    "I2U2",
     "QUAD",
     "SCO"
   ],
   "rivals": [
-    "china"
+    "china",
+    "pakistan"
   ],
   "political_system": "democracy",
   "political_stability": 0.2,
@@ -36,6 +38,7 @@
     "tech_rise",
     "energy_security"
   ],
+  "temperament": "opportuniste",
   "memory_summary": "",
   "mandate": {}
 }

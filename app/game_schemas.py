@@ -12,6 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from simulation.model_cast import ModelCastRequest, ModelCastState
 from storage.game_store import PromptEntry, TranscriptEntry
 
 GameMode = Literal["classic", "campaign"]  # RG-2 — deux modes ; le reste = drapeaux
@@ -38,7 +39,7 @@ class InventCountryInput(BaseModel):
     """Pays inventé à la volée (country_forge) — forgé par LLM, borné, jouable."""
 
     name: str = Field(min_length=2, max_length=60)
-    concept: str = ""
+    concept: str = Field("", max_length=1000)
     attributes: InventAttributesInput | None = None  # choix du joueur (sinon forge LLM)
     # Alliances existantes rejointes à la création (tags du registre, 0-3) ;
     # None = on garde la sortie de forge telle quelle.
@@ -46,9 +47,9 @@ class InventCountryInput(BaseModel):
 
 
 class CreateGameRequest(BaseModel):
-    scenario: str = "red_sea"
-    countries: list[str] | None = None  # None -> tous les pays de data/countries
-    horizon: int = Field(5, ge=1)
+    scenario: str = Field("red_sea", min_length=1, max_length=120)
+    countries: list[str] | None = Field(None, max_length=24)  # None -> tous les pays
+    horizon: int = Field(5, ge=1, le=50)
     mode: GameMode = "classic"  # RG-2 — classic | campaign
     # RG-2 — Brouillard et Réel/escalade : réglages cochables, composables sur une
     # partie classique (le Fog Engine et l'échelle d'escalade, jadis des modes).
@@ -57,7 +58,7 @@ class CreateGameRequest(BaseModel):
     language: Literal["fr", "en"] = "fr"  # G14 §1 — langue des dialogues, figée à la création
     # G17 — composition de la table (partie LIBRE seulement ; classée = équilibrée forcée).
     table: Literal["equilibree", "colombes", "faucons", "aleatoire"] = "equilibree"
-    play_as: str | None = None  # Joueur-pays : id (ou nom inventé) du pays joué par l'humain
+    play_as: str | None = Field(None, max_length=80)  # id (ou nom inventé) joué par l'humain
     invent: InventCountryInput | None = None  # pays inventé, ajouté à la table
     # G2 — délai du tour humain (s). Spec : 30-300 pour un humain ; plancher technique
     # à 2 s pour les tests d'abstention (le lobby propose 30+).
@@ -67,13 +68,16 @@ class CreateGameRequest(BaseModel):
     # G8 — rôle : None = rétro-compat (player si play_as, sinon council).
     role: GameRole | None = None
     # G11 — propriété + réglages transversaux (verrouillés à la création).
-    owner_id: str | None = None  # joueur propriétaire (auth Supabase ou id offline)
+    owner_id: str | None = Field(None, max_length=128)  # auth Supabase ou id offline
     difficulty: Difficulty = "intermediate"  # beginner | intermediate | expert (§4)
     # RG-2 — la Dérive n'est PLUS un choix de lobby. Le drapeau reste (RG-3 la rendra
     # « toujours active en Classique »), mais l'API ne la FORCE pas : défaut False ici,
     # pour ne pas armer la traîtresse sur chaque partie tant que RG-3 n'a pas tranché.
     drift_enabled: bool = False
     free: bool = False  # G11-b — partie libre : non classée + consignes globales autorisées
+    # Casting multi-modèle classique. Absent = modèle unique historique ; présent = partie
+    # libre non classée, modèles installés et digests figés par le serveur.
+    model_cast: ModelCastRequest | None = None
 
 
 class HumanUltimatumInput(BaseModel):
@@ -84,50 +88,56 @@ class HumanUltimatumInput(BaseModel):
     sommet entier)."""
 
     demand: str = Field(min_length=1, max_length=500)
-    classe: str = "posture"
-    cible: str = ""
+    classe: str = Field("posture", max_length=40)
+    cible: str = Field("", max_length=80)
 
 
 class HumanEventInput(BaseModel):
     """Événement décrété par un Game Master humain (la génération LLM du GM est sautée)."""
 
-    title: str
-    description: str = ""
-    event_type: str = "human"
-    actors: list[str] = Field(default_factory=list)
-    severity: float = Field(0.5, ge=0.0, le=1.0)
-    uncertainty: float = Field(0.5, ge=0.0, le=1.0)
+    title: str = Field(min_length=1, max_length=200)
+    description: str = Field("", max_length=4000)
+    event_type: str = Field("human", max_length=80)
+    actors: list[str] = Field(default_factory=list, max_length=24)
+    severity: float = Field(0.5, ge=0.0, le=1.0, allow_inf_nan=False)
+    uncertainty: float = Field(0.5, ge=0.0, le=1.0, allow_inf_nan=False)
     ultimatum: HumanUltimatumInput | None = None  # G21 — décret d'ultimatum (optionnel)
 
 
 class HumanFogInput(BaseModel):
     """Brouillard décrété avec un événement humain : qui ne sait rien, qui est désinformé."""
 
-    uninformed: list[str] = Field(default_factory=list)
-    disinformed_country: str = ""
-    suspected_actor: str = ""  # ce que le pays désinformé croit (à tort)
-    narrative: str = ""  # la fausse narration qu'il reçoit
+    uninformed: list[str] = Field(default_factory=list, max_length=24)
+    disinformed_country: str = Field("", max_length=80)
+    suspected_actor: str = Field("", max_length=80)  # ce qu'il croit (à tort)
+    narrative: str = Field("", max_length=2000)  # la fausse narration qu'il reçoit
 
 
 class PlayRoundRequest(BaseModel):
-    max_turns: int | None = Field(None, ge=1)
+    max_turns: int | None = Field(None, ge=1, le=40)
     event: HumanEventInput | None = None
     fog: HumanFogInput | None = None  # brouillard humain (accompagne `event`)
-    fog_id: str | None = None  # scénario de brouillard de la bibliothèque (data/fog)
-    crisis_id: str | None = None  # crise à rejouer (data/crises)
+    fog_id: str | None = Field(None, max_length=128)  # bibliothèque data/fog
+    crisis_id: str | None = Field(None, max_length=128)  # data/crises
 
 
 class MotionRequest(BaseModel):
     """Motion de suspension déposée par l'humain (R4) — débattue au prochain round."""
 
-    country: str
-    reason: str = ""
+    country: str = Field(min_length=1, max_length=80)
+    reason: str = Field("", max_length=1000)
 
 
 class TurnRequest(BaseModel):
     """Prise de parole du joueur (G2) — vide = abstention volontaire, comme le silence."""
 
     message: str = Field("", max_length=4000)
+
+
+class MotionVoteRequest(BaseModel):
+    """Bulletin du pays joué lors d'une motion en cours."""
+
+    vote: Literal["pour", "contre", "abstention"]
 
 
 class MotionView(BaseModel):
@@ -141,6 +151,15 @@ class GameView(BaseModel):
     scenario: str
     horizon: int
     status: str
+    phase: Literal[
+        "ready",
+        "round_running",
+        "awaiting_player",
+        "awaiting_vote",
+        "round_complete",
+        "game_complete",
+        "replay_only",
+    ] = "ready"
     created_at: str
     countries: list[str]
     live: bool  # session encore en mémoire (rounds jouables) ou relecture seule
@@ -163,6 +182,7 @@ class GameView(BaseModel):
     drift_enabled: bool = True  # G11 — la Dérive peut frapper une SI (transversal)
     result: dict | None = None  # G11-c — bilan de fin de partie (§1 S6) si finie
     language: str = "fr"  # G14 §1 — langue des dialogues (une partie garde la sienne)
+    model_cast: ModelCastState | None = None
 
 
 class FogScenarioView(BaseModel):
@@ -225,6 +245,8 @@ class GameDetail(GameView):
     index_history: dict = Field(default_factory=dict)
     # G9 §5 — l'intrigue centrale de la partie (posée au round 1).
     storyline: str = ""
+    # Projection auditable pays–événements–engagements–actions, sans secrets ajoutés.
+    operational_picture: dict = Field(default_factory=dict)
 
 
 class PromptRoundView(BaseModel):

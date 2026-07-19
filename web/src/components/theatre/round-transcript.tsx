@@ -9,8 +9,6 @@
  * l'état, n'en mute aucun. Le cadre `<aside>` (ref de défilement, annonce a11y)
  * reste dans page.tsx. */
 
-import Link from "next/link";
-
 import type { LiveRound } from "@/hooks/useRoundStream";
 import { SpeakerAvatar } from "@/components/avatar";
 import { EventCard } from "@/components/event-card";
@@ -31,7 +29,6 @@ import type { GameDetail, GeoEvent, RoundView } from "@/lib/types";
 import type { StageSelection } from "@/components/stage-band";
 
 export function RoundTranscript({
-  gameId,
   detail,
   round,
   viewed,
@@ -41,7 +38,6 @@ export function RoundTranscript({
   showLive,
   playedRounds,
 }: {
-  gameId: string;
   detail: GameDetail | null;
   round: LiveRound;
   viewed: RoundView | undefined;
@@ -209,9 +205,7 @@ export function RoundTranscript({
       {round.status === "done" && (
         <Banner tone="neutral">
           Round {round.roundNo} terminé et enregistré — relis-le quand tu veux dans{" "}
-          <Link href={`/games/${gameId}/replay`} className="underline hover:text-foreground">
-            Revoir
-          </Link>
+          <span className="text-foreground">la chronologie</span>
           .
         </Banner>
       )}

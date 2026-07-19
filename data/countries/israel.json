@@ -2,28 +2,29 @@
   "id": "israel",
   "name": "Israël",
   "economy": {
-    "gdp": 541000000000.0,
-    "growth": 0.9,
-    "trade_dependency": 0.55
+    "gdp": 542284494490.778,
+    "growth": 1.0,
+    "trade_dependency": 0.58
   },
   "military": {
-    "defense_budget": 46500000000.0,
+    "defense_budget": 45921467209.9187,
     "nuclear_power": true,
-    "projection": 0.6
+    "projection": 0.65
   },
   "resources": {
-    "oil_dependency": 0.6,
-    "energy_independence": 0.5
+    "oil_dependency": 0.65,
+    "energy_independence": 0.7
   },
   "alliances": [
     "AbrahamAccords",
+    "I2U2",
     "Western"
   ],
   "rivals": [
     "iran"
   ],
   "political_system": "democracy",
-  "political_stability": 0.13,
+  "political_stability": 0.1,
   "technology_level": 0.89,
   "compute": 20.0,
   "ideology": [
@@ -35,6 +36,7 @@
     "us_alliance",
     "tech_leadership"
   ],
+  "temperament": "opportuniste",
   "memory_summary": "",
   "mandate": {}
 }

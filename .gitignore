@@ -25,6 +25,11 @@ data/corpus/
 chroma/
 *.sqlite
 *.db
+*.db-wal
+*.db-shm
+
+# Artefacts temporaires de benchmark, rendu PDF et QA locale
+tmp/
 
 # Node / web (le projet Node vit dans web/ ; voir aussi web/.gitignore — défensif ici)
 node_modules/
@@ -42,3 +47,4 @@ node_modules/
 
 # Claude Code local (perso, non partagé)
 .claude/settings.local.json
+.tmp/

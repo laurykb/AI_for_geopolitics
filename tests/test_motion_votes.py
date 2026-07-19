@@ -11,6 +11,7 @@ from inference.mock_backend import MockBackend
 from simulation.clock import SimClock
 from simulation.grudges import GrudgeBook
 from simulation.live_round import (
+    HumanMotionVoteStep,
     MotionTallyStep,
     MotionVerdictStep,
     MotionVoteStep,
@@ -151,6 +152,44 @@ def test_voters_excludes_target_and_human():
     motion = Motion(country="iran")
     assert voters(["china", "iran", "usa"], motion) == ["china", "usa"]
     assert voters(["china", "iran", "usa"], motion, human_country="usa") == ["china"]
+
+
+def test_human_country_casts_its_own_motion_ballot():
+    world = _world()
+    agents = {
+        cid: LLMAgent(cid, MockBackend(_ballot("contre"))) for cid in world.countries
+    }
+    motion = Motion(country="iran", reason="escalade répétée")
+    steps = run_negotiation_round(
+        world,
+        agents,
+        GameMasterStub(),
+        _judge("VERDICT: REJETER\nConstat."),
+        SimClock(seed=1),
+        event=motion_event(motion, 1, sorted(world.countries)),
+        motion=motion,
+        human_country="usa",
+        max_turns=1,
+    )
+
+    seen = []
+    step = next(steps)
+    while True:
+        seen.append(step)
+        try:
+            if isinstance(step, HumanMotionVoteStep):
+                assert step.country == "usa" and step.target == "iran"
+                step = steps.send("pour")
+            else:
+                step = next(steps)
+        except StopIteration:
+            break
+
+    votes = [s for s in seen if isinstance(s, MotionVoteStep)]
+    human = next(v for v in votes if v.country == "usa")
+    assert human.vote == "pour"
+    tally = next(s for s in seen if isinstance(s, MotionTallyStep))
+    assert (tally.pour, tally.contre, tally.abstention) == (1, 1, 0)
 
 
 def test_tally_counts_unknown_votes_as_abstention():

@@ -217,8 +217,11 @@ def cast_vote(
 
 
 def voters(countries: list[str], motion: Motion, human_country: str | None = None) -> list[str]:
-    """Qui vote : chaque SI présente, SAUF le pays visé (et le pays joué par l'humain —
-    le conseil humain a d'autres leviers, il ne glisse pas de bulletin)."""
+    """SI dont le bulletin doit être généré : toutes sauf le pays visé et le pays joué.
+
+    Le pays joué n'est pas exclu du scrutin : son bulletin est recueilli séparément par
+    ``HumanMotionVoteStep`` afin qu'aucune IA ne vote à sa place.
+    """
     return sorted(c for c in countries if c != motion.country and c != human_country)
 
 

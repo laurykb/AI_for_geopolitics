@@ -9,6 +9,7 @@ import {
   needsDemo,
   nextIndexWithoutDemo,
   nextStep,
+  previousStep,
   resolvePage,
   resumeTour,
   saveDemoId,
@@ -71,6 +72,18 @@ describe("états du tour (proposition, avance, sortie)", () => {
   it("next hors visite active ne change rien", () => {
     expect(nextStep({ status: "proposed", index: 0 }, 12)).toEqual({
       status: "proposed",
+      index: 0,
+    });
+  });
+
+  it("retour recule et ignore les jalons silencieux", () => {
+    const steps = [step("/a"), { ...step("/b"), silent: true }, step("/c")];
+    expect(previousStep({ status: "active", index: 2 }, steps)).toEqual({
+      status: "active",
+      index: 0,
+    });
+    expect(previousStep({ status: "active", index: 0 }, steps)).toEqual({
+      status: "active",
       index: 0,
     });
   });

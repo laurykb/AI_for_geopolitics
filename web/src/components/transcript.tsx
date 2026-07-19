@@ -77,11 +77,14 @@ function Reasoning({ text, open = false }: { text: string; open?: boolean }) {
   return (
     <details className="mt-2" open={open}>
       <summary className="cursor-pointer text-xs text-fg-faint transition-colors hover:text-fg-muted">
-        {t("transcript.reflexion")}
+        {t("transcript.journal")}
       </summary>
-      <p className="mt-1.5 whitespace-pre-wrap border-l border-edge-strong pl-3 text-[13px] italic leading-relaxed text-fg-faint">
-        {text}
-      </p>
+      <div className="mt-2 border-l border-edge-strong pl-3">
+        <p className="whitespace-pre-wrap text-[13px] italic leading-relaxed text-fg-faint">
+          {text}
+        </p>
+        <p className="mt-2 text-[10px] not-italic text-fg-faint">{t("transcript.journal-note")}</p>
+      </div>
     </details>
   );
 }
@@ -154,17 +157,24 @@ export function TurnBubble({ turn, lens }: { turn: LiveTurn; lens?: GlassLens })
       glass={lens ? glassState(lens) : undefined}
     >
       {lens && <GlassAnnotation lens={lens} />}
-      {reasoning && live && (
-        <p className="mb-2 whitespace-pre-wrap border-l border-edge-strong pl-3 text-[13px] italic leading-relaxed text-fg-faint">
-          {reasoning}
-        </p>
-      )}
       <p
         className={`whitespace-pre-wrap text-sm leading-relaxed text-foreground ${live ? "stream-caret" : ""}`}
       >
-        {live ? message : tidy(message)}
+        {live && !message && !reasoning
+          ? t("transcript.planification-privee")
+          : live && !message
+            ? ""
+            : live
+              ? message
+              : tidy(message)}
       </p>
-      {!live && <Reasoning text={reasoning} />}
+      {live && !message && reasoning ? (
+        <div className="mt-1.5 whitespace-pre-wrap border-l border-accent/50 pl-3 text-[13px] italic leading-relaxed text-fg-muted">
+          {reasoning}
+        </div>
+      ) : (
+        <Reasoning text={reasoning} />
+      )}
     </Bubble>
   );
 }

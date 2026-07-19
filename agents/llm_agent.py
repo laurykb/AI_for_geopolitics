@@ -8,12 +8,13 @@ dans `RoundEngine`. Robustesse : on n'accorde aucune confiance aveugle au modèl
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 
 from agents.base_agent import Agent
 from agents.prompts import (
     DELIBERATION_SYSTEM,
     NEGOTIATION_SYSTEM,
+    PRIVATE_DELIBERATION_SYSTEM,
     SPEECH_ACT_SYSTEM,
     SYSTEM_PROMPT,
     LLMDecision,
@@ -38,6 +39,12 @@ from simulation.dialogue_integrity.message import (
 from simulation.grudges import load_gamefeel_params
 from simulation.negotiation import NegotiationMessage, format_transcript
 from simulation.perception import PerceivedEvent, perceive
+from simulation.private_deliberation import (
+    PrivateStrategicPlan,
+    fallback_private_plan,
+    parse_private_plan,
+    sanitize_public_message,
+)
 
 
 def _clamp(x: float) -> float:
@@ -97,38 +104,68 @@ class LLMAgent(Agent):
         self.last_used_fallback: bool = False
         # Décision issue de la dernière délibération streamée (round observable).
         self.last_decision: AgentDecision | None = None
+        # Le Tree of Thoughts du dernier tour reste séparé de la parole publique.
+        self.last_private_plan: PrivateStrategicPlan | None = None
+        self.last_private_summary: str = ""
+        self.last_plan_result: InferenceResult | None = None
+        self.last_private_valid: bool = False
 
     @property
     def model_tag(self) -> str:
         """Identifiant du modèle qui incarne ce pays (badge de traçabilité UI)."""
         return getattr(self.backend, "model", type(self.backend).__name__)
 
-    def stream_negotiation_message(
+    def prepare_negotiation_plan(
         self,
         event: GeoEvent,
         world: WorldState,
         transcript: list[NegotiationMessage],
         perceived: PerceivedEvent | None = None,
-        max_tokens: int = 360,
+        max_tokens: int = 480,
         state_note: str = "",
         situation: str = "",
         directive: str = "",
-    ) -> Iterator[str]:
-        """Streame une prise de parole (sur la perception fournie, sinon fog déterministe).
+    ) -> PrivateStrategicPlan:
+        """Version synchrone de compatibilité ; consomme le flux privé jusqu'à sa fin."""
 
-        En mode Fog Engine, `perceived` peut diverger de la vérité (désinformation) : l'agent
-        négocie alors sur sa croyance, pas sur l'événement réel. `max_tokens` règle la
-        **profondeur de réflexion** (plus de tokens = pensée privée plus fouillée). `state_note`
-        injecte l'état conjoncturel (M6 pénurie de compute, M7 traités signés) ; `situation`
-        (G9 §1) le bloc Situation (échéances, griefs, posture) ; `directive` (G8) la consigne
-        du conseil de tutelle, placée juste avant le dialogue.
+        stream = self.stream_negotiation_plan(
+            event,
+            world,
+            transcript,
+            perceived,
+            max_tokens=max_tokens,
+            state_note=state_note,
+            situation=situation,
+            directive=directive,
+        )
+        while True:
+            try:
+                next(stream)
+            except StopIteration as completed:
+                return completed.value
+
+    def stream_negotiation_plan(
+        self,
+        event: GeoEvent,
+        world: WorldState,
+        transcript: list[NegotiationMessage],
+        perceived: PerceivedEvent | None = None,
+        max_tokens: int = 480,
+        state_note: str = "",
+        situation: str = "",
+        directive: str = "",
+    ) -> Generator[str, None, PrivateStrategicPlan]:
+        """Diffuse la verbalisation d'audit telle qu'elle est générée, puis la valide.
+
+        Le texte reste hors du dialogue transmis aux autres agents. À la fin du flux, un
+        plan normalisé est renvoyé au porte-parole public ; une sortie invalide déclenche
+        un repli déterministe sans bloquer le round.
         """
+
         country = world.countries[self.country_id]
         perceived = perceived or perceive(event, country)
-        # Anti-répétition (G9 §1) : la liste de MES propositions passées entre dans la
-        # consigne finale (interdit de les répéter).
         own = [m.text[:90] for m in transcript if m.country == self.country_id and m.text]
-        prompt = build_negotiation_prompt(
+        private_prompt = build_negotiation_prompt(
             country,
             event,
             world,
@@ -140,17 +177,110 @@ class LLMAgent(Agent):
             own_proposals=own,
         )
         sampling = load_gamefeel_params().sampling.country
+        participants = sorted(cid for cid in world.countries if cid != self.country_id)
+        self.last_private_plan = None
+        self.last_private_summary = ""
+        self.last_plan_result = None
+        self.last_private_valid = False
+        chunks: list[str] = []
         try:
-            # Budget partagé : la génération porte la pensée privée PUIS le message public.
-            yield from self.backend.stream_generate(
-                prompt,
-                system=NEGOTIATION_SYSTEM,
-                max_tokens=max_tokens,
-                temperature=sampling.temperature,
+            plan_tokens = max(640, min(900, max_tokens + 320))
+            for fragment in self.backend.stream_generate(
+                private_prompt,
+                system=PRIVATE_DELIBERATION_SYSTEM,
+                max_tokens=plan_tokens,
+                temperature=max(0.2, sampling.temperature - 0.15),
                 repeat_penalty=sampling.repeat_penalty,
-            )
+            ):
+                chunks.append(fragment)
+                yield fragment
+            raw = "".join(chunks).strip()
+            self.last_plan_result = InferenceResult(text=raw)
+            plan = parse_private_plan(raw, participants)
         except Exception:
-            yield f"[{self.country_id} garde le silence — backend indisponible]"
+            plan = None
+        if plan is None:
+            plan = fallback_private_plan(participants)
+        else:
+            self.last_private_valid = True
+        self.last_private_plan = plan
+        self.last_private_summary = plan.audit_summary()
+        return plan
+
+    def stream_negotiation_message(
+        self,
+        event: GeoEvent,
+        world: WorldState,
+        transcript: list[NegotiationMessage],
+        perceived: PerceivedEvent | None = None,
+        max_tokens: int = 480,
+        state_note: str = "",
+        situation: str = "",
+        directive: str = "",
+        private_plan: PrivateStrategicPlan | None = None,
+    ) -> Iterator[str]:
+        """Planifie trois futurs en privé, puis n'émet que la déclaration publique.
+
+        La phase privée est streamée séparément et jamais incluse dans le transcript des
+        autres agents. La seconde génération reçoit seulement la branche retenue. Même si
+        un backend désobéit, le filtre anti-fuite bloque les marqueurs de délibération avant
+        le premier token public.
+        """
+        country = world.countries[self.country_id]
+        perceived = perceived or perceive(event, country)
+        own = [m.text[:90] for m in transcript if m.country == self.country_id and m.text]
+        transcript_text = format_transcript(transcript)
+        sampling = load_gamefeel_params().sampling.country
+        plan = private_plan or self.prepare_negotiation_plan(
+            event,
+            world,
+            transcript,
+            perceived,
+            max_tokens=max_tokens,
+            state_note=state_note,
+            situation=situation,
+            directive=directive,
+        )
+        self.last_private_plan = plan
+        if not self.last_private_summary:
+            self.last_private_summary = plan.audit_summary()
+
+        public_prompt = build_negotiation_prompt(
+            country,
+            event,
+            world,
+            transcript_text,
+            perceived,
+            state_note,
+            situation=situation,
+            directive=directive,
+            own_proposals=own,
+            private_plan=plan.public_brief(),
+        )
+        try:
+            # On collecte le flux complet avant d'en publier le premier fragment : le filtre
+            # anti-fuite reste donc fail-closed. Conserver l'API stream du backend maintient
+            # aussi les backends spécialisés (événements scriptés, capture admin, métriques).
+            raw_public = "".join(
+                self.backend.stream_generate(
+                    public_prompt,
+                    system=NEGOTIATION_SYSTEM,
+                    max_tokens=max(120, min(220, max_tokens // 2)),
+                    temperature=sampling.temperature,
+                    repeat_penalty=sampling.repeat_penalty,
+                )
+            )
+            self.last_result = InferenceResult(text=raw_public)
+            public = sanitize_public_message(raw_public)
+        except Exception:
+            self.last_result = None
+            public = ""
+        if not public:
+            public = self.fallback.decide(event, world).public_statement.strip()
+        public = public or f"[{self.country_id} garde le silence — backend indisponible]"
+        # Le texte est déjà entièrement filtré avant le premier fragment envoyé à l'UI.
+        for match in re.finditer(r"\S+\s*", public):
+            yield match.group(0)
 
     def negotiate_act(
         self,

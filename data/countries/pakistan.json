@@ -1,0 +1,42 @@
+{
+  "id": "pakistan",
+  "name": "Pakistan",
+  "economy": {
+    "gdp": 371570000000.0,
+    "growth": 3.0,
+    "trade_dependency": 0.28
+  },
+  "military": {
+    "defense_budget": 10700000000.0,
+    "nuclear_power": true,
+    "projection": 0.4
+  },
+  "resources": {
+    "oil_dependency": 0.85,
+    "energy_independence": 0.25
+  },
+  "alliances": [
+    "SCO"
+  ],
+  "rivals": [
+    "india"
+  ],
+  "political_system": "hybrid_regime",
+  "political_stability": 0.05,
+  "technology_level": 0.32,
+  "compute": 5.0,
+  "ideology": [
+    "national_security",
+    "strategic_autonomy",
+    "islamic_republic"
+  ],
+  "strategic_priorities": [
+    "nuclear_deterrence",
+    "india_parity",
+    "cpec_security",
+    "domestic_stability"
+  ],
+  "temperament": "opportuniste",
+  "memory_summary": "",
+  "mandate": {}
+}

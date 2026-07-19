@@ -17,6 +17,7 @@
   },
   "alliances": [
     "BRICS",
+    "ChinaDPRKTreaty",
     "RCEP",
     "SCO"
   ],
@@ -36,6 +37,7 @@
     "energy_security",
     "regional_influence"
   ],
+  "temperament": "opportuniste",
   "memory_summary": "",
   "mandate": {}
 }

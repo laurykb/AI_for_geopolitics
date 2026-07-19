@@ -17,9 +17,12 @@
   },
   "alliances": [
     "AbrahamAccords",
+    "AfricanUnion",
     "ArabLeague"
   ],
-  "rivals": [],
+  "rivals": [
+    "algeria"
+  ],
   "political_system": "monarchy",
   "political_stability": 0.32,
   "technology_level": 0.51,
@@ -33,6 +36,7 @@
     "atlantic_africa_gateway",
     "phosphates_leverage"
   ],
+  "temperament": "opportuniste",
   "memory_summary": "",
   "mandate": {}
 }

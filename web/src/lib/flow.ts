@@ -27,22 +27,25 @@ export function nextStep(step: FlowStep): FlowStep | null {
   return i < FLOW_STEPS.length - 1 ? FLOW_STEPS[i + 1] : null;
 }
 
-// --- modes (RG-2 : deux seulement) ----------------------------------------------
+// --- trois portes : jeu libre, histoire et recherche -----------------------------
 
-/** Les 2 cartes de mode. `value` = mode envoyé à l'API (aussi la clé i18n :
+/** Les 3 cartes de mode. `value` = mode envoyé à l'API ou destination autonome (clé i18n :
  * `lobby.mode.<value>.titre/blurb/apprend`) ; `campaign` = ce mode remplace S4 par la
  * sélection de chapitre (pays imposés par la fiche). Le Brouillard et le Réel/escalade
  * ne sont plus des cartes : ce sont des interrupteurs (voir FlowSettings). Les libellés
  * vivent dans l'i18n (fr/en) — le composant les traduit via `t`. */
 export type FlowMode = {
-  value: GameMode;
-  campaign?: boolean;
+  value: GameMode | "laboratory";
+  destination?: "/campagne" | "/laboratoire";
 };
 
 export const FLOW_MODES: readonly FlowMode[] = [
   { value: "classic" },
-  { value: "campaign", campaign: true },
+  { value: "campaign", destination: "/campagne" },
+  { value: "laboratory", destination: "/laboratoire" },
 ] as const;
+
+export type LobbyMode = (typeof FLOW_MODES)[number]["value"];
 
 // --- rôles (S3) -----------------------------------------------------------------
 
@@ -138,8 +141,20 @@ export function buildCreateBody(args: {
   ownerId?: string;
   invent?: CreateGameBody["invent"];
   language?: "fr" | "en"; // G14 — réglage utilisateur, lu par le backend dès CC-3
+  modelCast?: CreateGameBody["model_cast"];
 }): CreateGameBody {
-  const { scenario, baseMode, settings, role, selected, flag, ownerId, invent, language } = args;
+  const {
+    scenario,
+    baseMode,
+    settings,
+    role,
+    selected,
+    flag,
+    ownerId,
+    invent,
+    language,
+    modelCast,
+  } = args;
   return {
     scenario,
     countries: selected,
@@ -156,5 +171,6 @@ export function buildCreateBody(args: {
     owner_id: ownerId,
     play_as: role === "player" ? (flag ?? undefined) : role === "invent" ? invent?.name : undefined,
     invent: role === "invent" ? invent : undefined,
+    model_cast: modelCast,
   };
 }

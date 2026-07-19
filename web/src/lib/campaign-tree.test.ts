@@ -13,6 +13,7 @@ function chap(id: string, requires: string[] = []): ChapterView {
     mode: "crisis",
     difficulty: 1,
     horizon: 5,
+    countries: ["usa", "iran"],
     blurb: "",
     best: null,
     improvement: null,

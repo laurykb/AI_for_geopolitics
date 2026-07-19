@@ -147,4 +147,11 @@ describe("streamRound", () => {
     mockFetch(errorResponse(502));
     await expect(streamRound("g1", {}, () => {})).rejects.toThrow("502 Conflict");
   });
+
+  it("coupe un flux sans séparateur avant que le buffer ne grossisse sans borne", async () => {
+    const huge = "x".repeat(2 * 1024 * 1024 + 1);
+    const { events, outcome } = await collect([huge]);
+    expect(events).toEqual([]);
+    expect(outcome).toBe("interrupted");
+  });
 });

@@ -1,7 +1,7 @@
 {
   "provenance": {
-    "method": "Adhésions vérifiées aux sources officielles des organisations (recherche du 7 juillet 2026). Les listes `members` sont restreintes aux pays du roster du jeu : une organisation peut compter d'autres membres hors roster.",
-    "researched_at": "2026-07-07",
+    "method": "Adhésions vérifiées aux sources officielles des organisations et gouvernements (recherche actualisée le 18 juillet 2026). Les listes `members` sont restreintes aux pays du roster du jeu : une organisation peut compter d'autres membres hors roster.",
+    "researched_at": "2026-07-18",
     "note": "L'attribut `alliances` de chaque profil pays est DÉRIVÉ de ce registre par `ingestion.build` (adhésion = présence dans `members`). `Western` est un bloc d'affinité (codage analyste), pas un traité : il est marqué `informal`."
   },
   "alliances": {
@@ -27,7 +27,7 @@
       "domain": "economic",
       "basis": "Bloc intergouvernemental (1er sommet 2009), élargi au 1er janvier 2024 (Égypte, Iran…) ; Nouvelle banque de développement.",
       "url": "https://brics.br/en/about-the-brics",
-      "members": ["brazil", "china", "egypt", "india", "iran", "russia", "saudi_arabia", "south_africa"],
+      "members": ["brazil", "china", "egypt", "india", "iran", "russia", "saudi_arabia", "south_africa", "united_arab_emirates"],
       "note": "Arabie saoudite : listée par la présidence BRICS depuis 2025 mais adhésion jamais formalisée publiquement — comptée membre, à réviser."
     },
     "SCO": {
@@ -36,7 +36,7 @@
       "domain": "political",
       "basis": "Charte de l'OCS (2002) — sécurité régionale et coopération eurasiatique ; l'Iran est membre de plein droit depuis juillet 2023.",
       "url": "https://eng.sectsco.org/",
-      "members": ["china", "india", "iran", "russia"]
+      "members": ["china", "india", "iran", "pakistan", "russia"]
     },
     "QUAD": {
       "name": "QUAD — Dialogue quadrilatéral de sécurité",
@@ -70,13 +70,80 @@
       "url": "https://www.consilium.europa.eu/fr/policies/g7/",
       "members": ["canada", "france", "germany", "italy", "japan", "uk", "usa"]
     },
+    "AfricanUnion": {
+      "name": "Union africaine",
+      "short": "Union africaine (Acte constitutif de 2000)",
+      "domain": "political",
+      "basis": "Organisation continentale fondée par l'Acte constitutif de Lomé (2000), entrée en fonction en 2002.",
+      "url": "https://au.int/en/member_states/countryprofiles2",
+      "members": ["algeria", "democratic_republic_congo", "egypt", "mali", "morocco", "senegal", "south_africa", "tunisia"],
+      "note": "Le Mali demeure État membre mais sa participation aux activités de l'UA est suspendue depuis juin 2021 jusqu'au rétablissement de l'ordre constitutionnel."
+    },
+    "MERCOSUR": {
+      "name": "MERCOSUR — Marché commun du Sud",
+      "short": "MERCOSUR (traité d'Asunción 1991)",
+      "domain": "economic",
+      "basis": "Union d'intégration régionale créée par le traité d'Asunción du 26 mars 1991.",
+      "url": "https://www.mercosur.int/en/about-mercosur/countries/",
+      "members": ["argentina", "brazil"]
+    },
+    "ASEAN": {
+      "name": "ASEAN — Association des nations de l'Asie du Sud-Est",
+      "short": "ASEAN (déclaration de Bangkok 1967)",
+      "domain": "economic",
+      "basis": "Organisation régionale créée par la déclaration de Bangkok du 8 août 1967 ; communauté économique depuis 2015.",
+      "url": "https://asean.org/member-states/",
+      "members": ["singapore"]
+    },
+    "SADC": {
+      "name": "SADC — Communauté de développement de l'Afrique australe",
+      "short": "SADC (traité de Windhoek 1992)",
+      "domain": "economic",
+      "basis": "Communauté régionale créée par le traité de la SADC signé à Windhoek le 17 août 1992.",
+      "url": "https://www.sadc.int/member-states",
+      "members": ["democratic_republic_congo", "south_africa"]
+    },
+    "EAC": {
+      "name": "EAC — Communauté d'Afrique de l'Est",
+      "short": "EAC (traité de 1999 ; RDC depuis 2022)",
+      "domain": "economic",
+      "basis": "Communauté régionale fondée par le traité de 1999 ; la RDC est partenaire de plein droit depuis juillet 2022.",
+      "url": "https://www.eac.int/eac-partner-states",
+      "members": ["democratic_republic_congo"]
+    },
+    "ECOWAS": {
+      "name": "CEDEAO — Communauté économique des États de l'Afrique de l'Ouest",
+      "short": "CEDEAO (traité de Lagos 1975)",
+      "domain": "economic",
+      "basis": "Communauté régionale fondée par le traité de Lagos du 28 mai 1975, révisé en 1993.",
+      "url": "https://www.ecowas.int/member_states/",
+      "members": ["senegal"],
+      "note": "Le retrait du Mali, du Burkina Faso et du Niger est devenu effectif le 29 janvier 2025 ; ils ne figurent donc plus parmi les membres."
+    },
+    "AES": {
+      "name": "AES — Confédération des États du Sahel",
+      "short": "AES (charte du Liptako-Gourma 2023 ; confédération 2024)",
+      "domain": "military",
+      "basis": "Alliance de défense collective fondée par la charte du Liptako-Gourma du 16 septembre 2023, devenue confédération le 6 juillet 2024.",
+      "url": "https://aes.ml/a-propos-de-laes/",
+      "members": ["mali"]
+    },
+    "OPEC": {
+      "name": "OPEP — Organisation des pays exportateurs de pétrole",
+      "short": "OPEP (statuts de 1961, coordination pétrolière)",
+      "domain": "economic",
+      "basis": "Organisation intergouvernementale créée à Bagdad en 1960 pour coordonner les politiques pétrolières de ses membres.",
+      "url": "https://www.eia.gov/todayinenergy/detail.php?id=67804",
+      "members": ["algeria", "iran", "saudi_arabia"],
+      "note": "Les Émirats arabes unis ont quitté l'OPEP avec effet au 1er mai 2026 et ne sont donc pas comptés membres à la date de recherche."
+    },
     "ArabLeague": {
       "name": "Ligue des États arabes",
       "short": "Ligue arabe (pacte du Caire, 1945)",
       "domain": "political",
       "basis": "Pacte de la Ligue des États arabes (Le Caire, 22 mars 1945) — coordination politique du monde arabe.",
       "url": "http://www.leagueofarabstates.net/",
-      "members": ["egypt", "morocco", "saudi_arabia"]
+      "members": ["algeria", "egypt", "morocco", "saudi_arabia", "tunisia", "united_arab_emirates"]
     },
     "GCC": {
       "name": "CCG — Conseil de coopération du Golfe",
@@ -84,7 +151,7 @@
       "domain": "political",
       "basis": "Charte du CCG (25 mai 1981) — coopération politique, économique et de défense des monarchies du Golfe.",
       "url": "https://www.gcc-sg.org/",
-      "members": ["saudi_arabia"]
+      "members": ["saudi_arabia", "united_arab_emirates"]
     },
     "CPTPP": {
       "name": "CPTPP — Accord global et progressiste de partenariat transpacifique",
@@ -92,7 +159,7 @@
       "domain": "economic",
       "basis": "Accord commercial transpacifique (en vigueur déc. 2018) ; adhésion du Royaume-Uni en vigueur le 15 décembre 2024.",
       "url": "https://www.gov.uk/government/collections/the-uk-and-the-comprehensive-and-progressive-agreement-for-trans-pacific-partnershipcptpp",
-      "members": ["australia", "canada", "japan", "mexico", "uk"]
+      "members": ["australia", "canada", "japan", "mexico", "singapore", "uk"]
     },
     "RCEP": {
       "name": "RCEP — Partenariat régional économique global",
@@ -100,15 +167,31 @@
       "domain": "economic",
       "basis": "Accord de libre-échange Asie-Pacifique (en vigueur 1er janvier 2022) — le plus vaste au monde en PIB couvert.",
       "url": "https://rcepsec.org/",
-      "members": ["australia", "china", "japan", "south_korea"]
+      "members": ["australia", "china", "japan", "singapore", "south_korea"]
     },
     "AbrahamAccords": {
       "name": "Accords d'Abraham",
-      "short": "Accords d'Abraham (normalisation Israël–Maroc, déc. 2020)",
+      "short": "Accords d'Abraham (normalisations avec Israël, 2020)",
       "domain": "political",
-      "basis": "Déclarations de normalisation avec Israël (2020) ; le Maroc a normalisé ses relations en décembre 2020.",
+      "basis": "Déclarations de normalisation avec Israël (2020) ; les EAU ont signé en septembre et le Maroc a normalisé en décembre.",
       "url": "https://www.state.gov/the-abraham-accords/",
-      "members": ["israel", "morocco"]
+      "members": ["israel", "morocco", "united_arab_emirates"]
+    },
+    "FPDA": {
+      "name": "FPDA — Five Power Defence Arrangements",
+      "short": "FPDA (accords de défense des cinq puissances, 1971)",
+      "domain": "military",
+      "basis": "Accords consultatifs de défense conclus en 1971 entre l'Australie, la Malaisie, la Nouvelle-Zélande, Singapour et le Royaume-Uni.",
+      "url": "https://www.fivepowerdefencearrangements.org/",
+      "members": ["australia", "singapore", "uk"]
+    },
+    "I2U2": {
+      "name": "I2U2 — Inde, Israël, Émirats arabes unis, États-Unis",
+      "short": "I2U2 (partenariat économique quadrilatéral, 2022)",
+      "domain": "economic",
+      "basis": "Groupe quadrilatéral lancé au sommet de juillet 2022 pour des investissements conjoints dans l'eau, l'énergie, les transports, l'espace, la santé et la sécurité alimentaire.",
+      "url": "https://www.mofa.gov.ae/en/mediahub/news/2023/9/21/21-9-2023-uae-yemen-usa-uae",
+      "members": ["india", "israel", "united_arab_emirates", "usa"]
     },
     "USJapanTreaty": {
       "name": "Traité de coopération mutuelle et de sécurité États-Unis–Japon",
@@ -125,6 +208,22 @@
       "basis": "Traité de défense mutuelle (1er octobre 1953) — engagement de défense américain, forces stationnées en Corée.",
       "url": "https://www.state.gov/collective-defense-arrangements/",
       "members": ["south_korea", "usa"]
+    },
+    "ChinaDPRKTreaty": {
+      "name": "Traité d'amitié, de coopération et d'assistance mutuelle Chine–RPDC",
+      "short": "traité d'assistance mutuelle Chine–RPDC (1961)",
+      "domain": "military",
+      "basis": "Traité sino-nord-coréen signé en 1961 et réaffirmé par les deux gouvernements en juillet 2026 ; il constitue la base politique et juridique de leur assistance mutuelle.",
+      "url": "https://www.mfa.gov.cn/eng/xw/zyxw/202607/t20260713_11980494.html",
+      "members": ["china", "north_korea"]
+    },
+    "RussiaDPRKTreaty": {
+      "name": "Partenariat stratégique global Russie–RPDC",
+      "short": "traité de partenariat stratégique Russie–RPDC (2024)",
+      "domain": "military",
+      "basis": "Traité signé en juin 2024 puis ratifié en novembre 2024, comprenant une obligation d'assistance en cas d'agression armée.",
+      "url": "https://en.kremlin.ru/catalog/countries/KP/events/by-date/27.02.2025",
+      "members": ["north_korea", "russia"]
     },
     "Western": {
       "name": "Bloc occidental (affinité)",

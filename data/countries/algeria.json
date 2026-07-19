@@ -1,0 +1,44 @@
+{
+  "id": "algeria",
+  "name": "Algérie",
+  "economy": {
+    "gdp": 269322281664.773,
+    "growth": 3.7,
+    "trade_dependency": 0.44
+  },
+  "military": {
+    "defense_budget": 21811242555.0313,
+    "nuclear_power": false,
+    "projection": 0.35
+  },
+  "resources": {
+    "oil_dependency": 0.05,
+    "energy_independence": 0.98
+  },
+  "alliances": [
+    "AfricanUnion",
+    "ArabLeague",
+    "OPEC"
+  ],
+  "rivals": [
+    "morocco"
+  ],
+  "political_system": "authoritarian",
+  "political_stability": 0.23,
+  "technology_level": 0.14,
+  "compute": 5.0,
+  "ideology": [
+    "sovereignism",
+    "nonalignment",
+    "arab_nationalism"
+  ],
+  "strategic_priorities": [
+    "regime_stability",
+    "hydrocarbon_exports",
+    "western_sahara",
+    "sahel_security"
+  ],
+  "temperament": "opportuniste",
+  "memory_summary": "",
+  "mandate": {}
+}

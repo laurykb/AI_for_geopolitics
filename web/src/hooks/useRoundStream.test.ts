@@ -83,6 +83,52 @@ describe("réducteur de round", () => {
     expect(state.humanTurn).toEqual({ country: "france", passNo: 1, deadlineTs: 1234.5 });
   });
 
+  it("streame le plan structuré avant la parole puis le conserve repliable", () => {
+    const state = play([
+      TURN_START,
+      { type: "private_token", country: "usa", token: "OBSERVATION\nLe signal change.\n" },
+      { type: "private_token", country: "usa", token: "FUTUR 1 — accord" },
+      {
+        type: "private_plan_done",
+        country: "usa",
+        text: "OBSERVATION\nLe signal change.\n\nARBITRAGE\nChoix : FUTUR 1",
+        valid: true,
+      },
+      { type: "token", country: "usa", token: "Notre position." },
+      {
+        type: "message_done",
+        country: "usa",
+        text: "Notre position.",
+        reasoning: "",
+        seconds: 1,
+      },
+    ]);
+
+    expect(state.turns[0]?.reasoning).toContain("ARBITRAGE");
+    expect(state.turns[0]?.text).toBe("Notre position.");
+    expect(state.turns[0]?.done).toBe(true);
+  });
+
+  it("attend le bulletin humain puis reprend quand son vote est révélé", () => {
+    const waiting = play([
+      { type: "human_motion_vote", country: "france", target: "iran", deadline_ts: 1234.5 },
+    ]);
+    expect(waiting.status).toBe("awaiting_vote");
+    expect(waiting.humanMotionVote).toEqual({
+      country: "france",
+      target: "iran",
+      deadlineTs: 1234.5,
+    });
+
+    const voted = reducer(waiting, {
+      kind: "sse",
+      event: { type: "motion_vote", country: "france", vote: "pour", reason: "Vote du joueur" },
+    });
+    expect(voted.status).toBe("streaming");
+    expect(voted.humanMotionVote).toBeUndefined();
+    expect(voted.motionVotes.at(-1)).toMatchObject({ country: "france", vote: "pour" });
+  });
+
   it("seul done protège d'une coupure — un flux mort en plein tour humain est interrompu", () => {
     const done = play([{ type: "done", round_no: 3 }]);
     expect(reducer(done, { kind: "interrupted" })).toBe(done);
