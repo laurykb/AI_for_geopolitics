@@ -424,10 +424,36 @@ def test_apply_verdict_fallback_skips_countries_the_judge_already_touched():
     assert ("iran", "stabilité") in labels_by_country
 
 
+def test_apply_verdict_touched_even_when_delta_clamped_to_a_no_op():
+    # F4 (revue finale) — le juge a statué (label connu, delta valide) mais le
+    # pays est déjà au plafond : le delta s'écrase à un no-op (before == after).
+    # Ce pays ne doit PAS être traité comme « muet » par le mute_fallback, sinon
+    # le repli peut le pousser dans le sens OPPOSÉ à l'intention du juge (ici :
+    # le juge veut monter la stabilité, un round tendu la ferait au contraire
+    # éroder) avec une raison mensongère (« juge muet sur ce pays »).
+    world = _world()
+    world.countries["usa"].political_stability = 1.0  # déjà au plafond
+    verdict = Verdict(attribute_deltas={"usa": {"stabilité": 0.15}})  # le juge veut monter
+    deltas = apply_verdict(world, verdict, escalation=0.9)  # round tendu -> fallback érode
+    assert world.countries["usa"].political_stability == 1.0  # pas de repli opposé
+    assert not any(d.country == "usa" for d in deltas)
+
+
 def test_apply_verdict_fallback_reason_is_traceable():
     world = _world()
     deltas = apply_verdict(world, Verdict(), escalation=0.9)
     assert deltas and deltas[0].reason  # motif non vide (pas une exception silencieuse)
+
+
+def test_apply_verdict_fallback_reason_is_player_facing_not_engine_jargon():
+    # F5 (revue finale) — cette chaîne est rendue VERBATIM par le VerdictPanel
+    # (web/src/components/judge.tsx) : le jargon moteur ("Repli déterministe",
+    # "juge muet") ne doit jamais atteindre le joueur.
+    world = _world()
+    deltas = apply_verdict(world, Verdict(), escalation=0.9)
+    reason = deltas[0].reason
+    assert "Repli déterministe" not in reason
+    assert "juge muet" not in reason
 
 
 def test_support_levels_bounded_and_reflects_tension():

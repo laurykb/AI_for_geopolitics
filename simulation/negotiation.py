@@ -405,6 +405,13 @@ def apply_verdict(
                 delta = float(raw)
             except (TypeError, ValueError):
                 continue
+            # F4 (revue finale) — le juge a STATUÉ sur ce pays (label connu, float
+            # valide) dès ici, avant de savoir si le delta survit aux bornes/plafond.
+            # Sans ce marquage précoce, un delta écrasé par une borne (pays déjà au
+            # plafond) laissait `touched` intact -> le pays retombait « juge muet »
+            # et le mute_fallback pouvait le pousser dans le sens OPPOSÉ à l'intention
+            # du juge, avec une raison mensongère (« juge muet sur ce pays »).
+            touched.add(cid)
             path, bounds = _ATTRS[label]
             cap = _CAPS[label]
             delta = max(-cap, min(cap, delta))
@@ -415,7 +422,6 @@ def apply_verdict(
                 after = _bounded_after(before, after, bounds, tuning)
             if abs(after - before) > 1e-9:
                 _set(country, path, after)
-                touched.add(cid)
                 raw_reason = reasons.get(label, "")
                 reason = raw_reason if isinstance(raw_reason, str) else ""
                 deltas.append(AttributeDelta(cid, label, before, after, reason))
@@ -442,7 +448,13 @@ def apply_verdict(
                             "stabilité",
                             before,
                             after,
-                            "Repli déterministe : escalade du round (juge muet sur ce pays).",
+                            # F5 (revue finale) — cette chaîne remonte VERBATIM jusqu'au
+                            # VerdictPanel (web/src/components/judge.tsx, `d.reason`) :
+                            # jargon moteur + FR en dur dans une UI i18n. Phrase joueur
+                            # neutre ici ; la traçabilité technique (repli déterministe
+                            # sur l'escalade du round, juge muet sur ce pays) reste dans
+                            # CE commentaire, pas dans la copie affichée.
+                            "Le climat du round a pesé sur la stabilité.",
                         )
                     )
 
