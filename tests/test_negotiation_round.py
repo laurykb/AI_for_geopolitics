@@ -257,15 +257,20 @@ def test_no_ledger_still_runs():
     assert any(isinstance(s, SummaryStep) for s in steps)  # rétro-compatible sans ledger
 
 
-def test_max_turns_caps_speaking():
+def test_floor_forces_a_full_table_even_under_a_tight_budget():
+    # Décision user (tour de table minimal, 2026-07-19) : le budget ne plafonne plus le
+    # nombre TOTAL de prises de parole sous le nombre de pays actifs. Avec budget=1 et 2
+    # pays, le plancher force les deux à parler malgré le budget serré (ex-« un round
+    # peut se finir avec un seul pays qui parle »).
     world = _world()
     world.adjust_tension("usa", "iran", 0.9)  # forte tension -> beaucoup d'envie de parler
     steps = list(
         run_negotiation_round(world, _agents(world), _gm(), _judge(), SimClock(), max_turns=1)
     )
-    assert sum(isinstance(s, TurnStartStep) for s in steps) == 1  # budget respecté
+    assert sum(isinstance(s, TurnStartStep) for s in steps) == 2  # plancher : tour de table complet
     part = next(s for s in steps if isinstance(s, ParticipationStep))
-    assert sum(part.spoke.values()) == 1
+    assert sum(part.spoke.values()) == 2
+    assert part.silent == []  # personne oublié malgré le budget de 1
 
 
 def test_provided_event_skips_game_master():

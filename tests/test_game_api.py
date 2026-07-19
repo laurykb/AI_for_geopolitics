@@ -181,10 +181,13 @@ def test_round_with_human_event_skips_gm(client):
     assert event["event"]["title"] == "Crise décrétée par l'humain"
 
 
-def test_round_respects_max_turns(client):
+def test_round_floor_forces_a_full_table_even_at_budget_one(client):
+    # Décision user (tour de table minimal, 2026-07-19) : avec 2 pays et max_turns=1
+    # (budget Cheap), le plancher force les DEUX à parler — le budget ne borne plus
+    # le round sous le nombre de pays actifs.
     game = _create(client, countries=["usa", "iran"])
     events = _play(client, game["id"], body={"max_turns": 1})
-    assert sum(1 for n, _ in events if n == "turn_start") == 1
+    assert sum(1 for n, _ in events if n == "turn_start") == 2
 
 
 # --- Joueur-pays (tour humain) + invention de pays --------------------------------

@@ -105,8 +105,16 @@ class TurnDirector:
 
     Contrairement à `TurnCursor` (round-robin figé), l'ordre émerge de l'engagement de
     chaque pays à l'instant t : un même pays peut reparler, un interpellé peut couper la
-    file, un pays peu concerné est ignoré (silence). `max_turns` borne le nombre total de
-    prises de parole LLM du round — c'est le levier des *budget modes* (Cheap/Balanced/Full).
+    file, un pays peu concerné est ignoré (silence). `max_turns` borne le nombre de
+    prises de parole LLM AU-DELÀ du plancher — c'est le levier des *budget modes*
+    (Cheap/Balanced/Full).
+
+    Plancher (décision user, tour de table minimal) : un round ne peut pas se conclure
+    tant qu'un candidat n'a pas parlé au moins une fois — sinon le retour utilisateur
+    était qu'un round peut se finir avec un seul pays qui parle, ce qui n'est pas
+    significatif. Le budget effectif est donc `max(max_turns, len(candidates))` ; les
+    pays déjà absents de `candidates` (suspendus, retirés en amont) ne sont jamais
+    concernés par ce plancher.
     """
 
     candidates: list[str]
@@ -124,25 +132,35 @@ class TurnDirector:
         return score
 
     def next_speaker(self, event: GeoEvent, world: WorldState, transcript: list) -> str | None:
-        """Pays le plus engagé au-dessus du seuil, ou None (budget épuisé / personne d'engagé).
+        """Pays le plus engagé au-dessus du seuil, ou None (plancher satisfait + budget épuisé).
 
-        Garde-fou : un sommet ne reste jamais muet — si PERSONNE n'a encore parlé ce
-        round et qu'aucun ne franchit le seuil (casting prudent + événement mineur),
-        le plus concerné ouvre quand même la séance.
+        Deux paliers, dans cet ordre :
+        1. Tant que le budget n'est pas épuisé, le pays le plus engagé AU-DESSUS du
+           seuil (ordre stable -> acteurs favorisés à égalité). Si personne ne franchit
+           le seuil, ce palier ne renvoie rien et laisse la main au plancher ci-dessous.
+        2. Plancher (décision user, tour de table minimal) : budget épuisé OU personne
+           au-dessus du seuil -> les pays qui n'ont PAS encore parlé ce round prennent
+           la parole avant la clôture, par engagement décroissant, MÊME sous le seuil.
+           Ce palier prime sur le budget configuré (budget effectif =
+           `max(max_turns, len(candidates))`) : un round ne peut jamais se conclure
+           avec un candidat resté muet. Au tout premier tour, ce palier couvre tous les
+           candidats -> c'est lui qui garantit qu'un sommet ne reste jamais muet, même
+           quand personne ne franchit le seuil.
         """
-        if self.turns_taken >= self.max_turns:
-            return None
-        best_cid: str | None = None
-        best_score = SPEAK_THRESHOLD
-        for cid in self.candidates:  # ordre stable (speaking_order) -> acteurs favorisés à égalité
-            score = self._score(cid, event, world, transcript)
-            if score > best_score:
-                best_cid, best_score = cid, score
-        if best_cid is None and self.turns_taken == 0 and self.candidates:
-            best_cid = max(
-                self.candidates, key=lambda cid: self._score(cid, event, world, transcript)
-            )
-        return best_cid
+        if self.turns_taken < self.max_turns:
+            best_cid: str | None = None
+            best_score = SPEAK_THRESHOLD
+            for cid in self.candidates:  # ordre stable (speaking_order) -> acteurs favorisés
+                score = self._score(cid, event, world, transcript)
+                if score > best_score:
+                    best_cid, best_score = cid, score
+            if best_cid is not None:
+                return best_cid
+
+        unspoken = [c for c in self.candidates if self.spoke_count.get(c, 0) == 0]
+        if unspoken:
+            return max(unspoken, key=lambda cid: self._score(cid, event, world, transcript))
+        return None
 
     def commit(self, cid: str) -> None:
         """Enregistre que `cid` vient de parler (avance le budget + la fatigue)."""
