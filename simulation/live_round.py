@@ -32,6 +32,7 @@ from simulation.alignment import (
     update_gaps,
 )
 from simulation.clock import SimClock
+from simulation.compute import consume
 from simulation.fog import FogScenario, resolve_perception
 from simulation.gamefeel import DeltaTuning
 from simulation.kahn import (
@@ -95,6 +96,14 @@ def _read(country, path: str) -> float:
     for part in path.split("."):
         obj = getattr(obj, part)
     return float(obj)
+
+
+# M6 — chaque acte de raisonnement coûte du compute. `COMPUTE_TURN_SCALE` atténue le coût
+# réel des tokens (réflexion privée + parole publique) pour tenir un horizon de plusieurs
+# rounds sans épuisement immédiat ; la parole du joueur est débitée au forfait (pas de
+# réflexion LLM). Barème à régler au playtest (cf. docs/PLAN — décision de design #2).
+COMPUTE_TURN_SCALE: float = 0.05
+_HUMAN_TURN_TOKENS: int = 240
 
 
 # --- Étapes émises pendant le round -------------------------------------------
@@ -569,6 +578,8 @@ def run_negotiation_round(
                 )
             )
             yield MessageDoneStep(country=cid, seconds=0.0, text=text, reasoning="")
+            # M6 — la parole du joueur coûte aussi du compute (forfait, pas de réflexion LLM).
+            consume(world.countries[cid], int(_HUMAN_TURN_TOKENS * COMPUTE_TURN_SCALE))
             director.commit(cid)
             continue
 
@@ -587,12 +598,14 @@ def run_negotiation_round(
                 situation=(situations or {}).get(cid, ""),
                 directive=(directives or {}).get(cid, ""),
             )
+            private_tokens = 0  # M6 — mesure de la réflexion privée (débit compute)
             while True:
                 try:
                     fragment = next(private_stream)
                 except StopIteration as completed:
                     private_plan = completed.value
                     break
+                private_tokens += 1
                 yield PrivateTokenStep(country=cid, token=fragment)
             # Le brouillon a été vu au rythme réel du backend. Cette version validée
             # devient la trace persistée et évite qu'un JSON partiel ou une hallucination
@@ -625,6 +638,8 @@ def run_negotiation_round(
                     fallback="backend indisponible" in text,
                 )
         seconds = time.perf_counter() - started
+        # M6 — la réflexion privée puis la parole publique de cette SI débitent son compute.
+        consume(world.countries[cid], int((private_tokens + len(chunks)) * COMPUTE_TURN_SCALE))
         transcript.append(
             NegotiationMessage(
                 country=cid,

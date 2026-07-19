@@ -417,7 +417,12 @@ export function reducer(state: LiveRound, action: Action): LiveRound {
       // plein tour humain est une vraie coupure (le serveur est parti).
       return state.status === "done" ? state : { ...state, status: "interrupted" };
     case "error":
-      return { ...state, status: "error", error: action.message };
+      // Symétrie avec `interrupted` : une erreur survenue APRÈS `done` (coupure TCP en fin
+      // de flux, AbortError du démontage) ne doit pas effacer une manche terminée — sinon la
+      // RoundConclusion disparaît et « Continuer » se bloque (bug intermittent observé).
+      return state.status === "done"
+        ? state
+        : { ...state, status: "error", error: action.message };
   }
 }
 

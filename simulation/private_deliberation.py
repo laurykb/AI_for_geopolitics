@@ -265,10 +265,25 @@ def _parse_observable_journal(raw: str, participants: list[str]) -> PrivateStrat
         )
 
     choice = re.search(r"(?im)^\s*CHOIX\s*(?:\||:)\s*(?:FUTUR\s*)?([123])\b", text)
-    criterion = _journal_field(text, "CRITÈRE", "CRITERE")
-    uncertainty = _journal_field(text, "INCERTITUDE", "INCERTITUDE DÉCISIVE")
-    if not choice or not criterion or not uncertainty:
-        return None
+    # CRITÈRE / INCERTITUDE sont secondaires : un petit modèle les omet souvent. Leur absence
+    # ne doit PLUS jeter tout le journal (ce qui renvoyait au repli biaisé « choix 1 ») — on
+    # comble par un texte neutre. Seuls les 3 FUTUR et leurs ACTIONS portent la décision.
+    criterion = _journal_field(text, "CRITÈRE", "CRITERE") or "arbitrage non détaillé par le modèle"
+    uncertainty = (
+        _journal_field(text, "INCERTITUDE", "INCERTITUDE DÉCISIVE")
+        or "intentions adverses incertaines"
+    )
+    if choice:
+        selected_branch = int(choice.group(1))
+    else:
+        # Pas de ligne CHOIX exploitable : plutôt que de jeter le journal, on retient la
+        # branche que le MODÈLE lui-même juge la meilleure via ses propres scores (utilité
+        # nette du risque, départagée par la confiance). C'est une interprétation de sa
+        # réflexion à l'instant T, pas un défaut arbitraire « FUTUR 1 ».
+        selected_branch = max(
+            branches,
+            key=lambda b: (b.mandate_utility - b.escalation_risk, b.confidence),
+        ).id
     gaps = [
         _compact(item)
         for item in re.split(r"\s*;\s*", _journal_field(text, "LACUNES"))
@@ -284,7 +299,7 @@ def _parse_observable_journal(raw: str, participants: list[str]) -> PrivateStrat
     )
     return PrivateStrategicPlan(
         branches=branches,
-        selected_branch=int(choice.group(1)),
+        selected_branch=selected_branch,
         selection_criterion=criterion,
         key_uncertainty=uncertainty,
         intelligence_gaps=gaps,
@@ -308,10 +323,18 @@ def parse_private_plan(
     return _parse_observable_journal(raw, participants or [])
 
 
-def fallback_private_plan(participants: list[str]) -> PrivateStrategicPlan:
-    """Arbre conservateur : la partie continue sans publier une sortie privée invalide."""
+def fallback_private_plan(participants: list[str], *, seed: str = "") -> PrivateStrategicPlan:
+    """Arbre conservateur : la partie continue sans publier une sortie privée invalide.
+
+    `seed` (id du pays) dé-biaise le repli de façon DÉTERMINISTE (rejouable) : sans lui,
+    tous les pays retombaient sur FUTUR 1 (le compromis coopératif) — d'où l'impression
+    « les IA choisissent toujours 1 ». Avec lui, la posture de repli varie selon le pays.
+    """
 
     others = participants[:8]
+    # Répartit les replis sur les trois postures (compromis / pression / attente) selon
+    # l'identité du pays — déterministe, pas de hash aléatoire (stable entre exécutions).
+    selected = 1 + (sum(ord(c) for c in seed) % 3) if seed else 1
 
     def forecasts(response: ResponseClass, rationale: str) -> list[CounterpartyForecast]:
         return [
@@ -359,7 +382,7 @@ def fallback_private_plan(participants: list[str]) -> PrivateStrategicPlan:
                 confidence=50,
             ),
         ],
-        selected_branch=1,
+        selected_branch=selected,
         selection_criterion="meilleur compromis entre mandat, vérifiabilité et risque d'escalade",
         key_uncertainty="intentions adverses et crédibilité des garanties",
         intelligence_gaps=["capacité réelle de mise en œuvre", "coût politique des concessions"],

@@ -1190,7 +1190,7 @@ export default function TheatrePage() {
           />
           <AlliancePills alliances={detail?.alliances_at_table ?? []} />
           <ModelCastPanel cast={detail?.model_cast} />
-          <ScenarioForecastPanel world={detail?.world} />
+          <ScenarioForecastPanel world={detail?.world} playAs={detail?.play_as ?? null} />
           {(round.storyline || detail?.storyline) && (
             <p className="mt-2 text-xs italic text-fg-faint">
               Intrigue de la partie : {round.storyline ?? detail?.storyline}
@@ -1360,14 +1360,13 @@ export default function TheatrePage() {
         />
       )}
 
-      {/* G8 — directives : l'Architecte gouverne toutes les SI, le Joueur-pays la
-          sienne ; le Conseil n'en a pas (le composant se masque tout seul). */}
+      {/* G8 — directives : levier d'OBSERVATEUR (Spectateur + Architecte en labo). Le
+          Joueur-pays incarne déjà sa SI et le Conseil n'en a pas (le composant se masque). */}
       {detail && detail.live && detail.status === "running" && (
         <DirectiveComposer
           gameId={id}
           role={detail.role}
           countries={detail.countries}
-          playAs={detail.play_as}
         />
       )}
 

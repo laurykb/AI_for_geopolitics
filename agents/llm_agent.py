@@ -189,7 +189,9 @@ class LLMAgent(Agent):
                 private_prompt,
                 system=PRIVATE_DELIBERATION_SYSTEM,
                 max_tokens=plan_tokens,
-                temperature=max(0.2, sampling.temperature - 0.15),
+                # Température de la phase privée relevée : la forte réduction (-0,15) rendait
+                # le décodage glouton et renforçait le biais de primauté vers FUTUR 1.
+                temperature=max(0.35, sampling.temperature - 0.05),
                 repeat_penalty=sampling.repeat_penalty,
             ):
                 chunks.append(fragment)
@@ -200,7 +202,8 @@ class LLMAgent(Agent):
         except Exception:
             plan = None
         if plan is None:
-            plan = fallback_private_plan(participants)
+            # seed = id du pays : dé-biaise le repli (sinon tous retombent sur FUTUR 1).
+            plan = fallback_private_plan(participants, seed=self.country_id)
         else:
             self.last_private_valid = True
         self.last_private_plan = plan

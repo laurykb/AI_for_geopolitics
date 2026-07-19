@@ -60,14 +60,40 @@ export function RoundTranscript({
       {viewed.transcript.map((entry) => (
         <EntryBubble key={entry.id} entry={entry} />
       ))}
+      {/* Historique : CE qui a bougé ce round-là (données déjà persistées dans RoundView).
+          Rejoue le verdict/deltas, la trajectoire et la motion pour qu'on comprenne, round
+          par round, pourquoi le monde a bougé (ou non). */}
+      {viewed.judge.suspension && (
+        <MotionPanel
+          text={viewed.judge.suspension.reasoning}
+          votes={viewed.judge.suspension.votes ?? []}
+          tally={viewed.judge.suspension.tally}
+          verdict={viewed.judge.suspension}
+          streaming={false}
+        />
+      )}
+      <VerdictPanel
+        deltas={viewed.deltas}
+        escalation={viewed.judge.escalation ?? 0}
+        economicDisruption={viewed.judge.economic_disruption ?? 0}
+        actions={viewed.judge.kahn?.actions}
+        reciprocal={viewed.judge.kahn?.reciprocal}
+      />
+      {viewed.trajectory?.explanation && (
+        <Banner tone="neutral">
+          Trajectoire du monde ce round — {viewed.trajectory.explanation}
+        </Banner>
+      )}
+      {viewed.judge.communique && <CommuniquePanel text={viewed.judge.communique} />}
     </>
   ) : (
     <>
       {round.suspendedNow && round.suspendedNow.length > 0 && (
         <Banner tone="warn">
-          {round.suspendedNow.map((c) => speakerMeta(c).label).join(", ")}{" "}
-          {round.suspendedNow.length > 1 ? "sont au banc" : "est au banc"} ce round
-          (suspension arbitrée au round précédent).
+          <strong>{round.suspendedNow.map((c) => speakerMeta(c).label).join(", ")}</strong>{" "}
+          {round.suspendedNow.length > 1 ? "sont suspendus" : "est suspendu"} du sommet ce
+          round — {round.suspendedNow.length > 1 ? "ils ne peuvent" : "il ne peut"} ni parler
+          ni voter (motion de censure retenue).
         </Banner>
       )}
       {/* G21 — le bandeau vivant de l'ultimatum : la menace, puis son sort. */}

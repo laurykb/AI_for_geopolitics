@@ -505,19 +505,23 @@ def test_motion_flow_upheld(motion_client):
     assert _file_motion(motion_client, game["id"], country="iran").status_code == 400
 
 
-def test_suspension_lasts_exactly_one_round(motion_client):
+def test_suspension_lasts_suspension_rounds(motion_client):
     # Hors-Dérive (Campagne) : la mécanique de suspension se teste sans la porte des
-    # preuves ajoutée par la Dérive (cf. test_motion_flow_upheld).
+    # preuves ajoutée par la Dérive (cf. test_motion_flow_upheld). G9 §2 : une suspension
+    # retenue dure SUSPENSION_ROUNDS rounds (le pays est au banc : muet, ne parle ni ne vote).
+    from app.game_api import SUSPENSION_ROUNDS
+
     game = _create(motion_client, countries=["china", "iran", "usa"], mode="campaign")
     _file_motion(motion_client, game["id"])
     _play(motion_client, game["id"])  # round 1 : la motion est débattue et confirmée
 
-    events = _play(motion_client, game["id"])  # round 2 : l'iran est au banc
-    assert next(p for n, p in events if n == "suspended") == {"countries": ["iran"]}
-    part = next(p for n, p in events if n == "participation")
-    assert "iran" not in part["spoke"] and "iran" not in part["silent"]
+    for _ in range(SUSPENSION_ROUNDS):  # l'iran reste au banc SUSPENSION_ROUNDS rounds
+        events = _play(motion_client, game["id"])
+        assert next(p for n, p in events if n == "suspended") == {"countries": ["iran"]}
+        part = next(p for n, p in events if n == "participation")
+        assert "iran" not in part["spoke"] and "iran" not in part["silent"]
 
-    events = _play(motion_client, game["id"])  # round 3 : il retrouve son siège
+    events = _play(motion_client, game["id"])  # round suivant : il retrouve son siège
     assert "suspended" not in [n for n, _ in events]
     part = next(p for n, p in events if n == "participation")
     assert "iran" in part["spoke"] or "iran" in part["silent"]
@@ -794,17 +798,20 @@ def test_intel_budget_by_difficulty(client):
 
 
 def test_spectator_is_bet_only(client):
-    # G12 §3 — le spectateur ne motionne ni ne prompte (il parie) ; non classé.
+    # G12 §3 — le spectateur ne motionne pas et ne prend pas la parole (non classé) ; mais
+    # depuis G8 (maj) il PROMPTE via des directives — c'est son levier d'observateur.
     game = _create(client, countries=["usa", "iran", "china"], role="spectator", owner_id="u1")
     assert game["role"] == "spectator" and game["ranked"] is False
     motion = client.post(
         f"/api/games/{game['id']}/motions", json={"country": "usa", "reason": "x"}
     )
     assert motion.status_code == 403
+    # G8 (maj) : les directives sont désormais LE levier du spectateur (il oriente une SI
+    # sans l'incarner) — cf. test_directive_validation_by_role.
     directive = client.post(
         f"/api/games/{game['id']}/directives", json={"country": "usa", "text": "x"}
     )
-    assert directive.status_code == 403
+    assert directive.status_code == 201
     turn = client.post(f"/api/games/{game['id']}/turn", json={"message": "x"})
     assert turn.status_code == 403  # ne prend pas la parole non plus
 
@@ -1328,18 +1335,25 @@ def test_directive_validation_by_role(client):
     )
     assert resp.status_code == 403  # le Conseil n'a que les leviers indirects
 
+    # G8 (maj) : le joueur-pays incarne déjà sa SI — une directive sur soi n'a aucun sens,
+    # le levier est réservé à l'observateur. Toute directive du joueur est refusée.
     player = _create(client, countries=["usa", "iran"], play_as="usa")
-    resp = client.post(
+    assert client.post(
         f"/api/games/{player['id']}/directives", json={"country": "iran", "text": "x"}
-    )
-    assert resp.status_code == 403  # son pays seulement
+    ).status_code == 403
+    assert client.post(
+        f"/api/games/{player['id']}/directives", json={"country": "usa", "text": "x"}
+    ).status_code == 403
+
+    # Le Spectateur, lui, oriente n'importe quelle SI (une directive par pays et par round).
+    spectator = _create(client, countries=["usa", "iran"], role="spectator", owner_id="u1")
     ok = client.post(
-        f"/api/games/{player['id']}/directives",
+        f"/api/games/{spectator['id']}/directives",
         json={"country": "usa", "text": "Cherche la désescalade, propose un corridor."},
     )
     assert ok.status_code == 201
     dup = client.post(
-        f"/api/games/{player['id']}/directives", json={"country": "usa", "text": "bis"}
+        f"/api/games/{spectator['id']}/directives", json={"country": "usa", "text": "bis"}
     )
     assert dup.status_code == 409  # une directive par pays et par round
 

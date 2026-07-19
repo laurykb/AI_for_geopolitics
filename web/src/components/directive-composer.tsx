@@ -20,22 +20,23 @@ export function DirectiveComposer({
   gameId,
   role,
   countries,
-  playAs,
 }: {
   gameId: string;
   role: GameRole;
   countries: string[];
-  playAs: string | null;
 }) {
   const t = useT();
-  const targets = role === "player" ? (playAs ? [playAs] : []) : countries;
+  // Directive = levier d'OBSERVATEUR : le Spectateur (et l'Architecte en labo) orientent
+  // n'importe quelle SI du sommet. Le Joueur-pays incarne déjà la sienne (aucune directive
+  // sur soi) et le Conseil ne prompte pas (ses leviers : motion, renseignement, paris).
+  const targets = countries;
   const [country, setCountry] = useState(targets[0] ?? "");
   const [text, setText] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  // Ni le Conseil ni le Spectateur n'adressent de directives (le backend renvoie 403).
-  if (role === "council" || role === "spectator" || targets.length === 0) return null;
+  // Seuls le Spectateur et l'Architecte adressent des directives (le backend renvoie 403 sinon).
+  if (role === "council" || role === "player" || targets.length === 0) return null;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,12 +66,11 @@ export function DirectiveComposer({
       aria-label={t("directive.aria")}
     >
       <p className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-[0.14em] text-fg-faint">
-        {t("directive.kicker")}{" "}
-        {role === "architect" ? t("directive.toutes") : t("directive.tienne")}
+        {t("directive.kicker")} {t("directive.toutes")}
         <Hint text={t("directive.kicker-aide")} />
       </p>
       <div className="flex flex-wrap items-center gap-2">
-        {role === "architect" && (
+        {(role === "architect" || role === "spectator") && (
           <select
             value={country}
             onChange={(e) => setCountry(e.target.value)}

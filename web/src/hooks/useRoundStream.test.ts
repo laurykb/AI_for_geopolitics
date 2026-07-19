@@ -142,6 +142,15 @@ describe("réducteur de round", () => {
     expect(state.status).toBe("interrupted");
   });
 
+  it("une erreur APRÈS done ne perd pas la manche terminée (bouton Continuer)", () => {
+    // Coupure TCP de fin de flux / AbortError du démontage : l'action error ne doit pas
+    // écraser un round déjà `done`, sinon la RoundConclusion disparaît et Continuer se bloque.
+    const done: LiveRound = { ...INITIAL, status: "done", roundNo: 4 };
+    const state = reducer(done, { kind: "error", message: "coupure de fin de flux" });
+    expect(state.status).toBe("done");
+    expect(state.roundNo).toBe(4);
+  });
+
   it("done fixe le statut et le numéro de round", () => {
     const state = play([{ type: "done", round_no: 2 }]);
     expect(state).toMatchObject({ status: "done", roundNo: 2 });

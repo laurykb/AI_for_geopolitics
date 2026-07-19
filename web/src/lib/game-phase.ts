@@ -52,13 +52,17 @@ export function deriveGamePhase(input: GamePhaseInput): GamePhase {
     return recoveredServerPhase ? input.serverPhase! : "disconnected";
   }
   if (input.liveStatus === "awaiting_vote") return "awaiting_vote";
-  if (input.liveStatus === "awaiting_human" || input.awaitingHumanSnapshot) {
-    return "awaiting_player";
+  // Le signal LIVE d'attente humaine fait foi immédiatement.
+  if (input.liveStatus === "awaiting_human") return "awaiting_player";
+  // Un round live TERMINÉ prime sur l'instantané serveur `awaiting_human` (souvent périmé
+  // après un tour humain déjà joué dans le flux) : sinon ce snapshot masque la fin de manche
+  // et « Continuer » reste bloqué. `inFlight` distingue la finalisation (resolving) de la fin.
+  if (input.liveStatus === "done") {
+    return input.inFlight ? "resolving" : "round_complete";
   }
-  if (input.inFlight || input.liveStatus === "streaming") {
-    return input.liveStatus === "done" ? "resolving" : "round_running";
-  }
-  if (input.liveStatus === "done") return "round_complete";
+  if (input.inFlight || input.liveStatus === "streaming") return "round_running";
+  // Instantané serveur (potentiellement périmé) : n'est consulté qu'à défaut de signal live.
+  if (input.awaitingHumanSnapshot) return "awaiting_player";
   if (input.serverPhase) return input.serverPhase;
   if (input.playedRounds > 0) return "round_complete";
   return "ready";

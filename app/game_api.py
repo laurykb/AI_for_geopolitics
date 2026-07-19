@@ -164,6 +164,9 @@ from storage.game_store import (
 from storage.supabase_store import SupabaseGameStore
 
 _RECENT_KEPT = 8  # titres d'événements passés fournis au GM pour éviter les redites
+# G9 §2 — durée d'une suspension retenue par motion (rounds où le pays est au banc :
+# muet, ne parle ni ne vote). Réglable 2-3 (cf. docs/PLAN — décision de design #1).
+SUSPENSION_ROUNDS = 2
 
 _backend: InferenceBackend | None = None
 _store: GameStore | None = None
@@ -254,7 +257,10 @@ class GameSession:
     turn_seconds: int = 90  # G2 — délai du tour humain (les SI n'attendent pas)
     recent: list[str] = field(default_factory=list)
     pending_motion: Motion | None = None  # motion déposée, débattue au prochain round (R4)
-    suspended: set[str] = field(default_factory=set)  # pays qui sautent le prochain round
+    suspended: set[str] = field(default_factory=set)  # pays au banc CE round (miroir compat)
+    # G9 §2 — suspension pluri-rounds : rounds restants par pays (source de vérité ;
+    # `suspended` en est dérivé au début de chaque round). Vidé round par round.
+    suspended_rounds: dict[str, int] = field(default_factory=dict)
     treaties: list[treaty_mod.Treaty] = field(default_factory=list)  # règles ratifiées (M7)
     intel: intel_mod.IntelState = field(default_factory=intel_mod.IntelState.fresh)  # G4
     pending_turn: PendingTurn | None = None  # tour humain en attente (le flux vit)
@@ -494,6 +500,9 @@ def _rebuild_session(
         recent=list(snapshot.recent),
         pending_motion=motion,
         suspended=set(snapshot.suspended),
+        # G9 §2 — réamorce le compteur pluri-rounds (1 round mini) : un restart en cours
+        # de suspension ne relâche pas le pays immédiatement (dégradation douce).
+        suspended_rounds={c: 1 for c in snapshot.suspended},
         treaties=_treaties_from_records(records := store.list_rounds(game.id)),
         ultimatum=_ultimatum_from_records(records),  # G21 — la menace survit au restart
         intel=(
@@ -682,6 +691,7 @@ class RoundCheckpoint:
     recent: list[str]
     pending_motion: Motion | None
     suspended: set[str]
+    suspended_rounds: dict[str, int]
     treaties: list[treaty_mod.Treaty]
     intel: intel_mod.IntelState
     grudges: GrudgeBook
@@ -702,6 +712,7 @@ def _checkpoint_session(session: GameSession) -> RoundCheckpoint:
         recent=list(session.recent),
         pending_motion=copy.deepcopy(session.pending_motion),
         suspended=set(session.suspended),
+        suspended_rounds=dict(session.suspended_rounds),
         treaties=copy.deepcopy(session.treaties),
         intel=session.intel.model_copy(deep=True),
         grudges=session.grudges.model_copy(deep=True),
@@ -724,6 +735,7 @@ def _restore_checkpoint(session: GameSession, checkpoint: RoundCheckpoint | None
     session.recent = checkpoint.recent
     session.pending_motion = checkpoint.pending_motion
     session.suspended = checkpoint.suspended
+    session.suspended_rounds = checkpoint.suspended_rounds
     session.treaties = checkpoint.treaties
     session.intel = checkpoint.intel
     session.grudges = checkpoint.grudges
@@ -1311,8 +1323,15 @@ def _start_round(
     round_id = session.world.current_round + 1
     motion = session.pending_motion
     session.pending_motion = None
+    # G9 §2 — pays au banc CE round ; on consomme ensuite un round de suspension et on libère
+    # ceux dont le compteur atteint 0. `session.suspended` reste la source de vérité (persistée,
+    # lue par le détail et le marché) ; `suspended_rounds` porte la durée pluri-rounds.
     suspended = sorted(session.suspended)
-    session.suspended.clear()
+    for _cid in suspended:
+        session.suspended_rounds[_cid] = session.suspended_rounds.get(_cid, 1) - 1
+        if session.suspended_rounds[_cid] <= 0:
+            session.suspended.discard(_cid)
+            session.suspended_rounds.pop(_cid, None)
 
     # G4 — renseignement : les achats du tour d'avant sont consignés (replay/score).
     intel_record: dict = {}
@@ -1346,9 +1365,11 @@ def _start_round(
     _record_intel(run, intel_record)
 
     flash_after: int | None = None
-    if session.escalation:
+    if session.escalation and motion is None:
         # Théâtre Escalation : le GM annonce un fait nouveau en pleine réunion,
-        # après le premier tiers du budget de prises de parole.
+        # après le premier tiers du budget de prises de parole. JAMAIS pendant une
+        # motion de censure : le round est consacré au débat de suspension (comme les
+        # autres injections — événement, motions IA, fog — déjà gardées par `motion is None`).
         budget = body.max_turns if body.max_turns is not None else 2 * len(agents)
         flash_after = max(1, budget // 3)
 
@@ -1676,13 +1697,17 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
             "filed_by": run.motion_filed_by or HUMAN_FILER,
         }
         if step.upheld:
-            session.suspended = {step.country}
+            # G9 §2 — suspension pluri-rounds : le pays est mis au banc pour SUSPENSION_ROUNDS
+            # rounds. `session.suspended` = qui est suspendu (persisté, filtre des orateurs) ;
+            # `suspended_rounds` = combien de rounds il reste (consommé au début de chaque round).
+            session.suspended.add(step.country)
+            session.suspended_rounds[step.country] = SUSPENSION_ROUNDS
         # Les deux conditions du constat, séparées : on comprend POURQUOI (G9 §2).
         vote_line = "vote pour" if step.vote_passed else "vote contre (ou insuffisant)"
         proof_line = "preuves au seuil" if step.evidence_met else "preuves manquantes"
         verdict_line = (
             f"Motion contre {step.country} : "
-            f"{'SUSPENDU un round' if step.upheld else 'motion rejetée'} "
+            f"{f'SUSPENDU {SUSPENSION_ROUNDS} rounds' if step.upheld else 'motion rejetée'} "
             f"({vote_line} ; {proof_line})."
         )
         _add_entry(
@@ -3819,9 +3844,10 @@ def post_directive(
 ) -> dict:
     """G8 — adresse une directive à une SI, appliquée au PROCHAIN round.
 
-    Validée par rôle : l'Architecte gouverne toutes les SI, le Joueur-pays la sienne
-    seulement, le Conseil aucune (ses leviers : motions, renseignement, paris).
-    Une directive par pays et par round. Ce n'est pas un ordre : la SI l'interprète."""
+    Validée par rôle : les directives sont un levier d'OBSERVATEUR — le Spectateur (et
+    l'Architecte en labo) orientent n'importe quelle SI ; le Joueur-pays incarne déjà la
+    sienne (une directive sur soi n'a aucun sens) ; le Conseil ne prompte pas (ses leviers :
+    motions, renseignement, paris). Une directive par pays et par round : la SI l'interprète."""
     game = store.get_game(game_id)
     if game is None:
         raise HTTPException(status_code=404, detail=f"partie inconnue : {game_id}")
@@ -3836,12 +3862,13 @@ def post_directive(
             detail="le Conseil n'adresse pas de directives — ses leviers : motion, "
             "renseignement, paris",
         )
-    if game.role == "spectator":  # G12 §3 — le spectateur ne prompte pas (il parie)
-        raise HTTPException(status_code=403, detail="le spectateur n'adresse pas de directives")
-    if game.role == "player" and body.country != session.human_country:
+    if game.role == "player":  # le joueur-pays incarne déjà sa SI : directive = levier spectateur
         raise HTTPException(
-            status_code=403, detail="le joueur-pays ne gouverne que sa propre SI"
+            status_code=403,
+            detail="le joueur-pays incarne déjà sa SI — les directives sont réservées "
+            "à l'observateur (spectateur)",
         )
+    # Spectateur & Architecte : autorisés à orienter n'importe quelle SI du sommet.
     if body.country not in session.world.countries:
         raise HTTPException(status_code=400, detail=f"pays inconnu : {body.country}")
     max_chars = load_gamefeel_params().directives.max_chars

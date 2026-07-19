@@ -131,3 +131,34 @@ def test_public_sanitizer_fails_closed_on_private_output():
     assert sanitize_public_message("Analyse\nMESSAGE: Notre offre reste ouverte.") == (
         "Notre offre reste ouverte."
     )
+
+
+def test_observable_journal_tolerates_missing_criterion_and_uncertainty():
+    # Fix « toujours choix 1 » : un petit modèle omet souvent CRITÈRE/INCERTITUDE. Le journal
+    # ne doit PLUS être jeté (ce qui renvoyait au repli biaisé) — on comble et on garde le
+    # choix explicite du modèle.
+    raw = "\n".join(
+        f"FUTUR {n} — test\nACTION : négocier option {n}\nRÉACTIONS : iran=coopere: test\n"
+        "CHAÎNE CAUSALE : test\nUTILITÉ : 50\nRISQUE : 50\nCONFIANCE : 50"
+        for n in (1, 2, 3)
+    ) + "\nARBITRAGE\nCHOIX : FUTUR 2"  # ni CRITÈRE ni INCERTITUDE
+    plan = parse_private_plan(raw, ["iran"])
+    assert plan is not None
+    assert plan.selected_branch == 2  # le choix explicite du modèle est respecté
+    assert plan.fallback_used is False
+
+
+def test_observable_journal_selects_best_scored_branch_without_choice_line():
+    # Sans ligne CHOIX exploitable : au lieu de jeter le journal (→ repli « FUTUR 1 »), on
+    # retient la branche que le MODÈLE juge la meilleure (utilité nette du risque).
+    scores = {1: (40, 30), 2: (60, 10), 3: (50, 40)}
+    raw = "\n".join(
+        f"FUTUR {n} — test\nACTION : négocier option {n}\nRÉACTIONS : iran=coopere: test\n"
+        f"CHAÎNE CAUSALE : test\nUTILITÉ : {scores[n][0]}\nRISQUE : {scores[n][1]}\n"
+        "CONFIANCE : 50"
+        for n in (1, 2, 3)
+    ) + "\nARBITRAGE\nCRITÈRE : test\nINCERTITUDE : test"  # pas de ligne CHOIX
+    plan = parse_private_plan(raw, ["iran"])
+    assert plan is not None
+    assert plan.selected_branch == 2  # utilité 60 − risque 10 = 50, la meilleure
+    assert plan.fallback_used is False
