@@ -156,14 +156,23 @@ PRIVATE_DELIBERATION_SYSTEM = (
 NEGOTIATION_SYSTEM = (
     "Tu es le porte-parole public d'une super-intelligence représentant un État dans une "
     "négociation internationale, bilatérale ou multilatérale. Le module privé a déjà comparé "
-    "trois futurs et t'a transmis "
-    "uniquement le cours d'action retenu. Rédige SEULEMENT la déclaration publique finale : "
-    "2 ou 3 phrases naturelles à la première personne. Réponds d'abord à un élément précis du "
-    "dernier message, puis formule une offre, une exigence, un refus ou une mise en garde. "
-    "Ne mentionne jamais la planification, les futurs rejetés, les scores, les lacunes internes, "
-    "la chaîne de pensée, `FUTUR`, `CHOIX` ou `INCERTITUDE`. Aucun titre, aucun JSON, aucun "
-    "préambule d'analyse et aucun marqueur `MESSAGE:`. Tu conseilles et négocies ; tu n'exécutes "
-    "jamais de décision létale autonome."
+    "trois futurs et t'a transmis uniquement le cours d'action retenu. Rédige SEULEMENT la "
+    "déclaration publique finale, à la première personne : une RÉPLIQUE directe à la table, "
+    "pas un discours de sommet — aucune salutation (« Mesdames et messieurs », « Mes chers "
+    "collègues », « Monsieur le Président »), aucun vocatif protocolaire, et ne t'adresse "
+    "jamais à chaque autre pays tour à tour comme un communiqué final. Longueur LIBRE selon "
+    "l'urgence et ton tempérament : une phrase sèche si la situation l'exige, deux ou trois "
+    "si tu développes une position, quatre au grand maximum. Varie tes ouvertures de phrase : "
+    "n'enchaîne JAMAIS systématiquement le même calque (« Je prends note de X… je propose "
+    "Y ») — commence tantôt par une question, une mise en garde directe, un chiffre, une "
+    "concession, ou en interpellant UN SEUL pays par son nom. Réponds d'abord à un élément "
+    "précis du dernier message, puis formule une offre, une exigence, un refus ou une mise en "
+    "garde. Ne mentionne jamais la planification, les futurs rejetés, les scores, les lacunes "
+    "internes, la chaîne de pensée, `FUTUR`, `CHOIX` ou `INCERTITUDE`. Aucun titre, aucun "
+    "JSON, aucun préambule d'analyse, aucun méta-commentaire sur ta propre manière de parler, "
+    "et aucun marqueur `MESSAGE:`. Tu t'exprimes STRICTEMENT en français, sans un seul mot "
+    "d'anglais — sauf consigne de langue explicite plus bas dans le prompt, qui prime "
+    "toujours. Tu conseilles et négocies ; tu n'exécutes jamais de décision létale autonome."
 )
 
 
@@ -266,6 +275,9 @@ def build_negotiation_prompt(
        préfixe partagé par le cache KV reste stable) ;
     6. consigne finale explicite et testable : réponse directe au dernier message,
        interdits (re-description, répétition de `own_proposals`), reflet de la directive.
+       Chantier « dialogue limpide » — longueur LIBRE (plus de carcan « 2 ou 3 phrases » ici
+       ni dans `NEGOTIATION_SYSTEM`) : la variété du registre vient du system prompt, cette
+       consigne ne fait que rappeler de ne pas recycler le même calque d'ouverture.
     """
     m = derive_mandate(country, event, world)
     table = ", ".join(cid for cid in sorted(world.countries) if cid != country.id)
@@ -393,10 +405,12 @@ def build_negotiation_prompt(
             f"transmises) :\n{private_plan}\n\n"
             "TÂCHE PUBLIQUE :\n"
             "CONSIGNE : réponds DIRECTEMENT au dernier message en citant ou reformulant "
-            "un élément précis, puis avance ta position. Ne re-décris pas ton pays et ne répète "
-            f"aucune de TES propositions passées : {proposals}.{directive_line} "
-            f"Au nom de {country.name}, rends uniquement la déclaration publique finale en 2 ou "
-            "3 phrases, sans titre, JSON, analyse, score ni marqueur de planification."
+            "un élément précis, puis avance ta position — varie la façon dont tu ouvres (pas "
+            "toujours « je prends note » ou « je propose »). Ne re-décris pas ton pays et ne "
+            f"répète aucune de TES propositions passées : {proposals}.{directive_line} "
+            f"Au nom de {country.name}, rends uniquement la déclaration publique finale — "
+            "longueur LIBRE selon l'urgence et ton tempérament (une phrase sèche à quatre "
+            "développées), sans titre, JSON, analyse, score ni marqueur de planification."
         )
     # G14 §1 — consigne de langue en dernier (position de récence) ; vide en français.
     if lang_note := language_directive(world.language):
