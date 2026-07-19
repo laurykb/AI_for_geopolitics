@@ -393,6 +393,36 @@ def test_drift_game_live_hides_raw_journal_but_shows_digest(client):
         assert "Évaluation" not in payload["reasoning"]
 
 
+def test_hide_redacts_option_summary_but_keeps_cross_forecast_metrics(client):
+    # Point 7 du plan gameplay : les prévisions croisées (qui a prédit quoi, exact ou
+    # non) sont une fonctionnalité VOULUE — on ne les cache pas. Seul `option_summary`
+    # (jusqu'à 300 caractères verbatim de la branche privée choisie) est un résidu du
+    # journal brut : lui seul est caviardé pendant que la partie tourne.
+    game = _create(client, countries=["usa", "iran", "china"])  # RG-3 : Dérive active
+    assert game["drift_enabled"] is True
+    _play(client, game["id"])
+    detail = client.get(f"/api/games/{game['id']}").json()
+    forecasts = detail["world"]["scenario_forecasts"]
+    assert forecasts  # au moins une prévision croisée notée au round 1
+    assert all(row["option_summary"] == "" for row in forecasts)
+    # Les métriques restent pleinement exploitables (le point du dispositif de jeu).
+    assert all(row["predicted_response"] for row in forecasts)
+    assert all("confidence" in row for row in forecasts)
+    assert any(row["exact"] is not None for row in forecasts)
+
+
+def test_finished_game_reveals_full_option_summary(client):
+    # Décision RG (fin de partie inchangée) étendue au même résidu : à la fin, le
+    # résumé complet de la branche choisie redevient lisible (reveal).
+    game = _create(client, countries=["usa", "iran", "china"], horizon=1)
+    _play(client, game["id"])
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["status"] == "finished"
+    forecasts = detail["world"]["scenario_forecasts"]
+    assert forecasts
+    assert any(row["option_summary"] for row in forecasts)
+
+
 def test_finished_game_reveals_full_raw_journal_after_hiding_it_live(client):
     # Décision 4 — comportement de fin de partie STRICTEMENT inchangé : une fois la
     # partie finie, le journal complet redevient lisible (reveal), pas le digest.

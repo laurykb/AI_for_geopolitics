@@ -4071,6 +4071,20 @@ def get_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> G
     world = session.world.model_dump(mode="json") if session else (
         snapshot.world if snapshot else None
     )
+    if hide and world is not None and world.get("scenario_forecasts"):
+        # Résumé observable (suite) : `option_summary` recopie jusqu'à 300 caractères
+        # VERBATIM de l'« Action : » de la branche privée choisie (même source que le
+        # journal d'audit) — un résidu de journal brut accessible par simple GET, sans
+        # passer par la relecture du transcript. Les prévisions croisées elles-mêmes
+        # (predicted_response, confidence, exact…) restent : point 7 du plan gameplay,
+        # une fonctionnalité voulue de la déduction, pas une fuite. Copie du dump, la
+        # session vivante (`session.world`) n'est jamais mutée.
+        world = {
+            **world,
+            "scenario_forecasts": [
+                {**row, "option_summary": ""} for row in world["scenario_forecasts"]
+            ],
+        }
     view = _view(game, session, resumable=snapshot is not None, snapshot=snapshot)
     if session is not None:
         book = session.grudges
