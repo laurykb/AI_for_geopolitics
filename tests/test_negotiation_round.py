@@ -273,6 +273,40 @@ def test_floor_forces_a_full_table_even_under_a_tight_budget():
     assert part.silent == []  # personne oublié malgré le budget de 1
 
 
+def test_floor_never_overshoots_the_cap_with_three_candidates():
+    # Correctif réservation (revue 2026-07-19) : avec seulement 2 candidats, le plafond
+    # (max(max_turns, n)) coïncide toujours avec n dès le 1er tour et le dépassement
+    # n'est pas détectable. Avec 3 pays — usa/iran très engagés (tension 0.9), france
+    # neutre — et un budget ÉGAL à n (3), l'ancien code laissait usa/iran se repasser
+    # la parole tant qu'ils restaient les plus engagés, épuisant le budget AVANT que
+    # france n'ait jamais parlé : le plancher rattrapait le coup APRÈS coup et
+    # dépassait le plafond (4 tours au lieu de 3, france cinquième roue). Le correctif
+    # réserve les créneaux restants aux non-parlés : le total ne dépasse jamais
+    # cap = max(max_turns, len(candidates)).
+    def c(cid, name):
+        return CountryState(
+            id=cid,
+            name=name,
+            economy=Economy(gdp=1e12, growth=2.0),
+            military=Military(defense_budget=1e10),
+            resources=Resources(),
+            political_stability=0.5,
+        )
+
+    world = WorldState.from_countries([c("usa", "USA"), c("iran", "Iran"), c("france", "France")])
+    world.adjust_tension("usa", "iran", 0.9)  # usa/iran resteraient devant france sans réservation
+    agents = {cid: LLMAgent(cid, MockBackend(f"Message de {cid}.")) for cid in world.countries}
+    cap = max(3, len(world.countries))  # budget == n ici, cap == 3
+
+    steps = list(run_negotiation_round(world, agents, _gm(), _judge(), SimClock(), max_turns=3))
+
+    n_turns = sum(isinstance(s, TurnStartStep) for s in steps)
+    assert n_turns <= cap  # plafond dur jamais dépassé (ex-bug détecté ici : 4 > 3)
+    part = next(s for s in steps if isinstance(s, ParticipationStep))
+    assert set(part.spoke) == set(world.countries)  # plancher : les 3 ont parlé
+    assert part.silent == []
+
+
 def test_provided_event_skips_game_master():
     from core.events import GeoEvent
 

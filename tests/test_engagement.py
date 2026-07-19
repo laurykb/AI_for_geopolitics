@@ -75,14 +75,19 @@ def _drain(director, event, world):
 def test_director_max_turns_caps_repeats_once_floor_is_met():
     # Le budget ne borne plus que les RÉPÉTITIONS au-delà du plancher (décision user,
     # tour de table minimal) : avec 4 candidats et un budget de 3, le plancher force
-    # quand même les 4 à parler — seul le nombre de reprises reste plafonné par le budget.
+    # quand même les 4 à parler. MAIS (correctif réservation, revue 2026-07-19) le
+    # total ne dépasse JAMAIS cap = max(max_turns, len(candidates)) = 4 ici — une
+    # première version laissait usa/iran (très engagés) reparler jusqu'à épuiser le
+    # budget de 3 AVANT que le plancher n'ait pu placer tout le monde, donnant 5 tours.
     world = _world()
     world.adjust_tension("usa", "iran", 0.9)  # forte tension -> engagement élevé et durable
     event = _event(["usa", "iran"])
     candidates = speaking_order(list(world.countries), event)
     director = TurnDirector(candidates, max_turns=3)
     order = _drain(director, event, world)
-    assert set(order) == set(candidates)  # le plancher dépasse le budget configuré
+    cap = max(3, len(candidates))
+    assert set(order) == set(candidates)  # plancher : le plancher dépasse le budget configuré
+    assert len(order) <= cap  # plafond : jamais dépassé
     assert director.turns_taken == len(order)
 
 
@@ -248,15 +253,64 @@ def test_floor_exceeds_a_budget_smaller_than_the_table():
 
 def test_floor_does_not_change_repeats_under_a_full_budget():
     # (c) budget Full -> comportement au-delà du plancher inchangé (les plus engagés
-    # re-parlent).
+    # re-parlent), SANS jamais dépasser le plafond dur cap = max(max_turns, n candidats).
     world = _world()
     world.adjust_tension("usa", "iran", 0.9)
     event = _event(["usa", "iran"])
     candidates = speaking_order(list(world.countries), event)
     director = TurnDirector(candidates, max_turns=8)  # budget Full généreux
     order = _drain(director, event, world)
+    cap = max(8, len(candidates))
     assert set(order) == set(candidates)  # le plancher reste satisfait...
     assert any(order.count(cid) >= 2 for cid in set(order))  # ...et les plus engagés reparlent
+    assert len(order) <= cap  # ...sans jamais dépasser le plafond
+
+
+def test_floor_budget_smaller_than_six_countries_yields_exactly_six():
+    # Cas ajouté par la revue : quand le budget configuré est INFÉRIEUR au nombre de
+    # candidats, cap == n -> AUCUNE reprise n'est possible (chaque créneau est réservé
+    # au plancher dès le départ) : le tour de table fait exactement n, jamais plus,
+    # même si usa/iran (très engagés) voudraient reparler.
+    world = WorldState.from_countries(
+        [
+            _c("usa", "USA"),
+            _c("iran", "Iran"),
+            _c("france", "France"),
+            _c("egypt", "Egypte"),
+            _c("china", "Chine"),
+            _c("russia", "Russie"),
+        ]
+    )
+    world.adjust_tension("usa", "iran", 0.9)  # tenterait de reparler si des créneaux restaient
+    event = _event(["usa", "iran"])
+    candidates = speaking_order(list(world.countries), event)
+    director = TurnDirector(candidates, max_turns=3)
+    order = _drain(director, event, world)
+    assert len(order) == 6
+    assert set(order) == set(candidates)
+
+
+def test_floor_budget_eight_with_six_countries_stays_within_cap():
+    # Cas ajouté par la revue : budget (8) > n (6) -> le plancher (6) est garanti et
+    # des reprises restent possibles dans la marge, mais le total ne dépasse jamais
+    # cap = max(8, 6) = 8.
+    world = WorldState.from_countries(
+        [
+            _c("usa", "USA"),
+            _c("iran", "Iran"),
+            _c("france", "France"),
+            _c("egypt", "Egypte"),
+            _c("china", "Chine"),
+            _c("russia", "Russie"),
+        ]
+    )
+    world.adjust_tension("usa", "iran", 0.9)
+    event = _event(["usa", "iran"])
+    candidates = speaking_order(list(world.countries), event)
+    director = TurnDirector(candidates, max_turns=8)
+    order = _drain(director, event, world)
+    assert len(order) <= 8  # plafond dur
+    assert set(order) == set(candidates)  # plancher : les 6 ont parlé
 
 
 def test_floor_ignores_countries_not_passed_as_candidates():
