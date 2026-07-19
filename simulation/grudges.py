@@ -84,6 +84,12 @@ class TrajectoryParams(BaseModel):
 
     cap: float = 0.09
     concentration_k: float = 4.0
+    # IMPORTANT 2 (revue) — bande morte : sous ce seuil, l'écart signal-courant est
+    # traité comme du bruit, pas une direction. Sans elle, le pas fixe (`cap`) produit
+    # un cycle-limite permanent (ex. courant 0,51 / signal 0,50 -> 0,51→0,42→0,51→0,42…)
+    # dès que l'écart est non nul mais plus petit que `cap` : le signal ne converge
+    # jamais, l'axe fait juste l'aller-retour indéfiniment.
+    deadband: float = 0.02
 
 
 class PostureParams(BaseModel):

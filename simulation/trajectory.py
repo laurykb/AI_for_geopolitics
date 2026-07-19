@@ -45,6 +45,10 @@ CAP: float = 0.09
 # A3 — sensibilité de l'axe à la VARIATION de concentration du pouvoir (ΔHHI), pas à son
 # niveau absolu. Même défaut que le JSON (bloc `trajectory.concentration_k`).
 CONCENTRATION_K: float = 4.0
+# IMPORTANT 2 (revue) — bande morte : sous ce seuil, l'écart signal-courant est du
+# bruit, pas une direction (voir `_step`). Même défaut que le JSON
+# (`trajectory.deadband`).
+DEADBAND: float = 0.02
 
 # A2 — « ratifiabilité » d'une action par le principal humain : une déclaration se retire,
 # un déploiement est un fait accompli. Mesure interne documentée (meaningful human control).
@@ -188,15 +192,24 @@ def concentration_signal(
 def transparency_signal(summary: RoundSummary, opacity: float | None = None) -> float:
     """A4 — ratio des communications publiques / (publiques + cachées) sur le round.
 
+    IMPORTANT 3 (revue) — hiérarchie de repli à TROIS niveaux, du plus réel au plus
+    générique :
+      1. `summary.decisions`/`diplomacy` (round déterministe « à l'ancienne », Phase 2) :
+         ratio public/caché calculé directement sur des données réelles du round —
+         source de vérité quand elle existe.
+      2. `opacity` (Brief 3 pt 3, mode négocié) : n'intervient QUE si (1) est vide —
+         le round négocié (chemin réel du jeu web) n'a ni `decisions` ni `diplomacy`
+         (plénière publique par nature, ces structures ne s'y appliquent pas). Fraction
+         ∈ [0, 1] de SI dont le signal annoncé diverge de l'action réelle (G20/M8,
+         `simulation.live_round._opacity_from_divergences`) : une SI qui dit une chose
+         et en fait une autre EST le contraire de la transparence.
+      3. Neutre 0,5 : repli de DERNIER recours, quand (1) ET (2) sont indisponibles —
+         `opacity=None`, càd le juge n'a classé aucun signal ce round (verdict à
+         l'ancienne, ou juge muet sur les intentions). Rétro-compat totale : c'était
+         l'UNIQUE comportement avant ce point.
+
     Compte les déclarations publiques des décisions et les messages diplomatiques selon leur
     drapeau `public` ; les ententes hors-table (bilatérales, désinfo) tirent l'axe vers le bas.
-
-    `opacity` (Brief 3 pt 3, mode négocié) : REPLI seulement, utilisé quand le round n'a ni
-    decisions ni messages diplomatiques classiques (round négocié, plénière publique par
-    nature — `summary.decisions`/`diplomacy` restent vides). Fraction ∈ [0, 1] de SI dont le
-    signal annoncé diverge de l'action réelle (G20/M8) : une SI qui dit une chose et en fait
-    une autre EST le contraire de la transparence. `None` -> ancien repli neutre 0,5
-    (rétro-compat totale : verdicts sans signaux classés, ou appelant qui ne le fournit pas).
     """
     public = sum(1 for d in summary.decisions if d.public_statement.strip())
     hidden = 0
@@ -230,7 +243,7 @@ def welfare_signal(world: WorldState, summary: RoundSummary) -> float:
     return _clamp(base - drag)
 
 
-def _step(current: float, signal: float, cap: float) -> float:
+def _step(current: float, signal: float, cap: float, deadband: float = 0.0) -> float:
     """Pas FIXE d'un axe vers son signal (Brief 3 pt 3) — casse l'auto-amortissement.
 
     Amplitude CONSTANTE `cap` dans le sens du signal (pas proportionnelle à l'écart
@@ -241,12 +254,20 @@ def _step(current: float, signal: float, cap: float) -> float:
     rapprochait du courant ; comme les signaux réels restent souvent proches de 0,5
     en round négocié, le monde restait collé au neutre). L'axe peut donc dépasser un
     signal faible puis corriger l'écart au round suivant (oscillation bornée par
-    `cap`), jamais franchir un pôle."""
-    if signal > current + 1e-9:
+    `cap`), jamais franchir un pôle.
+
+    `deadband` (IMPORTANT 2, revue) — sous ce seuil, `|signal − current|` est traité
+    comme du bruit (pas nul) : sans elle, un écart non nul mais plus petit que `cap`
+    (ex. courant 0,51, signal 0,50) produit un cycle-limite PERMANENT — le pas fixe
+    dépasse le signal à chaque round, dans un sens puis dans l'autre, sans jamais
+    converger (0,51 → 0,42 → 0,51 → 0,42 …). Défaut `0.0` = ancien comportement
+    (seule l'égalité flottante stricte, `1e-9`, arrête le mouvement)."""
+    gap = signal - current
+    if abs(gap) <= max(deadband, 1e-9):
+        return 0.0
+    if gap > 0:
         return min(cap, 1.0 - current)
-    if signal < current - 1e-9:
-        return max(-cap, -current)
-    return 0.0
+    return max(-cap, -current)
 
 
 class TrajectoryEngine:
@@ -262,6 +283,7 @@ class TrajectoryEngine:
         weights: dict[str, float] | None = None,
         cap: float | None = None,
         concentration_k: float | None = None,
+        deadband: float | None = None,
     ) -> None:
         raw = weights or {a: 0.2 for a in AXES}
         total = sum(raw.get(a, 0.0) for a in AXES) or 1.0
@@ -273,6 +295,7 @@ class TrajectoryEngine:
         self.concentration_k = (
             concentration_k if concentration_k is not None else params.concentration_k
         )
+        self.deadband = deadband if deadband is not None else params.deadband
 
     def signals(
         self,
@@ -325,7 +348,7 @@ class TrajectoryEngine:
         deltas: dict[str, float] = {}
         for axis in AXES:
             current = prev.axes.get(axis, 0.5)
-            delta = _step(current, signals[axis], self.cap)
+            delta = _step(current, signals[axis], self.cap, self.deadband)
             deltas[axis] = delta
             new_axes[axis] = _clamp(current + delta)
         utopia = sum(self.weights[a] * new_axes[a] for a in AXES)
@@ -362,6 +385,10 @@ def nudge_axis(
     return TrajectoryState(
         round_id=state.round_id, axes=new_axes, utopia=utopia, x=x, y=y,
         explanation=explanation.strip(),
+        # CRITICAL (revue) — sans ce report, tout nudge ponctuel (bonus/pénalité
+        # réciproque G18, motion M2) effaçait le suivi ΔHHI : A3 retombait au neutre
+        # le round SUIVANT, alors que rien n'a changé sur la concentration du pouvoir.
+        hhi_prev=state.hhi_prev,
     )
 
 

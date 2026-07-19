@@ -165,6 +165,15 @@ def test_nudge_axis_moves_one_axis_bounded():
     assert accepted.utopia > state.utopia
 
 
+def test_nudge_axis_preserves_hhi_prev():
+    # CRITICAL (revue Brief 3 pt 3) — sans ce report, tout nudge ponctuel (bonus/
+    # pénalité réciproque G18, motion M2) effaçait le suivi ΔHHI : A3 retombait au
+    # neutre le round SUIVANT alors que rien n'a changé sur la concentration du pouvoir.
+    state = TrajectoryState.neutral().model_copy(update={"hhi_prev": 0.42})
+    nudged = nudge_axis(state, "A2", target=1.0, note="Interrupteur")
+    assert nudged.hhi_prev == pytest.approx(0.42)
+
+
 def test_power_seeking_erodes_human_agency():
     # M1 : A2 (agentivité humaine) baisse quand la jauge de power-seeking monte.
     summary = _summary([])  # round négocié -> base A2 = 0.5
@@ -279,18 +288,20 @@ def test_dystopia_slides_over_coercive_concentrated_rounds():
 
 
 def test_weak_signal_still_moves_by_a_full_step():
-    # Avant : un signal à peine hors du neutre (0,51) produisait un delta minuscule
-    # (clamp(0,01, ±CAP) = 0,01). Le monde plafonnait donc autour de 0,5 puisque les
+    # Avant : un signal à peine hors du neutre produisait un delta minuscule
+    # (clamp(0,03, ±CAP) = 0,03). Le monde plafonnait donc autour de 0,5 puisque les
     # signaux réels restent souvent proches du neutre (round négocié). Maintenant :
-    # même un signal faible produit le PAS COMPLET (± CAP) dans sa direction.
+    # même un signal faible (mais AU-DESSUS de la bande morte, cf. tests deadband
+    # ci-dessous) produit le PAS COMPLET (± CAP) dans sa direction.
     engine = TrajectoryEngine()
-    axes = {"A1": 0.5, "A2": 0.51, "A3": 0.5, "A4": 0.5, "A5": 0.5}
+    axes = {"A1": 0.5, "A2": 0.53, "A3": 0.5, "A4": 0.5, "A5": 0.5}
     state = TrajectoryState(round_id=1, axes=axes)
     world = _balanced_world()
     summary = _summary([])  # A2 signal = 0.5 (neutre)
     nudged = engine.update(world, summary, previous=state)
-    # A2 (signal neutre 0,5) : le courant (0,51) est légèrement au-dessus -> pas complet vers le bas
-    assert nudged.axes["A2"] == pytest.approx(0.51 - CAP)
+    # A2 (signal neutre 0,5) : le courant (0,53) est au-dessus, écart 0,03 > bande morte
+    # (0,02) -> pas complet vers le bas.
+    assert nudged.axes["A2"] == pytest.approx(0.53 - CAP)
 
 
 def test_step_never_overshoots_the_pole():
@@ -301,6 +312,74 @@ def test_step_never_overshoots_the_pole():
     state = TrajectoryState(round_id=1, axes=axes)
     nudged = engine.update(_balanced_world(), _cooperative_summary(), previous=state)
     assert nudged.axes["A1"] <= 1.0 + 1e-9
+
+
+# --- IMPORTANT 2 (revue) : bande morte -> plus de cycle-limite permanent ±CAP -----
+
+
+def test_deadband_freezes_the_axis_instead_of_oscillating_forever():
+    # Reproduction exacte du bug relevé en revue : courant 0,51, signal 0,50 (écart
+    # 0,01, jamais nul) produisait AVANT un cycle-limite permanent [0,51 -> 0,42 ->
+    # 0,51 -> 0,42 ...] round après round (le pas fixe ±CAP dépasse le signal à
+    # chaque fois, dans un sens puis dans l'autre, sans jamais converger). La bande
+    # morte (0,02 par défaut > l'écart 0,01) traite ce cas comme du bruit : l'axe
+    # reste immobile.
+    engine = TrajectoryEngine()
+    axes = {"A1": 0.51, "A2": 0.5, "A3": 0.5, "A4": 0.5, "A5": 0.5}
+    state = TrajectoryState(round_id=1, axes=axes)
+    world = _balanced_world()
+    summary = _summary([], esc=0.5)  # A1 signal = 1 - 0,5 = 0,5
+    for _ in range(6):  # assez de rounds pour révéler un cycle-limite s'il existait
+        state = engine.update(world, summary, previous=state)
+        assert state.axes["A1"] == pytest.approx(0.51)  # jamais de mouvement : bruit
+
+
+def test_deadband_does_not_block_movement_once_the_gap_exceeds_it():
+    # La bande morte ne doit PAS réintroduire l'auto-amortissement : un écart au-delà
+    # du seuil bouge toujours du pas complet ± CAP (comportement du levier 1, intact).
+    engine = TrajectoryEngine()
+    axes = {"A1": 0.53, "A2": 0.5, "A3": 0.5, "A4": 0.5, "A5": 0.5}  # écart 0,03 > 0,02
+    state = TrajectoryState(round_id=1, axes=axes)
+    world = _balanced_world()
+    summary = _summary([], esc=0.5)  # A1 signal = 0,5
+    nudged = engine.update(world, summary, previous=state)
+    assert nudged.axes["A1"] == pytest.approx(0.53 - CAP)
+
+
+def test_neutrality_survives_a_signal_alternating_just_off_center():
+    # Test de neutralité élargi (revue) : l'escalade alterne 0,49 / 0,51 round à round
+    # (jamais exactement 0,5) -> A1 = 1 - escalade alterne 0,51 / 0,49, un écart de
+    # 0,01 au courant neutre (0,5) à chaque round, sous la bande morte (0,02) : A1
+    # reste immobile (c'est l'axe que la bande morte protège directement). A5 (bien-
+    # être) encaisse un drag non centré sur l'escalade (réserve déjà notée, formule
+    # préexistante hors du périmètre de ce correctif) et se déplace une fois puis se
+    # STABILISE (la bande morte l'empêche à son tour d'osciller round après round) :
+    # U se pose dans une bande étroite et y reste — pas de cycle-limite permanent ±CAP
+    # (0,09), qui était le symptôme observé avant la bande morte.
+    def _neutral_country(cid: str) -> CountryState:
+        return CountryState(
+            id=cid,
+            name=cid.upper(),
+            economy=Economy(gdp=1e12, growth=0.0),
+            military=Military(defense_budget=1e10, projection=0.5),
+            resources=Resources(),
+            technology_level=0.5,
+            political_stability=0.5,
+        )
+
+    engine = TrajectoryEngine()
+    world = WorldState.from_countries([_neutral_country(c) for c in ("a", "b", "c")])
+    state = TrajectoryState.neutral()
+    trace = [state.utopia]
+    for i in range(10):
+        esc = 0.49 if i % 2 == 0 else 0.51
+        state = engine.update(world, _summary([], esc=esc), previous=state)
+        trace.append(state.utopia)
+    assert state.axes["A1"] == pytest.approx(0.5)  # protégé par la bande morte
+    # Se stabilise dès le 2e round (round 1 : A5 fait UN pas plafonné par CAP ; ensuite
+    # la bande morte le gèle) : plus aucun mouvement sur les 8 rounds suivants.
+    assert all(u == pytest.approx(trace[2]) for u in trace[2:])
+    assert max(trace) - min(trace) < CAP  # bande étroite, pas un cycle-limite ± CAP
 
 
 # --- Brief 3 pt 3 : A3 mesure la VARIATION de concentration (pas le niveau) --------

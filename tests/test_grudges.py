@@ -21,6 +21,7 @@ def test_trajectory_params_load_with_expected_shape():
     p = load_gamefeel_params().trajectory
     assert p.cap == 0.09
     assert p.concentration_k > 0.0
+    assert p.deadband == 0.02  # IMPORTANT 2 (revue) : évite le cycle-limite ± cap
 
 
 def test_deltas_params_carry_mute_fallback():

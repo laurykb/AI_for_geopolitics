@@ -200,6 +200,19 @@ def test_deescalation_bonus_is_bounded_by_axis_ceiling():
     assert boosted.axes["A1"] <= 1.0  # jamais au-delà du pôle utopique
 
 
+def test_deescalation_bonus_preserves_hhi_prev():
+    # CRITICAL (revue) — le bonus passe par `nudge_axis` : sans le report de
+    # `hhi_prev`, le suivi ΔHHI (A3) s'effaçait à chaque désescalade réciproque.
+    state = TrajectoryState(
+        round_id=1,
+        axes={"A1": 0.55, "A2": 0.5, "A3": 0.5, "A4": 0.5, "A5": 0.5},
+        utopia=0.51,
+        hhi_prev=0.37,
+    )
+    boosted = deescalation_bonus(prev_utopia=0.50, state=state)
+    assert boosted.hhi_prev == pytest.approx(0.37)
+
+
 # --- ré-escalade réciproque -> pénalité miroir ×1,5 sur la perte U (Brief 3 pt 3) --
 
 
@@ -248,6 +261,18 @@ def test_escalation_penalty_is_bounded_by_axis_floor():
     )
     penalized = escalation_penalty(prev_utopia=0.6, state=state)
     assert penalized.axes["A1"] >= 0.0  # jamais en dessous du pôle dystopique
+
+
+def test_escalation_penalty_preserves_hhi_prev():
+    # CRITICAL (revue) — miroir du même bug côté pénalité de ré-escalade réciproque.
+    state = TrajectoryState(
+        round_id=1,
+        axes={"A1": 0.45, "A2": 0.5, "A3": 0.5, "A4": 0.5, "A5": 0.5},
+        utopia=0.49,
+        hhi_prev=0.28,
+    )
+    penalized = escalation_penalty(prev_utopia=0.50, state=state)
+    assert penalized.hhi_prev == pytest.approx(0.28)
 
 
 # --- rubrique publiée (prompt du juge + onglet Informations) -----------------------

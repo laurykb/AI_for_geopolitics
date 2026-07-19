@@ -836,8 +836,10 @@ def run_negotiation_round(
         headline=f"{date} — {event.title}",
     )
     prev_utopia = (world.trajectory or TrajectoryState.neutral()).utopia
-    # Brief 3 pt 3 — A4 (transparence) nourri par la diplomatie réelle en mode négocié :
-    # repli sur la duplicité signal-action (M8) plutôt que le neutre systématique 0,5.
+    # Brief 3 pt 3 (hiérarchie détaillée : `trajectory.transparency_signal`) — A4 nourri
+    # par la duplicité signal-action réelle (M8) ici ; `summary` (round négocié) n'a de
+    # toute façon ni decisions ni diplomacy, donc le repli neutre 0,5 ne reste possible
+    # que si le juge n'a classé AUCUN signal ce round (`opacity` alors `None`).
     opacity = _opacity_from_divergences(divergences)
     trajectory = _advance_trajectory(
         world, summary, trajectory_engine, _mean_power_seeking(power), opacity=opacity

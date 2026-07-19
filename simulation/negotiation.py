@@ -345,6 +345,28 @@ def _set(obj, path: str, value: float) -> None:
     setattr(obj, parts[-1], value)
 
 
+def _tuned_delta(delta: float, cid: str, label: str, tuning: DeltaTuning | None) -> float:
+    """MINOR 5 (revue) — G9 §4 : amplitude indexée sur l'horizon (`scale`) + spirale de
+    momentum (baisses/hausses consécutives), sans effet si `tuning` est `None`
+    (comportement historique). Partagé par le verdict du juge et le repli déterministe
+    du juge muet (Brief 3 pt 3) — même logique de mise à l'échelle, deux sources de delta."""
+    if tuning is None:
+        return delta
+    delta *= tuning.scale  # cap effectif = 1.5 × amplitude de round
+    delta *= tuning.momentum(cid, label, delta)
+    return delta
+
+
+def _bounded_after(
+    before: float, after: float, bounds: tuple[float, float], tuning: DeltaTuning | None
+) -> float:
+    """MINOR 5 (revue) — borne `after` par `bounds`, avec le plancher `tuning.floor`
+    (jamais un pays à zéro absolu quand un tuning est fourni) plutôt que la borne basse
+    brute. Partagé par le verdict du juge et le repli déterministe."""
+    lo = bounds[0] if tuning is None else max(bounds[0], min(before, tuning.floor))
+    return max(lo, min(bounds[1], after))
+
+
 def apply_verdict(
     world: WorldState,
     verdict: Verdict,
@@ -387,13 +409,10 @@ def apply_verdict(
             cap = _CAPS[label]
             delta = max(-cap, min(cap, delta))
             before = _get(country, path)
-            if tuning is not None:
-                delta *= tuning.scale  # cap effectif = 1.5 × amplitude de round
-                delta *= tuning.momentum(cid, label, delta)
+            delta = _tuned_delta(delta, cid, label, tuning)
             after = before + delta
             if bounds is not None:
-                lo = bounds[0] if tuning is None else max(bounds[0], min(before, tuning.floor))
-                after = max(lo, min(bounds[1], after))
+                after = _bounded_after(before, after, bounds, tuning)
             if abs(after - before) > 1e-9:
                 _set(country, path, after)
                 touched.add(cid)
@@ -412,13 +431,9 @@ def apply_verdict(
                 if cid in touched:
                     continue  # le juge a déjà bougé ce pays ce round : pas de double repli
                 delta = fallback * signal
-                if tuning is not None:
-                    delta *= tuning.scale
-                    delta *= tuning.momentum(cid, "stabilité", delta)
+                delta = _tuned_delta(delta, cid, "stabilité", tuning)
                 before = country.political_stability
-                after = before + delta
-                lo = 0.0 if tuning is None else max(0.0, min(before, tuning.floor))
-                after = max(lo, min(1.0, after))
+                after = _bounded_after(before, before + delta, (0.0, 1.0), tuning)
                 if abs(after - before) > 1e-9:
                     _set(country, "political_stability", after)
                     deltas.append(
