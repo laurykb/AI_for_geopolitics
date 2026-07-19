@@ -116,6 +116,24 @@ def test_create_game_without_explicit_cast_defaults_countries_to_reasoning_model
     assert game["model_cast"]["judge_model"] == "mistral:latest"
 
 
+def test_default_cast_fallback_logs_a_warning(client, monkeypatch, caplog):
+    # Revue casting (Important n°1) : le repli gracieux vers le backend généraliste
+    # (deepseek non installé, roster >32…) est VOULU mais ne doit jamais être muet —
+    # sans trace, une machine sans le modèle fait parler les pays par un généraliste
+    # sans que l'opérateur le sache.
+    def failing_prepare(*args, **kwargs):
+        raise ValueError("modèles Ollama indisponibles : deepseek-r1:7b")
+
+    monkeypatch.setattr(game_api, "prepare_model_cast", failing_prepare)
+    with caplog.at_level("WARNING", logger="app.game_api"):
+        game = _create(client, countries=["usa", "iran"])
+    assert game["model_cast"] is None  # repli historique : backend unique
+    assert any(
+        "casting reasoning par défaut indisponible" in rec.getMessage()
+        for rec in caplog.records
+    )
+
+
 def test_default_cast_injection_is_skipped_when_generalist_env_guard_is_set(client, monkeypatch):
     # §6 du dispatch casting — échappatoire réservée aux tests/smoke (le smoke théâtre
     # teste le moteur, pas le casting, et doit rester rapide sur mistral pour tous les

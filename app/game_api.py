@@ -22,6 +22,7 @@ Injection : `get_backend` (Ollama par défaut, MockBackend en test) et `get_stor
 from __future__ import annotations
 
 import copy
+import logging
 import os
 import re
 import threading
@@ -465,6 +466,8 @@ def _build_cast(
 _DEFAULT_REASONING_TAG = "deepseek-r1:7b"
 _ALLOW_GENERALIST_CAST_ENV = "GAME_ALLOW_GENERALIST_CAST"
 
+logger = logging.getLogger(__name__)
+
 
 def _default_reasoning_cast(
     world: WorldState, human_country: str | None, game_id: str
@@ -493,7 +496,16 @@ def _default_reasoning_cast(
         return prepare_model_cast(
             request, list(world.countries), human_country=human_country, game_id=game_id
         )
-    except ValueError:
+    except ValueError as exc:
+        # Repli gracieux VOULU (offline/CI sans Ollama, roster >32) mais jamais muet :
+        # sans cette trace, une machine sans deepseek-r1 fait parler les pays par un
+        # généraliste sans que personne ne le sache (revue casting, Important n°1).
+        logger.warning(
+            "casting reasoning par défaut indisponible (%s) — partie %s servie par le "
+            "backend unique historique (généraliste) pour TOUS les rôles",
+            exc,
+            game_id,
+        )
         return None
 
 
