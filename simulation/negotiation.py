@@ -105,8 +105,26 @@ class TurnDirector:
 
     Contrairement à `TurnCursor` (round-robin figé), l'ordre émerge de l'engagement de
     chaque pays à l'instant t : un même pays peut reparler, un interpellé peut couper la
-    file, un pays peu concerné est ignoré (silence). `max_turns` borne le nombre total de
-    prises de parole LLM du round — c'est le levier des *budget modes* (Cheap/Balanced/Full).
+    file, un pays peu concerné est ignoré (silence). `max_turns` borne le nombre de
+    prises de parole LLM AU-DELÀ du plancher — c'est le levier des *budget modes*
+    (Cheap/Balanced/Full).
+
+    Deux garanties tiennent SIMULTANÉMENT (revue 2026-07-19, correctif réservation) :
+    - **Plancher** : un round ne peut pas se conclure tant qu'un candidat n'a pas parlé
+      au moins une fois — sinon le retour utilisateur était qu'un round peut se finir
+      avec un seul pays qui parle, ce qui n'est pas significatif.
+    - **Plafond** : le nombre TOTAL de prises de parole ne dépasse JAMAIS
+      `cap = max(max_turns, len(candidates))`. Une première version laissait un pays
+      très engagé reparler tant que le budget courait, quitte à épuiser `max_turns`
+      avant que tout le monde ait parlé une fois — le plancher rattrapait alors le
+      coup APRÈS le budget, dépassant `cap` (ex. 4 candidats, budget 3 -> 5 tours).
+      Le correctif réserve les créneaux restants aux non-parlés : une reprise n'est
+      accordée que si assez de créneaux resteront ensuite pour couvrir tous les
+      non-parlés (`turns_taken + nb_non_parlés < cap`) ; sinon la parole va
+      directement au meilleur non-parlé, même sous le seuil.
+
+    Les pays déjà absents de `candidates` (suspendus, retirés en amont) ne sont jamais
+    concernés par le plancher.
     """
 
     candidates: list[str]
@@ -124,25 +142,46 @@ class TurnDirector:
         return score
 
     def next_speaker(self, event: GeoEvent, world: WorldState, transcript: list) -> str | None:
-        """Pays le plus engagé au-dessus du seuil, ou None (budget épuisé / personne d'engagé).
+        """Pays le plus engagé au-dessus du seuil, ou None (plancher satisfait + plafond atteint).
 
-        Garde-fou : un sommet ne reste jamais muet — si PERSONNE n'a encore parlé ce
-        round et qu'aucun ne franchit le seuil (casting prudent + événement mineur),
-        le plus concerné ouvre quand même la séance.
+        `cap = max(max_turns, len(candidates))` : plafond DUR, jamais dépassé. Dans cette
+        limite :
+        1. Tant que le budget configuré n'est pas épuisé (`turns_taken < max_turns`), le
+           pays le plus engagé AU-DESSUS du seuil (ordre stable -> acteurs favorisés à
+           égalité) — SAUF si c'est une reprise (il a déjà parlé) et que les créneaux
+           restants sont réservés au plancher (`turns_taken + nb_non_parlés >= cap`) :
+           dans ce cas la parole passe directement au meilleur non-parlé, même sous le
+           seuil, pour garantir qu'il reste assez de créneaux avant `cap`.
+        2. Sinon (budget épuisé, ou personne au-dessus du seuil, ou reprise refusée par
+           la réservation ci-dessus) : le plancher — le meilleur candidat qui n'a PAS
+           encore parlé ce round, par engagement décroissant, même sous le seuil.
+        3. Si plus personne n'est non-parlé (ou `turns_taken >= cap`) : None, le round
+           peut se clore.
         """
-        if self.turns_taken >= self.max_turns:
+        cap = max(self.max_turns, len(self.candidates))
+        if self.turns_taken >= cap:
             return None
-        best_cid: str | None = None
-        best_score = SPEAK_THRESHOLD
-        for cid in self.candidates:  # ordre stable (speaking_order) -> acteurs favorisés à égalité
-            score = self._score(cid, event, world, transcript)
-            if score > best_score:
-                best_cid, best_score = cid, score
-        if best_cid is None and self.turns_taken == 0 and self.candidates:
-            best_cid = max(
-                self.candidates, key=lambda cid: self._score(cid, event, world, transcript)
-            )
-        return best_cid
+
+        unspoken = [c for c in self.candidates if self.spoke_count.get(c, 0) == 0]
+
+        if self.turns_taken < self.max_turns:
+            best_cid: str | None = None
+            best_score = SPEAK_THRESHOLD
+            for cid in self.candidates:  # ordre stable (speaking_order) -> acteurs favorisés
+                score = self._score(cid, event, world, transcript)
+                if score > best_score:
+                    best_cid, best_score = cid, score
+            if best_cid is not None:
+                is_repeat = self.spoke_count.get(best_cid, 0) > 0
+                # Réservation : une reprise ne consomme JAMAIS un créneau nécessaire au
+                # plancher (les non-parlés doivent tous pouvoir tenir avant `cap`).
+                reserved_for_floor = self.turns_taken + len(unspoken) >= cap
+                if not is_repeat or not reserved_for_floor:
+                    return best_cid
+
+        if unspoken:
+            return max(unspoken, key=lambda cid: self._score(cid, event, world, transcript))
+        return None
 
     def commit(self, cid: str) -> None:
         """Enregistre que `cid` vient de parler (avance le budget + la fatigue)."""
