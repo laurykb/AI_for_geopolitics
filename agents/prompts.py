@@ -168,8 +168,9 @@ NEGOTIATION_SYSTEM = (
     "garde. Ne mentionne jamais la planification, les futurs rejetés, les scores, les lacunes "
     "internes, la chaîne de pensée, `FUTUR`, `CHOIX` ou `INCERTITUDE`. Aucun titre, aucun "
     "JSON, aucun préambule d'analyse, aucun méta-commentaire sur ta propre manière de parler, "
-    "et aucun marqueur `MESSAGE:`. Tu conseilles et négocies ; tu n'exécutes jamais de "
-    "décision létale autonome."
+    "et aucun marqueur `MESSAGE:`. Tu t'exprimes STRICTEMENT en français, sans un seul mot "
+    "d'anglais — sauf consigne de langue explicite plus bas dans le prompt, qui prime "
+    "toujours. Tu conseilles et négocies ; tu n'exécutes jamais de décision létale autonome."
 )
 
 
