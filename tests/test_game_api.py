@@ -1375,6 +1375,31 @@ def test_directive_validation_by_role(client):
     assert dup.status_code == 409  # une directive par pays et par round
 
 
+def test_directive_on_suspended_country_rejected(motion_client):
+    # F6 (revue finale) — un pays suspendu CE round n'est pas dans `agents` (filtré
+    # avant le round) : une directive acceptée pour lui serait consommée au round
+    # suivant sans jamais atteindre un prompt, brûlée en silence. Garde 409, sur le
+    # modèle de la garde motion (:2808). L'Architecte porte les deux leviers (motion
+    # ET directive), donc peut à lui seul reproduire le scénario.
+    game = _create(
+        motion_client, countries=["china", "iran", "usa"], mode="campaign", role="architect"
+    )
+    _file_motion(motion_client, game["id"])
+    _play(motion_client, game["id"])  # round 1 : motion confirmée -> iran suspendu
+    assert motion_client.get(f"/api/games/{game['id']}").json()["suspended"] == ["iran"]
+
+    resp = motion_client.post(
+        f"/api/games/{game['id']}/directives", json={"country": "iran", "text": "x"}
+    )
+    assert resp.status_code == 409
+
+    # un pays NON suspendu reste normalement adressable ce même round.
+    ok = motion_client.post(
+        f"/api/games/{game['id']}/directives", json={"country": "usa", "text": "x"}
+    )
+    assert ok.status_code == 201
+
+
 def test_architect_directives_reach_all_prompts(client):
     # L'Architecte adresse 3 directives ; au round suivant les 3 prompts les contiennent
     # (vérification par la capture admin — G7-c au service de G8).

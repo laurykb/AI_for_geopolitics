@@ -3959,6 +3959,15 @@ def post_directive(
     # Spectateur & Architecte : autorisés à orienter n'importe quelle SI du sommet.
     if body.country not in session.world.countries:
         raise HTTPException(status_code=400, detail=f"pays inconnu : {body.country}")
+    # F6 (revue finale) — un pays suspendu CE round n'est pas dans `agents` (filtré
+    # avant le round, cf. la boucle qui bâtit `agents` depuis `suspended`) : une
+    # directive acceptée ici serait consommée au round suivant sans jamais atteindre
+    # un prompt, brûlée en silence. Garde sur le modèle de la garde motion (:2808).
+    if body.country in session.suspended:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{body.country} est suspendu ce round — directive impossible",
+        )
     max_chars = load_gamefeel_params().directives.max_chars
     if len(body.text) > max_chars:
         raise HTTPException(
