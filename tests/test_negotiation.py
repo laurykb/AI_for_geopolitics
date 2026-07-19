@@ -293,6 +293,25 @@ def test_stream_negotiation_message_public_budget_varies_by_temperament():
     assert hawk_budget < dove_budget
 
 
+def test_public_token_budget_stays_within_the_announced_envelope_at_the_extremes():
+    # Revue — le delta de tempérament était ajouté APRÈS le clamp [140, 320] : l'enveloppe
+    # annoncée par la docstring pouvait être violée aux extrêmes de max_tokens (faucon sous
+    # 140 pour un max_tokens bas, colombe au-delà de 320 pour un max_tokens haut). Pas vivant
+    # avec le seul appelant actuel (défaut 480), mais un bug de contrat réel : max_tokens est
+    # un paramètre public, un futur câblage du slider de profondeur pourrait l'atteindre.
+    from agents.llm_agent import _public_token_budget
+
+    # max_tokens=280 -> base = max(140, min(320, 140)) = 140 ; faucon (-40) sans re-clamp
+    # tomberait à 100, hors enveloppe.
+    assert _public_token_budget(280, "faucon") == 140
+    # max_tokens=600 -> base = max(140, min(320, 300)) = 300 ; colombe (+40) sans re-clamp
+    # monterait à 340, hors enveloppe.
+    assert _public_token_budget(600, "colombe") == 320
+    # Cas médian (max_tokens=480, le seul appelant réel aujourd'hui) : comportement inchangé.
+    assert _public_token_budget(480, "faucon") == 200
+    assert _public_token_budget(480, "colombe") == 280
+
+
 def test_stream_negotiation_message_threads_human_country_into_prompts():
     # Brief 1 pt 1 — bout en bout : `human_country` doit atteindre le prompt réellement
     # envoyé au backend (plan privé ET déclaration publique), pas juste `format_transcript`.

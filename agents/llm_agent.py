@@ -65,7 +65,8 @@ def _public_token_budget(max_tokens: int, temperament: str) -> int:
     n'avait presque aucun effet avec l'ancien plafond dur à 220), puis nuancé par
     tempérament."""
     base = max(140, min(320, max_tokens // 2))
-    return base + _TEMPERAMENT_TOKEN_DELTA.get(temperament, 0)
+    delta = _TEMPERAMENT_TOKEN_DELTA.get(temperament, 0)
+    return max(140, min(320, base + delta))
 
 
 # Sonde réelle (mistral) — la longueur libre encourage parfois un 7B à déborder son
