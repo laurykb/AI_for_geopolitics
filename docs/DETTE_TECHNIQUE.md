@@ -298,6 +298,16 @@ en moins.
 
 ---
 
+## D10 — Résumé observable (`feat/resume-observable`, 2026-07-19) — **S**
+
+- **Libellés du digest en dur en FR** — `simulation/observable_digest.py` (« Observation :
+  », « Piste retenue : », « Critère : ») recopie le vocabulaire du journal d'audit
+  (`private_deliberation.py`, lui-même non traduit — même famille que D4/i18n) sans lire
+  `WorldState.language`. Avant ce chantier, une partie masquée (Dérive/Joueur-pays) ne
+  montrait AUCUNE réflexion en direct — le défaut passait inaperçu ; désormais le digest
+  s'affiche pendant la partie, donc un joueur EN verra ces trois libellés en français.
+  À traiter avec D4 (lot i18n), pas isolément. —
+
 ## Top 5 si on n'a qu'une journée
 
 1. **Test de parité SQLite ↔ Supabase** (D3.1, S) — la classe de bugs

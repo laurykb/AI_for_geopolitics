@@ -109,6 +109,48 @@ describe("réducteur de round", () => {
     expect(state.turns[0]?.done).toBe(true);
   });
 
+  it("message_done avec un résumé observable remplace tout brouillon accumulé (RG — Dérive/Joueur-pays)", () => {
+    // En Dérive ou Joueur-pays, le serveur ne streame plus le journal privé BRUT (plus de
+    // private_token ni private_plan_done pendant la partie) : `message_done` porte à la
+    // place un résumé de 3 lignes qui doit remplacer tout ce qui aurait pu s'accumuler,
+    // jamais s'y ajouter ni rester masqué derrière lui.
+    const digest =
+      "Observation : le signal change.\nPiste retenue : proposer un accord.\nCritère : coût minimal.";
+    const state = play([
+      TURN_START,
+      // Fragment défensif : même si un token privé arrivait malgré tout, il ne doit
+      // jamais survivre à message_done.
+      { type: "private_token", country: "usa", token: "FUTUR 1 — fragment qui ne doit pas fuiter" },
+      {
+        type: "message_done",
+        country: "usa",
+        text: "Notre position.",
+        reasoning: digest,
+        seconds: 1,
+      },
+    ]);
+
+    expect(state.turns[0]?.reasoning).toBe(digest);
+    expect(state.turns[0]?.reasoning).not.toContain("FUTUR 1");
+    expect(state.turns[0]?.reasoning).not.toContain("fragment qui ne doit pas fuiter");
+  });
+
+  it("message_done sans reasoning garde l'accumulé (hors hide, comportement inchangé)", () => {
+    const state = play([
+      TURN_START,
+      { type: "private_token", country: "usa", token: "OBSERVATION\nLe signal change.\n" },
+      {
+        type: "message_done",
+        country: "usa",
+        text: "Notre position.",
+        reasoning: "",
+        seconds: 1,
+      },
+    ]);
+
+    expect(state.turns[0]?.reasoning).toBe("OBSERVATION\nLe signal change.\n");
+  });
+
   it("attend le bulletin humain puis reprend quand son vote est révélé", () => {
     const waiting = play([
       { type: "human_motion_vote", country: "france", target: "iran", deadline_ts: 1234.5 },
