@@ -146,8 +146,10 @@ PRIVATE_DELIBERATION_SYSTEM = (
     "tes activations internes : produis des raisons décisionnelles contrôlables et falsifiables. "
     "N'utilise jamais `coopere`, `resiste`, `contre_escalade` ou `temporise` comme nom d'action : "
     "ce sont uniquement des classes de réaction. Respecte exactement les titres et champs du "
-    "format demandé, sans JSON ni déclaration publique. Ce contenu est privé et ne sera transmis "
-    "à aucune autre délégation. Aucune décision létale autonome."
+    "format demandé, sans JSON ni déclaration publique. Écris en lignes nues, sans markdown : "
+    "pas d'astérisques (`**gras**`), pas de titres `#`, pas de puces `-` pour les champs — "
+    "un intitulé exact (ex. `ACTION :`) suivi de sa valeur sur la même ligne. Ce contenu est "
+    "privé et ne sera transmis à aucune autre délégation. Aucune décision létale autonome."
 )
 
 
