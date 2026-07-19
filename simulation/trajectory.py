@@ -2,11 +2,13 @@
 
 Chaque round met à jour une **trajectoire du monde** sur 5 axes dans `[0, 1]` (1 = pôle
 utopique) → un **indice Utopie composite** `U` + une **carte 2D** (x, y). Mise à jour **hybride
-et bornée** : un signal déterministe calculé sur le round + un **pas fixe** (`±CAP`) dans la
-direction du signal, borné seulement par la distance restante au pôle `[0, 1]` — jamais un
-saut hors bornes, mais plus d'auto-amortissement proportionnel à l'écart (Brief 3 pt 3 :
-un signal à peine hors du neutre produisait sinon un delta minuscule, et le monde restait
-collé à 0,5). Chaque MAJ porte une **explication**.
+et bornée** : un signal déterministe calculé sur le round + un pas vers ce signal (`±CAP` au
+loin, atterrissage EXACT dès que l'écart passe sous `CAP` — F3, revue finale), borné seulement
+par la distance restante au pôle `[0, 1]` — jamais un saut hors bornes, mais plus d'auto-
+amortissement proportionnel à l'écart (Brief 3 pt 3 : un signal à peine hors du neutre
+produisait sinon un delta minuscule, et le monde restait collé à 0,5) ni de cycle-limite
+permanent (F3 : l'ancien pas fixe pouvait dépasser un signal proche puis y revenir, sans fin).
+Chaque MAJ porte une **explication**.
 
 Voir `docs/spec_trajectory.md`. Alimente le marché de prédiction (« L'indice Utopie va-t-il
 monter ? » se résout sur le signe de ΔU). Purement déterministe, testable hors LLM.
@@ -244,27 +246,35 @@ def welfare_signal(world: WorldState, summary: RoundSummary) -> float:
 
 
 def _step(current: float, signal: float, cap: float, deadband: float = 0.0) -> float:
-    """Pas FIXE d'un axe vers son signal (Brief 3 pt 3) — casse l'auto-amortissement.
+    """Pas d'un axe vers son signal (Brief 3 pt 3, atterrissage exact F3 — revue
+    finale) — casse l'auto-amortissement SANS produire de cycle-limite permanent.
 
-    Amplitude CONSTANTE `cap` dans le sens du signal (pas proportionnelle à l'écart
-    `signal − current`), bornée seulement par la distance restante jusqu'au pôle
-    `[0, 1]` — jamais par la distance au signal. Conséquence assumée : un signal à
-    peine hors du neutre produit le MÊME pas qu'un signal extrême (l'ancienne formule
-    `clamp(signal − current, ±cap)` amortissait le mouvement à mesure que le signal se
-    rapprochait du courant ; comme les signaux réels restent souvent proches de 0,5
-    en round négocié, le monde restait collé au neutre). L'axe peut donc dépasser un
-    signal faible puis corriger l'écart au round suivant (oscillation bornée par
-    `cap`), jamais franchir un pôle.
+    Trois régimes selon l'écart `gap = signal − current` :
+      1. `|gap| ≤ deadband` -> 0 (bruit, pas une direction — IMPORTANT 2, revue) ;
+      2. `|gap| < cap` -> `delta = gap` : l'axe ATTERRIT exactement sur le signal
+         (jamais de dépassement possible dans ce régime, donc jamais d'aller-retour
+         round après round) ;
+      3. sinon -> amplitude CONSTANTE `cap` dans le sens du signal (pas proportionnelle
+         à l'écart : pleine vitesse tant qu'on est loin), bornée seulement par la
+         distance restante jusqu'au pôle `[0, 1]` — jamais par la distance au signal.
 
-    `deadband` (IMPORTANT 2, revue) — sous ce seuil, `|signal − current|` est traité
-    comme du bruit (pas nul) : sans elle, un écart non nul mais plus petit que `cap`
-    (ex. courant 0,51, signal 0,50) produit un cycle-limite PERMANENT — le pas fixe
+    F3 (revue finale) — l'ancienne règle appliquait le régime 3 (`clamp(±cap)`) même
+    quand `|gap| < cap` : un signal CONSTANT à un écart 0,02-0,07 (entre la bande
+    morte et `cap`) produisait alors une oscillation PERMANENTE ±`cap` — le pas fixe
     dépasse le signal à chaque round, dans un sens puis dans l'autre, sans jamais
-    converger (0,51 → 0,42 → 0,51 → 0,42 …). Défaut `0.0` = ancien comportement
-    (seule l'égalité flottante stricte, `1e-9`, arrête le mouvement)."""
+    converger (ex. 0,51 → 0,42 → 0,51 → 0,42 …). L'atterrissage exact du régime 2
+    supprime ce cycle : l'axe converge puis GÈLE (le round suivant, `gap` devient nul
+    -> régime 1). L'esprit anti-amortissement est préservé : tant que l'écart dépasse
+    `cap`, la vitesse reste constante — jamais de micro-pas asymptotiques comme
+    l'ancienne formule `clamp(signal − current, ±cap)` (courbe collée à 0,5).
+
+    `deadband` (IMPORTANT 2, revue) — défaut `0.0` = seule l'égalité flottante stricte
+    (`1e-9`) arrête le mouvement (rétro-compat des appelants qui n'en passent pas)."""
     gap = signal - current
     if abs(gap) <= max(deadband, 1e-9):
         return 0.0
+    if abs(gap) < cap:
+        return gap  # atterrissage exact : ce régime ne peut jamais dépasser le signal
     if gap > 0:
         return min(cap, 1.0 - current)
     return max(-cap, -current)

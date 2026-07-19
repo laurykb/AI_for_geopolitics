@@ -288,11 +288,12 @@ def test_dystopia_slides_over_coercive_concentrated_rounds():
 
 
 def test_weak_signal_still_moves_by_a_full_step():
-    # Avant : un signal à peine hors du neutre produisait un delta minuscule
-    # (clamp(0,03, ±CAP) = 0,03). Le monde plafonnait donc autour de 0,5 puisque les
-    # signaux réels restent souvent proches du neutre (round négocié). Maintenant :
-    # même un signal faible (mais AU-DESSUS de la bande morte, cf. tests deadband
-    # ci-dessous) produit le PAS COMPLET (± CAP) dans sa direction.
+    # Avant Brief 3 pt 3 : un signal à peine hors du neutre produisait un delta minuscule
+    # (clamp(0,03, ±CAP) = 0,03) — le monde plafonnait autour de 0,5 puisque les signaux
+    # réels restent souvent proches du neutre (round négocié). F3 (revue finale) : un
+    # écart plus petit que CAP (mais AU-DESSUS de la bande morte, cf. tests deadband
+    # ci-dessous) ATTERRIT exactement sur le signal (ni delta minuscule, ni pas complet
+    # qui le dépasserait) — l'axe bouge, sans jamais osciller autour d'un signal faible.
     engine = TrajectoryEngine()
     axes = {"A1": 0.5, "A2": 0.53, "A3": 0.5, "A4": 0.5, "A5": 0.5}
     state = TrajectoryState(round_id=1, axes=axes)
@@ -300,8 +301,8 @@ def test_weak_signal_still_moves_by_a_full_step():
     summary = _summary([])  # A2 signal = 0.5 (neutre)
     nudged = engine.update(world, summary, previous=state)
     # A2 (signal neutre 0,5) : le courant (0,53) est au-dessus, écart 0,03 > bande morte
-    # (0,02) -> pas complet vers le bas.
-    assert nudged.axes["A2"] == pytest.approx(0.53 - CAP)
+    # (0,02) et < CAP (0,09) -> atterrissage exact sur le signal.
+    assert nudged.axes["A2"] == pytest.approx(0.5)
 
 
 def test_step_never_overshoots_the_pole():
@@ -336,14 +337,35 @@ def test_deadband_freezes_the_axis_instead_of_oscillating_forever():
 
 def test_deadband_does_not_block_movement_once_the_gap_exceeds_it():
     # La bande morte ne doit PAS réintroduire l'auto-amortissement : un écart au-delà
-    # du seuil bouge toujours du pas complet ± CAP (comportement du levier 1, intact).
+    # du seuil bouge toujours (comportement du levier 1, intact) — F3 (revue finale) :
+    # sous CAP, ce mouvement est un atterrissage exact sur le signal, pas un pas
+    # complet qui le dépasserait.
     engine = TrajectoryEngine()
     axes = {"A1": 0.53, "A2": 0.5, "A3": 0.5, "A4": 0.5, "A5": 0.5}  # écart 0,03 > 0,02
     state = TrajectoryState(round_id=1, axes=axes)
     world = _balanced_world()
     summary = _summary([], esc=0.5)  # A1 signal = 0,5
     nudged = engine.update(world, summary, previous=state)
-    assert nudged.axes["A1"] == pytest.approx(0.53 - CAP)
+    assert nudged.axes["A1"] == pytest.approx(0.5)
+
+
+def test_constant_signal_within_step_lands_then_freezes_without_oscillating():
+    # F3 (revue finale) — reproduction exacte du constat : un signal CONSTANT décalé
+    # de 0,02 à 0,07 (entre la bande morte et CAP) produisait AVANT une oscillation
+    # PERMANENTE ± CAP (le pas fixe dépassait le signal à chaque round, dans un sens
+    # puis dans l'autre, sans jamais converger). Écart fixé ici à 0,05 : l'axe doit
+    # ATTERRIR exactement sur le signal au 1er round, puis GELER (bande morte,
+    # écart devenu nul) — aucune oscillation sur les rounds suivants.
+    engine = TrajectoryEngine()
+    world = _balanced_world()
+    summary = _summary([], esc=0.45)  # A1 signal = 1 - 0,45 = 0,55 (écart constant 0,05)
+    state = TrajectoryState.neutral()  # A1 = 0,5
+    trace = [state.axes["A1"]]
+    for _ in range(6):
+        state = engine.update(world, summary, previous=state)
+        trace.append(state.axes["A1"])
+    assert trace[1] == pytest.approx(0.55)  # atterrit exactement sur le signal
+    assert all(v == pytest.approx(0.55) for v in trace[1:])  # gel : aucune oscillation
 
 
 def test_neutrality_survives_a_signal_alternating_just_off_center():
