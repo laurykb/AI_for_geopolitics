@@ -44,7 +44,7 @@ const STATUS_LABELS: Record<string, string> = {
 const ROLE_LABELS: Record<string, string> = {
   core_comparison: "panel principal",
   capacity_comparison: "palier 7–8B",
-  reasoning_robustness: "raisonnement",
+  reasoning: "raisonnement",
   slow_robustness_only: "lent / déport CPU",
 };
 

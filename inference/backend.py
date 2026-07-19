@@ -18,6 +18,9 @@ class InferenceResult(BaseModel):
     """
 
     text: str
+    # Trace de pensée d'un modèle de raisonnement (option think d'Ollama) : canal
+    # SÉPARÉ du texte public — elle n'alimente que l'audit privé, jamais le transcript.
+    thinking: str = ""
     prompt_tokens: int = Field(0, ge=0)
     completion_tokens: int = Field(0, ge=0)
     duration_s: float = Field(0.0, ge=0.0)

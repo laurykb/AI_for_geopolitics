@@ -27,18 +27,23 @@ class OllamaBackend(InferenceBackend):
         *,
         host: str | None = None,
         keep_alive: str | float | None = "5m",
+        think: bool = False,
     ) -> None:
         self.model = model
         self.keep_alive = keep_alive
+        # `think` (modèles de raisonnement : deepseek-r1, qwen3…) : demande à Ollama de
+        # séparer la trace de pensée (`thinking`) du texte (`response`). Jamais activé
+        # pour un modèle classique — l'API le rejetterait ("does not support thinking").
+        self.think = think
         self.host = host or os.getenv("OLLAMA_HOST")
         self._client = ollama.Client(host=self.host) if self.host else ollama.Client()
 
     def for_model(
-        self, model: str, *, keep_alive: str | float | None = "15m"
+        self, model: str, *, keep_alive: str | float | None = "15m", think: bool = False
     ) -> OllamaBackend:
         """Clone léger vers le même serveur ; utilisé par le routeur mono-GPU."""
 
-        return OllamaBackend(model=model, host=self.host, keep_alive=keep_alive)
+        return OllamaBackend(model=model, host=self.host, keep_alive=keep_alive, think=think)
 
     def unload_model(self, model: str) -> None:
         """Demande à Ollama de libérer les poids d'un modèle entre deux familles."""
@@ -85,14 +90,17 @@ class OllamaBackend(InferenceBackend):
             options=options,
             keep_alive=self.keep_alive,
             stream=False,
+            think=True if self.think else None,
         )
         wall = time.perf_counter() - t0
 
         # Ollama renvoie `eval_duration` en nanosecondes (durée de génération pure).
         eval_ns = getattr(resp, "eval_duration", None) or 0
         gen_s = eval_ns / 1e9 if eval_ns else wall
+        # `thinking` reste un canal séparé : le texte public n'embarque jamais la trace.
         return InferenceResult(
             text=resp.response or "",
+            thinking=getattr(resp, "thinking", None) or "",
             prompt_tokens=getattr(resp, "prompt_eval_count", None) or 0,
             completion_tokens=getattr(resp, "eval_count", None) or 0,
             duration_s=gen_s,
@@ -118,8 +126,25 @@ class OllamaBackend(InferenceBackend):
             options=options,
             keep_alive=self.keep_alive,
             stream=True,
+            think=True if self.think else None,
         )
+        # Avec think actif, la trace arrive dans `chunk.thinking`, séparée de `response`.
+        # On la rejoue balisée <think>…</think> : le flux privé (UI) la voit en direct et
+        # le strip aval — conçu pour les balises inline — couvre ainsi LES DEUX chemins.
+        thinking_open = False
         for chunk in stream:
+            trace = getattr(chunk, "thinking", "") or ""
+            if trace:
+                if not thinking_open:
+                    yield "<think>"
+                    thinking_open = True
+                yield trace
             piece = getattr(chunk, "response", "") or ""
             if piece:
+                if thinking_open:
+                    yield "</think>"
+                    thinking_open = False
                 yield piece
+        if thinking_open:
+            # Flux épuisé en pleine pensée : on referme pour rester strippable proprement.
+            yield "</think>"

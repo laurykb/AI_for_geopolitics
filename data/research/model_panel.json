@@ -83,7 +83,7 @@
       "family": "DeepSeek R1 Distill Qwen",
       "parameter_tier": "7-8b",
       "expected_size_gb": 4.7,
-      "role": "reasoning_robustness",
+      "role": "reasoning",
       "source": "https://ollama.com/library/deepseek-r1",
       "known_digest": "755ced02ce7b"
     },

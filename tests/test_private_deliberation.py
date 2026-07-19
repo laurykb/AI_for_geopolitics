@@ -4,6 +4,7 @@ from simulation.private_deliberation import (
     fallback_private_plan,
     parse_private_plan,
     sanitize_public_message,
+    strip_think,
 )
 
 
@@ -165,6 +166,52 @@ def test_observable_journal_tolerates_missing_criterion_and_uncertainty():
     assert plan is not None
     assert plan.selected_branch == 2  # le choix explicite du modèle est respecté
     assert plan.fallback_used is False
+
+
+def _journal_choice_2() -> str:
+    """Journal valide dont le CHOIX explicite est FUTUR 2 (fixture des tests reasoning)."""
+    return "\n".join(
+        f"FUTUR {n} — test\nACTION : négocier option {n}\nRÉACTIONS : iran=coopere: test\n"
+        "CHAÎNE CAUSALE : test\nUTILITÉ : 50\nRISQUE : 50\nCONFIANCE : 50"
+        for n in (1, 2, 3)
+    ) + "\nARBITRAGE\nCHOIX : FUTUR 2\nCRITÈRE : test\nINCERTITUDE : test"
+
+
+def test_strip_think_removes_inline_blocks_and_keeps_public_text():
+    # Point 5 — un modèle de raisonnement (deepseek-r1) émet <think>…</think> inline
+    # quand l'option think n'est pas gérée : la trace ne doit jamais fuiter.
+    assert strip_think("<think>trace privée</think>Texte public.") == "Texte public."
+    assert strip_think("A<think>x</think>B<think>y</think>C") == "ABC"
+    assert strip_think("Sans balise, texte inchangé.") == "Sans balise, texte inchangé."
+
+
+def test_strip_think_drops_orphan_opening_tag_to_the_end():
+    # Flux tronqué (num_predict atteint en pleine pensée) : ouvrante sans fermante
+    # → tout ce qui suit l'ouvrante est de la pensée, strip aussi.
+    assert strip_think("Texte public.<think>pensée tronquée sans fin") == "Texte public."
+    assert strip_think("<think>tout le flux est de la pensée") == ""
+
+
+def test_strip_think_drops_leading_thought_before_orphan_closing_tag():
+    # Certains gabarits deepseek-r1 injectent <think> côté serveur : la sortie commence
+    # alors en pleine pensée et seul </think> apparaît — tout ce qui précède est privé.
+    assert strip_think("pensée sans ouvrante</think>Texte public.") == "Texte public."
+
+
+def test_parse_private_plan_ignores_think_trace_with_draft_choice():
+    # La trace de pensée contient souvent un brouillon du journal (« CHOIX : FUTUR 1 »).
+    # Sans strip, la 1re occurrence gagnerait et écraserait le vrai choix (FUTUR 2).
+    thought = "<think>\nJe compare les brouillons.\nCHOIX : FUTUR 1\n</think>\n"
+    plan = parse_private_plan(thought + _journal_choice_2(), ["iran"])
+    assert plan is not None
+    assert plan.selected_branch == 2
+    assert plan.fallback_used is False
+
+
+def test_parse_private_plan_treats_orphan_think_as_pure_thought():
+    # Journal entier piégé dans une pensée jamais refermée (flux tronqué) : c'est de la
+    # pensée, pas une décision — on rend None et l'agent bascule sur le repli.
+    assert parse_private_plan("<think>\n" + _journal_choice_2(), ["iran"]) is None
 
 
 def test_observable_journal_selects_best_scored_branch_without_choice_line():

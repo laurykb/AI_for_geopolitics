@@ -12,7 +12,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints, model_validator
 
-from simulation.model_registry import ModelPanel, model_panel_view
+from simulation.model_registry import REASONING_ROLE, ModelPanel, model_panel_view
 
 ModelTag = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]
 
@@ -56,6 +56,9 @@ class CastModel(BaseModel):
     benchmark_status: str = "unmeasured"
     warm_run_s: float = 0.0
     load_time_s: float = 0.0
+    # Modèle de raisonnement (rôle `reasoning` du panel) : son backend active l'option
+    # think. Défaut False = les castings sérialisés avant le point 5 restent valides.
+    reasoning: bool = False
 
 
 class ModelCastState(BaseModel):
@@ -69,6 +72,11 @@ class ModelCastState(BaseModel):
     max_models_in_memory: int = 1
     execution_policy: str = "sequential_mono_gpu"
     ranked: bool = False
+
+    def reasoning_tags(self) -> set[str]:
+        """Tags dont le backend doit penser en canal séparé (routage think du round)."""
+
+        return {model.tag for model in self.models if model.reasoning}
 
 
 def prepare_model_cast(
@@ -136,6 +144,7 @@ def prepare_model_cast(
                 benchmark_status=model.benchmark_status,
                 warm_run_s=model.benchmark_warm_run_s,
                 load_time_s=model.benchmark_load_time_s,
+                reasoning=model.role == REASONING_ROLE,
             )
             for model in selected
         ],

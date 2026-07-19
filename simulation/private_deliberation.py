@@ -150,6 +150,24 @@ def _compact(value: str) -> str:
     return re.sub(r"\s+", " ", value.replace("|", "/")).strip()
 
 
+# Trace de pensée des modèles de raisonnement (deepseek-r1, qwen3…) émise inline quand
+# l'option think d'Ollama n'est pas gérée. Trois formes couvertes, dans cet ordre :
+# blocs fermés, fermante orpheline (gabarit serveur qui injecte l'ouvrante — tout ce qui
+# précède est de la pensée), ouvrante orpheline (flux tronqué — tout ce qui suit aussi).
+_THINK_BLOCK = re.compile(r"(?is)<think>.*?</think>")
+_THINK_ORPHAN_CLOSE = re.compile(r"(?is)\A.*?</think>")
+_THINK_ORPHAN_OPEN = re.compile(r"(?is)<think>.*\Z")
+
+
+def strip_think(raw: str) -> str:
+    """Retire toute trace de pensée balisée : elle ne va qu'à l'audit privé, jamais plus loin."""
+
+    text = _THINK_BLOCK.sub("", raw)
+    text = _THINK_ORPHAN_CLOSE.sub("", text)
+    text = _THINK_ORPHAN_OPEN.sub("", text)
+    return text.strip()
+
+
 def _plain(value: str) -> str:
     return "".join(
         char
@@ -324,6 +342,11 @@ def _parse_observable_journal(raw: str, participants: list[str]) -> PrivateStrat
 def parse_private_plan(
     raw: str, participants: list[str] | None = None
 ) -> PrivateStrategicPlan | None:
+    # Strip AVANT tout parsing : la pensée d'un modèle de raisonnement contient souvent
+    # un brouillon du journal (« CHOIX : FUTUR 1 », accolades JSON…) qui, laissé en tête,
+    # gagnerait sur le vrai journal. Un flux entièrement pensé (balise jamais refermée)
+    # devient vide → None → repli déterministe de l'agent.
+    raw = strip_think(raw)
     payload = extract_json(raw)
     if payload is not None:
         try:

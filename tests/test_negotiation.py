@@ -103,6 +103,28 @@ def test_stream_negotiation_message():
     assert agent.model_tag  # badge modèle non vide
 
 
+def test_stream_negotiation_message_strips_think_trace_before_sanitize():
+    # Point 5 — un modèle de raisonnement émet sa trace <think> inline AVANT la
+    # déclaration : sans strip, le filtre anti-fuite (fail-closed sur « FUTUR n » en
+    # début de ligne) viderait le message et forcerait le repli déterministe.
+    raw = (
+        "<think>\nComparons les brouillons.\nFUTUR 1 — option risquée\n"
+        "CHOIX : FUTUR 1\n</think>\nNous proposons un accord vérifiable."
+    )
+    backend = MockBackend(raw)
+    agent = LLMAgent("usa", backend)
+    from core.events import GeoEvent
+    from simulation.private_deliberation import fallback_private_plan
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    plan = fallback_private_plan(["iran"], seed="usa")
+    out = "".join(
+        agent.stream_negotiation_message(event, _world(), [], private_plan=plan)
+    )
+    assert out == "Nous proposons un accord vérifiable."
+    assert "<think>" not in out and "FUTUR" not in out
+
+
 def test_stream_negotiation_message_uses_role_sampling():
     # G9 §1 — anti-boucle au décodeur : repeat_penalty et température du rôle « country »
     # (data/gamefeel/params.json) sont transmis au backend.

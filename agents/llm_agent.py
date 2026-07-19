@@ -44,6 +44,7 @@ from simulation.private_deliberation import (
     fallback_private_plan,
     parse_private_plan,
     sanitize_public_message,
+    strip_think,
 )
 
 
@@ -302,7 +303,10 @@ class LLMAgent(Agent):
                 )
             )
             self.last_result = InferenceResult(text=raw_public)
-            public = sanitize_public_message(raw_public)
+            # Strip AVANT le filtre anti-fuite : la trace <think> d'un modèle de
+            # raisonnement contient des marqueurs privés (FUTUR n, CHOIX…) qui, laissés
+            # en place, feraient vider un message public pourtant légitime.
+            public = sanitize_public_message(strip_think(raw_public))
         except Exception:
             self.last_result = None
             public = ""
@@ -415,7 +419,9 @@ class LLMAgent(Agent):
             self.last_decision = self._fallback(event, world)
             return
 
-        decision = self._parse_decision("".join(chunks), event, world)
+        # Strip de la trace <think> : elle peut contenir une ligne « DECISION: » brouillon
+        # qui volerait la place de la vraie décision terminale du round observable.
+        decision = self._parse_decision(strip_think("".join(chunks)), event, world)
         self.last_decision = decision if decision is not None else self._fallback(event, world)
 
     def _parse_decision(

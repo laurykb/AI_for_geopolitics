@@ -49,6 +49,16 @@ def _panel() -> ModelPanel:
                 installed=True,
                 local_digest="sha256:slow",
             ),
+            ResearchModel(
+                tag="model-r:7b",
+                family="Model R",
+                parameter_tier="7B",
+                expected_size_gb=4.7,
+                role="reasoning",
+                source="test",
+                installed=True,
+                local_digest="sha256:r",
+            ),
         ],
         ollama_available=True,
     )
@@ -168,3 +178,44 @@ def test_offline_router_exposes_each_requested_model_tag():
     assert routes["model-b:7b"].model == "model-b:7b"
     assert routes["model-a:4b"].generate("hello").text == "ok"
     assert len(mock.calls) == 1
+
+
+def test_cast_flags_reasoning_models_for_think_activation():
+    # Point 5 — un pays casté sur un modèle `reasoning` active l'option think côté
+    # backend ; le drapeau est figé dans le casting (rejouable) et exposé en tags.
+    request = ModelCastRequest(models=["model-a:4b", "model-r:7b"])
+    cast = prepare_model_cast(
+        request,
+        ["usa", "iran", "france"],
+        human_country=None,
+        game_id="reasoning-cast",
+        panel=_panel(),
+    )
+    flags = {model.tag: model.reasoning for model in cast.models}
+    assert flags == {"model-a:4b": False, "model-r:7b": True}
+    assert cast.reasoning_tags() == {"model-r:7b"}
+
+
+def test_offline_router_marks_reasoning_tags_with_think():
+    routes = routed_backends(
+        MockBackend("ok"),
+        {"model-a:4b", "model-r:7b"},
+        reasoning_tags={"model-r:7b"},
+    )
+    assert routes["model-r:7b"].think is True
+    assert routes["model-a:4b"].think is False
+
+
+def test_offline_router_defaults_to_no_think_for_backward_compat():
+    # Rétro-compatibilité stricte : sans modèle reasoning dans le panel, rien ne change.
+    routes = routed_backends(MockBackend("ok"), {"model-a:4b"})
+    assert routes["model-a:4b"].think is False
+
+
+def test_panel_reference_reasoning_model_is_deepseek_r1():
+    # Le panel embarqué expose deepseek-r1:7b (distill Qwen, Q4, 8 Go VRAM) comme
+    # modèle de raisonnement de référence — seul porteur du rôle `reasoning`.
+    from simulation.model_registry import load_model_panel
+
+    reasoning = [m for m in load_model_panel().models if m.role == "reasoning"]
+    assert [m.tag for m in reasoning] == ["deepseek-r1:7b"]

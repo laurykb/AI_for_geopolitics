@@ -423,7 +423,13 @@ def _build_cast(
         if cast is not None
         else set()
     )
-    routes = routed_backends(backend, tags) if tags else {}
+    # Point 5 : les pays castés sur un modèle de raisonnement (rôle `reasoning` du
+    # panel, figé dans le casting) reçoivent un backend qui pense en canal séparé.
+    routes = (
+        routed_backends(backend, tags, reasoning_tags=cast.reasoning_tags())
+        if tags and cast is not None
+        else {}
+    )
 
     def wrap(country: str, role: str, model: str = "") -> InferenceBackend:
         selected = routes.get(model, backend)
