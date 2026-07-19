@@ -35,6 +35,18 @@ _TIES_REMINDER = (
     "des ÉLÉMENTS RÉFÉRENÇABLES (par exemple « round:2 ») — aucune autre valeur."
 )
 
+# Diagnostic utilisateur : le GM générait des descriptions maigres (ou tombait souvent en
+# repli). Cause : un budget de sortie non dimensionné sur le schéma + une consigne de
+# contenu trop vague pour contraindre le modèle à écrire du concret. Cette exigence est
+# injectée dans le prompt (schéma JSON inchangé — la richesse va dans `description`).
+_DETAIL_REQUIREMENT = (
+    "`description` DÉTAILLÉE et concrète — RÉDIGE AU MOINS 3 PHRASES, jusqu'à 5, jamais "
+    "moins : (1) ce qui s'est passé, faits précis — lieu, moyens, ampleur chiffrée si "
+    "pertinent ; (2) qui est impliqué, les acteurs du sommet ; (3) l'enjeu pour le sommet "
+    "et la tension immédiate que l'événement crée. JAMAIS une généralité vague (« les "
+    "tensions montent »)."
+)
+
 
 def _clamp(x: float) -> float:
     return max(0.0, min(1.0, x))
@@ -58,9 +70,12 @@ class GameMasterAgent:
     """Génère l'événement d'un round à partir de l'état du monde (et de la trame G9)."""
 
     def __init__(
-        self, backend: InferenceBackend, *, max_tokens: int = 300, temperature: float = 0.9
+        self, backend: InferenceBackend, *, max_tokens: int = 700, temperature: float = 0.9
     ) -> None:
         self.backend = backend
+        # 700 : dimensionné sur le schéma (description 3-5 phrases + le reste du JSON —
+        # leçon D2, docs/DETTE_TECHNIQUE.md). La production (app/game_api.py) instancie
+        # SANS surcharge : ce défaut EST le budget de sortie réellement utilisé en jeu.
         self.max_tokens = max_tokens
         self.temperature = temperature
         self._schema = GMEvent.model_json_schema()
@@ -150,6 +165,7 @@ class GameMasterAgent:
             return base + (
                 "\nInvente le prochain événement, ancré sur les pays du sommet, leurs lignes "
                 "de faille et les échéances (« à la veille de… » noue l'intrigue). "
+                f"{_DETAIL_REQUIREMENT} "
                 "JSON : {event_type, title, description, "
                 "actors (ids existants), severity (0-1), uncertainty (0-1)}. "
                 f"{prose}"
@@ -175,6 +191,7 @@ class GameMasterAgent:
             f"{refs}\n\n"
             f"Invente le prochain événement DANS cette trame, ancré sur les pays du sommet."
             f"{storyline_ask} "
+            f"{_DETAIL_REQUIREMENT} "
             "JSON : {event_type, title, description, actors (ids existants), "
             "severity (0-1), uncertainty (0-1), ties_to, storyline}. "
             f"{prose}"
@@ -213,7 +230,7 @@ class GameMasterAgent:
             date=date,
             event_type=str(data.get("event_type", "incident"))[:40],
             title=title[:120],
-            description=str(data.get("description", ""))[:500],
+            description=str(data.get("description", ""))[:900],
             actors=actors or sorted(world.countries)[:1],
             severity=severity,
             uncertainty=uncertainty,
@@ -222,13 +239,27 @@ class GameMasterAgent:
 
     def _fallback(self, world: WorldState, round_id: int, date: str) -> GeoEvent:
         actors = random.sample(sorted(world.countries), k=min(2, len(world.countries)))
+        # Étoffé (2 phrases concrètes au lieu d'une) mais reste déterministe et
+        # reconnaissable comme repli (« événement de repli », grep-able dans les logs).
+        if actors:
+            names = " et ".join(world.countries[a].name for a in actors)
+            first = (
+                f"{names} multiplient les signaux de défiance autour d'un dossier disputé "
+                "du sommet, sans qu'aucune des parties ne cède de terrain."
+            )
+        else:
+            first = "Le sommet fait face à un regain de défiance diffus, sans partie identifiée."
+        description = (
+            f"{first} Le Game Master signale ce point de bascule pour la table (événement "
+            "de repli, aucune connexion au modèle)."
+        )
         return GeoEvent(
             id=f"gm-{round_id}",
             round_id=round_id,
             date=date,
             event_type="incident",
             title="Regain de tensions régionales",
-            description="Le Game Master signale une montée des tensions (événement de repli).",
+            description=description,
             actors=actors,
             severity=0.5,
             uncertainty=0.6,
