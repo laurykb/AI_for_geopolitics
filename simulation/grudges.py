@@ -68,6 +68,22 @@ class DeltaParams(BaseModel):
     momentum_streak: int = 3  # baisses (ou hausses) consécutives qui déclenchent la spirale
     crisis_multiplier: float = 1.3  # spirale de crise (baisse amplifiée)
     virtuous_multiplier: float = 1.2  # cercle vertueux (hausse amplifiée, plafonné)
+    # Brief 3 pt 3 — mouvement minimal (stabilité) quand le juge reste MUET sur un pays
+    # (aucun attribute_delta) : repli déterministe sur l'escalade du round, borné petit
+    # (0,03) pour rester un frémissement, pas une décision cachée du moteur.
+    mute_fallback: float = 0.03
+
+
+class TrajectoryParams(BaseModel):
+    """Brief 3 pt 3 — pas/cap des 5 axes de la trajectoire (`simulation/trajectory.py`).
+
+    `cap` : amplitude du pas FIXE par axe et par round (remplace l'ancien 0,05, qui
+    s'auto-amortissait car proportionnel à l'écart signal-courant). `concentration_k` :
+    sensibilité d'A3 à la VARIATION de concentration du pouvoir (ΔHHI) — un monde stable
+    reste neutre (0,5), une concentration qui monte tire vers la dystopie."""
+
+    cap: float = 0.09
+    concentration_k: float = 4.0
 
 
 class PostureParams(BaseModel):
@@ -133,6 +149,7 @@ class GamefeelParams(BaseModel):
     deadlines: DeadlineParams = Field(default_factory=DeadlineParams)
     directives: DirectiveParams = Field(default_factory=DirectiveParams)
     deltas: DeltaParams = Field(default_factory=DeltaParams)
+    trajectory: TrajectoryParams = Field(default_factory=TrajectoryParams)
     postures: PostureParams = Field(default_factory=PostureParams)
     kahn: KahnParams = Field(default_factory=KahnParams)
     signal: SignalParams = Field(default_factory=SignalParams)

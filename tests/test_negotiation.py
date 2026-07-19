@@ -352,6 +352,61 @@ def test_attribute_reasons_tolerant_to_malformed_payload():
     assert verdict.attribute_deltas["usa"]["croissance"] == 0.5
 
 
+# --- Brief 3 pt 3 : mouvement minimal quand le juge est muet sur les attributs -----
+
+
+def test_apply_verdict_mute_country_gets_no_fallback_without_escalation():
+    # Rétro-compat stricte : sans `escalation` (défaut None), comportement historique
+    # inchangé — un pays absent du verdict ne bouge pas.
+    world = _world()
+    s0 = world.countries["usa"].political_stability
+    assert apply_verdict(world, Verdict()) == []
+    assert world.countries["usa"].political_stability == s0
+
+
+def test_apply_verdict_mute_country_falls_back_to_escalation_when_tense():
+    # Round tendu (escalade > 0,5) et juge muet sur "usa" -> repli déterministe :
+    # la stabilité s'érode un peu (le monde bouge, il ne se fige pas à 0,5).
+    world = _world()
+    s0 = world.countries["usa"].political_stability
+    apply_verdict(world, Verdict(), escalation=0.9)
+    assert world.countries["usa"].political_stability < s0
+
+
+def test_apply_verdict_mute_country_falls_back_to_escalation_when_calm():
+    # Round calme (escalade < 0,5) -> repli déterministe symétrique : la stabilité
+    # se raffermit un peu.
+    world = _world()
+    s0 = world.countries["usa"].political_stability
+    apply_verdict(world, Verdict(), escalation=0.1)
+    assert world.countries["usa"].political_stability > s0
+
+
+def test_apply_verdict_mute_fallback_neutral_escalation_is_a_no_op():
+    world = _world()
+    s0 = world.countries["usa"].political_stability
+    deltas = apply_verdict(world, Verdict(), escalation=0.5)
+    assert deltas == []
+    assert world.countries["usa"].political_stability == s0
+
+
+def test_apply_verdict_fallback_skips_countries_the_judge_already_touched():
+    # Le juge a bougé "usa" (croissance) -> pas de double repli sur sa stabilité,
+    # seul "iran" (muet) encaisse le repli.
+    world = _world()
+    verdict = Verdict(attribute_deltas={"usa": {"croissance": 0.2}})
+    deltas = apply_verdict(world, verdict, escalation=0.9)
+    labels_by_country = {(d.country, d.label) for d in deltas}
+    assert ("usa", "stabilité") not in labels_by_country
+    assert ("iran", "stabilité") in labels_by_country
+
+
+def test_apply_verdict_fallback_reason_is_traceable():
+    world = _world()
+    deltas = apply_verdict(world, Verdict(), escalation=0.9)
+    assert deltas and deltas[0].reason  # motif non vide (pas une exception silencieuse)
+
+
 def test_support_levels_bounded_and_reflects_tension():
     from core.events import GeoEvent
     from simulation.negotiation import support_levels

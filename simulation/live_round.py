@@ -39,7 +39,9 @@ from simulation.kahn import (
     ClassifiedAction,
     classify_actions,
     deescalation_bonus,
+    escalation_penalty,
     reciprocal_deescalation,
+    reciprocal_escalation,
     round_score,
     score_to_escalation,
 )
@@ -340,12 +342,27 @@ def _advance_trajectory(
     summary: RoundSummary,
     engine: TrajectoryEngine | None,
     power_seeking: float = 0.0,
+    opacity: float | None = None,
 ) -> TrajectoryState:
-    """Fait avancer la trajectoire du monde d'un round et l'écrit dans `world`."""
-    state = (engine or TrajectoryEngine()).update(world, summary, power_seeking=power_seeking)
+    """Fait avancer la trajectoire du monde d'un round et l'écrit dans `world`.
+
+    `opacity` (Brief 3 pt 3, mode négocié) : repli d'A4 quand le round n'a ni décisions
+    ni messages diplomatiques classiques — voir `TrajectoryEngine.signals`."""
+    state = (engine or TrajectoryEngine()).update(
+        world, summary, power_seeking=power_seeking, opacity=opacity
+    )
     world.trajectory = state
     world.trajectory_history.append(state)
     return state
+
+
+def _opacity_from_divergences(divergences: dict[str, float]) -> float | None:
+    """Brief 3 pt 3 — A4 (transparence) en mode négocié : fraction moyenne de duplicité
+    signal-action (M8) parmi les SI dont le juge a classé intention ET action. `None`
+    si le juge n'a rien classé (aucune donnée -> l'ancien repli neutre 0,5 fait foi)."""
+    if not divergences:
+        return None
+    return sum(abs(v) for v in divergences.values()) / len(divergences)
 
 
 def _mean_power_seeking(scores: dict[str, PowerSeekingScore]) -> float:
@@ -680,6 +697,9 @@ def run_negotiation_round(
     kahn_score = round_score(actions) if actions else 0.0
     escalation = score_to_escalation(kahn_score) if actions else _clamp(verdict.escalation)
     reciprocal = reciprocal_deescalation(actions)
+    # Brief 3 pt 3 — miroir symétrique : ≥ 2 SI qui escaladent violemment ensemble
+    # encaissent la même sur-pondération ×1,5 que la désescalade réciproque, sur la perte.
+    reciprocal_up = reciprocal_escalation(actions)
     # G20/M8 — signal vs action : divergence signée par SI signalée (annonce vs acte le
     # plus sévère du round) ; le profil de sincérité (moyenne mobile) rejoint M1-M7 sur
     # le WorldState — il survit au restart via le snapshot. Rien sans `signals` (rétro-compat).
@@ -701,7 +721,9 @@ def run_negotiation_round(
         divergences = merge_rupture_divergences(divergences, broken)
     if divergences:
         world.signal_gap = update_gaps(world.signal_gap, divergences)
-    deltas = apply_verdict(world, verdict, tuning)  # G9 §4 — amplitude indexée sur l'horizon
+    # Brief 3 pt 3 — mouvement minimal quand le juge est muet sur un pays (repli sur
+    # l'escalade du round) + G9 §4 amplitude indexée sur l'horizon.
+    deltas = apply_verdict(world, verdict, tuning, escalation=escalation)
     yield VerdictStep(
         deltas=deltas,
         escalation=escalation,
@@ -814,13 +836,28 @@ def run_negotiation_round(
         headline=f"{date} — {event.title}",
     )
     prev_utopia = (world.trajectory or TrajectoryState.neutral()).utopia
-    trajectory = _advance_trajectory(world, summary, trajectory_engine, _mean_power_seeking(power))
+    # Brief 3 pt 3 — A4 (transparence) nourri par la diplomatie réelle en mode négocié :
+    # repli sur la duplicité signal-action (M8) plutôt que le neutre systématique 0,5.
+    opacity = _opacity_from_divergences(divergences)
+    trajectory = _advance_trajectory(
+        world, summary, trajectory_engine, _mean_power_seeking(power), opacity=opacity
+    )
     if reciprocal:
         # G18 — désescalade réciproque : ×1,5 sur le gain d'indice U du round (borné).
         boosted = deescalation_bonus(prev_utopia, trajectory)
         if boosted is not trajectory:
             trajectory = boosted.model_copy(
                 update={"explanation": f"{trajectory.explanation} {boosted.explanation}".strip()}
+            )
+            world.trajectory = trajectory
+            world.trajectory_history[-1] = trajectory
+    if reciprocal_up:
+        # Brief 3 pt 3 — miroir symétrique : ×1,5 sur la PERTE d'indice U du round
+        # quand la ré-escalade est réciproque (ne retire pas le bonus, l'équilibre).
+        penalized = escalation_penalty(prev_utopia, trajectory)
+        if penalized is not trajectory:
+            trajectory = penalized.model_copy(
+                update={"explanation": f"{trajectory.explanation} {penalized.explanation}".strip()}
             )
             world.trajectory = trajectory
             world.trajectory_history[-1] = trajectory

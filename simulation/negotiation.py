@@ -18,6 +18,7 @@ from simulation.alliances import COHESION_DOMAINS, shared_treaty
 from simulation.diplomacy import pact_id
 from simulation.engagement import SPEAK_THRESHOLD, engagement_score
 from simulation.gamefeel import DeltaTuning
+from simulation.grudges import load_gamefeel_params
 
 _MEMORY_MAX = 4
 
@@ -327,6 +328,10 @@ _ATTRS: dict[str, tuple[str, tuple[float, float] | None]] = {
 _CAPS = {"croissance": 1.5, "stabilité": 0.15, "techno": 0.15, "projection": 0.15}
 
 
+def _clamp01(x: float) -> float:
+    return max(0.0, min(1.0, x))
+
+
 def _get(obj, path: str) -> float:
     for part in path.split("."):
         obj = getattr(obj, part)
@@ -341,15 +346,26 @@ def _set(obj, path: str, value: float) -> None:
 
 
 def apply_verdict(
-    world: WorldState, verdict: Verdict, tuning: DeltaTuning | None = None
+    world: WorldState,
+    verdict: Verdict,
+    tuning: DeltaTuning | None = None,
+    escalation: float | None = None,
 ) -> list[AttributeDelta]:
     """Applique le verdict du juge **borné** ; renvoie les deltas effectivement appliqués.
 
     `tuning` (G9 §4) : indexe l'amplitude sur l'horizon de la partie (`scale`), amplifie
     les spirales (`momentum`, 3 baisses consécutives → ×1.3) et impose le plancher des
     indices 0-1 (`floor` — jamais de pays à zéro absolu). Sans tuning : comportement
-    historique (caps fixes, bornes 0-1)."""
+    historique (caps fixes, bornes 0-1).
+
+    `escalation` (Brief 3 pt 3, ∈ [0, 1], `None` par défaut -> comportement historique
+    inchangé) : mouvement minimal garanti quand le juge reste MUET sur un pays (aucun
+    attribute_delta appliqué) — repli déterministe sur l'escalade du round (stabilité
+    seule, petit et borné) : un round tendu érode un peu la stabilité, un round calme la
+    raffermit un peu. Évite qu'un pays hors du champ d'attention du juge reste figé à
+    l'identique round après round."""
     deltas: list[AttributeDelta] = []
+    touched: set[str] = set()
 
     for cid, attrs in verdict.attribute_deltas.items():
         country = world.countries.get(cid)
@@ -380,9 +396,40 @@ def apply_verdict(
                 after = max(lo, min(bounds[1], after))
             if abs(after - before) > 1e-9:
                 _set(country, path, after)
+                touched.add(cid)
                 raw_reason = reasons.get(label, "")
                 reason = raw_reason if isinstance(raw_reason, str) else ""
                 deltas.append(AttributeDelta(cid, label, before, after, reason))
+
+    if escalation is not None:
+        params = (tuning.params if tuning is not None else None) or load_gamefeel_params().deltas
+        fallback = params.mute_fallback
+        if fallback > 0:
+            # Signal centré ∈ [-1, 1] : escalade > 0,5 (tendu) -> négatif (érode la
+            # stabilité) ; escalade < 0,5 (calme) -> positif (la raffermit).
+            signal = (0.5 - _clamp01(escalation)) * 2.0
+            for cid, country in world.countries.items():
+                if cid in touched:
+                    continue  # le juge a déjà bougé ce pays ce round : pas de double repli
+                delta = fallback * signal
+                if tuning is not None:
+                    delta *= tuning.scale
+                    delta *= tuning.momentum(cid, "stabilité", delta)
+                before = country.political_stability
+                after = before + delta
+                lo = 0.0 if tuning is None else max(0.0, min(before, tuning.floor))
+                after = max(lo, min(1.0, after))
+                if abs(after - before) > 1e-9:
+                    _set(country, "political_stability", after)
+                    deltas.append(
+                        AttributeDelta(
+                            cid,
+                            "stabilité",
+                            before,
+                            after,
+                            "Repli déterministe : escalade du round (juge muet sur ce pays).",
+                        )
+                    )
 
     for entry in verdict.tension_deltas:
         if not isinstance(entry, dict):

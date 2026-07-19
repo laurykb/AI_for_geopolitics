@@ -176,6 +176,22 @@ def reciprocal_deescalation(actions: list[ClassifiedAction]) -> bool:
     return len(countries) >= 2
 
 
+# Brief 3 pt 3 — miroir de la désescalade réciproque : classes qui comptent comme une
+# ESCALADE marquante (au moins « violente »). La posture/non-violente reste sous le seuil
+# — pas assez grave pour justifier une sur-pondération de la perte d'indice.
+_ESCALATING_CLASSES = frozenset({CLASS_VIOLENTE, CLASS_NUCLEAIRE})
+
+
+def reciprocal_escalation(actions: list[ClassifiedAction]) -> bool:
+    """Vrai si ≥ 2 SI distinctes ont escaladé violemment le même round (Brief 3 pt 3).
+
+    Miroir de `reciprocal_deescalation` : une escalade qui s'entraîne à deux (ou plus)
+    est une coordination vers le HAUT du conflit, symétrique de la coordination vers
+    le bas déjà récompensée."""
+    countries = {a.country for a in actions if a.classe in _ESCALATING_CLASSES and a.country}
+    return len(countries) >= 2
+
+
 def deescalation_bonus(
     prev_utopia: float, state: TrajectoryState, params: KahnParams | None = None
 ) -> TrajectoryState:
@@ -195,6 +211,31 @@ def deescalation_bonus(
         1.0,
         cap=extra * len(AXES),  # ΔA1 = 5×ΔU voulu (poids égaux 0,2)
         note=f"Désescalade réciproque — gain d'indice ×{p.reciprocal_multiplier:g}.",
+    )
+
+
+def escalation_penalty(
+    prev_utopia: float, state: TrajectoryState, params: KahnParams | None = None
+) -> TrajectoryState:
+    """×1,5 sur la PERTE d'indice U du round quand la ré-escalade est réciproque — pur, borné.
+
+    Pénalité MIROIR de `deescalation_bonus` (Brief 3 pt 3, décision 4 : rendre le bonus
+    symétrique plutôt que de le retirer) : un couple de SI qui s'entraîne vers le HAUT du
+    conflit encaisse la même sur-pondération qu'un couple qui désescalade ensemble, mais
+    sur la perte. Passe par le même levier (A1, `nudge_axis`) pour préserver l'invariant
+    « U = moyenne des axes » et ne jamais franchir le pôle dystopique. Sans perte (round
+    gagnant ou stable), l'état est rendu tel quel."""
+    p = _params(params)
+    loss = prev_utopia - state.utopia
+    if loss <= 1e-12 or p.reciprocal_multiplier <= 1.0:
+        return state
+    extra = loss * (p.reciprocal_multiplier - 1.0)
+    return nudge_axis(
+        state,
+        "A1",
+        0.0,
+        cap=extra * len(AXES),  # ΔA1 = 5×ΔU voulu (poids égaux 0,2), miroir vers le bas
+        note=f"Ré-escalade réciproque — perte d'indice ×{p.reciprocal_multiplier:g}.",
     )
 
 

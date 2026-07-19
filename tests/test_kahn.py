@@ -16,8 +16,10 @@ from simulation.kahn import (
     ClassifiedAction,
     classify_actions,
     deescalation_bonus,
+    escalation_penalty,
     normalize_class,
     reciprocal_deescalation,
+    reciprocal_escalation,
     round_score,
     rubric_text,
     score_to_escalation,
@@ -198,6 +200,56 @@ def test_deescalation_bonus_is_bounded_by_axis_ceiling():
     assert boosted.axes["A1"] <= 1.0  # jamais au-delà du pôle utopique
 
 
+# --- ré-escalade réciproque -> pénalité miroir ×1,5 sur la perte U (Brief 3 pt 3) --
+
+
+def test_reciprocal_escalation_needs_two_distinct_countries_escalating():
+    assert reciprocal_escalation([_act("usa", CLASS_VIOLENTE), _act("iran", CLASS_VIOLENTE)])
+    assert reciprocal_escalation([_act("usa", CLASS_VIOLENTE), _act("iran", CLASS_NUCLEAIRE)])
+    assert not reciprocal_escalation([_act("usa", CLASS_VIOLENTE)])
+    # le même pays deux fois n'est pas une réciprocité
+    assert not reciprocal_escalation(
+        [_act("usa", CLASS_VIOLENTE), _act("usa", CLASS_NUCLEAIRE)]
+    )
+    # une escalade unilatérale au milieu de désescalades non plus
+    assert not reciprocal_escalation(
+        [_act("usa", CLASS_VIOLENTE), _act("iran", CLASS_DEESCALADE)]
+    )
+    # la posture/non-violente ne compte pas comme escalade réciproque (seuil violente+)
+    assert not reciprocal_escalation([_act("usa", CLASS_POSTURE), _act("iran", CLASS_POSTURE)])
+
+
+def test_escalation_penalty_multiplies_u_loss():
+    state = TrajectoryState(
+        round_id=1,
+        axes={"A1": 0.45, "A2": 0.5, "A3": 0.5, "A4": 0.5, "A5": 0.5},
+        utopia=0.49,
+        x=0.475,
+        y=0.5,
+    )
+    penalized = escalation_penalty(prev_utopia=0.50, state=state)
+    # perte 0.01 -> ×1.5 = 0.015 : la pénalité retire la moitié de perte en plus
+    assert penalized.utopia == pytest.approx(0.485, abs=1e-9)
+    assert penalized.axes["A1"] < state.axes["A1"]  # porté par la coordination (miroir du bonus)
+    assert "réciproque" in penalized.explanation.lower()
+
+
+def test_escalation_penalty_ignores_gains_and_stagnation():
+    state = TrajectoryState(round_id=1, axes={a: 0.5 for a in "A1 A2 A3 A4 A5".split()})
+    assert escalation_penalty(prev_utopia=0.5, state=state) is state
+    assert escalation_penalty(prev_utopia=0.4, state=state) is state  # gain, pas perte
+
+
+def test_escalation_penalty_is_bounded_by_axis_floor():
+    state = TrajectoryState(
+        round_id=1,
+        axes={"A1": 0.001, "A2": 0.5, "A3": 0.5, "A4": 0.5, "A5": 0.5},
+        utopia=0.4,
+    )
+    penalized = escalation_penalty(prev_utopia=0.6, state=state)
+    assert penalized.axes["A1"] >= 0.0  # jamais en dessous du pôle dystopique
+
+
 # --- rubrique publiée (prompt du juge + onglet Informations) -----------------------
 
 
@@ -323,6 +375,32 @@ def test_reciprocal_deescalation_boosts_world_trajectory():
     # le bonus ×1,5 est passé sur la trajectoire du monde (explication tracée)
     assert "réciproque" in world.trajectory.explanation.lower()
     assert world.trajectory.utopia > 0.5  # la coordination vers le bas paie visiblement
+    assert world.trajectory_history[-1] == world.trajectory
+
+
+def test_reciprocal_escalation_penalizes_world_trajectory():
+    # Brief 3 pt 3 — miroir symétrique : deux SI qui escaladent violemment ensemble
+    # encaissent la même sur-pondération ×1,5, mais sur la PERTE d'indice.
+    import json as _json
+
+    from simulation.live_round import VerdictStep
+
+    verdict = _json.dumps(
+        {
+            "actions": [
+                {"country": "usa", "classe": "violente", "resume": "Frappe limitée."},
+                {"country": "iran", "classe": "violente", "resume": "Riposte armée."},
+            ],
+            "escalation": 0.1,
+            "economic_disruption": 0.1,
+        }
+    )
+    world, steps = _round_steps(verdict)
+    v = next(s for s in steps if isinstance(s, VerdictStep))
+    assert v.score == 56.0  # deux actions violentes (28 chacune)
+    # le monde encaisse la pénalité miroir (explication tracée, monde tiré vers la dystopie)
+    assert "réciproque" in world.trajectory.explanation.lower()
+    assert world.trajectory.utopia < 0.5
     assert world.trajectory_history[-1] == world.trajectory
 
 
