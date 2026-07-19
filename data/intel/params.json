@@ -12,5 +12,9 @@
   "save_bonus_per_10": 2,
   "analyze_window": 3,
   "harbinger_drop": 0.25,
-  "harbinger_min_sentences": 3
+  "harbinger_min_sentences": 3,
+  "_note_covert": "Brief 6 pt13 — bureau des opérations secrètes, payé en COMPUTE (pas en crédits, absent de costs). covert_compute_cost=500 tokens = 5.0 unités de compute (échelle simulation/compute.py, 100 tokens/unité) ~= 33% du stock médian d'un pays (data/sources/indicators.json : médiane ~15 sur 33 pays) : cher mais jouable. covert_sabotage_amount=4.0 unités retirées à la cible. Calibrage fin au playtest (Cowork).",
+  "covert_compute_cost": 500,
+  "covert_sabotage_amount": 4.0,
+  "covert_expose_prob": 0.3
 }

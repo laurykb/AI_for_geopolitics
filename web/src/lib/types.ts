@@ -1145,7 +1145,7 @@ export type IntelAnalysis = {
 
 /** Résultat d'un achat de renseignement (POST /games/{id}/intel — G4). */
 export type IntelResult = {
-  action: "brief" | "verify" | "disinfo" | "analyze";
+  action: "brief" | "verify" | "disinfo" | "analyze" | "covert";
   cost: number;
   budget: number;
   brief: string | null;
@@ -1154,6 +1154,10 @@ export type IntelResult = {
   note: string | null;
   /** G23 — présent pour l'action « analyze » ; l'affichage DOIT porter le caveat. */
   analysis?: IntelAnalysis | null;
+  /** Brief 6 pt13 — « covert » UNIQUEMENT : coût payé en COMPUTE du pays joué et solde
+   * après débit. Ressource distincte des crédits intel (cost/budget) — null sinon. */
+  compute_cost?: number | null;
+  compute_left?: number | null;
 };
 
 /** Une règle ratifiée (M7) — `clause` se traduit côté front (TREATY_LABELS). */

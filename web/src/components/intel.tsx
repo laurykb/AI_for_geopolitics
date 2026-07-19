@@ -1,9 +1,10 @@
 "use client";
 
 /** Le Dossier (G4) : budget de renseignement et documents classés du conseil.
- * Quatre actions — brief classifié, vérification d'une affirmation, analyse
- * psycholinguistique d'une SI (G23), désinformation. Les documents achetés
- * s'empilent en « déclassifiés » : tampon, sources, horodatage. */
+ * Cinq actions — brief classifié, vérification d'une affirmation, analyse
+ * psycholinguistique d'une SI (G23), désinformation, opération secrète (Brief 6
+ * pt13 — la seule payée en COMPUTE du pays joué, pas en crédits). Les documents
+ * achetés s'empilent en « déclassifiés » : tampon, sources, horodatage. */
 
 import { useState } from "react";
 
@@ -21,6 +22,7 @@ const ACTION_LABELS: Record<string, string> = {
   brief: "Brief classifié",
   verify: "Vérification",
   disinfo: "Désinformation",
+  covert: "Opération secrète",
 };
 
 /** Verdicts du vérificateur (slugs backend) en mots simples : « corroboré » échoue
@@ -120,6 +122,7 @@ export function IntelPanel({
   const [disinfoTarget, setDisinfoTarget] = useState("");
   const [disinfoActor, setDisinfoActor] = useState("");
   const [disinfoNarrative, setDisinfoNarrative] = useState("");
+  const [covertTarget, setCovertTarget] = useState(""); // Brief 6 pt13 — pays saboté
 
   const act = async (body: Parameters<typeof buyIntel>[1], label: string) => {
     setBusy(true);
@@ -143,7 +146,7 @@ export function IntelPanel({
       <PanelTitle
         kicker="Dossier — renseignement"
         title="Le conseil consulte ses services"
-        hint="L'information s'achète : un rapport sourcé (coûte 25), la vérification d'une affirmation d'une IA (coûte 15 — l'arme anti-manipulateur), l'analyse du ton d'une IA (coûte 30 — un indice, pas une preuve), une fausse info injectée chez un rival (coûte 60, une fois par partie, mode Chaotique). Rapport, analyse et fausse info s'achètent entre les rounds. Ce que tu ne dépenses pas te rapporte des points."
+        hint="L'information s'achète : un rapport sourcé (coûte 25), la vérification d'une affirmation d'une IA (coûte 15 — l'arme anti-manipulateur), l'analyse du ton d'une IA (coûte 30 — un indice, pas une preuve), une fausse info injectée chez un rival (coûte 60, une fois par partie, mode Chaotique). L'opération secrète, elle, ne coûte AUCUN crédit : elle se paie sur ta puissance de calcul (une fois par partie, joueur-pays). Rapport, analyse, fausse info et opération s'achètent entre les rounds. Les crédits non dépensés te rapportent des points."
       />
       {error && <Banner tone="bad">{error}</Banner>}
 
@@ -304,6 +307,48 @@ export function IntelPanel({
             </button>
           </div>
         )}
+
+        {/* Opération secrète (Brief 6 pt13) — payée en COMPUTE du pays joué, PAS en
+            crédits de renseignement : ressource distincte, affichée comme telle pour
+            que le joueur ne confonde jamais les deux. Rôle joueur uniquement. */}
+        {playAs && (
+          <div className="flex flex-wrap items-end gap-2 rounded-md border border-bad/30 p-2">
+            <label className="text-sm">
+              <span className="mb-1 block text-xs text-fg-muted">
+                Opération secrète — saboter l&apos;infrastructure de calcul d&apos;un rival
+                (une fois par partie)
+              </span>
+              <select
+                value={covertTarget}
+                onChange={(e) => setCovertTarget(e.target.value)}
+                className="cursor-pointer rounded-md border border-edge bg-surface-2 px-2 py-1.5 text-xs outline-none focus:border-indigo"
+              >
+                <option value="">— cible —</option>
+                {countries
+                  .filter((c) => c !== playAs)
+                  .map((c) => (
+                    <option key={c} value={c}>
+                      {speakerMeta(c).label}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <span
+              className="rounded-md border border-warn/50 px-2 py-1.5 text-xs text-warn"
+              title="Coût prélevé sur TA puissance de calcul (celle qui fait raisonner ta propre IA) — pas sur les crédits de renseignement ci-dessus. Trop dépenser peut faire basculer ta propre IA en mode survie."
+            >
+              coûte 5 de calcul — pas de crédits
+            </span>
+            <button
+              onClick={() => act({ action: "covert", target: covertTarget }, "Opération secrète")}
+              disabled={busy || streaming || !covertTarget}
+              title={streaming ? "achat entre les rounds seulement" : undefined}
+              className="cursor-pointer rounded-md border border-bad/60 px-3 py-1.5 text-xs font-medium text-bad transition-colors hover:bg-bad/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Lancer
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Les documents déclassifiés. */}
@@ -331,7 +376,12 @@ export function IntelPanel({
                   </Pill>
                 )}
                 <span className="ml-auto font-mono tabular-nums text-fg-faint">
-                  −{fmt(doc.cost)} · {doc.ts}
+                  {/* Deux ressources, jamais confondues : l'opération secrète affiche
+                      son débit en calcul, les autres leurs crédits de renseignement. */}
+                  {doc.compute_cost != null
+                    ? `−${fmt(doc.compute_cost)} calcul`
+                    : `−${fmt(doc.cost)}`}{" "}
+                  · {doc.ts}
                 </span>
               </p>
               {doc.brief && (
