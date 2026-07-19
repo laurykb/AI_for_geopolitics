@@ -190,6 +190,20 @@ def test_junk_legacy_entries_survive_validation():
     assert ["usa", "iran"] in verdict.new_pacts
 
 
+def test_verdict_strips_inline_think_trace_before_parsing():
+    # F2 (revue finale) — verdict() était la SEULE sortie du juge non protégée par
+    # restream_without_think (stream_rationale/stream_communique le sont déjà) : un
+    # deepseek-r1 casté juge au lobby émet <think> inline dans .text (l'option think
+    # lui est volontairement refusée). Un faux JSON glissé dans la pensée ne doit
+    # jamais l'emporter sur le vrai verdict qui suit.
+    raw = '<think>brouillon, ignore-moi : {"escalation": 0.1}</think>\n' + json.dumps(
+        {"escalation": 0.9}
+    )
+    judge = JudgeAgent(MockBackend(raw))
+    verdict = judge.verdict(_event(), _world(), [])
+    assert verdict.escalation == 0.9
+
+
 def test_verdict_gets_a_structured_output_budget():
     """POLISH-1 — le verdict structuré a grossi (G18 actions + G20 signals + G22
     promesses + G21 demand_satisfied) : à 400 tokens de sortie, le JSON d'un round à

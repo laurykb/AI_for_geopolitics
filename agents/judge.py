@@ -21,7 +21,7 @@ from core.world_state import WorldState
 from inference.backend import InferenceBackend
 from inference.json_extract import extract_json
 from simulation.negotiation import NegotiationMessage, Verdict, format_transcript
-from simulation.private_deliberation import restream_without_think
+from simulation.private_deliberation import restream_without_think, strip_think
 
 # POLISH-1 — budget de sortie DÉDIÉ au verdict structuré. Le JSON a grossi avec le lot
 # G18-G23 (actions classées + intentions annoncées + promesses + demand_satisfied) : à
@@ -91,7 +91,12 @@ class JudgeAgent:
                 max_tokens=max(self.max_tokens, VERDICT_MAX_TOKENS),
                 temperature=self.temperature,
             )
-            data = extract_json(result.text)
+            # F2 (revue finale) — verdict() est la SEULE sortie du juge non protégée par
+            # restream_without_think (rationale/communiqué le sont déjà) : un deepseek-r1
+            # casté juge au lobby émet <think> inline même sans l'option think. Sans ce
+            # strip, un faux JSON dans la pensée casse `extract_json` (ou pire, se fait
+            # parser à la place du vrai verdict).
+            data = extract_json(strip_think(result.text))
         except Exception:
             data = None
         if not isinstance(data, dict):
