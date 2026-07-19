@@ -117,6 +117,9 @@ export type GameView = {
   pending_motion: MotionView | null;
   suspended: string[];
   play_as: string | null; // pays joué par l'humain (Joueur-pays)
+  // Point 7 — pays inventé (Architecte), incarné ou non ; déduit côté API, jamais
+  // persisté. Sert à l'exclure des prévisions croisées (ScenarioForecastPanel).
+  invented_country?: string | null;
   awaiting_human: boolean; // un round est suspendu sur le tour du joueur
   turn_seconds: number; // G2 — délai du tour humain
   intel_budget: number | null; // G4 — crédits de renseignement restants

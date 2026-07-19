@@ -137,7 +137,7 @@ from simulation.live_round import (
     VerdictStep,
     run_negotiation_round,
 )
-from simulation.loader import load_world
+from simulation.loader import known_country_ids, load_world
 from simulation.model_cast import prepare_model_cast
 from simulation.motions import (
     HUMAN_FILER,
@@ -635,6 +635,11 @@ def _view(
         phase = "round_complete"
     else:
         phase = "ready"
+    countries = sorted(session.world.countries) if session else sorted(snapshot_countries)
+    # Point 7 — le pays inventé n'est pas persisté : c'est l'id du monde absent du
+    # registre standard (data/countries). Au plus un par partie (country_forge est
+    # appelé une fois par création) ; `None` si la partie n'a rien inventé.
+    invented = next((c for c in countries if c not in known_country_ids()), None)
     return GameView(
         id=game.id,
         scenario=game.scenario,
@@ -642,9 +647,8 @@ def _view(
         status=game.status.value,
         phase=phase,
         created_at=game.created_at,
-        countries=(
-            sorted(session.world.countries) if session else sorted(snapshot_countries)
-        ),
+        countries=countries,
+        invented_country=invented,
         live=session is not None,
         resumable=game.status is GameStatus.RUNNING and (session is not None or resumable),
         mode=session.mode if session else game.mode,
