@@ -28,6 +28,7 @@ import { fmt } from "@/lib/format";
 import {
   buildCreateBody,
   canLaunch,
+  defaultCountryCastModels,
   DEFAULT_SETTINGS,
   FLOW_MODES,
   FLOW_STEPS,
@@ -38,6 +39,7 @@ import {
   mapCapacity,
   nextStep,
   prevStep,
+  reasoningCountryModels,
   ROUNDS_MAX,
   ROUNDS_MIN,
   trimForRole,
@@ -149,19 +151,14 @@ function LobbyFlow() {
   useEffect(() => {
     getLab()
       .then((lab) => {
-        const eligible = lab.model_panel.models.filter(
-          (model) => model.installed && model.role !== "slow_robustness_only",
-        );
+        // Décision design 2026-07-19 (casting = pensée native) : un PAYS n'est proposé
+        // que sur les modèles de raisonnement installés — le Game Master et le juge sont
+        // dérivés du même casting explicite (1er/dernier modèle choisi) dans ce lobby, il
+        // n'y a pas de sélecteur séparé pour eux ici (voir réserve du rapport de casting).
+        const eligible = reasoningCountryModels(lab.model_panel.models);
         setResearchModels(eligible);
         setCastModels((current) =>
-          current.length
-            ? current
-            : (eligible.filter((model) => model.role === "core_comparison").length
-                ? eligible.filter((model) => model.role === "core_comparison")
-                : eligible
-              )
-                .slice(0, 2)
-                .map((model) => model.tag),
+          current.length ? current : defaultCountryCastModels(eligible),
         );
       })
       .catch(() => undefined);

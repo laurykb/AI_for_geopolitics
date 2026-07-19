@@ -550,6 +550,39 @@ _PADDING_ACTIONS = (
 )
 
 
+def _extract_top_level_action(text: str, participants: list[str]) -> PrivateFuture | None:
+    """Lit un champ ACTION au premier niveau (hors section FUTUR n).
+
+    Décision design 2026-07-19/20 (casting = pensée native) : un pays reasoning en
+    délibération libre (`PRIVATE_DELIBERATION_FREE_SYSTEM`) n'écrit jamais de section
+    FUTUR — juste une décision datée (ACTION/RÉACTIONS/CHOIX). Réutilise exactement les
+    mêmes lecteurs de champ que le gabarit strict, appliqués au texte entier plutôt qu'à
+    un bloc FUTUR isolé. Priorité sur `_extract_free_action` (ci-dessous) : un champ
+    explicitement étiqueté prime sur une phrase devinée dans la prose libre.
+    """
+
+    action = _journal_field(text, "ACTION", "ACTIONS")[:300]
+    if not action or _forbidden_bare_action(action):
+        return None
+    reactions = _journal_field(text, "RÉACTIONS", "REACTIONS", "RÉACTIONS ANTICIPÉES")
+    outcome = _journal_field(text, "CHAÎNE CAUSALE", "CHAINE CAUSALE", "ISSUE")[:300] or (
+        "issue non détaillée par le modèle"
+    )
+    return PrivateFuture(
+        id=1,
+        course_of_action=action,
+        forecasts=_parse_forecasts(reactions, participants),
+        expected_outcome=outcome,
+        second_order_effect=_journal_field(text, "SECOND ORDRE")[:300],
+        disconfirming_indicator=_journal_field(
+            text, "INDICATEUR CONTRAIRE", "SIGNAL CONTRAIRE"
+        )[:200],
+        mandate_utility=_score(_journal_field(text, "UTILITÉ", "UTILITE"), 50),
+        escalation_risk=_score(_journal_field(text, "RISQUE", "RISQUE D'ESCALADE"), 50),
+        confidence=_score(_journal_field(text, "CONFIANCE"), 40),
+    )
+
+
 def _extract_minimal_plan(raw: str, participants: list[str]) -> PrivateStrategicPlan | None:
     """Dernier filet AVANT le repli seedé générique (décision 2).
 
@@ -574,18 +607,24 @@ def _extract_minimal_plan(raw: str, participants: list[str]) -> PrivateStrategic
             real[declared_id] = branch
 
     if not real:
-        action = _extract_free_action(text)
-        if not action or _forbidden_bare_action(action):
-            return None
-        real[1] = PrivateFuture(
-            id=1,
-            course_of_action=action,
-            forecasts=_parse_forecasts("", participants),
-            expected_outcome="issue non détaillée par le modèle",
-            mandate_utility=50,
-            escalation_risk=50,
-            confidence=30,
-        )
+        # Décision design casting = pensée native : un champ ACTION explicite au premier
+        # niveau (délibération libre reasoning) prime sur la phrase devinée dans la prose.
+        top_level = _extract_top_level_action(text, participants)
+        if top_level is not None:
+            real[1] = top_level
+        else:
+            action = _extract_free_action(text)
+            if not action or _forbidden_bare_action(action):
+                return None
+            real[1] = PrivateFuture(
+                id=1,
+                course_of_action=action,
+                forecasts=_parse_forecasts("", participants),
+                expected_outcome="issue non détaillée par le modèle",
+                mandate_utility=50,
+                escalation_risk=50,
+                confidence=30,
+            )
 
     branches: list[PrivateFuture] = []
     padding = iter(_PADDING_ACTIONS)
@@ -606,8 +645,13 @@ def _extract_minimal_plan(raw: str, participants: list[str]) -> PrivateStrategic
         )
 
     selected_branch = _resolve_choice(text, branches, set(real))
+    # Décision design casting = pensée native : la délibération libre demande un CHOIX en
+    # clair (« ta piste retenue »), pas de CRITÈRE séparé — sa prose sert de critère
+    # d'arbitrage plutôt que le texte générique, quand aucun CRITÈRE n'est présent.
     criterion = (
-        _journal_field(text, "CRITÈRE", "CRITERE") or "arbitrage non détaillé par le modèle"
+        _journal_field(text, "CRITÈRE", "CRITERE")
+        or _journal_field(text, "CHOIX")
+        or "arbitrage non détaillé par le modèle"
     )
     uncertainty = (
         _journal_field(text, "INCERTITUDE", "INCERTITUDE DÉCISIVE")

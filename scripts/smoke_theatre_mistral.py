@@ -25,9 +25,18 @@ Usage : python scripts/smoke_theatre_mistral.py
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from pathlib import Path
+
+# Décision design 2026-07-19 (casting = pensée native) : sans `model_cast` explicite, une
+# partie classique/campagne caste désormais ses pays par défaut sur deepseek-r1:7b (voir
+# `app/game_api.py::_default_reasoning_cast`) — ce smoke teste le MOTEUR (ultimatum, Kahn,
+# signaux, promesses, Storyteller), pas la politique de casting, et doit rester rapide sur
+# mistral pour tous les rôles. Échappatoire réservée aux tests/smoke (lue à chaque requête
+# de création de partie, donc valable même posée ici en tête de script).
+os.environ["GAME_ALLOW_GENERALIST_CAST"] = "1"
 
 # Le dépôt du script d'abord (avant un éventuel install editable du venv partagé) :
 # le smoke doit tester CE worktree/clone, pas un autre.

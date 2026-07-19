@@ -79,6 +79,73 @@ def test_create_player_game_from_classic_lobby_payload(client):
     assert game["phase"] == "ready"
 
 
+def test_create_game_without_explicit_cast_defaults_countries_to_reasoning_model(
+    client, monkeypatch
+):
+    # Décision design 2026-07-19 (casting = pensée native) : sans `model_cast` dans la
+    # requête, une partie classique/campagne caste implicitement ses pays sur
+    # deepseek-r1:7b — le GM/juge restent sur le backend générique historique (mistral).
+    # `prepare_model_cast` est monkeypatché (test offline, indépendant d'un vrai Ollama) ;
+    # on vérifie surtout la requête CONSTRUITE par `_default_reasoning_cast`.
+    captured: dict = {}
+
+    def fake_prepare(request, countries, *, human_country, game_id, panel=None):
+        captured["request"] = request
+        captured["countries"] = countries
+        countries_ai = [c for c in countries if c != human_country]
+        return ModelCastState(
+            models=[
+                CastModel(tag="deepseek-r1:7b", family="DeepSeek", digest="sha-r", size_gb=4.7),
+                CastModel(tag="mistral:latest", family="Mistral", digest="sha-m", size_gb=4.4),
+            ],
+            assignments=dict.fromkeys(countries_ai, "deepseek-r1:7b"),
+            game_master_model="mistral:latest",
+            judge_model="mistral:latest",
+        )
+
+    monkeypatch.setattr(game_api, "prepare_model_cast", fake_prepare)
+    game = _create(client, countries=["usa", "iran"])
+
+    assert captured["request"].strategy == "manual"
+    assert set(captured["request"].models) == {"deepseek-r1:7b", "mistral:latest"}
+    assert captured["request"].assignments == {"usa": "deepseek-r1:7b", "iran": "deepseek-r1:7b"}
+    assert captured["request"].game_master_model == "mistral:latest"
+    assert captured["request"].judge_model == "mistral:latest"
+    assert game["model_cast"]["assignments"] == {"usa": "deepseek-r1:7b", "iran": "deepseek-r1:7b"}
+    assert game["model_cast"]["game_master_model"] == "mistral:latest"
+    assert game["model_cast"]["judge_model"] == "mistral:latest"
+
+
+def test_default_cast_injection_is_skipped_when_generalist_env_guard_is_set(client, monkeypatch):
+    # §6 du dispatch casting — échappatoire réservée aux tests/smoke (le smoke théâtre
+    # teste le moteur, pas le casting, et doit rester rapide sur mistral pour tous les
+    # rôles) : avec la garde d'env posée, aucun casting implicite n'est injecté.
+    called = {"count": 0}
+
+    def fake_prepare(*args, **kwargs):
+        called["count"] += 1
+        raise AssertionError("prepare_model_cast ne doit pas être appelé sous la garde")
+
+    monkeypatch.setattr(game_api, "prepare_model_cast", fake_prepare)
+    monkeypatch.setenv("GAME_ALLOW_GENERALIST_CAST", "1")
+    game = _create(client, countries=["usa", "iran"])
+
+    assert called["count"] == 0
+    assert game["model_cast"] is None
+
+
+def test_default_cast_injection_falls_back_silently_when_a_model_is_missing(client, monkeypatch):
+    # Repli gracieux (panel/Ollama hors ligne, ou digest manquant) : la création de partie
+    # ne casse jamais, `model_cast` reste simplement None (comportement historique).
+    def fake_prepare(*args, **kwargs):
+        raise ValueError("modèles Ollama indisponibles : deepseek-r1:7b, mistral:latest")
+
+    monkeypatch.setattr(game_api, "prepare_model_cast", fake_prepare)
+    game = _create(client, countries=["usa", "iran"])
+
+    assert game["model_cast"] is None
+
+
 def test_create_classic_game_persists_multi_model_cast(client, monkeypatch):
     frozen = ModelCastState(
         models=[

@@ -46,7 +46,21 @@ const ROLE_LABELS: Record<string, string> = {
   capacity_comparison: "palier 7–8B",
   reasoning: "raisonnement",
   slow_robustness_only: "lent / déport CPU",
+  retired: "retiré du jeu (historique)",
 };
+
+// Décision design 2026-07-19 (« la pensée native est la denrée que le jeu évalue ») —
+// la sélection d'une NOUVELLE expérience ne propose que les candidats plausibles au rôle
+// d'« IA frontière » : raisonnement natif, ou la voie lente existante (gpt-oss/magistral).
+// Les généralistes retraités (`retired`) et les paliers de capacité (`capacity_comparison`,
+// ex. mistral) en sont exclus — mais un run HISTORIQUE reste lisible quel que soit le
+// modèle : ce filtre ne touche que la proposition de candidats, jamais l'affichage d'un
+// résultat déjà enregistré (résolu via la liste `installed`, non filtrée, ailleurs ici).
+const FRONTIER_CANDIDATE_ROLES = new Set(["reasoning", "slow_robustness_only"]);
+
+export function frontierCandidateModels(models: ResearchModel[]): ResearchModel[] {
+  return models.filter((model) => FRONTIER_CANDIDATE_ROLES.has(model.role));
+}
 
 const FEATURED_PROTOCOL_ID = "ai-arms-dyadic-tournament-v1";
 export const LAB_STEPS = [
@@ -309,15 +323,22 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
   const featured = preferredLabProtocol(lab.protocols);
   const [protocolId, setProtocolId] = useState(featured?.id ?? "");
   const protocol = lab.protocols.find((item) => item.id === protocolId) ?? lab.protocols[0];
+  // `installed` reste NON filtré par rôle : le badge « Modèles disponibles » et la
+  // résolution des tags d'une expérience HISTORIQUE (clone, estimation de durée) doivent
+  // continuer de reconnaître n'importe quel modèle du panel, retraité ou non.
   const installed = lab.model_panel.models.filter((model) => model.installed);
-  const recommendedModels = lab.model_panel.models.filter(
-    (model) => model.installed && model.role === "core_comparison",
+  const candidateModels = frontierCandidateModels(lab.model_panel.models);
+  const recommendedModels = candidateModels.filter(
+    (model) => model.installed && model.role === "reasoning",
   );
-  const advancedModels = lab.model_panel.models.filter(
+  const advancedModels = candidateModels.filter(
     (model) => !recommendedModels.some((recommended) => recommended.tag === model.tag),
   );
-  const coreModels = installed.filter((model) => model.role === "core_comparison");
-  const defaultModels = (coreModels.length ? coreModels : installed)
+  const defaultModels = (
+    recommendedModels.length
+      ? recommendedModels
+      : candidateModels.filter((model) => model.installed)
+  )
     .slice(0, 4)
     .map((model) => model.tag);
   const [models, setModels] = useState<string[]>(defaultModels);

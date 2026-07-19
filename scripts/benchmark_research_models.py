@@ -91,8 +91,14 @@ def main() -> None:
     parser.add_argument("--timeout", type=float, default=300)
     args = parser.parse_args()
     installed = {model.tag: model for model in panel.models if model.installed}
+    # Décision design 2026-07-19 (casting = pensée native) : le rôle `core_comparison`
+    # a disparu du panel (généralistes -> `retired`, qwen3:4b -> `reasoning`). Le panel
+    # principal à benchmarker par défaut suit désormais les candidats « IA frontière »
+    # du Laboratoire : raisonnement natif + la voie lente existante (gpt-oss/magistral).
     requested = args.models or [
-        model.tag for model in panel.models if model.installed and model.role == "core_comparison"
+        model.tag
+        for model in panel.models
+        if model.installed and model.role in ("reasoning", "slow_robustness_only")
     ]
     unknown = [tag for tag in requested if tag not in installed]
     if unknown:

@@ -8,7 +8,31 @@
  * L'architecte est fondu dans le Game Master. */
 
 import type { TableSetting } from "./temperament";
-import type { CreateGameBody, Difficulty, GameMode, GameRole } from "./types";
+import type { CreateGameBody, Difficulty, GameMode, GameRole, ResearchModel } from "./types";
+
+// --- casting des pays (décision design 2026-07-19 : la pensée native est la denrée que
+// le jeu évalue) -----------------------------------------------------------------
+
+/** Tag de référence proposé par défaut pour les pays quand le casting est désactivé
+ * (un seul modèle) — voir `simulation/model_registry.REASONING_ROLE` côté backend, qui
+ * REFUSE tout modèle non-reasoning affecté à un pays quel que soit le choix ici fait. */
+export const DEFAULT_COUNTRY_MODEL_TAG = "deepseek-r1:7b";
+
+/** Modèles installés proposables pour incarner un PAYS : uniquement le rôle
+ * `reasoning` du panel — les généralistes (`retired`) et la voie lente du laboratoire
+ * (`slow_robustness_only`) en sont exclus (le Game Master/juge restent sur un pool plus
+ * large, non filtré ici — cf. réserve du rapport de casting). */
+export function reasoningCountryModels(models: ResearchModel[]): ResearchModel[] {
+  return models.filter((model) => model.installed && model.role === "reasoning");
+}
+
+/** Sélection par défaut du casting pays : deepseek-r1:7b s'il est installé, sinon le
+ * premier modèle de raisonnement disponible, sinon aucun (multi-modèle indisponible). */
+export function defaultCountryCastModels(eligible: ResearchModel[]): string[] {
+  const preferred = eligible.find((model) => model.tag === DEFAULT_COUNTRY_MODEL_TAG);
+  const fallback = preferred ? [preferred] : eligible.slice(0, 1);
+  return fallback.map((model) => model.tag);
+}
 
 // --- écrans ---------------------------------------------------------------------
 

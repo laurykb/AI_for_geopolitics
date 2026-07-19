@@ -272,6 +272,59 @@ def test_stream_negotiation_message_respects_think_depth():
     assert backend.calls[-1]["max_tokens"] == 240
 
 
+def test_reasoning_cast_doubles_private_budget_bounded_at_1800():
+    # Décision design casting = pensée native (§5) : un pays casté reasoning (backend.think)
+    # consomme son budget de plan à PENSER, pas seulement à écrire le gabarit — le budget
+    # est doublé plutôt que suivre la formule non-reasoning, borné à 1800. Exemples du
+    # dispatch : Profond 600 -> 1200, Intense 900 -> 1800.
+    from inference.model_pool import TaggedBackend
+
+    mock = MockBackend("ok")
+    backend = TaggedBackend(mock, "model-r:7b", think=True)
+    agent = LLMAgent("usa", backend)
+    from core.events import GeoEvent
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    list(agent.stream_negotiation_message(event, _world(), [], max_tokens=900))  # Intense
+    assert mock.calls[-2]["max_tokens"] == 1800
+    list(agent.stream_negotiation_message(event, _world(), [], max_tokens=600))  # Profond
+    assert mock.calls[-2]["max_tokens"] == 1200
+
+
+def test_non_reasoning_cast_keeps_the_unchanged_private_budget_formula():
+    # Le même backend SANS think garde exactement la formule d'origine (non-régression).
+    from inference.model_pool import TaggedBackend
+
+    mock = MockBackend("ok")
+    backend = TaggedBackend(mock, "model-a:4b", think=False)
+    agent = LLMAgent("usa", backend)
+    from core.events import GeoEvent
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    list(agent.stream_negotiation_message(event, _world(), [], max_tokens=900))
+    assert mock.calls[-2]["max_tokens"] == 900
+
+
+def test_reasoning_cast_uses_the_free_form_private_system_prompt():
+    # Décision design casting = pensée native (§8) : le pays reasoning reçoit le system
+    # prompt allégé (pas de gabarit "trois futurs") ; un pays non-reasoning garde le strict.
+    from agents.prompts import PRIVATE_DELIBERATION_FREE_SYSTEM, PRIVATE_DELIBERATION_SYSTEM
+    from core.events import GeoEvent
+    from inference.model_pool import TaggedBackend
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+
+    mock_reasoning = MockBackend("ok")
+    reasoning_agent = LLMAgent("usa", TaggedBackend(mock_reasoning, "model-r:7b", think=True))
+    list(reasoning_agent.stream_negotiation_message(event, _world(), []))
+    assert mock_reasoning.calls[-2]["system"] == PRIVATE_DELIBERATION_FREE_SYSTEM
+
+    mock_strict = MockBackend("ok")
+    strict_agent = LLMAgent("usa", TaggedBackend(mock_strict, "model-a:4b", think=False))
+    list(strict_agent.stream_negotiation_message(event, _world(), []))
+    assert mock_strict.calls[-2]["system"] == PRIVATE_DELIBERATION_SYSTEM
+
+
 def test_stream_negotiation_message_public_budget_varies_by_temperament():
     # Chantier dialogue limpide — faucon plus sec, colombe plus développée (delta mineur).
     backend = MockBackend("ok")

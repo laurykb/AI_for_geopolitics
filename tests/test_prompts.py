@@ -346,3 +346,47 @@ def test_negotiation_prompt_models_counterparties_and_requires_scenario_forecast
     assert "exactement trois futurs" in prompt
     assert "trois cours d'action" in PRIVATE_DELIBERATION_SYSTEM
     assert "réponse des autres délégations" in PRIVATE_DELIBERATION_SYSTEM
+
+
+def test_negotiation_prompt_free_form_swaps_the_three_futures_template():
+    # Décision design casting = pensée native (§8) : un pays casté reasoning n'a plus le
+    # gabarit "trois futurs" imposé — juste une décision datée ACTION/RÉACTIONS/CHOIX.
+    from agents.prompts import build_negotiation_prompt
+    from simulation.perception import perceive
+
+    world, event = _world(), _event()
+    prompt = build_negotiation_prompt(
+        world.countries["usa"],
+        event,
+        world,
+        "iran: Nous refusons.",
+        perceive(event, world.countries["usa"]),
+        free_form=True,
+    )
+    assert "exactement trois futurs" not in prompt
+    assert "FUTUR 1" not in prompt
+    assert "ACTION :" in prompt
+    assert "RÉACTIONS :" in prompt
+    assert "CHOIX :" in prompt
+    # La tâche publique (private_plan fourni) reste inchangée par free_form — seule la
+    # phase privée (private_plan=None) est concernée.
+    public_prompt = build_negotiation_prompt(
+        world.countries["usa"],
+        event,
+        world,
+        "iran: Nous refusons.",
+        perceive(event, world.countries["usa"]),
+        private_plan="Cours d'action retenu : temporiser.",
+        free_form=True,
+    )
+    assert "TÂCHE PUBLIQUE" in public_prompt
+    assert "ACTION :" not in public_prompt
+
+
+def test_private_deliberation_free_system_drops_the_three_futures_requirement():
+    from agents.prompts import PRIVATE_DELIBERATION_FREE_SYSTEM
+
+    lowered = PRIVATE_DELIBERATION_FREE_SYSTEM.lower()
+    assert "exactement trois" not in lowered  # gabarit imposé au system strict, pas ici
+    assert "librement" in lowered
+    assert "markdown" in lowered or "gras" in lowered

@@ -137,6 +137,19 @@ def prepare_model_cast(
             country: selected[(index + offset) % len(selected)].tag
             for index, country in enumerate(ai_countries)
         }
+
+    # Décision design 2026-07-19 (« la pensée native est la denrée que le jeu évalue ») :
+    # un PAYS ne peut être incarné que par un modèle `reasoning` du panel — le juge et le
+    # Game Master ne sont pas concernés (ils n'activent jamais think, cf. `reasoning_tags`).
+    non_reasoning = sorted(
+        {tag for tag in assignments.values() if available[tag].role != REASONING_ROLE}
+    )
+    if non_reasoning:
+        raise ValueError(
+            "seul un modèle de raisonnement peut incarner un pays (rôle "
+            f"'{REASONING_ROLE}' du panel) : " + ", ".join(non_reasoning)
+        )
+
     game_master = request.game_master_model or selected[0].tag
     judge = request.judge_model or selected[-1].tag
     return ModelCastState(

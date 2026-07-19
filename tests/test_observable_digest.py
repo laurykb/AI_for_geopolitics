@@ -115,3 +115,25 @@ def test_missing_choice_line_returns_empty_string():
     # OBSERVATION présente mais pas de ligne "Choix : FUTUR n" exploitable — non conforme.
     text = "OBSERVATION\nsignal incomplet\n\nFUTUR 1\nAction : temporiser\n"
     assert observable_digest(text) == ""
+
+
+def test_works_on_a_free_form_reasoning_plan_without_futur_sections():
+    # Décision design casting = pensée native (§8, §9) : un pays reasoning en délibération
+    # libre ne produit ni gabarit "trois futurs" ni "FUTUR n" — seulement une décision
+    # datée ACTION/RÉACTIONS/CHOIX. `audit_summary()` reste un rendu déterministe du
+    # `PrivateStrategicPlan` (toujours 3 branches par construction) : le digest doit donc
+    # rester lisible, exactement comme pour un journal structuré.
+    raw = (
+        "Après réflexion sur la posture adverse et le coût politique d'une escalade, "
+        "je retiens une option de désescalade contrôlée.\n\n"
+        "ACTION : proposer un canal de communication direct hors caméra\n"
+        "RÉACTIONS : iran=coopere: réduit la pression publique\n"
+        "CHOIX : un canal discret limite le risque de perte de face pour les deux parties\n"
+    )
+    plan = parse_private_plan(raw, ["iran"])
+    assert plan is not None
+    digest = observable_digest(plan.audit_summary())
+    assert digest != ""
+    assert digest.count("\n") == 2
+    assert "Piste retenue : proposer un canal de communication direct hors caméra" in digest
+    assert "Critère : un canal discret limite le risque" in digest
