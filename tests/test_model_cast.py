@@ -196,6 +196,32 @@ def test_cast_flags_reasoning_models_for_think_activation():
     assert cast.reasoning_tags() == {"model-r:7b"}
 
 
+def test_reasoning_tags_exclude_judge_and_game_master_roles():
+    # Revue pt 5 (Critical) — le juge streame rationale/communiqué/motions vers des
+    # steps PUBLICS (JudgeTokenStep, CommuniqueStep, MotionTokenStep) : un juge ou un
+    # GM casté sur un modèle de raisonnement ne doit JAMAIS activer think. Seules les
+    # affectations PAYS comptent pour le routage think.
+    request = ModelCastRequest(
+        strategy="manual",
+        models=["model-a:4b", "model-r:7b"],
+        assignments={"usa": "model-a:4b", "iran": "model-a:4b"},
+        game_master_model="model-r:7b",
+        judge_model="model-r:7b",
+    )
+    cast = prepare_model_cast(
+        request,
+        ["usa", "iran", "france"],
+        human_country="france",
+        game_id="judge-reasoning",
+        panel=_panel(),
+    )
+    assert {model.tag: model.reasoning for model in cast.models} == {
+        "model-a:4b": False,
+        "model-r:7b": True,  # métadonnée honnête : c'est bien un modèle de raisonnement
+    }
+    assert cast.reasoning_tags() == set()  # mais aucun PAYS ne l'utilise → pas de think
+
+
 def test_offline_router_marks_reasoning_tags_with_think():
     routes = routed_backends(
         MockBackend("ok"),

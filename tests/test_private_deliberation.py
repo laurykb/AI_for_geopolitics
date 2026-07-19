@@ -4,6 +4,7 @@ from simulation.private_deliberation import (
     fallback_private_plan,
     parse_private_plan,
     sanitize_public_message,
+    split_think,
     strip_think,
 )
 
@@ -190,6 +191,15 @@ def test_strip_think_drops_orphan_opening_tag_to_the_end():
     # → tout ce qui suit l'ouvrante est de la pensée, strip aussi.
     assert strip_think("Texte public.<think>pensée tronquée sans fin") == "Texte public."
     assert strip_think("<think>tout le flux est de la pensée") == ""
+
+
+def test_split_think_separates_public_text_from_thought_channel():
+    # Revue pt 5 (Minor) — la télémétrie stocke le texte strippé dans .text et la
+    # pensée dans .thinking : split_think rend les deux canaux d'un seul passage.
+    clean, thought = split_think("<think>plan A</think>Public.<think>plan B</think>")
+    assert clean == "Public."
+    assert "plan A" in thought and "plan B" in thought
+    assert split_think("Sans balise.") == ("Sans balise.", "")
 
 
 def test_strip_think_drops_leading_thought_before_orphan_closing_tag():

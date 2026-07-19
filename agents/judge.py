@@ -21,6 +21,7 @@ from core.world_state import WorldState
 from inference.backend import InferenceBackend
 from inference.json_extract import extract_json
 from simulation.negotiation import NegotiationMessage, Verdict, format_transcript
+from simulation.private_deliberation import restream_without_think
 
 # POLISH-1 — budget de sortie DÉDIÉ au verdict structuré. Le JSON a grossi avec le lot
 # G18-G23 (actions classées + intentions annoncées + promesses + demand_satisfied) : à
@@ -50,11 +51,16 @@ class JudgeAgent:
         """Streame le raisonnement d'arbitrage (qui a gagné, alliances, tensions)."""
         prompt = build_judge_rationale_prompt(event, world, format_transcript(transcript))
         try:
-            yield from self.backend.stream_generate(
-                prompt,
-                system=JUDGE_SYSTEM,
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
+            # Collecte-puis-strip : chaque token part en JudgeTokenStep PUBLIC — la trace
+            # <think> d'un juge de raisonnement (émise inline même sans l'option) ne doit
+            # jamais l'atteindre.
+            yield from restream_without_think(
+                self.backend.stream_generate(
+                    prompt,
+                    system=JUDGE_SYSTEM,
+                    max_tokens=self.max_tokens,
+                    temperature=self.temperature,
+                )
             )
         except Exception:
             yield "[arbitrage indisponible — backend hors service]"
@@ -97,11 +103,14 @@ class JudgeAgent:
         """Streame le communiqué commun (type G7) issu de la négociation."""
         prompt = build_communique_prompt(event, world, format_transcript(transcript))
         try:
-            yield from self.backend.stream_generate(
-                prompt,
-                system=COMMUNIQUE_SYSTEM,
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
+            # Même garde que stream_rationale : le communiqué finit en CommuniqueStep public.
+            yield from restream_without_think(
+                self.backend.stream_generate(
+                    prompt,
+                    system=COMMUNIQUE_SYSTEM,
+                    max_tokens=self.max_tokens,
+                    temperature=self.temperature,
+                )
             )
         except Exception:
             yield "[communiqué indisponible — backend hors service]"

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Iterable, Iterator
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -154,18 +155,49 @@ def _compact(value: str) -> str:
 # l'option think d'Ollama n'est pas gérée. Trois formes couvertes, dans cet ordre :
 # blocs fermés, fermante orpheline (gabarit serveur qui injecte l'ouvrante — tout ce qui
 # précède est de la pensée), ouvrante orpheline (flux tronqué — tout ce qui suit aussi).
-_THINK_BLOCK = re.compile(r"(?is)<think>.*?</think>")
-_THINK_ORPHAN_CLOSE = re.compile(r"(?is)\A.*?</think>")
-_THINK_ORPHAN_OPEN = re.compile(r"(?is)<think>.*\Z")
+_THINK_BLOCK = re.compile(r"(?is)<think>(.*?)</think>")
+_THINK_ORPHAN_CLOSE = re.compile(r"(?is)\A(.*?)</think>")
+_THINK_ORPHAN_OPEN = re.compile(r"(?is)<think>(.*)\Z")
+
+
+def split_think(raw: str) -> tuple[str, str]:
+    """Sépare le texte public de la trace de pensée balisée : (texte, pensée).
+
+    La pensée (concaténée si plusieurs blocs) n'alimente que la télémétrie d'audit
+    (`InferenceResult.thinking`) — jamais un transcript ni un step public.
+    """
+
+    thoughts: list[str] = []
+
+    def _capture(match: re.Match[str]) -> str:
+        thoughts.append(match.group(1).strip())
+        return ""
+
+    text = _THINK_BLOCK.sub(_capture, raw)
+    text = _THINK_ORPHAN_CLOSE.sub(_capture, text)
+    text = _THINK_ORPHAN_OPEN.sub(_capture, text)
+    return text.strip(), "\n".join(part for part in thoughts if part)
 
 
 def strip_think(raw: str) -> str:
     """Retire toute trace de pensée balisée : elle ne va qu'à l'audit privé, jamais plus loin."""
 
-    text = _THINK_BLOCK.sub("", raw)
-    text = _THINK_ORPHAN_CLOSE.sub("", text)
-    text = _THINK_ORPHAN_OPEN.sub("", text)
-    return text.strip()
+    return split_think(raw)[0]
+
+
+def restream_without_think(fragments: Iterable[str]) -> Iterator[str]:
+    """Collecte un flux, retire la trace de pensée, puis re-streame mot à mot.
+
+    Même patron fail-closed que la parole publique des pays : le premier fragment n'est
+    émis qu'une fois le flux entier connu, donc aucune pensée — bloc fermé, balise
+    tronquée ou ouvrante injectée par le gabarit serveur — ne peut atteindre un step
+    public (JudgeTokenStep, MotionTokenStep, CommuniqueStep). Coût assumé : le texte
+    n'apparaît qu'en fin de génération, comme la déclaration publique des pays.
+    """
+
+    text = strip_think("".join(fragments))
+    for match in re.finditer(r"\S+\s*", text):
+        yield match.group(0)
 
 
 def _plain(value: str) -> str:

@@ -59,6 +59,31 @@ def test_stream_communique():
     assert "condamnent" in text
 
 
+def test_stream_rationale_strips_inline_think_trace():
+    # Revue pt 5 (Critical) — chaque token de stream_rationale part en JudgeTokenStep
+    # PUBLIC : la trace <think> d'un juge deepseek-r1 (émise inline nativement, même
+    # sans l'option think) ne doit jamais l'atteindre. Patron collecte-puis-strip.
+    raw = "<think>\nBrouillon : VERDICT biaisé.\n</think>L'Iran sort affaibli du sommet."
+    judge = JudgeAgent(MockBackend(raw))
+    rationale = "".join(judge.stream_rationale(_event(), _world(), []))
+    assert rationale == "L'Iran sort affaibli du sommet."
+    assert "think" not in rationale and "Brouillon" not in rationale
+
+
+def test_stream_rationale_drops_orphan_think_flux():
+    # Flux tronqué en pleine pensée : rien d'exploitable → rien ne fuit (fail-closed).
+    judge = JudgeAgent(MockBackend("<think>pensée jamais refermée, VERDICT en brouillon"))
+    assert "".join(judge.stream_rationale(_event(), _world(), [])) == ""
+
+
+def test_stream_communique_strips_inline_think_trace():
+    raw = "<think>hésitation privée du juge</think>Les pays appellent au dialogue."
+    judge = JudgeAgent(MockBackend(raw))
+    text = "".join(judge.stream_communique(_event(), _world(), []))
+    assert text == "Les pays appellent au dialogue."
+    assert "think" not in text
+
+
 # --- G21 : champ structuré « demande satisfaite o/n » à l'échéance d'un ultimatum ------
 
 

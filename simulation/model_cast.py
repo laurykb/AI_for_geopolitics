@@ -74,9 +74,15 @@ class ModelCastState(BaseModel):
     ranked: bool = False
 
     def reasoning_tags(self) -> set[str]:
-        """Tags dont le backend doit penser en canal séparé (routage think du round)."""
+        """Tags PAYS dont le backend doit penser en canal séparé (routage think du round).
 
-        return {model.tag for model in self.models if model.reasoning}
+        Restreint aux affectations pays : le juge et le Game Master n'activent JAMAIS
+        think — leur prose (rationale, communiqué, motions) part telle quelle vers des
+        steps publics, on ne leur fait pas produire de trace qu'il faudrait filtrer.
+        """
+
+        reasoning = {model.tag for model in self.models if model.reasoning}
+        return {tag for tag in self.assignments.values() if tag in reasoning}
 
 
 def prepare_model_cast(

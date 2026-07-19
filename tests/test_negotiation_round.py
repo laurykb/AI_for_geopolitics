@@ -87,6 +87,36 @@ def test_step_sequence_and_dynamic_turns():
     assert any(isinstance(s, VerdictStep) for s in steps)
 
 
+def test_reasoning_judge_think_trace_never_reaches_public_steps():
+    """Revue pt 5 (Critical) — preuve au niveau des steps : un juge dont le backend émet
+    des balises <think> inline (deepseek-r1 casté juge au lobby) ne laisse AUCUN fragment
+    de pensée atteindre le payload d'un JudgeTokenStep ou d'un CommuniqueStep publics."""
+    world = _world()
+    judge_backend = MockBackend(
+        [
+            "<think>\nBrouillon : l'Iran devrait perdre.\n</think>Les USA dominent.",
+            json.dumps({"escalation": 0.7}),
+            "<think>hésitation du juge</think>Communiqué : appel au dialogue.",
+        ]
+    )
+    steps = list(
+        run_negotiation_round(
+            world,
+            _agents(world),
+            _gm(),
+            JudgeAgent(judge_backend),
+            SimClock(current_date=date(2025, 1, 1)),
+            max_passes=1,
+        )
+    )
+    rationale = "".join(s.token for s in steps if isinstance(s, JudgeTokenStep))
+    assert rationale == "Les USA dominent."
+    assert "think" not in rationale and "Brouillon" not in rationale
+    communique = next(s for s in steps if isinstance(s, CommuniqueStep))
+    assert communique.text == "Communiqué : appel au dialogue."
+    assert "think" not in communique.text
+
+
 def test_ultimatum_demand_flows_to_verdict_step():
     """G21 — à l'échéance, le juge reçoit l'exigence et son constat sort sur le step."""
     world = _world()

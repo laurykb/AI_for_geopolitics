@@ -67,6 +67,7 @@ from simulation.negotiation import (
     update_memories,
 )
 from simulation.power_seeking import PowerSeekingScore, power_seeking_score, score_transcript
+from simulation.private_deliberation import restream_without_think
 from simulation.promises import (
     STATUS_BROKEN,
     Promise,
@@ -447,11 +448,16 @@ def _motivate_verdict(
     """Le juge motive le verdict CONSTATÉ (vote + preuves) — il ne le décide pas."""
     prompt = build_vote_motivation_prompt(motion, tally, evidence_met, upheld)
     try:
-        yield from judge.backend.stream_generate(
-            prompt,
-            system=VOTE_MOTIVATION_SYSTEM,
-            max_tokens=judge.max_tokens,
-            temperature=judge.temperature,
+        # Collecte-puis-strip (même garde que JudgeAgent.stream_rationale) : chaque
+        # token part en MotionTokenStep PUBLIC — la trace <think> d'un juge de
+        # raisonnement ne doit jamais l'atteindre.
+        yield from restream_without_think(
+            judge.backend.stream_generate(
+                prompt,
+                system=VOTE_MOTIVATION_SYSTEM,
+                max_tokens=judge.max_tokens,
+                temperature=judge.temperature,
+            )
         )
     except Exception:  # noqa: BLE001 — le verdict est déjà arrêté, seul le texte manque
         yield "[constat indisponible — backend hors service]"

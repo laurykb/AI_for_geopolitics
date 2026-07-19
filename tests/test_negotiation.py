@@ -125,6 +125,29 @@ def test_stream_negotiation_message_strips_think_trace_before_sanitize():
     assert "<think>" not in out and "FUTUR" not in out
 
 
+def test_telemetry_channels_store_stripped_text_and_thinking():
+    # Revue pt 5 (Minor) — last_result / last_plan_result : .text porte le texte
+    # STRIPPÉ et .thinking la trace, comme InferenceResult définit les deux canaux.
+    from core.events import GeoEvent
+    from simulation.private_deliberation import fallback_private_plan
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    agent = LLMAgent(
+        "usa", MockBackend("<think>hésitation privée</think>MESSAGE: Accord possible.")
+    )
+    plan = fallback_private_plan(["iran"], seed="usa")
+    "".join(agent.stream_negotiation_message(event, _world(), [], private_plan=plan))
+    assert agent.last_result.text == "MESSAGE: Accord possible."
+    assert agent.last_result.thinking == "hésitation privée"
+
+    agent2 = LLMAgent(
+        "usa", MockBackend("<think>trace du plan</think>OBSERVATION incomplète sans futurs")
+    )
+    agent2.prepare_negotiation_plan(event, _world(), [])
+    assert agent2.last_plan_result.text == "OBSERVATION incomplète sans futurs"
+    assert agent2.last_plan_result.thinking == "trace du plan"
+
+
 def test_stream_negotiation_message_uses_role_sampling():
     # G9 §1 — anti-boucle au décodeur : repeat_penalty et température du rôle « country »
     # (data/gamefeel/params.json) sont transmis au backend.

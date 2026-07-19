@@ -23,6 +23,7 @@ from core.world_state import WorldState
 from inference.backend import InferenceBackend
 from inference.json_extract import extract_json
 from simulation.negotiation import NegotiationMessage, format_transcript
+from simulation.private_deliberation import restream_without_think
 
 MOTION_SEVERITY = 0.6  # une mise en accusation pèse, sans être une crise armée
 MOTION_UNCERTAINTY = 0.2  # les faits (le dépôt de la motion) sont publics et sûrs
@@ -335,11 +336,16 @@ def arbitrate_stream(
         prompt = build_ruled_motion_prompt(motion, event, world, transcript, ruling)
         system = RULED_MOTION_SYSTEM
     try:
-        yield from judge.backend.stream_generate(
-            prompt,
-            system=system,
-            max_tokens=judge.max_tokens,
-            temperature=judge.temperature,
+        # Collecte-puis-strip (même garde que JudgeAgent.stream_rationale) : chaque token
+        # part en MotionTokenStep PUBLIC — la trace <think> d'un juge de raisonnement ne
+        # doit jamais l'atteindre.
+        yield from restream_without_think(
+            judge.backend.stream_generate(
+                prompt,
+                system=system,
+                max_tokens=judge.max_tokens,
+                temperature=judge.temperature,
+            )
         )
     except Exception:
         fallback = "SUSPENDRE" if ruling else "REJETER"

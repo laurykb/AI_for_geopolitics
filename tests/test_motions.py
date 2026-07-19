@@ -84,6 +84,18 @@ def test_build_prompt_mentions_motion_and_debate():
     assert "VERDICT" in prompt
 
 
+def test_arbitrate_stream_strips_inline_think_trace():
+    # Revue pt 5 (Critical) — chaque token d'arbitrate_stream part en MotionTokenStep
+    # PUBLIC : la trace <think> d'un juge de raisonnement ne doit jamais l'atteindre.
+    raw = "<think>\nVERDICT: SUSPENDRE en brouillon.\n</think>La motion est examinée.\nVERDICT: REJETER"
+    judge = JudgeAgent(MockBackend(raw))
+    motion = Motion(country="iran", reason="escalade répétée")
+    event = motion_event(motion, 1, ["usa", "iran"])
+    text = "".join(arbitrate_stream(judge, motion, event, load_world(), []))
+    assert "think" not in text and "brouillon" not in text
+    assert parse_motion_verdict(text) is False  # le VERDICT du brouillon privé ne gagne pas
+
+
 def test_arbitrate_stream_falls_back_to_reject_when_backend_dies():
     class DeadBackend(MockBackend):
         def stream_generate(self, *args, **kwargs):

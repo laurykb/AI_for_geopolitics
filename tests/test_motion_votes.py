@@ -20,6 +20,19 @@ from simulation.live_round import (
 from simulation.motions import Motion, MotionVote, cast_vote, motion_event, tally_votes, voters
 
 
+def test_motivate_verdict_strips_inline_think_trace():
+    # Revue pt 5 (Critical) — chaque token de _motivate_verdict part en MotionTokenStep
+    # PUBLIC : la trace <think> d'un juge de raisonnement ne doit jamais l'atteindre.
+    from simulation.live_round import _motivate_verdict
+
+    raw = "<think>le vote me semble discutable</think>Le scrutin et les preuves concordent."
+    judge = JudgeAgent(MockBackend(raw))
+    motion = Motion(country="iran", reason="escalade répétée")
+    text = "".join(_motivate_verdict(judge, motion, {"pour": 2, "contre": 1}, True, True))
+    assert text == "Le scrutin et les preuves concordent."
+    assert "think" not in text and "discutable" not in text
+
+
 def _country(cid: str, name: str | None = None) -> CountryState:
     return CountryState(
         id=cid,

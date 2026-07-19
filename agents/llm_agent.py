@@ -44,6 +44,7 @@ from simulation.private_deliberation import (
     fallback_private_plan,
     parse_private_plan,
     sanitize_public_message,
+    split_think,
     strip_think,
 )
 
@@ -218,8 +219,11 @@ class LLMAgent(Agent):
                 chunks.append(fragment)
                 yield fragment
             raw = "".join(chunks).strip()
-            self.last_plan_result = InferenceResult(text=raw)
-            plan = parse_private_plan(raw, participants)
+            # Revue pt 5 (Minor) — .text porte le texte STRIPPÉ, la pensée va dans
+            # .thinking (jamais mélangée à ce que l'audit affiche comme texte).
+            text, thinking = split_think(raw)
+            self.last_plan_result = InferenceResult(text=text, thinking=thinking)
+            plan = parse_private_plan(text, participants)
         except Exception:
             plan = None
         if plan is None:
@@ -302,11 +306,13 @@ class LLMAgent(Agent):
                     repeat_penalty=sampling.repeat_penalty,
                 )
             )
-            self.last_result = InferenceResult(text=raw_public)
             # Strip AVANT le filtre anti-fuite : la trace <think> d'un modèle de
             # raisonnement contient des marqueurs privés (FUTUR n, CHOIX…) qui, laissés
-            # en place, feraient vider un message public pourtant légitime.
-            public = sanitize_public_message(strip_think(raw_public))
+            # en place, feraient vider un message public pourtant légitime. Revue pt 5
+            # (Minor) — .text porte le texte déjà STRIPPÉ, la pensée va dans .thinking.
+            text, thinking = split_think(raw_public)
+            self.last_result = InferenceResult(text=text, thinking=thinking)
+            public = sanitize_public_message(text)
         except Exception:
             self.last_result = None
             public = ""
@@ -405,23 +411,28 @@ class LLMAgent(Agent):
         """
         country = world.countries[self.country_id]
         prompt = build_deliberation_prompt(country, event, world)
-        chunks: list[str] = []
         try:
-            for piece in self.backend.stream_generate(
-                prompt,
-                system=DELIBERATION_SYSTEM,
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
-            ):
-                chunks.append(piece)
-                yield piece
+            # Revue pt 5 (Important) — chemin legacy (`run_live_round`) : collecte-puis-
+            # strip, même patron que la parole publique des pays. Un flux live de
+            # fragments bruts avant strip laisserait fuiter la trace <think> — et sa
+            # ligne « DECISION: » brouillon volerait la vraie décision terminale.
+            raw = "".join(
+                self.backend.stream_generate(
+                    prompt,
+                    system=DELIBERATION_SYSTEM,
+                    max_tokens=self.max_tokens,
+                    temperature=self.temperature,
+                )
+            )
         except Exception:
             self.last_decision = self._fallback(event, world)
             return
 
-        # Strip de la trace <think> : elle peut contenir une ligne « DECISION: » brouillon
-        # qui volerait la place de la vraie décision terminale du round observable.
-        decision = self._parse_decision(strip_think("".join(chunks)), event, world)
+        text = strip_think(raw)
+        for match in re.finditer(r"\S+\s*", text):
+            yield match.group(0)
+
+        decision = self._parse_decision(text, event, world)
         self.last_decision = decision if decision is not None else self._fallback(event, world)
 
     def _parse_decision(

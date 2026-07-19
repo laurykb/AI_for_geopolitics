@@ -414,22 +414,15 @@ def _build_cast(
     le sink de session. Hors admin : backends nus, rien n'est capturé."""
 
     cast = world.model_cast
-    tags = (
-        {
-            *cast.assignments.values(),
-            cast.game_master_model,
-            cast.judge_model,
-        }
-        if cast is not None
-        else set()
-    )
-    # Point 5 : les pays castés sur un modèle de raisonnement (rôle `reasoning` du
-    # panel, figé dans le casting) reçoivent un backend qui pense en canal séparé.
-    routes = (
-        routed_backends(backend, tags, reasoning_tags=cast.reasoning_tags())
-        if tags and cast is not None
-        else {}
-    )
+    if cast is None:
+        routes: dict[str, InferenceBackend] = {}
+    else:
+        tags = {*cast.assignments.values(), cast.game_master_model, cast.judge_model}
+        # Point 5 : les pays castés sur un modèle de raisonnement (rôle `reasoning` du
+        # panel, figé dans le casting) reçoivent un backend qui pense en canal séparé.
+        # `reasoning_tags()` est déjà restreint aux affectations PAYS (revue pt 5,
+        # Critical) : le juge et le Game Master n'activent jamais think ici.
+        routes = routed_backends(backend, tags, reasoning_tags=cast.reasoning_tags())
 
     def wrap(country: str, role: str, model: str = "") -> InferenceBackend:
         selected = routes.get(model, backend)
