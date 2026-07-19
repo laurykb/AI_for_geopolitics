@@ -300,6 +300,7 @@ def _game_row(game: GameRecord) -> dict:
         "language": game.language,
         "fog": game.fog,
         "escalation": game.escalation,
+        "expose_thinking": game.expose_thinking,
     }
 
 
@@ -331,6 +332,7 @@ def _game(row: dict) -> GameRecord:
         drift_enabled=flags.drift,
         result=row.get("result_json"),
         language=row.get("language") or "fr",
+        expose_thinking=bool(row.get("expose_thinking", False)),
     )
 
 

@@ -525,6 +525,64 @@ def test_finished_game_reveals_full_raw_journal_after_hiding_it_live(client):
     assert ai_entries and all("Réactions anticipées" in t["reasoning"] for t in ai_entries)
 
 
+# --- Pensée à découvert (réglage par partie, fidélité de retranscription) ------
+
+
+def test_expose_thinking_streams_raw_private_frames_and_full_journal_live(client):
+    # ON lève le scellement pendant que la partie tourne : les trames privées (brouillon
+    # + version validée) circulent de nouveau, et message_done porte le journal COMPLET
+    # (jamais le digest de 3 lignes — aucun résumé ajouté, aucune paraphrase).
+    game = _create(client, countries=["usa", "iran", "china"], expose_thinking=True)
+    assert game["drift_enabled"] is True  # RG-3 : Dérive toujours active (≥3 pays classic)
+    events = _play(client, game["id"])
+    assert any(n == "private_token" for n, _ in events)
+    assert any(n == "private_plan_done" for n, _ in events)
+    dones = [p for n, p in events if n == "message_done"]
+    assert dones and all(p["reasoning"] for p in dones)
+    for payload in dones:
+        # Marqueur du journal COMPLET (absent du digest de 3 lignes) — même sentinelle
+        # que les témoins OFF (ci-dessus), mais assertion inversée.
+        assert "Réactions anticipées" in payload["reasoning"]
+        assert "Observation : " not in payload["reasoning"]  # pas le format du digest
+
+
+def test_expose_thinking_replay_shows_full_journal_verbatim_while_running(client):
+    # La relecture (GET, partie encore en cours) sert le journal COMPLET verbatim —
+    # pas `observable_digest` — dès que la Pensée à découvert est armée.
+    game = _create(client, countries=["usa", "iran", "china"], expose_thinking=True)
+    _play(client, game["id"])
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["status"] == "running"
+    country_entries = [
+        t for t in detail["rounds"][0]["transcript"] if t["speaker"] in {"usa", "iran", "china"}
+    ]
+    assert country_entries
+    for entry in country_entries:
+        assert "Réactions anticipées" in entry["reasoning"]
+        assert "FUTUR" in entry["reasoning"]
+
+
+def test_expose_thinking_keeps_option_summary_intact_while_running(client):
+    # Le résidu `option_summary` n'est plus caviardé : la Pensée à découvert le rend
+    # avec le reste du journal, comme en fin de partie.
+    game = _create(client, countries=["usa", "iran", "china"], expose_thinking=True)
+    _play(client, game["id"])
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["status"] == "running"
+    forecasts = detail["world"]["scenario_forecasts"]
+    assert forecasts
+    assert any(row["option_summary"] for row in forecasts)
+
+
+def test_expose_thinking_off_by_default_keeps_current_behavior(client):
+    # Défaut inchangé : une partie créée sans le champ reste scellée comme aujourd'hui.
+    game = _create(client, countries=["usa", "iran", "china"])
+    assert game["expose_thinking"] is False
+    events = _play(client, game["id"])
+    assert not any(n == "private_token" for n, _ in events)
+    assert not any(n == "private_plan_done" for n, _ in events)
+
+
 def test_invented_country_playable(client):
     game = _create(
         client,

@@ -94,6 +94,9 @@ export type FlowSettings = {
   difficulty: Difficulty;
   free: boolean; // partie libre : off par défaut (on = consignes globales + composition de table)
   table?: TableSetting; // G17 — composition de la table (partie LIBRE uniquement)
+  // Pensée à découvert : off par défaut (huis clos actuel) — on = pensée native
+  // streamée en direct + journaux complets relisibles pendant la partie.
+  expose_thinking: boolean;
 };
 
 export const ROUNDS_MIN = 3;
@@ -105,6 +108,7 @@ export const DEFAULT_SETTINGS: FlowSettings = {
   rounds: 5,
   difficulty: "intermediate",
   free: false,
+  expose_thinking: false,
 };
 
 // --- sélection des pays (S4) ----------------------------------------------------
@@ -189,6 +193,7 @@ export function buildCreateBody(args: {
     role: backendRole(role),
     difficulty: settings.difficulty,
     free: settings.free,
+    expose_thinking: settings.expose_thinking,
     language,
     // G17 — la composition de table ne part qu'en partie libre (sinon table équilibrée).
     table: settings.free ? (settings.table ?? "equilibree") : undefined,

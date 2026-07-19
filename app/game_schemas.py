@@ -74,6 +74,13 @@ class CreateGameRequest(BaseModel):
     # « toujours active en Classique »), mais l'API ne la FORCE pas : défaut False ici,
     # pour ne pas armer la traîtresse sur chaque partie tant que RG-3 n'a pas tranché.
     drift_enabled: bool = False
+    # Pensée à découvert (réglage par partie, même patron que fog/escalation) : False
+    # (huis clos, défaut) = journaux scellés + résumé observable, comme aujourd'hui ;
+    # True = la pensée native est streamée en direct et les journaux complets sont
+    # relisibles pendant la partie (mode observation/étude — la traque devient facile,
+    # c'est assumé). Ne déverrouille PAS le classeur secret du moteur (déviante,
+    # perceptions Fog d'autrui), qui reste scellé jusqu'à la fin de partie.
+    expose_thinking: bool = False
     free: bool = False  # G11-b — partie libre : non classée + consignes globales autorisées
     # Casting multi-modèle classique. Absent = modèle unique historique ; présent = partie
     # libre non classée, modèles installés et digests figés par le serveur.
@@ -186,6 +193,7 @@ class GameView(BaseModel):
     difficulty: str = "intermediate"  # G11 — beginner | intermediate | expert (§4)
     drift_enabled: bool = True  # G11 — la Dérive peut frapper une SI (transversal)
     result: dict | None = None  # G11-c — bilan de fin de partie (§1 S6) si finie
+    expose_thinking: bool = False  # Pensée à découvert (huis clos par défaut)
     language: str = "fr"  # G14 §1 — langue des dialogues (une partie garde la sienne)
     model_cast: ModelCastState | None = None
 

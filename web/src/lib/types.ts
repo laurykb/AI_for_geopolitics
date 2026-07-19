@@ -132,6 +132,7 @@ export type GameView = {
   drift_enabled: boolean; // G11 — la Dérive peut frapper une SI (transversal)
   result: GameResult | null; // G11-c — bilan de fin de partie (si finie)
   language?: "fr" | "en"; // G14 — langue des dialogues (une partie garde la sienne)
+  expose_thinking: boolean; // Pensée à découvert (réglage par partie, huis clos par défaut)
   model_cast?: ModelCastView | null; // casting figé ; null = modèle unique historique
 };
 
@@ -598,6 +599,7 @@ export type CreateGameBody = {
   owner_id?: string; // G11 — joueur propriétaire (id auth Supabase ou offline)
   difficulty?: Difficulty; // G11 — beginner | intermediate | expert (§4)
   drift_enabled?: boolean; // G11 — la Dérive peut frapper une SI (transversal)
+  expose_thinking?: boolean; // Pensée à découvert (réglage par partie, huis clos par défaut)
   free?: boolean; // G11-b — partie libre : non classée + consignes globales autorisées
   language?: "fr" | "en"; // G14 — langue des dialogues (lue par le backend dès CC-3)
   table?: "equilibree" | "colombes" | "faucons" | "aleatoire"; // G17 — partie libre

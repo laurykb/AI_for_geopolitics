@@ -577,6 +577,13 @@ function ModeStep({
               disabled={separateMode}
               onChange={(v) => setSettings({ ...settings, escalation: v })}
             />
+            <Switch
+              label={t("lobby.pensee-titre")}
+              desc={t("lobby.pensee-desc")}
+              checked={settings.expose_thinking}
+              disabled={separateMode}
+              onChange={(v) => setSettings({ ...settings, expose_thinking: v })}
+            />
           </div>
           <label className="block">
             <span className="mb-1 flex items-baseline justify-between text-xs text-fg-muted">
