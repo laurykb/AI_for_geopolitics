@@ -597,6 +597,7 @@ def run_negotiation_round(
                 state_note=(secret_notes or {}).get(cid, ""),
                 situation=(situations or {}).get(cid, ""),
                 directive=(directives or {}).get(cid, ""),
+                human_country=human_country,
             )
             private_tokens = 0  # M6 — mesure de la réflexion privée (débit compute)
             while True:
@@ -625,6 +626,7 @@ def run_negotiation_round(
                 situation=(situations or {}).get(cid, ""),
                 directive=(directives or {}).get(cid, ""),
                 private_plan=private_plan,
+                human_country=human_country,
             ):
                 chunks.append(token)
                 yield TokenStep(country=cid, token=token)

@@ -271,9 +271,37 @@ class Verdict(BaseModel):
         return None
 
 
-def format_transcript(transcript: list[NegotiationMessage], *, limit: int = 14) -> str:
-    """Formate le transcript pour un prompt (les `limit` derniers messages)."""
-    lines = [f"[P{m.pass_no}] {m.country}: {m.text}" for m in transcript[-limit:]]
+def format_transcript(
+    transcript: list[NegotiationMessage], *, limit: int = 14, human_country: str | None = None
+) -> str:
+    """Formate le transcript pour un prompt (les `limit` derniers messages).
+
+    `human_country` (Joueur-pays, brief « échanges naturels ») : tague ses messages
+    `>>> JOUEUR — {pays} <<<` pour que la SI les repère sans ambiguïté, et épingle en tête
+    son DERNIER message quand il est tombé hors de la fenêtre — sinon un joueur qui parle
+    tôt dans un round bavard disparaît purement et simplement du contexte des SI qui
+    prennent la parole après lui. Un SEUL message épinglé au maximum (budget du cache KV) :
+    on ne rejoue pas tout l'historique du joueur, seulement son dernier point.
+    """
+    window_start = max(0, len(transcript) - limit)
+    window = transcript[window_start:]
+
+    def _line(m: NegotiationMessage) -> str:
+        tag = f">>> JOUEUR — {m.country} <<< " if m.country == human_country else ""
+        return f"[P{m.pass_no}] {tag}{m.country}: {m.text}"
+
+    lines = [_line(m) for m in window]
+
+    if human_country is not None:
+        last_human_idx = None
+        for i in range(len(transcript) - 1, -1, -1):  # dernier d'abord : on s'arrête au 1er trouvé
+            if transcript[i].country == human_country:
+                last_human_idx = i
+                break
+        if last_human_idx is not None and last_human_idx < window_start:
+            pinned = transcript[last_human_idx]
+            lines.insert(0, "(dernier message du joueur, hors fenêtre récente) " + _line(pinned))
+
     return "\n".join(lines) if lines else "(début de la négociation)"
 
 

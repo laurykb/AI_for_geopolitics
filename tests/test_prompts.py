@@ -148,6 +148,71 @@ def test_negotiation_prompt_block_order_ends_with_dialogue_then_consigne():
     assert "refléter" in prompt or "refuser" in prompt
 
 
+def test_negotiation_prompt_reinjects_last_human_message_before_task():
+    # Brief 1 pt 1 — le message du joueur ne doit pas se perdre derrière le gabarit de
+    # tâche : un bloc de rappel est réinjecté juste avant la consigne d'écriture (position
+    # de récence), sans réordonner tout le prompt (préserve le préfixe du cache KV).
+    from agents.prompts import build_negotiation_prompt
+    from simulation.perception import perceive
+
+    world, event = _world(), _event()
+    perceived = perceive(event, world.countries["usa"])
+    prompt = build_negotiation_prompt(
+        world.countries["usa"],
+        event,
+        world,
+        "[P0] france: Point A.\n[P1] iran: Point B.",
+        perceived,
+        human_country="france",
+        last_human_message="Point A, précisément.",
+        private_plan="Cours d'action retenu : proposer des garanties vérifiables.",
+    )
+    assert "DERNIER MESSAGE À TRAITER" in prompt
+    assert "Point A, précisément." in prompt
+    order = [
+        prompt.index("LE DIALOGUE DU ROUND"),
+        prompt.index("DERNIER MESSAGE À TRAITER"),
+        prompt.index("TÂCHE PUBLIQUE :"),
+    ]
+    assert order == sorted(order)
+
+
+def test_negotiation_prompt_reinjection_also_precedes_private_task():
+    # Le même bloc doit précéder la TÂCHE PRIVÉE (phase de délibération), pas seulement
+    # la déclaration publique : les deux appels passent par le même builder.
+    from agents.prompts import build_negotiation_prompt
+    from simulation.perception import perceive
+
+    world, event = _world(), _event()
+    perceived = perceive(event, world.countries["usa"])
+    prompt = build_negotiation_prompt(
+        world.countries["usa"],
+        event,
+        world,
+        "[P0] france: Point A.",
+        perceived,
+        human_country="france",
+        last_human_message="Point A, précisément.",
+    )
+    order = [
+        prompt.index("LE DIALOGUE DU ROUND"),
+        prompt.index("DERNIER MESSAGE À TRAITER"),
+        prompt.index("TÂCHE PRIVÉE"),
+    ]
+    assert order == sorted(order)
+
+
+def test_negotiation_prompt_omits_reinjection_block_without_human_country():
+    # Défaut inchangé : sans joueur (ou en dehors de son round), pas de bloc superflu.
+    from agents.prompts import build_negotiation_prompt
+    from simulation.perception import perceive
+
+    world, event = _world(), _event()
+    perceived = perceive(event, world.countries["usa"])
+    prompt = build_negotiation_prompt(world.countries["usa"], event, world, "(début)", perceived)
+    assert "DERNIER MESSAGE À TRAITER" not in prompt
+
+
 def test_negotiation_prompt_without_directive_has_no_directive_block():
     from agents.prompts import build_negotiation_prompt
     from simulation.perception import perceive

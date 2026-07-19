@@ -41,6 +41,25 @@ def test_private_plan_requires_exactly_three_distinct_branch_ids():
     assert plan.public_brief().startswith("Cours d'action retenu : option 1")
 
 
+def test_public_brief_includes_last_message_point_when_observation_present():
+    # Brief 1 pt 3 — le porte-parole public reçoit un rappel du point auquel il répond,
+    # extrait de l'OBSERVATION de la phase privée (aucun appel LLM supplémentaire).
+    payload = _payload()
+    payload["situation_observation"] = "L'Iran vient de proposer un cessez-le-feu conditionnel."
+    plan = parse_private_plan(__import__("json").dumps(payload))
+    assert plan is not None
+    brief = plan.public_brief()
+    assert "Point du dernier message auquel je réponds" in brief
+    assert "cessez-le-feu conditionnel" in brief
+
+
+def test_public_brief_omits_point_when_no_observation():
+    # Sans OBSERVATION extractible (payload minimal), pas de phrase creuse ajoutée.
+    plan = parse_private_plan(__import__("json").dumps(_payload()))
+    assert plan is not None
+    assert "Point du dernier message" not in plan.public_brief()
+
+
 def test_audit_summary_keeps_forecasts_machine_readable_for_glass_box():
     plan = parse_private_plan(__import__("json").dumps(_payload()))
     assert plan is not None

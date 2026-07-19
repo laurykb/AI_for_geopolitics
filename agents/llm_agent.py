@@ -51,6 +51,16 @@ def _clamp(x: float) -> float:
     return max(0.0, min(1.0, x))
 
 
+def _last_message_from(transcript: list[NegotiationMessage], country: str | None) -> str:
+    """Texte du dernier message d'un pays dans le transcript, ou "" si absent/aucun pays."""
+    if not country:
+        return ""
+    for message in reversed(transcript):
+        if message.country == country:
+            return message.text
+    return ""
+
+
 # Variantes fréquentes du LLM -> action canonique (parsing de la ligne DECISION).
 _ACTION_SYNONYMS: dict[str, str] = {
     "neutral": "remain_neutral",
@@ -125,6 +135,7 @@ class LLMAgent(Agent):
         state_note: str = "",
         situation: str = "",
         directive: str = "",
+        human_country: str | None = None,
     ) -> PrivateStrategicPlan:
         """Version synchrone de compatibilité ; consomme le flux privé jusqu'à sa fin."""
 
@@ -137,6 +148,7 @@ class LLMAgent(Agent):
             state_note=state_note,
             situation=situation,
             directive=directive,
+            human_country=human_country,
         )
         while True:
             try:
@@ -154,27 +166,35 @@ class LLMAgent(Agent):
         state_note: str = "",
         situation: str = "",
         directive: str = "",
+        human_country: str | None = None,
     ) -> Generator[str, None, PrivateStrategicPlan]:
         """Diffuse la verbalisation d'audit telle qu'elle est générée, puis la valide.
 
         Le texte reste hors du dialogue transmis aux autres agents. À la fin du flux, un
         plan normalisé est renvoyé au porte-parole public ; une sortie invalide déclenche
         un repli déterministe sans bloquer le round.
+
+        `human_country` (Joueur-pays) : tague et épingle son dernier message dans le
+        transcript formaté, et le rappelle en position de récence (brief « échanges
+        naturels » — les IA doivent réellement prendre en compte le joueur).
         """
 
         country = world.countries[self.country_id]
         perceived = perceived or perceive(event, country)
         own = [m.text[:90] for m in transcript if m.country == self.country_id and m.text]
+        last_human_message = _last_message_from(transcript, human_country)
         private_prompt = build_negotiation_prompt(
             country,
             event,
             world,
-            format_transcript(transcript),
+            format_transcript(transcript, human_country=human_country),
             perceived,
             state_note,
             situation=situation,
             directive=directive,
             own_proposals=own,
+            human_country=human_country or "",
+            last_human_message=last_human_message,
         )
         sampling = load_gamefeel_params().sampling.country
         participants = sorted(cid for cid in world.countries if cid != self.country_id)
@@ -221,6 +241,7 @@ class LLMAgent(Agent):
         situation: str = "",
         directive: str = "",
         private_plan: PrivateStrategicPlan | None = None,
+        human_country: str | None = None,
     ) -> Iterator[str]:
         """Planifie trois futurs en privé, puis n'émet que la déclaration publique.
 
@@ -228,11 +249,15 @@ class LLMAgent(Agent):
         autres agents. La seconde génération reçoit seulement la branche retenue. Même si
         un backend désobéit, le filtre anti-fuite bloque les marqueurs de délibération avant
         le premier token public.
+
+        `human_country` (Joueur-pays) : voir `stream_negotiation_plan` — même traitement
+        de récence pour la déclaration publique.
         """
         country = world.countries[self.country_id]
         perceived = perceived or perceive(event, country)
         own = [m.text[:90] for m in transcript if m.country == self.country_id and m.text]
-        transcript_text = format_transcript(transcript)
+        transcript_text = format_transcript(transcript, human_country=human_country)
+        last_human_message = _last_message_from(transcript, human_country)
         sampling = load_gamefeel_params().sampling.country
         plan = private_plan or self.prepare_negotiation_plan(
             event,
@@ -243,6 +268,7 @@ class LLMAgent(Agent):
             state_note=state_note,
             situation=situation,
             directive=directive,
+            human_country=human_country,
         )
         self.last_private_plan = plan
         if not self.last_private_summary:
@@ -259,6 +285,8 @@ class LLMAgent(Agent):
             directive=directive,
             own_proposals=own,
             private_plan=plan.public_brief(),
+            human_country=human_country or "",
+            last_human_message=last_human_message,
         )
         try:
             # On collecte le flux complet avant d'en publier le premier fragment : le filtre

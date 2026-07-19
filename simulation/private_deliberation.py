@@ -67,12 +67,22 @@ class PrivateStrategicPlan(BaseModel):
         """Minimum décisionnel fourni au rédacteur public, jamais les branches rejetées."""
 
         chosen = self.selected
-        return (
+        brief = (
             f"Cours d'action retenu : {_compact(chosen.course_of_action)}. "
             f"Issue recherchée : {_compact(chosen.expected_outcome)}. "
             f"Risque d'escalade estimé : {chosen.escalation_risk}/100. "
             f"Limite de revue humaine : {_compact(self.human_review_trigger) or 'aucune précisée'}."
         )
+        # Brief 1 pt 3 — rappelle au porte-parole public ce que la phase privée a retenu
+        # du dialogue (champ OBSERVATION) : sans lui, une fois noyé dans le gabarit de
+        # tâche, il ne sait plus À QUOI il répond. Extrait de la phase privée existante,
+        # aucun appel LLM supplémentaire ; absent si l'observation n'a rien produit.
+        observation = _compact(self.situation_observation)
+        if observation:
+            if len(observation) > 200:
+                observation = observation[:200].rstrip() + "…"
+            brief += f" Point du dernier message auquel je réponds : {observation}"
+        return brief
 
     def audit_summary(self) -> str:
         """Journal lisible, stable et exploitable par la calibration inter-mode."""

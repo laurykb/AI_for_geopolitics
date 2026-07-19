@@ -245,6 +245,8 @@ def build_negotiation_prompt(
     directive: str = "",
     own_proposals: list[str] | None = None,
     private_plan: str | None = None,
+    human_country: str = "",
+    last_human_message: str = "",
 ) -> str:
     """Prompt de négociation G9 §1 — six blocs, dans CET ordre (un 7B « voit » la fin) :
 
@@ -255,6 +257,11 @@ def build_negotiation_prompt(
     3. notes privées (`state_note` : outils du sommet, traités M7, consignes de dérive) ;
     4. `directive` du conseil (G8), juste avant le dialogue, jamais avant l'identité ;
     5. LE DIALOGUE DU ROUND, in extenso, en DERNIER (position de récence maximale) ;
+       suivi, si `human_country`/`last_human_message` sont fournis (brief « échanges
+       naturels »), d'un rappel « DERNIER MESSAGE À TRAITER » — le message du joueur est
+       sinon noyé sous le gabarit de tâche qui suit et perd sa position de récence ;
+       réinjecter ce court rappel est moins invasif que réordonner tout le prompt (le
+       préfixe partagé par le cache KV reste stable) ;
     6. consigne finale explicite et testable : réponse directe au dernier message,
        interdits (re-description, répétition de `own_proposals`), reflet de la directive.
     """
@@ -329,6 +336,16 @@ def build_negotiation_prompt(
             "déclaration publique (« notre conseil nous demande l'impossible »)."
         )
     blocks.append(f"LE DIALOGUE DU ROUND :\n{transcript_text}")
+
+    # Point 1 du brief « échanges naturels » : le message du joueur, une fois noyé dans la
+    # fenêtre puis recouvert par le gabarit de tâche géant, perd sa position de récence —
+    # un 7B « voit » surtout la fin du prompt. On le réinjecte donc juste avant la consigne
+    # d'écriture au lieu de réordonner tout le prompt (moins invasif, préfixe KV stable).
+    if human_country and last_human_message:
+        blocks.append(
+            f"DERNIER MESSAGE À TRAITER : >>> JOUEUR — {human_country} <<< vient de dire "
+            f"« {last_human_message} ». Ta déclaration doit répondre D'ABORD à ce point précis."
+        )
 
     proposals = " ; ".join(f"« {p} »" for p in (own_proposals or [])[-3:]) or "aucune encore"
     directive_line = (
