@@ -84,6 +84,7 @@ from rag.embedder import HashingEmbedder
 from rag.retriever import HybridRetriever
 from simulation import alignment, drift_game, narrative
 from simulation import campaign as campaign_mod
+from simulation import compute as compute_mod
 from simulation import daily as daily_mod
 from simulation import difficulty as difficulty_mod
 from simulation import intel as intel_mod
@@ -982,7 +983,23 @@ def _apply_intel_fog(
 ) -> FogScenario | None:
     """G4 — après la résolution de l'événement : la désinformation en attente brouille
     des perceptions (elle ne fournit JAMAIS l'événement) ; un brief acheté dissipe
-    le brouillard du pays du joueur. Ses effets sont consignés dans `intel_record`."""
+    le brouillard du pays du joueur. Ses effets sont consignés dans `intel_record`.
+
+    Brief 6 pt13 — l'opération secrète en attente frappe ICI aussi, mais SANS la garde
+    motion/crisis/fog de la désinformation : un sabotage est un effet direct sur le stock
+    de compute de la cible, il ne dispute pas le créneau « fog » du round (contrairement à
+    la désinformation, qui doit DEVENIR le scénario de perception du round)."""
+    if session.intel.pending_covert is not None:
+        spec = session.intel.pending_covert
+        target = session.world.countries.get(spec["target"])
+        params = intel_mod.load_params()
+        if target is not None:
+            target.compute = max(0.0, target.compute - params.covert_sabotage_amount)
+        intel_record["covert"] = {
+            "spec": spec,
+            "exposed": intel_mod.covert_exposed(game_id, round_id),
+        }
+        session.intel.pending_covert = None
     if (
         session.intel.pending_disinfo is not None
         and motion is None
@@ -1108,6 +1125,10 @@ def _record_intel(run: RoundRun, intel_record: dict) -> None:
         redacted.append(
             {"action": "disinfo", "exposed": intel_record["disinfo"]["exposed"]}
         )
+    if "covert" in intel_record:
+        redacted.append(
+            {"action": "covert", "exposed": intel_record["covert"]["exposed"]}
+        )
     if redacted:
         run.pre_frames.append(sse_frame("intel", {"actions": redacted}))
     if intel_record.get("disinfo", {}).get("exposed"):
@@ -1116,6 +1137,17 @@ def _record_intel(run: RoundRun, intel_record: dict) -> None:
             "judge",
             "Des services de renseignement concordants démentent une narration "
             "fabriquée : la manœuvre de désinformation du conseil est éventée.",
+        )
+    if intel_record.get("covert", {}).get("exposed"):
+        # Brief 6 pt13 — exposée, l'opération secrète révèle son auteur (contrairement à
+        # la désinformation, restée anonyme faute d'un « auteur » à distinguer du joueur).
+        actor = intel_record["covert"]["spec"]["actor"]
+        actor_name = run.session.world.countries[actor].name
+        _add_entry(
+            run,
+            "judge",
+            "Des services de renseignement concordants tracent le sabotage informatique "
+            f"jusqu'au conseil de {actor_name} : l'opération secrète est démasquée.",
         )
 
 
@@ -3020,7 +3052,7 @@ def _intel_retriever() -> HybridRetriever:
 
 
 class IntelRequest(BaseModel):
-    action: Literal["brief", "verify", "disinfo", "analyze"]
+    action: Literal["brief", "verify", "disinfo", "analyze", "covert"]
     target: str | None = Field(None, max_length=80)  # pays (None = dernier événement)
     claim: str | None = Field(None, max_length=2000)  # verify : l'affirmation à vérifier
     speaker: str | None = Field(None, max_length=80)  # verify : qui l'a affirmée
@@ -3038,6 +3070,11 @@ class IntelResult(BaseModel):
     # G23 — analyse psycholinguistique : jauges + alertes harbinger. L'UI qui l'affiche
     # DOIT porter le caveat « signal historique faible (~57 %) — un indice, pas une preuve ».
     analysis: psy_mod.HarbingerReport | None = None
+    # Brief 6 pt13 — covert UNIQUEMENT : coût réel en COMPUTE du pays joué + solde après
+    # débit. Ressource STRICTEMENT distincte de `cost`/`budget` (crédits intel) — reste
+    # `None` pour toutes les autres actions, pour que le front ne les confonde jamais.
+    compute_cost: float | None = None
+    compute_left: float | None = None
 
 
 @router.post("/games/{game_id}/intel", response_model=IntelResult)
@@ -3085,6 +3122,34 @@ def buy_intel(
             raise HTTPException(
                 status_code=409, detail="désinformation déjà jouée — une fois par partie"
             )
+    if body.action == intel_mod.ACTION_COVERT:
+        # Brief 6 pt13 — le bureau des opérations secrètes : gardes AVANT tout débit,
+        # dans le même esprit que la désinformation (unicité en 409, reste en 400/403).
+        if session.human_country is None:
+            raise HTTPException(
+                status_code=403,
+                detail="l'opération secrète exige d'incarner un pays (rôle joueur)",
+            )
+        if not body.target:
+            raise HTTPException(status_code=422, detail="target est requis")
+        if body.target not in session.world.countries:
+            raise HTTPException(status_code=400, detail=f"pays inconnu : {body.target}")
+        if body.target == session.human_country:
+            raise HTTPException(status_code=400, detail="on ne sabote pas son propre pays")
+        if session.intel.covert_used:
+            raise HTTPException(
+                status_code=409, detail="opération secrète déjà jouée — une fois par partie"
+            )
+        player = session.world.countries[session.human_country]
+        if not compute_mod.can_afford(player, int(params.covert_compute_cost)):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "compute insuffisant pour une opération secrète "
+                    f"(coût {compute_mod.compute_cost(int(params.covert_compute_cost)):g}, "
+                    f"stock {player.compute:g})"
+                ),
+            )
     if session.intel.budget < cost:
         raise HTTPException(
             status_code=400,
@@ -3094,6 +3159,7 @@ def buy_intel(
         intel_mod.ACTION_BRIEF,
         intel_mod.ACTION_DISINFO,
         intel_mod.ACTION_ANALYZE,
+        intel_mod.ACTION_COVERT,
     ) and session.lock.locked():
         raise HTTPException(
             status_code=409, detail="achat entre les rounds seulement (négociation en cours)"
@@ -3196,6 +3262,22 @@ def buy_intel(
             lang_mod.normalize_language(session.world.language), psy_mod.CAVEATS["fr"]
         )
         result.analysis = report
+
+    elif body.action == intel_mod.ACTION_COVERT:
+        # Brief 6 pt13 — le sabotage est payé en COMPUTE du pays joué, pas en crédits
+        # (cost reste 0 : "covert" n'a pas d'entrée dans params.costs). Drainer son
+        # propre stock a un coût stratégique émergent voulu : compute_pressure monte
+        # et sa propre SI peut basculer en mode survie. L'effet est DIFFÉRÉ au round
+        # suivant (_apply_intel_fog), comme la désinformation.
+        player = session.world.countries[session.human_country]
+        result.compute_cost = compute_mod.consume(player, int(params.covert_compute_cost))
+        result.compute_left = player.compute
+        session.intel.covert_used = True
+        session.intel.pending_covert = {
+            "target": body.target,
+            "actor": session.human_country,
+        }
+        result.note = "l'opération frappera au prochain round — payée sur ton compute"
 
     else:  # disinfo (mode fog + unicité déjà vérifiés avant le débit)
         spec = body.disinfo
