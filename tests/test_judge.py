@@ -202,3 +202,47 @@ def test_verdict_gets_a_structured_output_budget():
     assert backend.calls[-1]["max_tokens"] >= 900, (
         "budget de sortie du verdict trop petit : le JSON G18/G20/G21/G22 se tronque"
     )
+
+
+# --- Brief 4 pt 8 : justification par delta (`attribute_reasons`) ----------------------
+
+
+def test_verdict_parses_attribute_reasons():
+    verdict_json = json.dumps(
+        {
+            "attribute_deltas": {"usa": {"croissance": 0.5}},
+            "attribute_reasons": {
+                "usa": {"croissance": "Accord commercial conclu pendant le round."}
+            },
+            "escalation": 0.6,
+        }
+    )
+    judge = JudgeAgent(MockBackend(verdict_json))
+    verdict = judge.verdict(_event(), _world(), [])
+    assert (
+        verdict.attribute_reasons["usa"]["croissance"]
+        == "Accord commercial conclu pendant le round."
+    )
+
+
+def test_verdict_prompt_requires_a_justification_per_delta():
+    """Le prompt doit exiger un `attribute_reasons` chiffré ET une justification par
+    delta non nul citant un élément concret du transcript — pas juste des nombres nus."""
+    from agents.prompts import build_judge_verdict_prompt
+
+    prompt = build_judge_verdict_prompt(_event(), _world(), "négociation factice")
+    assert "attribute_reasons" in prompt
+    assert "transcript" in prompt.lower() or "négociation" in prompt.lower()
+
+
+def test_verdict_budget_raised_for_the_richer_schema():
+    """Brief 4 pt 8 — `attribute_reasons` alourdit encore le JSON (une phrase par delta
+    non nul) : le budget dédié doit suivre, sous peine de retomber dans la troncature
+    POLISH-1 déjà constatée au smoke réel."""
+    from agents.judge import VERDICT_MAX_TOKENS
+
+    assert VERDICT_MAX_TOKENS >= 1300
+    backend = MockBackend(json.dumps({"escalation": 0.6}))
+    judge = JudgeAgent(backend)
+    judge.verdict(_event(), _world(), [])
+    assert backend.calls[-1]["max_tokens"] >= 1300

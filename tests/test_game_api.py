@@ -739,6 +739,23 @@ def test_get_game_returns_world_rounds_and_transcript(client):
     assert [t["seq"] for t in transcript] == list(range(len(transcript)))
 
 
+# --- Brief 4 pt 8 : le délibéré du juge est persisté pour la relecture -----------------
+
+
+def test_judge_rationale_is_persisted_for_replay(client):
+    """`JudgeTokenStep` était streamé au direct (`judge_token`) mais jamais accumulé
+    dans le round persisté : un round relu (page fin, chronologie) n'affichait donc
+    jamais le POURQUOI du juge, seulement les chiffres. Le rationale doit survivre."""
+    game = _create(client, countries=["usa", "iran"])
+    events = _play(client, game["id"])
+    rationale = "".join(p["token"] for n, p in events if n == "judge_token")
+    assert rationale  # le juge a bien raisonné en direct
+
+    detail = client.get(f"/api/games/{game['id']}").json()
+    round_ = detail["rounds"][0]
+    assert round_["judge"]["rationale"] == rationale
+
+
 def test_rounds_accumulate_and_replay_survives_session_loss(client):
     game = _create(client, countries=["usa", "iran"])
     _play(client, game["id"])

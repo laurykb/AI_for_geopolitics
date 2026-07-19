@@ -553,6 +553,10 @@ def build_judge_verdict_prompt(
         f"{resolutions_schema}"
         f'"attribute_deltas": {{"<id>": {{"croissance": ±pts, '
         f'"stabilité": ±0.1, "techno": ±0.1, "projection": ±0.1}}}}, '
+        # Brief 4 pt 8 — champ JUMEAU d'attribute_deltas, MÊMES ids/labels, mais du
+        # texte : une phrase de justification par delta chiffré.
+        f'"attribute_reasons": {{"<id>": {{"croissance": "motif", '
+        f'"stabilité": "motif", "techno": "motif", "projection": "motif"}}}}, '
         f'"tension_deltas": [{{"a": id, "b": id, "delta": ±0.2}}], '
         f'"new_pacts": [[id, id]], "escalation": 0-1, "economic_disruption": 0-1'
         # G21 — le constat « demande satisfaite o/n » ferme le schéma (vide sans ultimatum).
@@ -567,6 +571,12 @@ def build_judge_verdict_prompt(
         f'politesse ou une formule creuse ("nous œuvrerons pour la paix") n\'est PAS '
         f"une promesse — dans le doute, n'extrais rien. "
         f"{resolutions_note}"
+        # Brief 4 pt 8 — la cause racine du juge « pas justifié » : des chiffres nus,
+        # sans motif. Pour CHAQUE delta non nul d'"attribute_deltas", exige la phrase
+        # jumelle dans "attribute_reasons".
+        f'Pour CHAQUE delta non nul dans "attribute_deltas", ajoute dans "attribute_reasons" '
+        f"UNE phrase de justification qui cite un élément CONCRET du transcript de la "
+        f"négociation ci-dessus (qui a dit ou fait quoi) — jamais une généralité. "
         f"Ne renseigne que ce qui a réellement changé pendant la négociation."
     )
 

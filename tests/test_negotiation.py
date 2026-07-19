@@ -305,6 +305,76 @@ def test_apply_verdict_ignores_unknown_ids_and_labels():
     assert apply_verdict(world, verdict) == []  # rien d'applicable
 
 
+# --- Brief 4 pt 8 : justification par delta (`attribute_reasons`) ----------------------
+
+
+def test_apply_verdict_carries_reason_into_attribute_delta():
+    world = _world()
+    verdict = Verdict(
+        attribute_deltas={"usa": {"croissance": 0.5}},
+        attribute_reasons={
+            "usa": {"croissance": "Les USA ont fermé un accord commercial avec l'Iran."}
+        },
+    )
+    deltas = apply_verdict(world, verdict)
+    delta = next(d for d in deltas if d.label == "croissance")
+    assert delta.reason == "Les USA ont fermé un accord commercial avec l'Iran."
+
+
+def test_apply_verdict_reason_defaults_to_empty_when_absent():
+    # Un verdict à l'ancienne (avant ce point) ou un juge muet sur le motif : la raison
+    # reste une chaîne vide, jamais une exception.
+    world = _world()
+    verdict = Verdict(attribute_deltas={"usa": {"croissance": 0.5}})
+    deltas = apply_verdict(world, verdict)
+    assert deltas[0].reason == ""
+
+
+def test_apply_verdict_reason_is_partial_per_label():
+    # Le juge motive croissance mais oublie stabilité : chaque delta garde SA raison,
+    # pas de recopie ni de vide généralisé.
+    world = _world()
+    verdict = Verdict(
+        attribute_deltas={"usa": {"croissance": 0.5, "stabilité": 0.05}},
+        attribute_reasons={"usa": {"croissance": "motif croissance"}},
+    )
+    deltas = apply_verdict(world, verdict)
+    by_label = {d.label: d.reason for d in deltas}
+    assert by_label["croissance"] == "motif croissance"
+    assert by_label["stabilité"] == ""
+
+
+def test_apply_verdict_reason_ignores_non_string_entries():
+    # Un 7B glisse parfois un type sale (nombre, liste) à la place du texte — la raison
+    # se vide au lieu de faire planter le round.
+    world = _world()
+    verdict = Verdict(
+        attribute_deltas={"usa": {"croissance": 0.5}},
+        attribute_reasons={"usa": {"croissance": 42}},
+    )
+    deltas = apply_verdict(world, verdict)
+    assert deltas[0].reason == ""
+
+
+def test_apply_verdict_reason_ignored_for_country_without_delta():
+    world = _world()
+    verdict = Verdict(attribute_reasons={"usa": {"croissance": "motif orphelin"}})
+    assert apply_verdict(world, verdict) == []
+
+
+def test_attribute_reasons_tolerant_to_malformed_payload():
+    # POLISH-1/3 — patron étendu : un `"attribute_reasons": "rien à signaler"` d'un 7B
+    # se vide au lieu de nuquer TOUT le verdict (attribute_deltas doit survivre).
+    verdict = Verdict.model_validate(
+        {
+            "attribute_deltas": {"usa": {"croissance": 0.5}},
+            "attribute_reasons": "rien à signaler",
+        }
+    )
+    assert verdict.attribute_reasons == {}
+    assert verdict.attribute_deltas["usa"]["croissance"] == 0.5
+
+
 def test_support_levels_bounded_and_reflects_tension():
     from core.events import GeoEvent
     from simulation.negotiation import support_levels

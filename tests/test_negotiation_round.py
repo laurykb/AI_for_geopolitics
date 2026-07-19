@@ -168,6 +168,40 @@ def test_verdict_step_demand_none_without_ultimatum():
     assert verdict.demand_satisfied is None
 
 
+def test_verdict_step_deltas_carry_the_judge_reasons():
+    """Brief 4 pt 8 — bout en bout moteur : les motifs `attribute_reasons` du verdict
+    JSON remontent sur les deltas du `VerdictStep` (donc jusqu'au SSE et au replay)."""
+    world = _world()
+    judge_backend = MockBackend(
+        [
+            "L'Iran paie ses menaces.",
+            json.dumps(
+                {
+                    "attribute_deltas": {"iran": {"croissance": -0.5}},
+                    "attribute_reasons": {
+                        "iran": {"croissance": "L'Iran a menacé de fermer le détroit."}
+                    },
+                    "escalation": 0.7,
+                }
+            ),
+            "Communiqué.",
+        ]
+    )
+    steps = list(
+        run_negotiation_round(
+            world,
+            _agents(world),
+            _gm(),
+            JudgeAgent(judge_backend),
+            SimClock(current_date=date(2025, 1, 1)),
+            max_passes=1,
+        )
+    )
+    verdict = next(s for s in steps if isinstance(s, VerdictStep))
+    growth = next(d for d in verdict.deltas if d.label == "croissance")
+    assert growth.reason == "L'Iran a menacé de fermer le détroit."
+
+
 def test_ledger_captures_calls_when_provided():
     from inference.metered_backend import MeteredBackend
     from inference.telemetry import BudgetLedger

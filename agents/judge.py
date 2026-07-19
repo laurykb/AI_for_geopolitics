@@ -28,7 +28,11 @@ from simulation.private_deliberation import restream_without_think
 # 400 tokens, un round à 3+ pays se tronque sur mistral et `extract_json` échoue —
 # TOUT le verdict retombe alors au neutre (escalade 0,5, deltas perdus). Constaté au
 # smoke réel POLISH-1. Le budget de prose (rationale/communiqué) reste `max_tokens`.
-VERDICT_MAX_TOKENS = 900
+# Brief 4 pt 8 — remonté 900 -> 1300 : `attribute_reasons` ajoute une phrase de
+# justification par delta non nul (même risque de troncature mistral 7B qu'au
+# POLISH-1). À mesurer en live (troncature mistral 7B) — la mesure réelle est faite
+# par le contrôleur en phase finale.
+VERDICT_MAX_TOKENS = 1300
 
 
 class JudgeAgent:
