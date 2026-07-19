@@ -340,6 +340,48 @@ def test_journal_strips_single_asterisk_italics_from_field_values():
     assert plan.branches[0].course_of_action == "négocier variante 1"
 
 
+def test_normalize_markdown_preserves_an_isolated_asterisk_without_a_pair_partner():
+    # Revue (IMPORTANT) : `_normalize_markdown` faisait `raw.replace("*", "")` inconditionnel
+    # — un astérisque ISOLÉ légitime du chemin strict (pas une paire markdown) était avalé
+    # (« ratio de 2*3 » → « 23 » ; « mesure*2 » → « mesure2 »). Seules les PAIRES `*…*` sur
+    # une même ligne doivent disparaître, jamais un `*` sans partenaire. Les deux exemples de
+    # la revue vivent sur des lignes DIFFÉRENTES (chacun sur sa propre ligne, un seul `*`) :
+    # les mettre sur la même ligne créerait un appariement accidentel entre les deux
+    # astérisques isolés, ce qui est une limite acceptée du détecteur de PAIRES (hors sujet
+    # ici), pas le bug rapporté.
+    raw = (
+        "FUTUR 1 — test\n"
+        "ACTION : ajuster le ratio de 2*3 avant tout engagement\n"
+        "RÉACTIONS : iran=coopere: test\nCHAÎNE CAUSALE : recalibrer la mesure*2 ensuite\n"
+        "UTILITÉ : 50\nRISQUE : 50\nCONFIANCE : 50\n"
+        "FUTUR 2 — test\n"
+        "ACTION : option 2\nRÉACTIONS : iran=coopere: test\nCHAÎNE CAUSALE : test\n"
+        "UTILITÉ : 50\nRISQUE : 50\nCONFIANCE : 50\n"
+        "FUTUR 3 — test\n"
+        "ACTION : option 3\nRÉACTIONS : iran=coopere: test\nCHAÎNE CAUSALE : test\n"
+        "UTILITÉ : 50\nRISQUE : 50\nCONFIANCE : 50\n"
+        "ARBITRAGE\nCHOIX : FUTUR 1\nCRITÈRE : test\nINCERTITUDE : test"
+    )
+    plan = parse_private_plan(raw, ["iran"])
+    assert plan is not None
+    assert plan.branches[0].course_of_action == "ajuster le ratio de 2*3 avant tout engagement"
+    assert plan.branches[0].expected_outcome == "recalibrer la mesure*2 ensuite"
+
+
+def test_free_text_bullet_reaction_line_is_never_mistaken_for_own_action():
+    # Revue (CRITICAL) : le tiers « item de liste » de `_extract_free_action` scannait tout
+    # le texte SANS exclure les lignes structurées (contrairement à `_first_meaningful_line`).
+    # Une puce RÉACTIONS — la posture prêtée à un AUTRE pays — pouvait ainsi devenir
+    # `course_of_action` du pays en délibération. Sans FUTUR, sans je/nous ailleurs, et sans
+    # rien d'autre à extraire : le repli seedé générique doit prendre le relais (None ici,
+    # l'appelant applique `fallback_private_plan`).
+    raw = (
+        "ARBITRAGE\n"
+        "- RÉACTIONS : usa=coopere: usa propose un compromis rapide et vérifiable sous 48h\n"
+    )
+    assert parse_private_plan(raw, ["usa"]) is None
+
+
 def test_private_deliberation_system_asks_for_plain_lines_without_markdown():
     from agents.prompts import PRIVATE_DELIBERATION_SYSTEM
 

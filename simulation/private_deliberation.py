@@ -354,19 +354,31 @@ def _forbidden_bare_action(action: str) -> bool:
     )
 
 
+# Paires markdown sur UNE MÊME ligne uniquement (contenu sans astérisque/underscore
+# imbriqué) : le gras (**/__) est retiré avant l'italique simple (*), sinon la première
+# étoile d'un « **titre** » s'apparie à tort avec la seconde (résidu « *titre* »).
+_BOLD_STAR_PAIR = re.compile(r"\*\*([^\n*]+?)\*\*")
+_BOLD_UNDERSCORE_PAIR = re.compile(r"__([^\n_]+?)__")
+_ITALIC_STAR_PAIR = re.compile(r"\*([^\n*]+?)\*")
+
+
 def _normalize_markdown(raw: str) -> str:
     """Aplatit les variantes markdown d'un journal (gras, titres `#`) avant tout parsing.
 
     Un modèle de raisonnement 7B en délibération libre rédige souvent son journal en
     markdown (`**FUTUR 1 : titre**`, `### FUTUR 1`, valeurs en *italique*) plutôt qu'en
-    lignes nues. On aplatit ICI, une seule fois : le chemin strict garde exactement son
-    comportement d'origine sur un texte qui n'a jamais utilisé de markdown (aucune
-    substitution n'a d'effet dessus). Les astérisques restants (italique simple, ex.
-    `*Concilier les alliages*`) sont retirés après le gras : sinon ils fuient tels quels
-    dans les valeurs de champ extraites.
+    lignes nues. On aplatit ICI, une seule fois : le chemin strict garde son comportement
+    d'origine sur un texte qui n'a jamais utilisé de markdown.
+
+    Seules les PAIRES `**texte**` / `__texte__` / `*texte*` tenant sur une même ligne sont
+    retirées — JAMAIS un astérisque ISOLÉ (revue : un `raw.replace("*", "")` inconditionnel
+    mangeait un astérisque légitime du chemin strict, ex. « ratio de 2*3 » → « ratio de 23 »).
+    Sans partenaire sur la même ligne, l'astérisque survit intact.
     """
 
-    text = raw.replace("**", "").replace("__", "").replace("*", "")
+    text = _BOLD_STAR_PAIR.sub(r"\1", raw)
+    text = _BOLD_UNDERSCORE_PAIR.sub(r"\1", text)
+    text = _ITALIC_STAR_PAIR.sub(r"\1", text)
     text = _HEADING_HASH.sub("", text)
     return text.strip()
 
@@ -470,11 +482,33 @@ _INTENT_VERB_STEMS = (
 )
 
 
+def _line_label(line: str) -> str:
+    """Ligne débarrassée de ses marqueurs de puce/titre — ce que `_STRUCTURED_LINE` juge."""
+
+    return re.sub(r"^[ \t]*(?:[-*#]+[ \t]*)+", "", line).strip(" :|")
+
+
+def _strip_structured_lines(text: str) -> str:
+    """Ne garde que les lignes de texte libre : retire toute ligne structurée (label
+    reconnu, avec ou sans puce/gras/valeur) AVANT l'extraction heuristique.
+
+    Revue (CRITICAL) : le tiers « item de liste » de `_extract_free_action` scannait tout
+    le texte SANS ce filtre — une puce `RÉACTIONS : usa=coopere: …` (la posture prêtée à un
+    AUTRE pays) pouvait devenir l'« action » du pays en délibération. On filtre donc UNE
+    FOIS en amont, avec le même garde (`_STRUCTURED_LINE`) que `_first_meaningful_line`,
+    pour que les trois tiers ci-dessous ne voient jamais le contenu d'un champ de gabarit.
+    """
+
+    return "\n".join(
+        line for line in text.splitlines() if not _STRUCTURED_LINE.match(_line_label(line))
+    )
+
+
 def _first_meaningful_line(text: str) -> str:
     """Première ligne substantielle du texte libre : ni une ligne structurée, ni du bruit court."""
 
     for line in text.splitlines():
-        candidate = re.sub(r"^[ \t]*(?:[-*#]+[ \t]*)+", "", line).strip(" :|")
+        candidate = _line_label(line)
         if len(candidate) < 15 or _STRUCTURED_LINE.match(candidate):
             continue
         return _compact(candidate)[:280]
@@ -484,22 +518,26 @@ def _first_meaningful_line(text: str) -> str:
 def _extract_free_action(text: str) -> str:
     """Dernier recours : une intention exploitable dans du texte totalement libre.
 
+    Toute ligne structurée est retirée EN AMONT (`_strip_structured_lines`) : aucun des
+    trois tiers ci-dessous ne peut donc piocher dans le contenu d'un champ de gabarit (ex.
+    une puce RÉACTIONS attribuée à un AUTRE pays — voir le docstring de ce filtre).
     Ordre de préférence : la première phrase à la première personne qui porte un VERBE
     D'INTENTION (« je propose… », pas juste « nous devons répondre avec prudence » qui
     n'engage à rien), puis à défaut la première phrase « je/nous » tout court, puis premier
     item de liste, puis première ligne substantielle non structurée du texte.
     """
 
-    persons = list(_FIRST_PERSON_ACTION.finditer(text))
+    free_text = _strip_structured_lines(text)
+    persons = list(_FIRST_PERSON_ACTION.finditer(free_text))
     for person in persons:
         if any(stem in _plain(person.group(0)) for stem in _INTENT_VERB_STEMS):
             return _compact(person.group(0))[:280]
     if persons:
         return _compact(persons[0].group(0))[:280]
-    bullet = _BULLET_LINE.search(text)
+    bullet = _BULLET_LINE.search(free_text)
     if bullet:
         return _compact(bullet.group(1))[:280]
-    return _first_meaningful_line(text)
+    return _first_meaningful_line(free_text)
 
 
 # Branches de complément de l'extraction minimale : DISTINCTES du texte du repli seedé
