@@ -289,6 +289,9 @@ export type AttributeDelta = {
   label: string;
   before: number;
   after: number;
+  // Brief 4 pt 8 — motif du juge pour CE delta (une phrase citant le transcript).
+  // Optionnel : absent des rounds persistés avant ce point (rétro-compat replay).
+  reason?: string;
 };
 
 /** G18 — une action marquante du round, classée par le juge sur le barème de Kahn. */
@@ -435,6 +438,9 @@ export type JudgeRecord = {
   escalation?: number;
   economic_disruption?: number;
   communique?: string;
+  // Brief 4 pt 8 — délibéré prose du juge, accumulé depuis les `judge_token` du direct.
+  // Optionnel : absent des rounds persistés avant ce point (rétro-compat replay).
+  rationale?: string;
   suspension?: SuspensionVerdict & { filed_by?: string };
   suspended?: string[];
   perceptions?: Record<string, Perception>;

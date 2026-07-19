@@ -237,6 +237,29 @@ describe("réducteur de round", () => {
     expect(state.verdict?.reciprocal).toBe(false);
   });
 
+  it("les deltas du verdict portent le motif du juge (brief 4 pt 8)", () => {
+    const state = play([
+      {
+        type: "verdict",
+        deltas: [
+          {
+            country: "iran",
+            label: "croissance",
+            before: 2.0,
+            after: 1.5,
+            reason: "L'Iran a menacé de fermer le détroit.",
+          },
+          // Rétro-compat : un delta d'avant ce point n'a pas de motif — il passe tel quel.
+          { country: "usa", label: "stabilité", before: 0.5, after: 0.55 },
+        ],
+        escalation: 0.6,
+        economic_disruption: 0.3,
+      },
+    ]);
+    expect(state.verdict?.deltas[0].reason).toBe("L'Iran a menacé de fermer le détroit.");
+    expect(state.verdict?.deltas[1].reason).toBeUndefined();
+  });
+
   it("le verdict porte le signal vs action (G20/M8)", () => {
     const state = play([
       {

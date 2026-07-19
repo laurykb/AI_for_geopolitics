@@ -124,6 +124,7 @@ from simulation.live_round import (
     FlashStep,
     HumanMotionVoteStep,
     HumanTurnStep,
+    JudgeTokenStep,
     MessageDoneStep,
     MotionTallyStep,
     MotionVerdictStep,
@@ -1680,6 +1681,12 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
                         },
                     )
                 )
+    elif isinstance(step, JudgeTokenStep):
+        # Brief 4 pt 8 — le délibéré du juge (prose streamée au direct, `judge_token`)
+        # n'était jusqu'ici JAMAIS persisté : la relecture (fin de partie, chronologie)
+        # ne montrait que les chiffres du verdict, jamais le POURQUOI. Accumulé ici comme
+        # `judgeText` côté front, mais dans le round persisté.
+        run.record.judge["rationale"] = run.record.judge.get("rationale", "") + step.token
     elif isinstance(step, VerdictStep):
         run.record.deltas = payload["deltas"]
         run.record.judge.update(

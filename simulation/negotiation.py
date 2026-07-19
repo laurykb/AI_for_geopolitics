@@ -196,6 +196,10 @@ class AttributeDelta:
     label: str
     before: float
     after: float
+    # Brief 4 pt 8 — motif du juge pour CE delta (une phrase citant le transcript).
+    # Défaut "" : rétro-compat totale avec les deltas issus d'un autre mécanisme
+    # (snapshot Fog/Crisis Replay, replays déjà persistés sans ce champ).
+    reason: str = ""
 
     @property
     def change(self) -> float:
@@ -206,6 +210,11 @@ class Verdict(BaseModel):
     """Verdict d'arbitrage du juge (permissif : le garde-fou nettoie derrière)."""
 
     attribute_deltas: dict = Field(default_factory=dict)  # {id: {croissance, stabilité, ...}}
+    # Brief 4 pt 8 — champ JUMEAU d'attribute_deltas (même granularité id -> {label: ...}),
+    # mais des PHRASES au lieu de nombres : {id: {croissance: "motif citant le transcript"}}.
+    # Additif (pas de mutation d'attribute_deltas) : zéro migration des result_json déjà
+    # stockés, parsing tolérant plus simple (même patron que les autres champs permissifs).
+    attribute_reasons: dict = Field(default_factory=dict)
     tension_deltas: list = Field(default_factory=list)  # [{a, b, delta}]
     new_pacts: list = Field(default_factory=list)  # [[a, b], ...]
     escalation: float = 0.5
@@ -248,11 +257,12 @@ class Verdict(BaseModel):
         `apply_verdict` ignore déjà leurs entrées malformées une à une)."""
         return v if isinstance(v, list) else []
 
-    @field_validator("attribute_deltas", mode="before")
+    @field_validator("attribute_deltas", "attribute_reasons", mode="before")
     @classmethod
     def _tolerant_dict(cls, v: object) -> dict:
-        """POLISH-3 — même durcissement pour le champ dict ancien : un
-        `"attribute_deltas": "aucun changement"` d'un 7B ne nuque pas le verdict."""
+        """POLISH-3 — même durcissement pour les champs dict : un
+        `"attribute_deltas": "aucun changement"` (ou `attribute_reasons`, brief 4 pt 8)
+        d'un 7B ne nuque pas le verdict."""
         return v if isinstance(v, dict) else {}
 
     @field_validator("demand_satisfied", mode="before")
@@ -345,6 +355,11 @@ def apply_verdict(
         country = world.countries.get(cid)
         if country is None or not isinstance(attrs, dict):
             continue
+        # Brief 4 pt 8 — motifs jumeaux de CE pays (mêmes labels qu'attribute_deltas) ;
+        # tolérant à toute forme sale (absent, pas un dict) : jamais d'exception ici,
+        # le garde-fou reste déterministe même si le juge est muet sur le motif.
+        raw_reasons = verdict.attribute_reasons.get(cid)
+        reasons = raw_reasons if isinstance(raw_reasons, dict) else {}
         for label, raw in attrs.items():
             if label not in _ATTRS:
                 continue
@@ -365,7 +380,9 @@ def apply_verdict(
                 after = max(lo, min(bounds[1], after))
             if abs(after - before) > 1e-9:
                 _set(country, path, after)
-                deltas.append(AttributeDelta(cid, label, before, after))
+                raw_reason = reasons.get(label, "")
+                reason = raw_reason if isinstance(raw_reason, str) else ""
+                deltas.append(AttributeDelta(cid, label, before, after, reason))
 
     for entry in verdict.tension_deltas:
         if not isinstance(entry, dict):

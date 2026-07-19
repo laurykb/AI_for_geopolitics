@@ -110,23 +110,35 @@ export function VerdictPanel({
           {deltas.map((d, i) => {
             const up = d.after > d.before;
             return (
-              <li key={i} className="flex items-center gap-3 py-2 text-sm">
-                <SpeakerAvatar id={d.country} size={22} />
-                <span className="w-36 truncate text-fg-muted" title={speakerMeta(d.country).label}>
-                  {speakerMeta(d.country).label}
+              <li key={i} className="py-2 text-sm">
+                <span className="flex items-center gap-3">
+                  <SpeakerAvatar id={d.country} size={22} />
+                  <span
+                    className="w-36 truncate text-fg-muted"
+                    title={speakerMeta(d.country).label}
+                  >
+                    {speakerMeta(d.country).label}
+                  </span>
+                  <span className="flex-1 text-fg-faint">{d.label}</span>
+                  <span className="font-mono text-xs tabular-nums text-fg-faint">
+                    {fmt(d.before)}
+                  </span>
+                  <span aria-hidden className={up ? "text-good" : "text-bad"}>
+                    {up ? "↗" : "↘"}
+                  </span>
+                  <span
+                    className={`font-mono text-xs font-semibold tabular-nums ${up ? "text-good" : "text-bad"}`}
+                  >
+                    {fmt(d.after)}
+                  </span>
                 </span>
-                <span className="flex-1 text-fg-faint">{d.label}</span>
-                <span className="font-mono text-xs tabular-nums text-fg-faint">
-                  {fmt(d.before)}
-                </span>
-                <span aria-hidden className={up ? "text-good" : "text-bad"}>
-                  {up ? "↗" : "↘"}
-                </span>
-                <span
-                  className={`font-mono text-xs font-semibold tabular-nums ${up ? "text-good" : "text-bad"}`}
-                >
-                  {fmt(d.after)}
-                </span>
+                {/* Brief 4 pt 8 — le POURQUOI du juge sous chaque mouvement chiffré
+                    (absent des rounds d'avant ce point : la ligne disparaît, rien ne casse). */}
+                {d.reason && (
+                  <span className="mt-1 block pl-[34px] text-xs leading-relaxed text-fg-faint">
+                    {d.reason}
+                  </span>
+                )}
               </li>
             );
           })}
