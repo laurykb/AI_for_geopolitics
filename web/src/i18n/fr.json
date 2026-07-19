@@ -335,7 +335,7 @@
   "transcript.reflexion": "Réflexion privée",
   "transcript.journal": "Journal de délibération observable",
   "transcript.journal-note": "Verbalisation générée pour l’audit : elle expose les raisons, prévisions et critères demandés au modèle, pas ses activations internes.",
-  "transcript.planification-privee": "Observe, anticipe les autres pays et compare trois futurs…",
+  "transcript.planification-privee": "Réfléchit à huis clos — l'essentiel de sa réflexion s'affichera à la fin de son tour…",
   "transcript.prise": "{n}ᵉ prise de parole",
   "turn.a-toi": "à toi de parler",
   "turn.compose": "compose pendant que les IA parlent — l'envoi se déverrouillera à ton tour",
