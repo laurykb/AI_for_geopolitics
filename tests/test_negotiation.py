@@ -103,6 +103,69 @@ def test_stream_negotiation_message():
     assert agent.model_tag  # badge modèle non vide
 
 
+def test_stream_negotiation_message_trims_a_fragment_cut_by_the_token_cap():
+    # Chantier dialogue limpide — la longueur libre encourage parfois un 7B à déborder son
+    # budget de tokens ; le backend coupe alors en plein mot. On retombe sur la dernière
+    # phrase complète plutôt que de publier un mot tronqué (plus moche que l'ancienne
+    # brièveté mécanique).
+    raw = (
+        "Iran, nous exigeons des garanties vérifiables sous 24 heures. Toute provocation "
+        "supplémentaire sera considérée comme un acte hostile et nous nous réservons le "
+        "droit de rép"
+    )
+    agent = LLMAgent("usa", MockBackend(raw))
+    from core.events import GeoEvent
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    out = "".join(agent.stream_negotiation_message(event, _world(), []))
+    assert out == (
+        "Iran, nous exigeons des garanties vérifiables sous 24 heures. Toute provocation "
+        "supplémentaire sera considérée comme un acte hostile et nous nous réservons le "
+        "droit de rép".rsplit(".", 1)[0]
+        + "."
+    )
+    assert not out.endswith("rép")
+
+
+def test_stream_negotiation_message_never_trims_a_structured_suffix():
+    # Régression réelle (suite complète) — le jeu fait suivre le message naturel de
+    # suffixes structurés SANS ponctuation finale (MOTION:, ALLIANCE:...) que d'autres
+    # modules parsent directement dans le texte public (simulation/motions.py, retrait
+    # d'alliance en séance). Un trim aveugle les avalait entièrement.
+    raw = "Analyse privée. MESSAGE: Le sommet est menacé.\nMOTION: iran : accapare"
+    agent = LLMAgent("usa", MockBackend(raw))
+    from core.events import GeoEvent
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    out = "".join(agent.stream_negotiation_message(event, _world(), []))
+    assert "MOTION: iran : accapare" in out
+
+    raw2 = "Analyse. MESSAGE: Nous reprenons notre liberté stratégique. ALLIANCE: quitter NATO"
+    agent2 = LLMAgent("usa", MockBackend(raw2))
+    out2 = "".join(agent2.stream_negotiation_message(event, _world(), []))
+    assert "ALLIANCE: quitter NATO" in out2
+
+
+def test_stream_negotiation_message_leaves_complete_sentences_untouched():
+    agent = LLMAgent("usa", MockBackend("Nous acceptons votre proposition."))
+    from core.events import GeoEvent
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    out = "".join(agent.stream_negotiation_message(event, _world(), []))
+    assert out == "Nous acceptons votre proposition."
+
+
+def test_stream_negotiation_message_keeps_a_fragment_with_no_sentence_boundary():
+    # Aucune ponctuation de fin repérable : on garde tel quel (mieux qu'un message vide,
+    # qui déclencherait le repli déterministe pour un simple défaut de ponctuation).
+    agent = LLMAgent("usa", MockBackend("un message sans aucune ponctuation terminale"))
+    from core.events import GeoEvent
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    out = "".join(agent.stream_negotiation_message(event, _world(), []))
+    assert out == "un message sans aucune ponctuation terminale"
+
+
 def test_stream_negotiation_message_strips_think_trace_before_sanitize():
     # Point 5 — un modèle de raisonnement émet sa trace <think> inline AVANT la
     # déclaration : sans strip, le filtre anti-fuite (fail-closed sur « FUTUR n » en
@@ -118,9 +181,7 @@ def test_stream_negotiation_message_strips_think_trace_before_sanitize():
 
     event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
     plan = fallback_private_plan(["iran"], seed="usa")
-    out = "".join(
-        agent.stream_negotiation_message(event, _world(), [], private_plan=plan)
-    )
+    out = "".join(agent.stream_negotiation_message(event, _world(), [], private_plan=plan))
     assert out == "Nous proposons un accord vérifiable."
     assert "<think>" not in out and "FUTUR" not in out
 
@@ -149,8 +210,9 @@ def test_telemetry_channels_store_stripped_text_and_thinking():
 
 
 def test_stream_negotiation_message_uses_role_sampling():
-    # G9 §1 — anti-boucle au décodeur : repeat_penalty et température du rôle « country »
-    # (data/gamefeel/params.json) sont transmis au backend.
+    # G9 §1 — anti-boucle au décodeur : repeat_penalty et température transmis au backend.
+    # Chantier dialogue limpide — usa n'a pas de tempérament explicite ici, donc retombe
+    # sur l'entrée "opportuniste" de sampling.temperaments (data/gamefeel/params.json).
     backend = MockBackend("ok")
     agent = LLMAgent("usa", backend)
     from core.events import GeoEvent
@@ -158,11 +220,45 @@ def test_stream_negotiation_message_uses_role_sampling():
     event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
     list(agent.stream_negotiation_message(event, _world(), []))
     assert backend.calls[-1]["repeat_penalty"] == 1.15
+    assert backend.calls[-1]["temperature"] == 0.9
+
+
+def test_stream_negotiation_message_varies_sampling_by_temperament():
+    # Chantier dialogue limpide — le sampling nuance le registre par tempérament (G17) :
+    # colombe plus mesurée, faucon plus tranchant. Deux pays, un seul appel chacun.
+    backend = MockBackend("ok")
+    world = _world()
+    world.countries["usa"].temperament = "colombe"
+    world.countries["iran"].temperament = "faucon"
+    from core.events import GeoEvent
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    list(LLMAgent("usa", backend).stream_negotiation_message(event, world, []))
+    dove_call = backend.calls[-1]
+    list(LLMAgent("iran", backend).stream_negotiation_message(event, world, []))
+    hawk_call = backend.calls[-1]
+    assert dove_call["temperature"] == 0.75 and dove_call["repeat_penalty"] == 1.18
+    assert hawk_call["temperature"] == 0.85 and hawk_call["repeat_penalty"] == 1.12
+    assert dove_call["temperature"] != hawk_call["temperature"]  # les registres divergent
+
+
+def test_stream_negotiation_message_unknown_temperament_falls_back_to_country_sampling():
+    # Rétro-compat explicite — un tempérament qui n'est pas dans le bloc "temperaments"
+    # (pays forgé, valeur inattendue) retombe sur le socle unique `sampling.country`.
+    backend = MockBackend("ok")
+    world = _world()
+    world.countries["usa"].temperament = "inconnu"
+    from core.events import GeoEvent
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    list(LLMAgent("usa", backend).stream_negotiation_message(event, world, []))
+    assert backend.calls[-1]["repeat_penalty"] == 1.15
     assert backend.calls[-1]["temperature"] == 0.8
 
 
 def test_stream_negotiation_message_respects_think_depth():
-    # La profondeur pilote le plan privé, tandis que la parole publique reste courte.
+    # La profondeur pilote le plan privé ; la parole publique s'élargit (l'ancien plafond
+    # dur à 220 rendait le slider de profondeur presque sans effet sur la parole).
     backend = MockBackend("ok")
     agent = LLMAgent("usa", backend)
     from core.events import GeoEvent
@@ -170,10 +266,31 @@ def test_stream_negotiation_message_respects_think_depth():
     event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
     list(agent.stream_negotiation_message(event, _world(), [], max_tokens=900))
     assert backend.calls[-2]["max_tokens"] == 900
-    assert backend.calls[-1]["max_tokens"] == 220
+    assert backend.calls[-1]["max_tokens"] == 320
     list(agent.stream_negotiation_message(event, _world(), []))  # défaut
     assert backend.calls[-2]["max_tokens"] == 800
-    assert backend.calls[-1]["max_tokens"] == 220
+    assert backend.calls[-1]["max_tokens"] == 240
+
+
+def test_stream_negotiation_message_public_budget_varies_by_temperament():
+    # Chantier dialogue limpide — faucon plus sec, colombe plus développée (delta mineur).
+    backend = MockBackend("ok")
+    world = _world()
+    world.countries["usa"].temperament = "faucon"
+    from core.events import GeoEvent
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    list(LLMAgent("usa", backend).stream_negotiation_message(event, world, []))
+    hawk_budget = backend.calls[-1]["max_tokens"]
+
+    world2 = _world()
+    world2.countries["usa"].temperament = "colombe"
+    list(LLMAgent("usa", backend).stream_negotiation_message(event, world2, []))
+    dove_budget = backend.calls[-1]["max_tokens"]
+
+    assert hawk_budget == 240 - 40
+    assert dove_budget == 240 + 40
+    assert hawk_budget < dove_budget
 
 
 def test_stream_negotiation_message_threads_human_country_into_prompts():
@@ -189,11 +306,7 @@ def test_stream_negotiation_message_threads_human_country_into_prompts():
             country="france", text="Nous proposons un corridor humanitaire.", pass_no=0
         ),
     ]
-    list(
-        agent.stream_negotiation_message(
-            event, _world(), transcript, human_country="france"
-        )
-    )
+    list(agent.stream_negotiation_message(event, _world(), transcript, human_country="france"))
     private_prompt = backend.calls[-2]["prompt"]
     public_prompt = backend.calls[-1]["prompt"]
     for prompt in (private_prompt, public_prompt):

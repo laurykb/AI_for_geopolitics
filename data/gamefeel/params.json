@@ -70,9 +70,15 @@
     "flash_horizon_rounds": 2
   },
   "sampling": {
+    "_comment": "Chantier dialogue limpide — 'country' reste le socle (pays au temperament inconnu, retro-compat). 'temperaments' nuance le registre par temperament G17 : colombe mesuree, faucon sec/tranchant, opportuniste (facade lizard) entre les deux.",
     "country": {
       "temperature": 0.8,
       "repeat_penalty": 1.15
+    },
+    "temperaments": {
+      "colombe": { "temperature": 0.75, "repeat_penalty": 1.18 },
+      "faucon": { "temperature": 0.85, "repeat_penalty": 1.12 },
+      "opportuniste": { "temperature": 0.9, "repeat_penalty": 1.15 }
     }
   },
   "difficulty": {

@@ -1,6 +1,12 @@
 """Tests du registre de griefs (G7-a, spec_g7_gamefeel lot 1) — déterministe, sans LLM."""
 
-from simulation.grudges import Grief, GrudgeBook, load_gamefeel_params
+from simulation.grudges import (
+    GamefeelParams,
+    Grief,
+    GrudgeBook,
+    load_gamefeel_params,
+    sampling_for_temperament,
+)
 
 
 def _grief(kind: str, weight: float, round_no: int = 1, summary: str = "x") -> Grief:
@@ -28,6 +34,39 @@ def test_deltas_params_carry_mute_fallback():
     # Brief 3 pt 3 — repli déterministe (stabilité) quand le juge est muet sur un pays.
     p = load_gamefeel_params().deltas
     assert p.mute_fallback == 0.03
+
+
+def test_sampling_temperaments_load_with_expected_shape():
+    # Chantier dialogue limpide — un bloc par tempérament G17, distinct du socle "country".
+    p = load_gamefeel_params().sampling
+    assert p.country.temperature == 0.8 and p.country.repeat_penalty == 1.15
+    assert p.temperaments["colombe"].temperature == 0.75
+    assert p.temperaments["faucon"].temperature == 0.85
+    assert p.temperaments["opportuniste"].temperature == 0.9
+    # les trois profils sont bien distincts (sinon la nuance de registre n'existe pas)
+    temps = {t.temperature for t in p.temperaments.values()}
+    assert len(temps) == 3
+
+
+def test_sampling_for_temperament_returns_the_matching_profile():
+    p = load_gamefeel_params()
+    assert sampling_for_temperament(p, "colombe") == p.sampling.temperaments["colombe"]
+    assert sampling_for_temperament(p, "faucon") == p.sampling.temperaments["faucon"]
+
+
+def test_sampling_for_temperament_falls_back_to_country_for_unknown_temperament():
+    p = load_gamefeel_params()
+    assert sampling_for_temperament(p, "inconnu") == p.sampling.country
+    assert sampling_for_temperament(p, "") == p.sampling.country
+
+
+def test_sampling_for_temperament_falls_back_when_json_has_no_temperaments_block():
+    # Rétro-compat — un GamefeelParams construit sans le bloc "temperaments" (JSON
+    # antérieur à ce chantier, ou fixture de test minimale) ne casse rien : Pydantic
+    # comble avec les défauts Python, identiques au JSON par défaut du dépôt.
+    minimal = GamefeelParams.model_validate({})
+    assert sampling_for_temperament(minimal, "colombe").temperature == 0.75
+    assert sampling_for_temperament(minimal, "totalement-inconnu") == minimal.sampling.country
 
 
 def test_balance_is_bounded_and_directional():
@@ -67,9 +106,7 @@ def test_prompt_lines_name_the_grief_and_the_stance():
 
 def test_alliance_departure_aggrieves_remaining_partners():
     book = GrudgeBook()
-    book.on_alliance_departure(
-        leaver="france", tag="pact:france+usa", partners=["usa"], round_no=4
-    )
+    book.on_alliance_departure(leaver="france", tag="pact:france+usa", partners=["usa"], round_no=4)
     assert book.balance("usa", "france") == -5  # pact_broken
     assert book.balance("france", "usa") == 0.0
 

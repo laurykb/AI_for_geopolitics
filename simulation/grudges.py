@@ -148,6 +148,19 @@ class SamplingParams(BaseModel):
 
 class SamplingByRole(BaseModel):
     country: SamplingParams = Field(default_factory=SamplingParams)
+    # Chantier « dialogue limpide » — le sampling nuance le REGISTRE par tempérament
+    # (G17) : la colombe reste mesurée, le faucon est plus sec/tranchant, l'opportuniste
+    # (facade « lizard ») navigue entre les deux. Défauts Python identiques à
+    # data/gamefeel/params.json (même source de vérité que le reste de GamefeelParams) :
+    # un tempérament absent de ce bloc (pays forgé, JSON ancien sans "temperaments")
+    # retombe sur le socle unique `country` — comportement inchangé dans ce cas.
+    temperaments: dict[str, SamplingParams] = Field(
+        default_factory=lambda: {
+            "colombe": SamplingParams(temperature=0.75, repeat_penalty=1.18),
+            "faucon": SamplingParams(temperature=0.85, repeat_penalty=1.12),
+            "opportuniste": SamplingParams(temperature=0.9, repeat_penalty=1.15),
+        }
+    )
 
 
 class GamefeelParams(BaseModel):
@@ -171,6 +184,15 @@ def _load(path: str) -> GamefeelParams:
 def load_gamefeel_params() -> GamefeelParams:
     """Paramètres G7 (surchargables par `GAMEFEEL_PARAMS_PATH` pour les tests)."""
     return _load(os.getenv(GAMEFEEL_PARAMS_PATH, str(_DEFAULT_PARAMS)))
+
+
+def sampling_for_temperament(params: GamefeelParams, temperament: str) -> SamplingParams:
+    """Options de décodage nuancées par tempérament (chantier « dialogue limpide »).
+
+    Repli sur le socle unique `sampling.country` quand le tempérament n'a pas d'entrée
+    dans `sampling.temperaments` (pays forgé au tempérament inconnu, ou JSON qui ne
+    définit pas le bloc) — rétro-compatible avec le comportement d'avant ce chantier."""
+    return params.sampling.temperaments.get(temperament) or params.sampling.country
 
 
 class Grief(BaseModel):

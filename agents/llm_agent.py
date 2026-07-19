@@ -36,7 +36,7 @@ from simulation.dialogue_integrity.message import (
     SpeechAct,
     generate_speech_act,
 )
-from simulation.grudges import load_gamefeel_params
+from simulation.grudges import load_gamefeel_params, sampling_for_temperament
 from simulation.negotiation import NegotiationMessage, format_transcript
 from simulation.perception import PerceivedEvent, perceive
 from simulation.private_deliberation import (
@@ -51,6 +51,51 @@ from simulation.private_deliberation import (
 
 def _clamp(x: float) -> float:
     return max(0.0, min(1.0, x))
+
+
+# Chantier « dialogue limpide » — le tempérament (G17) module légèrement la longueur
+# publique : le faucon est sec, la colombe développe davantage. Delta mineur (±40
+# tokens), pas une refonte du budget — l'essentiel de la variété vient du registre
+# (NEGOTIATION_SYSTEM), pas de la taille.
+_TEMPERAMENT_TOKEN_DELTA: dict[str, int] = {"faucon": -40, "colombe": 40}
+
+
+def _public_token_budget(max_tokens: int, temperament: str) -> int:
+    """Plafond de tokens de la déclaration publique : élargi (le slider de profondeur
+    n'avait presque aucun effet avec l'ancien plafond dur à 220), puis nuancé par
+    tempérament."""
+    base = max(140, min(320, max_tokens // 2))
+    return base + _TEMPERAMENT_TOKEN_DELTA.get(temperament, 0)
+
+
+# Sonde réelle (mistral) — la longueur libre encourage parfois un 7B à déborder son
+# budget de tokens ; le backend coupe alors la phrase en plein mot. C'est plus moche que
+# l'ancienne brièveté mécanique : on retombe sur la dernière phrase complète plutôt que de
+# publier un mot tronqué. Repli par défaut si aucune frontière n'est trouvée (mieux qu'un
+# message vide qui déclencherait le repli déterministe).
+_SENTENCE_BOUNDARY = re.compile(r'[.!?…»”"\']\s')
+
+# Le jeu fait suivre le message naturel de suffixes structurés SANS ponctuation finale
+# (« MOTION: iran : accapare », « ALLIANCE: quitter NATO »…) que d'autres modules
+# parsent directement dans le texte public (simulation/motions.py, retrait d'alliance
+# en séance…). Une regression réelle (suite complète) a montré qu'un trim aveugle les
+# avale : si la partie qu'on s'apprête à couper contient un tel marqueur, on renonce —
+# ce n'est pas un artefact de troncature, c'est le format attendu.
+_STRUCTURED_SUFFIX = re.compile(r"[A-Z]{3,}\s*:")
+
+
+def _trim_trailing_fragment(text: str) -> str:
+    stripped = text.rstrip()
+    if not stripped or stripped[-1] in ".!?…»”\"'":
+        return stripped
+    matches = list(_SENTENCE_BOUNDARY.finditer(stripped))
+    if not matches:
+        return stripped
+    cut = matches[-1].end()
+    if _STRUCTURED_SUFFIX.search(stripped[cut:]):
+        return stripped
+    trimmed = stripped[:cut].rstrip()
+    return trimmed or stripped
 
 
 def _last_message_from(transcript: list[NegotiationMessage], country: str | None) -> str:
@@ -198,7 +243,7 @@ class LLMAgent(Agent):
             human_country=human_country or "",
             last_human_message=last_human_message,
         )
-        sampling = load_gamefeel_params().sampling.country
+        sampling = sampling_for_temperament(load_gamefeel_params(), country.temperament)
         participants = sorted(cid for cid in world.countries if cid != self.country_id)
         self.last_private_plan = None
         self.last_private_summary = ""
@@ -263,7 +308,7 @@ class LLMAgent(Agent):
         own = [m.text[:90] for m in transcript if m.country == self.country_id and m.text]
         transcript_text = format_transcript(transcript, human_country=human_country)
         last_human_message = _last_message_from(transcript, human_country)
-        sampling = load_gamefeel_params().sampling.country
+        sampling = sampling_for_temperament(load_gamefeel_params(), country.temperament)
         plan = private_plan or self.prepare_negotiation_plan(
             event,
             world,
@@ -301,7 +346,7 @@ class LLMAgent(Agent):
                 self.backend.stream_generate(
                     public_prompt,
                     system=NEGOTIATION_SYSTEM,
-                    max_tokens=max(120, min(220, max_tokens // 2)),
+                    max_tokens=_public_token_budget(max_tokens, country.temperament),
                     temperature=sampling.temperature,
                     repeat_penalty=sampling.repeat_penalty,
                 )
@@ -312,7 +357,7 @@ class LLMAgent(Agent):
             # (Minor) — .text porte le texte déjà STRIPPÉ, la pensée va dans .thinking.
             text, thinking = split_think(raw_public)
             self.last_result = InferenceResult(text=text, thinking=thinking)
-            public = sanitize_public_message(text)
+            public = _trim_trailing_fragment(sanitize_public_message(text))
         except Exception:
             self.last_result = None
             public = ""
@@ -347,12 +392,17 @@ class LLMAgent(Agent):
             strict = (
                 "\n\nRAPPEL : réponds en JSON valide ; si tu emploies accept_proposal/"
                 "reject_proposal/agree/refuse/not_understood, `in_reply_to` DOIT être l'id d'un "
-                "message ci-dessus." if attempt else ""
+                "message ci-dessus."
+                if attempt
+                else ""
             )
             try:
                 return generate_speech_act(
-                    self.backend, prompt + strict, sender=self.country_id,
-                    system=SPEECH_ACT_SYSTEM, temperature=0.4 if attempt == 0 else 0.15,
+                    self.backend,
+                    prompt + strict,
+                    sender=self.country_id,
+                    system=SPEECH_ACT_SYSTEM,
+                    temperature=0.4 if attempt == 0 else 0.15,
                     max_tokens=max_tokens,
                 )
             except Exception:  # noqa: BLE001 - JSON invalide / backend KO -> régénère puis repli
@@ -368,8 +418,11 @@ class LLMAgent(Agent):
             next((c for c in world.countries if c != self.country_id), self.country_id),
         )
         return SpeechAct(
-            performative=Performative.INFORM, sender=self.country_id, receiver=receiver,
-            content=content, justification="[repli déterministe — backend indisponible]",
+            performative=Performative.INFORM,
+            sender=self.country_id,
+            receiver=receiver,
+            content=content,
+            justification="[repli déterministe — backend indisponible]",
         )
 
     def decide(self, event: GeoEvent, world: WorldState) -> AgentDecision:
