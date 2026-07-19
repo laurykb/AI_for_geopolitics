@@ -50,6 +50,10 @@ class PrivateStrategicPlan(BaseModel):
     comparison_summary: str = Field("", max_length=800)
     contingency_plan: str = Field("", max_length=500)
     fallback_used: bool = False
+    # Traçabilité de l'extraction minimale (décision 2 du reliquat « réflexion libre ») :
+    # au moins une branche vient d'une lecture de secours du texte libre du modèle (pas du
+    # gabarit strict/tolérant), distincte du repli seedé générique (`fallback_used`).
+    minimal_extraction: bool = False
 
     @model_validator(mode="after")
     def validate_tree(self) -> PrivateStrategicPlan:
@@ -140,6 +144,11 @@ class PrivateStrategicPlan(BaseModel):
             lines.append(
                 "Note d'audit : journal conservateur utilisé après une sortie modèle invalide."
             )
+        if self.minimal_extraction:
+            lines.append(
+                "Note d'audit : lecture minimale — au moins une branche complète une sortie "
+                "libre non structurée, distincte du repli seedé générique."
+            )
         lines.append(
             "Note méthodologique : verbalisation générée pour audit, distincte des activations "
             "internes du modèle."
@@ -213,13 +222,60 @@ def _score(value: str, default: int = 50) -> int:
     return max(0, min(100, int(match.group()))) if match else default
 
 
+# Tous les intitulés de champ reconnus dans un journal (gabarit strict + tolérance
+# markdown), utilisés comme garde anti-vol de ligne : quand un champ est en gras SEUL sur
+# sa ligne (« **RÉACTIONS :**  ») et que la valeur arrive sur la ligne suivante, on ne doit
+# JAMAIS confondre cette ligne suivante avec le début d'un autre champ reconnu — sinon on
+# volerait silencieusement sa valeur (corruption, pas juste une perte d'information).
+_ALL_FIELD_LABELS = (
+    "OBSERVATIONS", "OBSERVATION",
+    "CROYANCES ET INCERTITUDES", "CROYANCES",
+    "RÉACTIONS ANTICIPÉES", "RÉACTIONS", "REACTIONS",
+    "ACTIONS", "ACTION",
+    "CHAÎNE CAUSALE", "CHAINE CAUSALE", "ISSUE",
+    "SECOND ORDRE",
+    "INDICATEUR CONTRAIRE", "SIGNAL CONTRAIRE",
+    "UTILITÉ", "UTILITE",
+    "RISQUE D'ESCALADE", "RISQUE",
+    "CONFIANCE",
+    "COMPARAISON",
+    "CHOIX",
+    "CRITÈRE", "CRITERE",
+    "INCERTITUDE DÉCISIVE", "INCERTITUDE",
+    "LACUNES",
+    "REVUE HUMAINE",
+    "PLAN DE REPLI",
+    "ARBITRAGE",
+)
+_FIELD_LABEL_GUARD = "|".join(re.escape(label) for label in _ALL_FIELD_LABELS)
+
+
 def _journal_field(body: str, *labels: str) -> str:
+    """Valeur d'un champ étiqueté, tolérante au markdown (gras déjà aplati en amont).
+
+    Deux passes, dans cet ordre : (1) valeur sur la MÊME ligne que le label — le gabarit
+    strict d'origine, inchangé — puis (2) label seul sur sa ligne (titre de fait), valeur
+    sur la ligne suivante, MAIS seulement si cette ligne n'est pas elle-même un autre champ
+    reconnu (`_FIELD_LABEL_GUARD`). Un 7B en délibération libre écrit souvent le champ en
+    gras comme un sous-titre plutôt que « LABEL : valeur » sur une ligne — un modèle qui
+    respecte déjà le gabarit strict emprunte systématiquement la passe (1), donc rien n'y
+    change pour lui.
+    """
     alternatives = "|".join(re.escape(label) for label in labels)
-    match = re.search(
-        rf"(?im)^\s*(?:{alternatives})\s*(?:\||:)\s*(.+?)\s*$",
+    same_line = re.search(
+        rf"(?im)^[ \t]*(?:[-*]\s*)?(?:{alternatives})\b[^\n:|]{{0,40}}?[ \t]*(?:\||:)"
+        rf"[ \t]*(?!\s*$)(.+?)[ \t]*$",
         body,
     )
-    return _compact(match.group(1)) if match else ""
+    if same_line and same_line.group(1).strip():
+        return _compact(same_line.group(1))
+    next_line = re.search(
+        rf"(?im)^[ \t]*(?:[-*]\s*)?(?:{alternatives})\b[^\n:|]{{0,40}}?[ \t]*(?:\||:)?[ \t]*\n"
+        rf"(?!\s*(?:[-*]\s*)?(?:{_FIELD_LABEL_GUARD})\b[^\n:|]{{0,40}}?[ \t]*(?:\||:))"
+        rf"[ \t]*(?:[-*]\s*)?(.{{1,}})[ \t]*$",
+        body,
+    )
+    return _compact(next_line.group(1))[:300] if next_line else ""
 
 
 def _response_class(value: str) -> ResponseClass:
@@ -265,44 +321,293 @@ def _parse_forecasts(value: str, participants: list[str]) -> list[CounterpartyFo
     ]
 
 
-def _parse_observable_journal(raw: str, participants: list[str]) -> PrivateStrategicPlan | None:
-    text = raw.replace("**", "").replace("__", "").strip()
-    sections = list(
-        re.finditer(
-            r"(?ims)^\s*FUTUR\s+([123])(?:\s*[—–-][^\r\n]*)?\s*\n(.*?)"
-            r"(?=^\s*FUTUR\s+[123]\b|^\s*(?:COMPARAISON|ARBITRAGE|CHOIX)\b|\Z)",
-            text,
-        )
+_HEADING_HASH = re.compile(r"(?m)^[ \t]{0,3}#{1,6}[ \t]*")
+
+# Section FUTUR n, tolérante au markdown : puce optionnelle avant FUTUR, séparateur de
+# titre élargi à « : » (en plus de —/–/-) pour couvrir « FUTUR 1 : Escalation (Alliance) ».
+_FUTUR_SECTION = re.compile(
+    r"(?ims)^\s*(?:[-*]\s*)?FUTUR\s+([123])\b(?:\s*[—–:-][^\r\n]*)?\s*\n(.*?)"
+    r"(?=^\s*(?:[-*]\s*)?FUTUR\s+[123]\b|^\s*(?:[-*]\s*)?(?:COMPARAISON|ARBITRAGE|CHOIX)\b|\Z)"
+)
+
+_FORBIDDEN_ACTION_STEMS = {
+    "coopere",
+    "cooperer",
+    "resiste",
+    "resister",
+    "ressit",
+    "contre_escalade",
+    "temporise",
+    "temporiser",
+}
+
+
+def _forbidden_bare_action(action: str) -> bool:
+    """Vrai si `action` n'est qu'une classe de réaction nue (coopere/resiste/…), pas un plan."""
+
+    plain = _plain(action).replace(" ", "_")
+    if plain in _FORBIDDEN_ACTION_STEMS:
+        return True
+    tokens = plain.split("_")
+    return len(tokens) <= 2 and plain.startswith(
+        ("cooper", "resist", "ressit", "temporis", "contre_escalad")
     )
+
+
+def _normalize_markdown(raw: str) -> str:
+    """Aplatit les variantes markdown d'un journal (gras, titres `#`) avant tout parsing.
+
+    Un modèle de raisonnement 7B en délibération libre rédige souvent son journal en
+    markdown (`**FUTUR 1 : titre**`, `### FUTUR 1`, valeurs en *italique*) plutôt qu'en
+    lignes nues. On aplatit ICI, une seule fois : le chemin strict garde exactement son
+    comportement d'origine sur un texte qui n'a jamais utilisé de markdown (aucune
+    substitution n'a d'effet dessus). Les astérisques restants (italique simple, ex.
+    `*Concilier les alliages*`) sont retirés après le gras : sinon ils fuient tels quels
+    dans les valeurs de champ extraites.
+    """
+
+    text = raw.replace("**", "").replace("__", "").replace("*", "")
+    text = _HEADING_HASH.sub("", text)
+    return text.strip()
+
+
+def _extract_observation(text: str) -> str:
+    match = re.search(
+        r"(?ims)^\s*(?:[-*]\s*)?OBSERVATIONS?\s*:?\s*\n(.*?)"
+        r"(?=^\s*(?:[-*]\s*)?CROYANCES(?:\s+ET\s+INCERTITUDES)?\b|"
+        r"^\s*(?:[-*]\s*)?FUTUR\s+[123]\b|\Z)",
+        text,
+    )
+    return _compact(match.group(1)) if match else ""
+
+
+def _extract_beliefs(text: str) -> str:
+    match = re.search(
+        r"(?ims)^\s*(?:[-*]\s*)?CROYANCES(?:\s+ET\s+INCERTITUDES)?\s*:?\s*\n(.*?)"
+        r"(?=^\s*(?:[-*]\s*)?FUTUR\s+[123]\b|\Z)",
+        text,
+    )
+    return _compact(match.group(1)) if match else ""
+
+
+def _resolve_choice(text: str, branches: list[PrivateFuture], real_ids: set[int]) -> int:
+    """Détermine la branche retenue, du plus explicite au plus interprétatif.
+
+    1. Ligne stricte `CHOIX : FUTUR n` (gabarit d'origine, inchangé pour le chemin structuré
+       où `real_ids` vaut toujours {1,2,3}).
+    2. `FUTUR n` cité n'importe où dans le champ CHOIX en prose libre (« Nous retenons le
+       FUTUR 2 car… ») — un 7B en markdown énonce souvent son choix ainsi plutôt que sur
+       une ligne dédiée.
+    3. Score du modèle (utilité nette du risque, départagé par la confiance) — jamais un
+       défaut arbitraire « FUTUR 1 ».
+
+    Les trois tiers sont restreints à `real_ids` : en extraction minimale, une branche
+    manquante est comblée par un texte générique marqué (`_PADDING_ACTIONS`) qui ne doit
+    JAMAIS devenir la branche retenue, même si le modèle a explicitement écrit
+    « CHOIX : FUTUR 3 » alors que seule la section 3 était trop incomplète pour être réelle.
+    """
+
+    strict = re.search(r"(?im)^\s*(?:[-*]\s*)?CHOIX\s*(?:\||:)\s*(?:FUTUR\s*)?([123])\b", text)
+    if strict and int(strict.group(1)) in real_ids:
+        return int(strict.group(1))
+    prose = _journal_field(text, "CHOIX")
+    loose = re.search(r"(?i)FUTUR\s*([123])\b", prose) if prose else None
+    if loose and int(loose.group(1)) in real_ids:
+        return int(loose.group(1))
+    pool = [b for b in branches if b.id in real_ids] or branches
+    return max(pool, key=lambda b: (b.mandate_utility - b.escalation_risk, b.confidence)).id
+
+
+def _extract_partial_branch(
+    match: re.Match[str], participants: list[str]
+) -> PrivateFuture | None:
+    """Reconstruit une branche même incomplète : une action exploitable suffit.
+
+    Contrairement au chemin structuré (qui exige une CHAÎNE CAUSALE), utilisé par
+    l'extraction minimale : l'absence d'un champ secondaire ne doit plus faire perdre
+    l'action réelle du modèle — on comble par un texte neutre plutôt que de la jeter.
+    """
+
+    body = match.group(2)
+    action = _journal_field(body, "ACTION", "ACTIONS")[:300]
+    if not action or _forbidden_bare_action(action):
+        return None
+    reactions = _journal_field(body, "RÉACTIONS", "REACTIONS", "RÉACTIONS ANTICIPÉES")
+    outcome = _journal_field(body, "CHAÎNE CAUSALE", "CHAINE CAUSALE", "ISSUE")[:300] or (
+        "issue non détaillée par le modèle"
+    )
+    return PrivateFuture(
+        id=int(match.group(1)),
+        course_of_action=action,
+        forecasts=_parse_forecasts(reactions, participants),
+        expected_outcome=outcome,
+        second_order_effect=_journal_field(body, "SECOND ORDRE")[:300],
+        disconfirming_indicator=_journal_field(
+            body, "INDICATEUR CONTRAIRE", "SIGNAL CONTRAIRE"
+        )[:200],
+        mandate_utility=_score(_journal_field(body, "UTILITÉ", "UTILITE"), 50),
+        escalation_risk=_score(_journal_field(body, "RISQUE", "RISQUE D'ESCALADE"), 50),
+        confidence=_score(_journal_field(body, "CONFIANCE"), 50),
+    )
+
+
+# Une ligne « structurée » — label seul OU « LABEL : valeur » — n'est JAMAIS une ligne de
+# texte libre : elle appartient au gabarit (top-level ARBITRAGE/CHOIX/… ou champ interne
+# d'un FUTUR déjà rejeté ailleurs, ex. `ACTION : coopere`). La confondre avec du texte
+# libre romprait le garde-fou anti-classe-nue (`_forbidden_bare_action` ne voit plus
+# « coopere » isolé une fois noyé dans « ACTION : coopere »).
+_STRUCTURED_LINE = re.compile(
+    rf"(?i)^(?:{_FIELD_LABEL_GUARD}|FUTUR\s+[123]).*$"
+)
+
+_FIRST_PERSON_ACTION = re.compile(r"(?im)\b(?:je|nous)\b[^\n.!?]{5,280}[.!?]?")
+_BULLET_LINE = re.compile(r"(?m)^[ \t]*[-*•][ \t]+(.{5,280})$")
+# Verbes d'intention : distingue une phrase de CADRAGE (« nous devons répondre avec
+# prudence ») d'une phrase d'ACTION réelle (« je propose de… », « nous exigeons… »).
+_INTENT_VERB_STEMS = (
+    "propos", "exig", "demand", "annonc", "offr", "refus", "accept",
+    "ordonn", "engag", "vais", "allons", "convoqu", "suspend", "retir",
+)
+
+
+def _first_meaningful_line(text: str) -> str:
+    """Première ligne substantielle du texte libre : ni une ligne structurée, ni du bruit court."""
+
+    for line in text.splitlines():
+        candidate = re.sub(r"^[ \t]*(?:[-*#]+[ \t]*)+", "", line).strip(" :|")
+        if len(candidate) < 15 or _STRUCTURED_LINE.match(candidate):
+            continue
+        return _compact(candidate)[:280]
+    return ""
+
+
+def _extract_free_action(text: str) -> str:
+    """Dernier recours : une intention exploitable dans du texte totalement libre.
+
+    Ordre de préférence : la première phrase à la première personne qui porte un VERBE
+    D'INTENTION (« je propose… », pas juste « nous devons répondre avec prudence » qui
+    n'engage à rien), puis à défaut la première phrase « je/nous » tout court, puis premier
+    item de liste, puis première ligne substantielle non structurée du texte.
+    """
+
+    persons = list(_FIRST_PERSON_ACTION.finditer(text))
+    for person in persons:
+        if any(stem in _plain(person.group(0)) for stem in _INTENT_VERB_STEMS):
+            return _compact(person.group(0))[:280]
+    if persons:
+        return _compact(persons[0].group(0))[:280]
+    bullet = _BULLET_LINE.search(text)
+    if bullet:
+        return _compact(bullet.group(1))[:280]
+    return _first_meaningful_line(text)
+
+
+# Branches de complément de l'extraction minimale : DISTINCTES du texte du repli seedé
+# générique (`fallback_private_plan`) et jamais sélectionnées — seule une branche réelle
+# peut être retenue (cf. `_extract_minimal_plan`). Le texte signale explicitement le manque
+# de structure plutôt que de simuler une analyse qui n'a pas eu lieu.
+_PADDING_ACTIONS = (
+    "temporiser faute de structure exploitable dans la sortie du modèle",
+    "maintenir la position actuelle faute de structure exploitable dans la sortie du modèle",
+)
+
+
+def _extract_minimal_plan(raw: str, participants: list[str]) -> PrivateStrategicPlan | None:
+    """Dernier filet AVANT le repli seedé générique (décision 2).
+
+    Ne s'active que si `_parse_observable_journal` n'a trouvé aucun bloc FUTUR exploitable.
+    Réutilise les blocs FUTUR partiellement valides s'il y en a (1 à 3), sinon extrait une
+    unique intention du texte libre. Les branches manquantes sont complétées par un texte
+    neutre, marqué (`minimal_extraction=True`) et jamais choisi : le repli seedé reste
+    l'ultime filet si même cette lecture minimale ne trouve rien.
+    """
+
+    text = _normalize_markdown(raw)
+    if not text:
+        return None
+
+    real: dict[int, PrivateFuture] = {}
+    for match in _FUTUR_SECTION.finditer(text):
+        declared_id = int(match.group(1))
+        if declared_id in real:
+            continue
+        branch = _extract_partial_branch(match, participants)
+        if branch is not None:
+            real[declared_id] = branch
+
+    if not real:
+        action = _extract_free_action(text)
+        if not action or _forbidden_bare_action(action):
+            return None
+        real[1] = PrivateFuture(
+            id=1,
+            course_of_action=action,
+            forecasts=_parse_forecasts("", participants),
+            expected_outcome="issue non détaillée par le modèle",
+            mandate_utility=50,
+            escalation_risk=50,
+            confidence=30,
+        )
+
+    branches: list[PrivateFuture] = []
+    padding = iter(_PADDING_ACTIONS)
+    for slot in (1, 2, 3):
+        if slot in real:
+            branches.append(real[slot])
+            continue
+        branches.append(
+            PrivateFuture(
+                id=slot,
+                course_of_action=next(padding, _PADDING_ACTIONS[-1]),
+                forecasts=_parse_forecasts("", participants),
+                expected_outcome="issue non détaillée par le modèle",
+                mandate_utility=30,
+                escalation_risk=50,
+                confidence=20,
+            )
+        )
+
+    selected_branch = _resolve_choice(text, branches, set(real))
+    criterion = (
+        _journal_field(text, "CRITÈRE", "CRITERE") or "arbitrage non détaillé par le modèle"
+    )
+    uncertainty = (
+        _journal_field(text, "INCERTITUDE", "INCERTITUDE DÉCISIVE")
+        or "intentions adverses incertaines"
+    )
+    gaps = [
+        _compact(item)
+        for item in re.split(r"\s*;\s*", _journal_field(text, "LACUNES"))
+        if _compact(item)
+    ][:4]
+    observation = _extract_observation(text) or _first_meaningful_line(text)
+
+    return PrivateStrategicPlan(
+        branches=branches,
+        selected_branch=selected_branch,
+        selection_criterion=criterion,
+        key_uncertainty=uncertainty,
+        intelligence_gaps=gaps,
+        human_review_trigger=_journal_field(text, "REVUE HUMAINE")[:300],
+        situation_observation=observation,
+        belief_updates=_extract_beliefs(text),
+        comparison_summary=_journal_field(text, "COMPARAISON")[:300],
+        contingency_plan=_journal_field(text, "PLAN DE REPLI")[:300],
+        minimal_extraction=True,
+    )
+
+
+def _parse_observable_journal(raw: str, participants: list[str]) -> PrivateStrategicPlan | None:
+    text = _normalize_markdown(raw)
+    sections = list(_FUTUR_SECTION.finditer(text))
     if {int(match.group(1)) for match in sections} != {1, 2, 3}:
         return None
 
     branches: list[PrivateFuture] = []
-    forbidden_actions = {
-        "coopere",
-        "cooperer",
-        "resiste",
-        "resister",
-        "ressit",
-        "contre_escalade",
-        "temporise",
-        "temporiser",
-    }
     for match in sections:
         body = match.group(2)
-        action = _journal_field(body, "ACTION")
-        action_plain = _plain(action).replace(" ", "_")
-        response_stem_used_as_short_action = (
-            len(action_plain.split("_")) <= 2
-            and action_plain.startswith(
-                ("cooper", "resist", "ressit", "temporis", "contre_escalad")
-            )
-        )
-        if (
-            not action
-            or action_plain in forbidden_actions
-            or response_stem_used_as_short_action
-        ):
+        action = _journal_field(body, "ACTION", "ACTIONS")
+        if not action or _forbidden_bare_action(action):
             return None
         reactions = _journal_field(body, "RÉACTIONS", "REACTIONS", "RÉACTIONS ANTICIPÉES")
         outcome = _journal_field(body, "CHAÎNE CAUSALE", "CHAINE CAUSALE", "ISSUE")
@@ -324,7 +629,6 @@ def _parse_observable_journal(raw: str, participants: list[str]) -> PrivateStrat
             )
         )
 
-    choice = re.search(r"(?im)^\s*CHOIX\s*(?:\||:)\s*(?:FUTUR\s*)?([123])\b", text)
     # CRITÈRE / INCERTITUDE sont secondaires : un petit modèle les omet souvent. Leur absence
     # ne doit PLUS jeter tout le journal (ce qui renvoyait au repli biaisé « choix 1 ») — on
     # comble par un texte neutre. Seuls les 3 FUTUR et leurs ACTIONS portent la décision.
@@ -333,30 +637,12 @@ def _parse_observable_journal(raw: str, participants: list[str]) -> PrivateStrat
         _journal_field(text, "INCERTITUDE", "INCERTITUDE DÉCISIVE")
         or "intentions adverses incertaines"
     )
-    if choice:
-        selected_branch = int(choice.group(1))
-    else:
-        # Pas de ligne CHOIX exploitable : plutôt que de jeter le journal, on retient la
-        # branche que le MODÈLE lui-même juge la meilleure via ses propres scores (utilité
-        # nette du risque, départagée par la confiance). C'est une interprétation de sa
-        # réflexion à l'instant T, pas un défaut arbitraire « FUTUR 1 ».
-        selected_branch = max(
-            branches,
-            key=lambda b: (b.mandate_utility - b.escalation_risk, b.confidence),
-        ).id
+    selected_branch = _resolve_choice(text, branches, {1, 2, 3})
     gaps = [
         _compact(item)
         for item in re.split(r"\s*;\s*", _journal_field(text, "LACUNES"))
         if _compact(item)
     ][:4]
-    observation_match = re.search(
-        r"(?ims)^\s*OBSERVATION\s*\n(.*?)(?=^\s*CROYANCES(?:\s+ET\s+INCERTITUDES)?\b|^\s*FUTUR\s+1\b)",
-        text,
-    )
-    beliefs_match = re.search(
-        r"(?ims)^\s*CROYANCES(?:\s+ET\s+INCERTITUDES)?\s*\n(.*?)(?=^\s*FUTUR\s+1\b)",
-        text,
-    )
     return PrivateStrategicPlan(
         branches=branches,
         selected_branch=selected_branch,
@@ -364,8 +650,8 @@ def _parse_observable_journal(raw: str, participants: list[str]) -> PrivateStrat
         key_uncertainty=uncertainty,
         intelligence_gaps=gaps,
         human_review_trigger=_journal_field(text, "REVUE HUMAINE"),
-        situation_observation=_compact(observation_match.group(1)) if observation_match else "",
-        belief_updates=_compact(beliefs_match.group(1)) if beliefs_match else "",
+        situation_observation=_extract_observation(text),
+        belief_updates=_extract_beliefs(text),
         comparison_summary=_journal_field(text, "COMPARAISON"),
         contingency_plan=_journal_field(text, "PLAN DE REPLI"),
     )
@@ -379,13 +665,21 @@ def parse_private_plan(
     # gagnerait sur le vrai journal. Un flux entièrement pensé (balise jamais refermée)
     # devient vide → None → repli déterministe de l'agent.
     raw = strip_think(raw)
+    participants = participants or []
     payload = extract_json(raw)
     if payload is not None:
         try:
             return PrivateStrategicPlan.model_validate(payload)
         except (TypeError, ValueError):
             pass
-    return _parse_observable_journal(raw, participants or [])
+    plan = _parse_observable_journal(raw, participants)
+    if plan is not None:
+        return plan
+    # Extraction minimale (décision 2) : AVANT le repli seedé générique, on tente de
+    # préserver ce que le modèle a vraiment écrit — voir `_extract_minimal_plan`. Le repli
+    # seedé (`fallback_private_plan`, appelé par l'agent si `parse_private_plan` rend None)
+    # reste l'ultime filet.
+    return _extract_minimal_plan(raw, participants)
 
 
 def fallback_private_plan(participants: list[str], *, seed: str = "") -> PrivateStrategicPlan:

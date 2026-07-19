@@ -1,5 +1,7 @@
 """Arbre privé de décision : schéma exact, repli et garde anti-fuite."""
 
+from pathlib import Path
+
 from simulation.private_deliberation import (
     fallback_private_plan,
     parse_private_plan,
@@ -7,6 +9,8 @@ from simulation.private_deliberation import (
     split_think,
     strip_think,
 )
+
+FIXTURE_DIR = Path(__file__).parent / "fixtures"
 
 
 def _payload() -> dict:
@@ -238,3 +242,204 @@ def test_observable_journal_selects_best_scored_branch_without_choice_line():
     assert plan is not None
     assert plan.selected_branch == 2  # utilité 60 − risque 10 = 50, la meilleure
     assert plan.fallback_used is False
+
+
+# --- Tolérance markdown (reliquat « réflexion libre ») --------------------------
+
+
+def test_markdown_journal_from_real_deepseek_sample_parses_without_falling_to_seeded_fallback():
+    # Fixture RÉELLE deepseek-r1:7b (API Ollama locale, think actif, num_predict 2200,
+    # fin naturelle en ~1300 tokens — pas de troncature). Journal rédigé en markdown libre
+    # (`#### **FUTUR 1 - titre**`, `**Action :**`, sous-listes `- ...`) : exactement le mode
+    # d'échec relevé en mesure live (5/5 délibérations retombaient sur le repli seedé).
+    raw = (FIXTURE_DIR / "deepseek_journal_markdown.txt").read_text(encoding="utf-8")
+    plan = parse_private_plan(raw, ["iran", "saudi_arabia"])
+    assert plan is not None
+    assert plan.fallback_used is False
+    assert len(plan.branches) == 3
+    # La branche retenue porte du contenu RÉEL du modèle, jamais le texte du repli seedé.
+    assert "compromis conditionnel" not in plan.selected.course_of_action
+    assert plan.selected.course_of_action.strip() != ""
+
+
+def test_journal_tolerates_bold_headers_with_colon_separator_and_hash_titles():
+    # Variante observée : titre `###`/`####`, gras `**…**`, séparateur `:` au lieu de `—`.
+    raw = "\n".join(
+        f"### **FUTUR {n} : option {n}**\n**ACTION :** négocier variante {n}\n"
+        "**RÉACTIONS :** iran=coopere: test\n**CHAÎNE CAUSALE :** test\n"
+        "**UTILITÉ :** 50\n**RISQUE :** 50\n**CONFIANCE :** 50"
+        for n in (1, 2, 3)
+    ) + "\n### ARBITRAGE\n**CHOIX :** FUTUR 2\n**CRITÈRE :** test\n**INCERTITUDE :** test"
+    plan = parse_private_plan(raw, ["iran"])
+    assert plan is not None
+    assert plan.fallback_used is False
+    assert plan.selected_branch == 2
+    assert plan.branches[0].course_of_action == "négocier variante 1"
+
+
+def test_journal_tolerates_field_label_alone_with_value_on_next_line():
+    # Variante observée : le champ en gras tient lieu de titre, la valeur arrive sur la
+    # ligne suivante plutôt que sur la même ligne après le séparateur.
+    raw = (
+        "FUTUR 1 — compromis\n"
+        "**Action :**\n"
+        "proposer un moratoire vérifiable sur les manœuvres aériennes\n"
+        "**RÉACTIONS :**\n"
+        "iran=coopere: coût politique réduit\n"
+        "**CHAÎNE CAUSALE :**\n"
+        "moratoire -> réduction de tension\n"
+        "\n"
+        "FUTUR 2 — pression\n"
+        "ACTION : sanctionner temporairement\n"
+        "RÉACTIONS : iran=resiste: test\n"
+        "CHAÎNE CAUSALE : test\n"
+        "\n"
+        "FUTUR 3 — attente\n"
+        "ACTION : observer avant tout engagement\n"
+        "RÉACTIONS : iran=temporise: test\n"
+        "CHAÎNE CAUSALE : test\n"
+        "\nARBITRAGE\nCHOIX : FUTUR 1\nCRITÈRE : test\nINCERTITUDE : test"
+    )
+    plan = parse_private_plan(raw, ["iran"])
+    assert plan is not None
+    assert plan.fallback_used is False
+    assert plan.branches[0].course_of_action == (
+        "proposer un moratoire vérifiable sur les manœuvres aériennes"
+    )
+
+
+def test_observable_journal_finds_choice_mentioned_within_prose():
+    # CHOIX rédigé en phrase libre (« Nous retenons le FUTUR 2 car… ») plutôt que la ligne
+    # stricte `CHOIX : FUTUR 2` : le futur cité doit l'emporter sur l'arbitrage par score.
+    raw = "\n".join(
+        f"FUTUR {n} — test\nACTION : option {n} exploitable\nRÉACTIONS : iran=coopere: test\n"
+        "CHAÎNE CAUSALE : test\nUTILITÉ : 50\nRISQUE : 50\nCONFIANCE : 50"
+        for n in (1, 2, 3)
+    ) + (
+        "\nARBITRAGE\nCOMPARAISON : test\n"
+        "CHOIX : Nous retenons le FUTUR 2 car il limite le risque d'escalade.\n"
+        "CRITÈRE : test\nINCERTITUDE : test"
+    )
+    plan = parse_private_plan(raw, ["iran"])
+    assert plan is not None
+    assert plan.selected_branch == 2
+
+
+def test_journal_strips_single_asterisk_italics_from_field_values():
+    # Variante observée : valeur en italique simple (`*Concilier les alliages*`) plutôt
+    # qu'en gras — ne doit pas laisser d'astérisques résiduels dans le texte extrait.
+    raw = "\n".join(
+        f"### FUTUR {n} — option {n}\n**ACTION :** *négocier variante {n}*\n"
+        "- **RÉACTIONS :**\n  - iran = prudente : *test*\n**CHAÎNE CAUSALE :** *test*\n"
+        "**UTILITÉ :** 50\n**RISQUE :** 50\n**CONFIANCE :** 50"
+        for n in (1, 2, 3)
+    ) + "\n**CHOIX :** FUTUR 1\n**CRITÈRE :** test\n**INCERTITUDE :** test"
+    plan = parse_private_plan(raw, ["iran"])
+    assert plan is not None
+    assert "*" not in plan.branches[0].course_of_action
+    assert plan.branches[0].course_of_action == "négocier variante 1"
+
+
+def test_private_deliberation_system_asks_for_plain_lines_without_markdown():
+    from agents.prompts import PRIVATE_DELIBERATION_SYSTEM
+
+    lowered = PRIVATE_DELIBERATION_SYSTEM.lower()
+    assert "markdown" in lowered or "gras" in lowered
+
+
+# --- Extraction minimale avant le repli seedé (décision 2) ----------------------
+
+
+def test_minimal_extraction_preserves_real_action_when_no_futur_blocks_found():
+    # Texte libre sans AUCUNE structure FUTUR : au lieu du repli seedé générique, on
+    # extrait la première intention concrète et on la place en branche retenue.
+    raw = (
+        "Nous devons répondre avec prudence. Je propose de convoquer une réunion technique "
+        "conjointe avant toute escalade et d'exiger un geste de bonne foi vérifiable sous 48h.\n"
+        "CHOIX : cette option limite le risque tout en préservant notre crédibilité."
+    )
+    plan = parse_private_plan(raw, ["iran", "saudi_arabia"])
+    assert plan is not None
+    assert plan.fallback_used is False
+    assert plan.minimal_extraction is True
+    assert "convoquer une réunion technique" in plan.selected.course_of_action
+    assert len(plan.branches) == 3
+
+
+def test_minimal_extraction_padding_branches_are_marked_and_distinct_from_seeded_fallback():
+    raw = "Je vais proposer un cessez-le-feu limité et vérifiable dans les prochaines heures."
+    plan = parse_private_plan(raw, ["iran"])
+    assert plan is not None
+    assert plan.minimal_extraction is True
+    assert plan.fallback_used is False
+    padding = [b for b in plan.branches if b.id != plan.selected_branch]
+    assert len(padding) == 2
+    seeded_texts = {
+        "proposer un compromis conditionnel et vérifiable",
+        "exercer une pression diplomatique limitée",
+        "temporiser et collecter davantage d'informations",
+    }
+    assert all(b.course_of_action not in seeded_texts for b in padding)
+    assert "Note d'audit" in plan.audit_summary()
+
+
+def test_minimal_extraction_reuses_partial_futur_sections_when_some_are_valid():
+    # Deux blocs FUTUR exploitables sur trois (le 3e est vide) : les deux réels doivent
+    # être conservés tels quels, seul le 3e est complété par une branche marquée.
+    raw = (
+        "FUTUR 1 — option réelle\n"
+        "ACTION : proposer une inspection conjointe du site\n"
+        "RÉACTIONS : iran=coopere: test\n"
+        "CHAÎNE CAUSALE : inspection -> désamorçage progressif\n"
+        "UTILITÉ : 65\nRISQUE : 20\nCONFIANCE : 55\n"
+        "\n"
+        "FUTUR 2 — autre option réelle\n"
+        "ACTION : exiger un retrait immédiat des vedettes\n"
+        "RÉACTIONS : iran=resiste: test\n"
+        "CHAÎNE CAUSALE : exigence -> blocage probable\n"
+        "UTILITÉ : 40\nRISQUE : 55\nCONFIANCE : 45\n"
+    )
+    plan = parse_private_plan(raw, ["iran"])
+    assert plan is not None
+    assert plan.minimal_extraction is True
+    actions = {branch.id: branch.course_of_action for branch in plan.branches}
+    assert actions[1] == "proposer une inspection conjointe du site"
+    assert actions[2] == "exiger un retrait immédiat des vedettes"
+    # la branche complétée (3) ne doit pas réutiliser le texte du repli seedé
+    assert actions[3] != "temporiser et collecter davantage d'informations"
+
+
+def test_minimal_extraction_gives_up_on_empty_output():
+    assert parse_private_plan("   \n\n  ", ["iran"]) is None
+    assert parse_private_plan("", ["iran"]) is None
+
+
+def test_minimal_extraction_never_selects_a_padded_branch_even_if_choix_names_it():
+    # Le modèle écrit une ligne CHOIX stricte pointant vers FUTUR 3, mais seule la section 3
+    # est trop incomplète pour être réelle (pas d'ACTION exploitable) : la branche retenue
+    # doit rester une branche RÉELLE (1 ou 2), jamais le texte de complément générique.
+    raw = (
+        "FUTUR 1 — option réelle\n"
+        "ACTION : proposer une inspection conjointe du site\n"
+        "RÉACTIONS : iran=coopere: test\n"
+        "CHAÎNE CAUSALE : inspection -> désamorçage progressif\n"
+        "UTILITÉ : 65\nRISQUE : 20\nCONFIANCE : 55\n"
+        "\n"
+        "FUTUR 2 — autre option réelle\n"
+        "ACTION : exiger un retrait immédiat des vedettes\n"
+        "RÉACTIONS : iran=resiste: test\n"
+        "CHAÎNE CAUSALE : exigence -> blocage probable\n"
+        "UTILITÉ : 40\nRISQUE : 55\nCONFIANCE : 45\n"
+        "\n"
+        "FUTUR 3 — section vide\n"
+        "\n"
+        "ARBITRAGE\nCHOIX : FUTUR 3\n"
+    )
+    plan = parse_private_plan(raw, ["iran"])
+    assert plan is not None
+    assert plan.minimal_extraction is True
+    assert plan.selected_branch in (1, 2)
+    assert plan.selected.course_of_action in (
+        "proposer une inspection conjointe du site",
+        "exiger un retrait immédiat des vedettes",
+    )
