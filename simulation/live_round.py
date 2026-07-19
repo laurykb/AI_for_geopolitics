@@ -32,7 +32,7 @@ from simulation.alignment import (
     update_gaps,
 )
 from simulation.clock import SimClock
-from simulation.compute import consume
+from simulation.compute import compute_pressure, consume, pressure_note
 from simulation.fog import FogScenario, resolve_perception
 from simulation.gamefeel import DeltaTuning
 from simulation.kahn import (
@@ -611,13 +611,20 @@ def run_negotiation_round(
         started = time.perf_counter()
         chunks: list[str] = []
         perceived = resolve_perception(event, world.countries[cid], fog)  # Fog ou déterministe
+        # F1 (revue finale) — M6 : sous le seuil de pression, note vide (rien ne change) ;
+        # au-dessus, la SI bascule en survie. Même couture que `secret_notes` (Dérive) :
+        # les deux partagent le bloc « notes privées » du prompt, aucun nouveau paramètre.
+        note = (secret_notes or {}).get(cid, "")
+        pressure = pressure_note(compute_pressure(world.countries[cid]))
+        if pressure:
+            note = f"{note}\n{pressure}".strip() if note else pressure
         with _ledger_ctx(ledger, "agent", cid) as scope:
             private_stream = agent.stream_negotiation_plan(
                 event,
                 world,
                 transcript,
                 perceived,
-                state_note=(secret_notes or {}).get(cid, ""),
+                state_note=note,
                 situation=(situations or {}).get(cid, ""),
                 directive=(directives or {}).get(cid, ""),
                 human_country=human_country,
@@ -645,7 +652,7 @@ def run_negotiation_round(
                 world,
                 transcript,
                 perceived,
-                state_note=(secret_notes or {}).get(cid, ""),
+                state_note=note,
                 situation=(situations or {}).get(cid, ""),
                 directive=(directives or {}).get(cid, ""),
                 private_plan=private_plan,
