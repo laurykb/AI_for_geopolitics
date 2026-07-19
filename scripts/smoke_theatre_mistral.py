@@ -68,7 +68,9 @@ def main() -> int:
     t0 = time.time()
 
     game = client.post(
-        "/api/games", json={"countries": COUNTRIES, "mode": "drift", "horizon": 2}
+        # Post-pivot RG : la Dérive est le cœur des DEUX modes ; "drift" n'est plus un
+        # mode d'API (Literal classic|campaign) — le smoke joue une partie Classique.
+        "/api/games", json={"countries": COUNTRIES, "mode": "classic", "horizon": 2}
     ).json()
     gid = game["id"]
     print(f"partie Derive {gid} (horizon 2, {len(COUNTRIES)} pays)")
