@@ -3,6 +3,8 @@
 
 import json
 
+import pytest
+
 from agents.judge import JudgeAgent
 from agents.llm_agent import LLMAgent
 from core.country_state import CountryState, Economy, Military, Resources
@@ -229,3 +231,16 @@ def test_grudges_follow_the_actual_votes():
     book2 = GrudgeBook()
     book2.on_motion_votes(target="iran", filed_by="human", votes=[("china", "pour")], round_no=1)
     assert book2.balance("iran", "china") == -4
+
+
+def test_motion_nudge_preserves_hhi_prev():
+    # CRITICAL (revue Brief 3 pt 3) — le nudge A2 sur verdict de motion (M2,
+    # `live_round.py`, `nudge_axis`) écrasait `hhi_prev` : le suivi ΔHHI (A3) de la
+    # trajectoire s'effaçait dès qu'une motion de suspension était jugée ce round.
+    from simulation.trajectory import current_hhi
+
+    world = _world(("china", "iran", "usa"))
+    _run_motion(world, {"china": "pour", "usa": "pour"})  # majorité claire, pas de tie-break
+    assert world.trajectory is not None
+    assert world.trajectory.hhi_prev is not None
+    assert world.trajectory.hhi_prev == pytest.approx(current_hhi(world))

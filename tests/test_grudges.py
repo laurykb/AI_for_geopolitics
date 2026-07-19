@@ -16,6 +16,20 @@ def test_params_load_with_expected_shape():
     assert 0.0 <= p.directives.public_refusal_threshold <= 1.0
 
 
+def test_trajectory_params_load_with_expected_shape():
+    # Brief 3 pt 3 — le pas/cap des 5 axes est externalisé (équilibrage Cowork sans code).
+    p = load_gamefeel_params().trajectory
+    assert p.cap == 0.09
+    assert p.concentration_k > 0.0
+    assert p.deadband == 0.02  # IMPORTANT 2 (revue) : évite le cycle-limite ± cap
+
+
+def test_deltas_params_carry_mute_fallback():
+    # Brief 3 pt 3 — repli déterministe (stabilité) quand le juge est muet sur un pays.
+    p = load_gamefeel_params().deltas
+    assert p.mute_fallback == 0.03
+
+
 def test_balance_is_bounded_and_directional():
     book = GrudgeBook()
     for _ in range(4):

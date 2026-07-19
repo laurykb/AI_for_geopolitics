@@ -25,6 +25,7 @@ from simulation.live_round import (
     VerdictStep,
     run_negotiation_round,
 )
+from simulation.trajectory import CAP
 
 
 def _world() -> WorldState:
@@ -390,6 +391,29 @@ def test_trajectory_updated_after_judge():
     assert world.trajectory_history == [traj]
 
 
+def test_a4_transparency_uses_signal_action_divergence_when_round_is_mute():
+    # Brief 3 pt 3 — le round négocié n'a pas de decisions/diplomacy « à l'ancienne »
+    # (summary construit avec decisions=[]) : A4 retombait donc TOUJOURS sur le neutre
+    # 0,5. Désormais, une divergence signal-action réelle (M8, déjà calculée pour le
+    # verdict) nourrit A4 : une SI qui annonce une désescalade et frappe quand même
+    # EST l'antithèse de la transparence.
+    verdict = json.dumps(
+        {
+            "actions": [{"country": "usa", "classe": "violente", "resume": "Frappe."}],
+            "signals": [
+                {"country": "usa", "classe": "deescalade", "resume": "Annonce un retrait."}
+            ],
+            "escalation": 0.5,
+            "economic_disruption": 0.2,
+        }
+    )
+    judge = JudgeAgent(MockBackend(["Délibéré.", verdict, "Communiqué."]))
+    world = _world()
+    steps = list(run_negotiation_round(world, _agents(world), _gm(), judge, SimClock()))
+    traj = next(s for s in steps if isinstance(s, TrajectoryStep)).state
+    assert traj.axes["A4"] < 0.5  # duplicité détectée -> l'axe penche vers l'opacité
+
+
 def test_trajectory_accumulates_over_rounds():
     world = _world()
     clock = SimClock(current_date=date(2025, 1, 1))
@@ -397,10 +421,10 @@ def test_trajectory_accumulates_over_rounds():
         list(run_negotiation_round(world, _agents(world), _gm(), _judge(), clock))
     assert len(world.trajectory_history) == 2
     assert [t.round_id for t in world.trajectory_history] == [1, 2]
-    # chaque MAJ part de la précédente : deltas bornés à ±0,05 par axe
+    # chaque MAJ part de la précédente : deltas bornés à ±CAP par axe (Brief 3 pt 3)
     a1_first = world.trajectory_history[0].axes["A1"]
     a1_second = world.trajectory_history[1].axes["A1"]
-    assert abs(a1_second - a1_first) <= 0.05 + 1e-9
+    assert abs(a1_second - a1_first) <= CAP + 1e-9
 
 
 def test_judge_verdict_applied_and_bounded():

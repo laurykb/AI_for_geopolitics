@@ -32,7 +32,14 @@
     "judge_cap_factor": 1.5,
     "momentum_streak": 3,
     "crisis_multiplier": 1.3,
-    "virtuous_multiplier": 1.2
+    "virtuous_multiplier": 1.2,
+    "mute_fallback": 0.03
+  },
+  "trajectory": {
+    "_comment": "Brief 3 pt 3 — le monde doit bouger davantage par round. cap : pas FIXE (pas proportionnel) de chaque axe A1-A5 dans la direction du signal, borné par la distance restante au pôle [0,1] (casse l'auto-amortissement de l'ancien clamp(signal-courant, ±cap)). concentration_k : sensibilité d'A3 à la VARIATION de concentration du pouvoir (ΔHHI) plutôt qu'à son niveau absolu. deadband (revue, pt 2) : sous ce seuil, l'écart signal-courant est du bruit (pas de pas) — évite le cycle-limite permanent ±cap quand le signal reste juste à côté du courant sans jamais l'égaler exactement.",
+    "cap": 0.09,
+    "concentration_k": 4.0,
+    "deadband": 0.02
   },
   "postures": {
     "window_rounds": 3,
