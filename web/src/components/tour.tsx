@@ -27,11 +27,13 @@ import { useT } from "@/components/settings-provider";
 import tourData from "@/data/tour.json";
 import tutorialData from "@/data/tutorial.json";
 import { createGame, getGame } from "@/lib/api";
+import { TUTORIAL_EVENT, tutorialMilestoneFromEvent } from "@/lib/tutorial-events";
 import {
   initialTour,
   loadTourFlags,
   nextIndexWithoutDemo,
   nextStep,
+  previousStep,
   resolvePage,
   resumeTour,
   saveDemoId,
@@ -90,6 +92,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const targetEl = useRef<HTMLElement | null>(null);
   const pushedFor = useRef<number>(-1); // une seule navigation par étape
   const demoCreating = useRef(false);
+  const [reviewingIndex, setReviewingIndex] = useState<number | null>(null);
 
   // Les étapes du mode courant (tableaux constants : identité stable par mode).
   const steps = mode === "tutoriel" ? TUTORIAL_STEPS : STEPS;
@@ -150,6 +153,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   }, [persistStep]);
 
   const advance = useCallback(() => {
+    setReviewingIndex(null);
     const s2 = nextStep(state, steps.length);
     if (s2.status === "done") {
       finish(s2, { resetStep: true });
@@ -160,6 +164,17 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     setAnchor(null);
     setCentered(false);
   }, [state, steps, mode, finish, persistStep]);
+
+  const retreat = useCallback(() => {
+    const previous = previousStep(state, steps);
+    if (previous.index === state.index) return;
+    setReviewingIndex(previous.index);
+    pushedFor.current = -1;
+    if (mode === "visite") persistStep(previous.index);
+    setState(previous);
+    setAnchor(null);
+    setCentered(false);
+  }, [mode, persistStep, state, steps]);
 
   // L'étape sauvegardée reste en place : « ? » reprendra où on s'est arrêté.
   const skip = useCallback(() => {
@@ -275,11 +290,22 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     // après ~3 s → étape sautée sans crash. Avec un jalon `advanceOn`, la surveillance
     // RESTE ouverte : l'étape avance toute seule quand l'action attendue est faite
     // (et une cible manquante devient une bulle centrée au lieu d'un saut).
+    const onMilestone = (event: Event) => {
+      if (!step.advanceOn) return;
+      if (reviewingIndex === state.index) return;
+      const detail = tutorialMilestoneFromEvent(event);
+      if (!detail || detail.milestone !== step.advanceOn) return;
+      if (detail.gameId && tutorialGameId && detail.gameId !== tutorialGameId) return;
+      advance();
+    };
+    window.addEventListener(TUTORIAL_EVENT, onMilestone);
+
     let tries = 0;
     let anchored = false;
     const tick = (): boolean => {
       if (
         step.advanceOn &&
+        reviewingIndex !== state.index &&
         document.querySelector(`[data-tutorial="${step.advanceOn}"]`)
       ) {
         advance();
@@ -322,6 +348,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
       clearInterval(iv);
       clearTimeout(t0);
+      window.removeEventListener(TUTORIAL_EVENT, onMilestone);
     };
   }, [
     state,
@@ -334,6 +361,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     ensureDemo,
     finish,
     persistStep,
+    reviewingIndex,
     router,
   ]);
 
@@ -382,7 +410,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
       {children}
 
       {/* Anneau sur la cible + bulle de la mascotte */}
-      {step && anchor && (
+      {step && !step.silent && anchor && (
         <div
           aria-hidden
           className="pointer-events-none fixed z-[70] rounded-lg border-2 border-accent-bright/80 shadow-[0_0_24px_rgba(234,179,8,0.25)]"
@@ -394,13 +422,16 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
           }}
         />
       )}
-      {step && (anchor || centered) && (
+      {step && !step.silent && (anchor || centered) && (
         <TourBubble
           step={step}
           index={state.index}
           total={steps.length}
           kicker={mode === "tutoriel" ? "tour.ui.kicker-tutoriel" : "tour.ui.kicker-visite"}
           anchor={centered ? null : anchor}
+          awaitingAction={!!step.advanceOn}
+          reviewing={reviewingIndex === state.index}
+          onBack={retreat}
           onNext={advance}
           onSkip={skip}
         />
@@ -469,6 +500,9 @@ function TourBubble({
   total,
   kicker,
   anchor,
+  awaitingAction,
+  reviewing,
+  onBack,
   onNext,
   onSkip,
 }: {
@@ -477,6 +511,9 @@ function TourBubble({
   total: number;
   kicker: string;
   anchor: DOMRect | null;
+  awaitingAction: boolean;
+  reviewing: boolean;
+  onBack: () => void;
   onNext: () => void;
   onSkip: () => void;
 }) {
@@ -528,18 +565,32 @@ function TourBubble({
         </div>
       </div>
       <div className="mt-4 flex items-center justify-between gap-2">
-        <button
-          onClick={onSkip}
-          className="cursor-pointer rounded-md border border-edge px-3 py-1.5 text-xs text-fg-muted transition-colors hover:border-edge-strong hover:text-foreground"
-        >
-          {t("tour.ui.passer")}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onSkip}
+            className="cursor-pointer rounded-md border border-edge px-3 py-1.5 text-xs text-fg-muted transition-colors hover:border-edge-strong hover:text-foreground"
+          >
+            {t("tour.ui.passer")}
+          </button>
+          <button
+            onClick={onBack}
+            disabled={index === 0}
+            className="cursor-pointer rounded-md border border-edge px-3 py-1.5 text-xs font-medium text-fg-muted transition-colors hover:border-edge-strong hover:text-foreground disabled:cursor-default disabled:opacity-35"
+          >
+            {t("tour.ui.retour")}
+          </button>
+        </div>
         <button
           autoFocus
           onClick={onNext}
-          className="cursor-pointer rounded-md bg-accent px-4 py-1.5 text-xs font-semibold text-background transition-colors hover:bg-accent-bright"
+          disabled={awaitingAction && !reviewing}
+          className="cursor-pointer rounded-md bg-accent px-4 py-1.5 text-xs font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-default disabled:bg-muted disabled:text-fg-faint"
         >
-          {last ? t("tour.ui.terminer") : t("tour.ui.suivant")}
+          {awaitingAction && !reviewing
+            ? t("tour.ui.agis")
+            : last
+              ? t("tour.ui.terminer")
+              : t("tour.ui.suivant")}
         </button>
       </div>
     </div>

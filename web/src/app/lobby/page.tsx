@@ -15,9 +15,14 @@ import { useAuth } from "@/components/auth-provider";
 import { SpeakerAvatar } from "@/components/avatar";
 import { useSettings, useT } from "@/components/settings-provider";
 import { Globe } from "@/components/globe";
+import {
+  completeCountryAssignments,
+  CountryModelAssignments,
+  ModelCastSelector,
+} from "@/components/model-cast-selector";
 import { SelectMap, type Fiche } from "@/components/select-map";
 import { Banner, Eyebrow, Panel, PanelTitle, Segmented, Spinner, Switch } from "@/components/ui";
-import { createGame, getCampaign, getSources, humanizeError, startChapter } from "@/lib/api";
+import { createGame, getCampaign, getLab, getSources, humanizeError, startChapter } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
 import {
@@ -26,6 +31,7 @@ import {
   DEFAULT_SETTINGS,
   FLOW_MODES,
   FLOW_STEPS,
+  type LobbyMode,
   type FlowRole,
   type FlowSettings,
   type FlowStep,
@@ -38,7 +44,7 @@ import {
 } from "@/lib/flow";
 import { prefersReducedMotion } from "@/lib/stage";
 import { TABLES } from "@/lib/temperament";
-import type { AllianceInfo, CountrySources, Difficulty, GameMode } from "@/lib/types";
+import type { AllianceInfo, CountrySources, Difficulty, ResearchModel } from "@/lib/types";
 
 const TRANSITION_MS = 1200; // rotation du globe entre écrans (≤ 1,5 s, spec)
 const INVENT_ALLIANCES_MAX = 3;
@@ -91,7 +97,7 @@ function LobbyFlow() {
 
   const [step, setStep] = useState<FlowStep>("mode");
   const [transitioning, setTransitioning] = useState(false);
-  const [baseMode, setBaseMode] = useState<GameMode>("classic");
+  const [baseMode, setBaseMode] = useState<LobbyMode>("classic");
   const [settings, setSettings] = useState<FlowSettings>(DEFAULT_SETTINGS);
   const [role, setRole] = useState<FlowRole>("player");
   const [selected, setSelected] = useState<string[]>([]);
@@ -107,6 +113,10 @@ function LobbyFlow() {
   const [creating, setCreating] = useState(false);
   const [sourcesError, setSourcesError] = useState(false); // fiches pays indisponibles
   const [error, setError] = useState<string | null>(null);
+  const [researchModels, setResearchModels] = useState<ResearchModel[]>([]);
+  const [modelCastEnabled, setModelCastEnabled] = useState(false);
+  const [castModels, setCastModels] = useState<string[]>([]);
+  const [castAssignments, setCastAssignments] = useState<Record<string, string>>({});
 
   // Étape adressable par l'URL (?etape=mode|role|pays) — deep-link utilisé par la
   // visite guidée (G13) : la page n'a aucune logique de tour, elle honore le param.
@@ -134,6 +144,27 @@ function LobbyFlow() {
         setSources([]); // la sélection reste possible, sans les mini-fiches
         setSourcesError(true);
       });
+  }, []);
+
+  useEffect(() => {
+    getLab()
+      .then((lab) => {
+        const eligible = lab.model_panel.models.filter(
+          (model) => model.installed && model.role !== "slow_robustness_only",
+        );
+        setResearchModels(eligible);
+        setCastModels((current) =>
+          current.length
+            ? current
+            : (eligible.filter((model) => model.role === "core_comparison").length
+                ? eligible.filter((model) => model.role === "core_comparison")
+                : eligible
+              )
+                .slice(0, 2)
+                .map((model) => model.tag),
+        );
+      })
+      .catch(() => undefined);
   }, []);
 
   const ficheByCountry = useMemo(() => {
@@ -174,7 +205,21 @@ function LobbyFlow() {
         }
       : undefined;
 
-  const launchable = canLaunch(role, selected, { flag, inventName });
+  const summitReady = canLaunch(role, selected, { flag, inventName });
+  const humanCountry = role === "player" ? flag : null;
+  const activeCastModels = modelCastEnabled ? castModels : castModels.slice(0, 1);
+  const effectiveCastAssignments = completeCountryAssignments(
+    selected,
+    activeCastModels,
+    castAssignments,
+    humanCountry,
+  );
+  const castReady =
+    researchModels.length === 0 ||
+    (activeCastModels.length >= (modelCastEnabled ? 2 : 1) &&
+      activeCastModels.length <= 4 &&
+      activeCastModels.length <= selected.length - (role === "player" && flag ? 1 : 0));
+  const launchable = summitReady && castReady;
   // Ce qui manque pour lancer — affiché à côté du bouton au lieu d'un disabled muet.
   const missing = capacity - selected.length;
   const launchHint = launchable
@@ -185,7 +230,11 @@ function LobbyFlow() {
         ? "Désigne le pays que tu incarnes (il passera en doré)"
         : role === "invent" && inventName.trim().length < 2
           ? "Nomme ton État inventé (2 caractères minimum)"
-          : null;
+          : modelCastEnabled && castModels.length < 2
+            ? "Choisis au moins 2 modèles pour le casting diplomatique"
+            : !castReady
+              ? "Le casting contient plus de modèles que de pays joués par une IA"
+              : null;
 
   // --- navigation avec transition globe ------------------------------------------
   const pendingRef = useRef<null | { t: ReturnType<typeof setTimeout>; to: FlowStep }>(null);
@@ -215,11 +264,11 @@ function LobbyFlow() {
   };
 
   const onNext = () => {
-    // Campagne : la sélection de chapitre remplace S4. Les réglages de l'étape 1 ne
-    // voyagent pas : chaque chapitre impose les siens (le panneau le dit et se
-    // désactive) — plus de query params ignorés en face.
-    if (step === "role" && FLOW_MODES.find((m) => m.value === baseMode)?.campaign) {
-      router.push("/campagne");
+    // Campagne et Laboratoire sont deux destinations autonomes. Ils ne traversent pas
+    // les écrans de rôle/pays du Classique : leur promesse reste immédiatement lisible.
+    const destination = FLOW_MODES.find((mode) => mode.value === baseMode)?.destination;
+    if (step === "mode" && destination) {
+      router.push(destination);
       return;
     }
     const to = nextStep(step);
@@ -240,7 +289,7 @@ function LobbyFlow() {
       const camp = await getCampaign();
       const ch = camp.chapters.find((c) => c.tutorial);
       if (!ch) throw new Error("chapitre d'apprentissage introuvable");
-      const game = await startChapter(ch.id);
+      const game = await startChapter(ch.id, player?.id);
       router.push(`/games/${game.id}`);
     } catch (err) {
       setError(humanizeError(err));
@@ -249,6 +298,7 @@ function LobbyFlow() {
   };
 
   const onLaunch = async () => {
+    if (baseMode !== "classic") return;
     setCreating(true);
     setError(null);
     try {
@@ -263,6 +313,15 @@ function LobbyFlow() {
           ownerId: player?.id,
           invent,
           language: prefs.lang, // G14 — les nouvelles parties naissent dans la langue réglée
+          modelCast: activeCastModels.length
+            ? {
+                strategy: "manual",
+                models: activeCastModels,
+                assignments: effectiveCastAssignments,
+                game_master_model: activeCastModels[0],
+                judge_model: activeCastModels[activeCastModels.length - 1],
+              }
+            : undefined,
         }),
       );
       router.push(`/games/${game.id}`);
@@ -273,7 +332,7 @@ function LobbyFlow() {
   };
 
   const stepIndex = { mode: 0, role: 1, pays: 2 }[step];
-  const campaign = !!FLOW_MODES.find((m) => m.value === baseMode)?.campaign;
+  const destination = FLOW_MODES.find((m) => m.value === baseMode)?.destination;
 
   return (
     <div className="space-y-8">
@@ -337,7 +396,19 @@ function LobbyFlow() {
 
       {step === "mode" && (
         <>
-          <ModeStep {...{ baseMode, setBaseMode, settings, setSettings }} />
+          <ModeStep
+            {...{
+              baseMode,
+              setBaseMode,
+              settings,
+              setSettings,
+              researchModels,
+              modelCastEnabled,
+              setModelCastEnabled,
+              castModels,
+              setCastModels,
+            }}
+          />
           {/* CC-5 — la porte d'entrée des nouveaux : le chapitre 0 guidé. */}
           <p className="text-sm text-fg-faint">
             {t("lobby.apprendre-question")}{" "}
@@ -369,6 +440,10 @@ function LobbyFlow() {
             inventAlliances,
             setInventAlliances,
             registry,
+            modelCastEnabled,
+            castModels,
+            castAssignments,
+            setCastAssignments,
           }}
         />
       )}
@@ -395,7 +470,11 @@ function LobbyFlow() {
             onClick={onNext}
             className="rounded-md bg-accent px-6 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright"
           >
-            {step === "role" && campaign ? t("lobby.chapitre") : t("lobby.suivant")}
+            {step === "mode" && destination
+              ? baseMode === "campaign"
+                ? t("lobby.chapitre")
+                : t("lobby.laboratoire-ouvrir")
+              : t("lobby.suivant")}
           </button>
         ) : (
           <span className="flex items-center gap-3">
@@ -426,19 +505,29 @@ function ModeStep({
   setBaseMode,
   settings,
   setSettings,
+  researchModels,
+  modelCastEnabled,
+  setModelCastEnabled,
+  castModels,
+  setCastModels,
 }: {
-  baseMode: GameMode;
-  setBaseMode: (m: GameMode) => void;
+  baseMode: LobbyMode;
+  setBaseMode: (m: LobbyMode) => void;
   settings: FlowSettings;
   setSettings: (s: FlowSettings) => void;
+  researchModels: ResearchModel[];
+  modelCastEnabled: boolean;
+  setModelCastEnabled: (enabled: boolean) => void;
+  castModels: string[];
+  setCastModels: (models: string[]) => void;
 }) {
   // En Campagne, chaque chapitre impose ses réglages (rounds, difficulté, mode) :
   // le panneau se désactive au lieu de laisser croire qu'il s'appliquera.
   const t = useT();
-  const campaign = !!FLOW_MODES.find((m) => m.value === baseMode)?.campaign;
+  const separateMode = baseMode !== "classic";
   return (
     <div className="space-y-6">
-      <div className="grid gap-3 sm:grid-cols-2" data-tour="modes">
+      <div className="grid gap-3 md:grid-cols-3" data-tour="modes">
         {FLOW_MODES.map((m) => (
           <button
             key={m.value}
@@ -468,12 +557,12 @@ function ModeStep({
           title={t("lobby.reglages-titre")}
           hint={t("lobby.reglages-aide")}
         />
-        {campaign && (
+        {separateMode && (
           <p className="-mt-2 mb-4 rounded-md border border-edge bg-surface-2/50 px-3 py-1.5 text-xs text-fg-faint">
-            {t("lobby.campagne-note")}
+            {t("lobby.destination-note")}
           </p>
         )}
-        <div className={campaign ? "space-y-4 opacity-50" : "space-y-4"} aria-disabled={campaign}>
+        <div className={separateMode ? "space-y-4 opacity-50" : "space-y-4"} aria-disabled={separateMode}>
           {/* RG-2 — variantes de saveur : le Brouillard et le Réel/escalade (jadis des
               modes) sont deux interrupteurs, composables sur une partie classique. */}
           <div className="space-y-3 rounded-lg border border-edge bg-surface-2/40 p-3">
@@ -481,14 +570,14 @@ function ModeStep({
               label={t("lobby.brouillard-titre")}
               desc={t("lobby.brouillard-desc")}
               checked={settings.fog}
-              disabled={campaign}
+              disabled={separateMode}
               onChange={(v) => setSettings({ ...settings, fog: v })}
             />
             <Switch
               label={t("lobby.escalade-titre")}
               desc={t("lobby.escalade-desc")}
               checked={settings.escalation}
-              disabled={campaign}
+              disabled={separateMode}
               onChange={(v) => setSettings({ ...settings, escalation: v })}
             />
           </div>
@@ -502,7 +591,7 @@ function ModeStep({
               min={ROUNDS_MIN}
               max={ROUNDS_MAX}
               value={settings.rounds}
-              disabled={campaign}
+              disabled={separateMode}
               onChange={(e) => setSettings({ ...settings, rounds: Number(e.target.value) })}
               className="w-full accent-[var(--accent)] disabled:cursor-not-allowed"
             />
@@ -512,7 +601,7 @@ function ModeStep({
             <Segmented
               ariaLabel={t("lobby.difficulte")}
               value={settings.difficulty}
-              disabled={campaign}
+              disabled={separateMode}
               onChange={(d) => setSettings({ ...settings, difficulty: d })}
               options={DIFFICULTIES.map((d) => ({ value: d, label: t(`lobby.diff.${d}.titre`) }))}
             />
@@ -531,7 +620,7 @@ function ModeStep({
                 label={t("lobby.libre-titre")}
                 desc={t("lobby.libre-desc")}
                 checked={settings.free}
-                disabled={campaign}
+                disabled={separateMode}
                 onChange={(v) => setSettings({ ...settings, free: v })}
               />
               {/* G17 — composition de la table (partie LIBRE uniquement : sinon la table
@@ -558,6 +647,16 @@ function ModeStep({
           </details>
         </div>
       </Panel>
+      {baseMode === "classic" && (
+        <ModelCastSelector
+          models={researchModels}
+          enabled={modelCastEnabled}
+          selected={castModels}
+          onEnabled={setModelCastEnabled}
+          onSelected={setCastModels}
+          context="classic"
+        />
+      )}
     </div>
   );
 }
@@ -610,6 +709,10 @@ function PaysStep(props: {
   inventAlliances: string[];
   setInventAlliances: (fn: (prev: string[]) => string[]) => void;
   registry: Record<string, AllianceInfo>;
+  modelCastEnabled: boolean;
+  castModels: string[];
+  castAssignments: Record<string, string>;
+  setCastAssignments: (assignments: Record<string, string>) => void;
 }) {
   const {
     role,
@@ -626,6 +729,10 @@ function PaysStep(props: {
     inventAlliances,
     setInventAlliances,
     registry,
+    modelCastEnabled,
+    castModels,
+    castAssignments,
+    setCastAssignments,
   } = props;
 
   const full = selected.length === capacity;
@@ -732,6 +839,17 @@ function PaysStep(props: {
           </div>
         </Panel>
       )}
+
+      {modelCastEnabled && castModels.length >= 2 && (
+        <CountryModelAssignments
+          countries={selected}
+          humanCountry={role === "player" ? flag : null}
+          selectedModels={castModels}
+          assignments={castAssignments}
+          onAssignments={setCastAssignments}
+        />
+      )}
+
     </div>
   );
 }

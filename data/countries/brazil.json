@@ -16,7 +16,8 @@
     "energy_independence": 0.85
   },
   "alliances": [
-    "BRICS"
+    "BRICS",
+    "MERCOSUR"
   ],
   "rivals": [],
   "political_system": "democracy",
@@ -32,6 +33,7 @@
     "agro_exports",
     "global_south_leadership"
   ],
+  "temperament": "opportuniste",
   "memory_summary": "",
   "mandate": {}
 }

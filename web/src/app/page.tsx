@@ -12,6 +12,7 @@ import { Globe } from "@/components/globe";
 import { useT } from "@/components/settings-provider";
 import { Banner, Segmented, Spinner } from "@/components/ui";
 import { usePlanetLaunch } from "@/hooks/usePlanetLaunch";
+import { startChapter } from "@/lib/api";
 import { getAuth } from "@/lib/auth";
 
 export default function ConnexionPage() {
@@ -27,8 +28,8 @@ export default function ConnexionPage() {
 
   // Déjà connecté (session persistée / reconnexion auto) → droit à l'accueil.
   useEffect(() => {
-    if (!loading && player) router.replace("/accueil");
-  }, [loading, player, router]);
+    if (!loading && player && !busy) router.replace("/accueil");
+  }, [busy, loading, player, router]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,6 +48,23 @@ export default function ConnexionPage() {
     }
   };
 
+  const playAsGuest = async () => {
+    setBusy(true);
+    setError(null);
+    const result = await getAuth().continueAsGuest();
+    if (!result.ok) {
+      setError(result.error);
+      setBusy(false);
+      return;
+    }
+    try {
+      const game = await startChapter("sommet-inaugural", result.player.id, "france");
+      launch(`/games/${game.id}`);
+    } catch {
+      launch("/accueil");
+    }
+  };
+
   const chrome = launching ? "intro-fade-out" : undefined;
 
   return (
@@ -60,6 +78,28 @@ export default function ConnexionPage() {
 
       <div className={launching ? "intro-zoom" : undefined}>
         <Globe spinning={launching} className="w-full max-w-[300px] sm:max-w-[340px]" />
+      </div>
+
+      <div className={`w-full max-w-sm space-y-3 ${chrome ?? ""}`}>
+        <button
+          type="button"
+          onClick={playAsGuest}
+          disabled={busy || launching}
+          className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-accent px-5 py-3.5 text-base font-semibold text-background shadow-[0_0_36px_rgba(202,138,4,0.28)] transition-all hover:bg-accent-bright hover:shadow-[0_0_48px_rgba(234,179,8,0.38)] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {busy && <Spinner />}
+          Jouer maintenant — sans compte
+        </button>
+        <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-[11px] text-fg-faint">
+          <span>Première décision en moins d&apos;une minute</span>
+          <span>Progression locale temporaire</span>
+        </div>
+      </div>
+
+      <div className="flex w-full max-w-sm items-center gap-3 text-[10px] uppercase tracking-[0.14em] text-fg-faint">
+        <span className="h-px flex-1 bg-edge" />
+        ou sauvegarder sa progression
+        <span className="h-px flex-1 bg-edge" />
       </div>
 
       <form

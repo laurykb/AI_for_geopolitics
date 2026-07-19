@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from enum import StrEnum
+from functools import wraps
 from typing import Protocol
 
 from pydantic import BaseModel, Field
@@ -280,14 +282,30 @@ class GameStore(Protocol):
     def delete_custom_crisis(self, crisis_id: str, owner_id: str) -> bool: ...
 
 
+def _serialized_store(cls):
+    """Protège la connexion SQLite unique contre les accès du threadpool FastAPI."""
+    for name, method in list(vars(cls).items()):
+        if name == "__init__" or name.startswith("__") or not callable(method):
+            continue
+
+        @wraps(method)
+        def guarded(self, *args, __method=method, **kwargs):
+            with self._lock:
+                return __method(self, *args, **kwargs)
+
+        setattr(cls, name, guarded)
+    return cls
+
+
+@_serialized_store
 class SQLiteGameStore:
     """Implémentation SQLite de `GameStore` (une connexion, `:memory:` par défaut)."""
 
     def __init__(self, path: str = ":memory:") -> None:
-        # check_same_thread=False : FastAPI sert les routes sync dans un threadpool ; en local
-        # (mono-utilisateur, verrouillage SQLite) partager l'unique connexion est acceptable.
+        self._lock = threading.RLock()
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
+        self._conn.execute("PRAGMA busy_timeout = 5000")
         self._conn.executescript(_SCHEMA)
         self._migrate()
 

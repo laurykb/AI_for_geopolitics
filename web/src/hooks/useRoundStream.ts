@@ -3,7 +3,7 @@
 /** État vivant d'un round streamé : réduit les événements SSE en un `LiveRound`
  * affichable, et signale proprement les fins anormales (flux coupé sans `done`). */
 
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 import { humanizeError } from "@/lib/api";
 import { streamRound } from "@/lib/sse";
@@ -44,6 +44,7 @@ export type LiveStatus =
   | "idle"
   | "streaming"
   | "awaiting_human" // le round attend la prise de parole du joueur (Joueur-pays)
+  | "awaiting_vote" // le round attend son bulletin sur une motion
   | "done"
   | "interrupted"
   | "error";
@@ -90,6 +91,7 @@ export type LiveRound = {
   comparison?: ComparisonView;
   // Joueur-pays + théâtre Escalation
   humanTurn?: { country: string; passNo: number; deadlineTs?: number }; // tour en attente
+  humanMotionVote?: { country: string; target: string; deadlineTs?: number };
   flashes: { afterTurn: number; event: GeoEvent }[]; // faits nouveaux, positionnés dans le fil
   // Agentivité des SI : motion déposée en séance + traités ratifiés par l'arbitre
   motionFiled?: { by: string; country: string; reason: string };
@@ -188,13 +190,28 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
       };
     case "token":
       return appendToken(state, e.country, e.token);
+    case "private_token": {
+      const current = [...state.turns]
+        .reverse()
+        .find((turn) => turn.country === e.country && !turn.done);
+      return withLastTurn(state, e.country, {
+        reasoning: (current?.reasoning ?? "") + e.token,
+      });
+    }
+    case "private_plan_done":
+      return withLastTurn(state, e.country, { reasoning: e.text });
     case "message_done": {
       // Le flux vivait en `awaiting_human` (G2) : toute parole conclue le réveille.
       const wake = (s: LiveRound): LiveRound =>
         s.status === "awaiting_human" ? { ...s, status: "streaming" } : s;
       const updated = withLastTurn(state, e.country, {
         text: e.text,
-        reasoning: e.reasoning,
+        reasoning:
+          e.reasoning ||
+          [...state.turns]
+            .reverse()
+            .find((turn) => turn.country === e.country && !turn.done)?.reasoning ||
+          "",
         seconds: e.seconds,
         done: true,
       });
@@ -263,6 +280,12 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
     case "motion_vote":
       return {
         ...state,
+        status:
+          state.status === "awaiting_vote" && state.humanMotionVote?.country === e.country
+            ? "streaming"
+            : state.status,
+        humanMotionVote:
+          state.humanMotionVote?.country === e.country ? undefined : state.humanMotionVote,
         motionVotes: [
           ...state.motionVotes,
           { country: e.country, vote: e.vote, reason: e.reason },
@@ -309,6 +332,16 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
         ...state,
         status: "awaiting_human",
         humanTurn: { country: e.country, passNo: e.pass_no, deadlineTs: e.deadline_ts },
+      };
+    case "human_motion_vote":
+      return {
+        ...state,
+        status: "awaiting_vote",
+        humanMotionVote: {
+          country: e.country,
+          target: e.target,
+          deadlineTs: e.deadline_ts,
+        },
       };
     case "flash":
       return {
@@ -391,12 +424,17 @@ export function reducer(state: LiveRound, action: Action): LiveRound {
 export function useRoundStream(gameId: string, onSettled?: () => void) {
   const [round, dispatch] = useReducer(reducer, INITIAL);
   const abortRef = useRef<AbortController | null>(null);
+  // Une trame `done` peut arriver légèrement avant la fermeture effective de la réponse.
+  // Garder cet état séparé empêche de réactiver le bouton (ou l'auto-enchaînement) pendant
+  // cette fenêtre : `start` refuserait encore l'appel à cause de l'AbortController vivant.
+  const [inFlight, setInFlight] = useState(false);
 
   const start = useCallback(
     async (body: PlayRoundBody = {}) => {
       if (abortRef.current) return; // un round est déjà en cours d'écoute
       const controller = new AbortController();
       abortRef.current = controller;
+      setInFlight(true);
       dispatch({ kind: "start" });
       try {
         const outcome = await streamRound(
@@ -410,6 +448,7 @@ export function useRoundStream(gameId: string, onSettled?: () => void) {
         dispatch({ kind: "error", message: humanizeError(err) });
       } finally {
         abortRef.current = null;
+        setInFlight(false);
         onSettled?.();
       }
     },
@@ -420,5 +459,12 @@ export function useRoundStream(gameId: string, onSettled?: () => void) {
 
   // G2 : la prise de parole passe par `submitTurn` (POST) — le flux du round, resté
   // ouvert côté serveur, joue le message et continue de lui-même.
-  return { round, start, streaming: round.status === "streaming" };
+  return {
+    round,
+    start,
+    // `streaming` conserve son sens d'affichage (les IA génèrent). `active` couvre
+    // toute la requête, y compris l'attente humaine et la fermeture après `done`.
+    streaming: round.status === "streaming",
+    active: inFlight,
+  };
 }

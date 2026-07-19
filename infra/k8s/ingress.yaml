@@ -1,0 +1,46 @@
+# Point d'entrée HTTP unique du jeu.
+#   http://localhost/      -> front Next.js (theatre-web:3000)
+#   http://localhost/api/* -> API FastAPI (theatre-api:8000), préfixe /api conservé
+#
+# Prérequis : le contrôleur ingress-nginx doit être installé dans le cluster.
+# Pour kind (variante avec le label ingress-ready posé par kind-cluster.yaml) :
+#   kubectl apply -f https://kismatic... voir infra/README.md pour la commande exacte
+#   (manifeste officiel « deploy/static/provider/kind »).
+#
+# Routage (miroir du fonctionnement local) : les routers FastAPI sont montés sous
+# le préfixe `/api` (routes réelles `/api/games`, `/api/markets`…). Le front met
+# `NEXT_PUBLIC_API_BASE=http://localhost` (l'origine) et ses chemins portent déjà
+# `/api`, d'où des appels `http://localhost/api/games`. L'Ingress route `/api/*`
+# vers l'API en CONSERVANT le préfixe (pas de rewrite). Le `/health` (sans préfixe)
+# n'est pas exposé par l'Ingress : il sert aux sondes readiness/liveness du pod.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: theatre-ingress
+  namespace: theatre
+  annotations:
+    # SSE : pas de buffering, timeouts longs (un round de négociation dure ~1 min).
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          # /api et /api/... -> API, préfixe CONSERVÉ (les routers sont sous /api).
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: theatre-api
+                port:
+                  number: 8000
+          # Tout le reste -> front.
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: theatre-web
+                port:
+                  number: 3000

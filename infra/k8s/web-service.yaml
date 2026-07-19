@@ -1,0 +1,16 @@
+# Service interne du front. ClusterIP : l'Ingress route « / » vers « theatre-web:3000 ».
+apiVersion: v1
+kind: Service
+metadata:
+  name: theatre-web
+  namespace: theatre
+  labels:
+    app.kubernetes.io/name: theatre-web
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: theatre-web
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http

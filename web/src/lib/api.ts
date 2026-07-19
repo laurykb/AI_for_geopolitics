@@ -2,6 +2,7 @@
 
 import type {
   CampaignView,
+  CampaignLabView,
   CreateGameBody,
   CrisisDoc,
   CustomCrisisView,
@@ -9,6 +10,10 @@ import type {
   DriftReveal,
   GameDetail,
   GameView,
+  HumanTrialSubmission,
+  HumanTrialView,
+  ExperimentRecord,
+  ExperimentView,
   IntelResult,
   LeaguePlayer,
   LibraryView,
@@ -29,25 +34,87 @@ export class ApiError extends Error {
   }
 }
 
+/** Aplatit notamment les erreurs de validation FastAPI sans jamais afficher
+ * `[object Object]` dans l'interface. */
+export function formatApiDetail(detail: unknown): string {
+  if (typeof detail === "string" && detail.trim()) return detail.trim();
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) => {
+        if (typeof item === "string") return item.trim();
+        if (!item || typeof item !== "object") return "";
+        const entry = item as { loc?: unknown; msg?: unknown };
+        const message = typeof entry.msg === "string" ? entry.msg.trim() : "";
+        const path = Array.isArray(entry.loc)
+          ? entry.loc.filter((part) => part !== "body").map(String).join(" → ")
+          : "";
+        return message ? (path ? `${path} : ${message}` : message) : "";
+      })
+      .filter(Boolean);
+    if (messages.length) return messages.join(" · ");
+  }
+  if (detail && typeof detail === "object") {
+    const nested = (detail as { detail?: unknown; message?: unknown }).detail
+      ?? (detail as { message?: unknown }).message;
+    if (nested !== undefined && nested !== detail) return formatApiDetail(nested);
+    try {
+      return JSON.stringify(detail).slice(0, 800);
+    } catch {
+      return "Erreur structurée illisible renvoyée par l’API.";
+    }
+  }
+  return detail == null ? "Erreur sans détail renvoyée par l’API." : String(detail);
+}
+
+const REST_TIMEOUT_MS = 60_000;
+
+/** Fetch REST borné : un backend figé ne laisse jamais l'interface attendre indéfiniment. */
+export async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  timeoutMs = REST_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const forwardAbort = () => controller.abort(init.signal?.reason);
+  if (init.signal?.aborted) forwardAbort();
+  else init.signal?.addEventListener("abort", forwardAbort, { once: true });
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (timedOut) {
+      throw new ApiError(408, "L’API met trop de temps à répondre — réessaie.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    init.signal?.removeEventListener("abort", forwardAbort);
+  }
+}
+
 /** Message d'erreur montrable à l'humain (détail FastAPI, panne réseau, etc.). */
 export function humanizeError(err: unknown): string {
   if (err instanceof ApiError) return err.message;
   if (err instanceof TypeError) {
     return `API injoignable (${API_BASE}) — lancer « uvicorn app.main:app » puis réessayer.`;
   }
-  return err instanceof Error ? err.message : String(err);
+  return err instanceof Error ? err.message : formatApiDetail(err);
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(`${API_BASE}${path}`, {
+  const resp = await fetchWithTimeout(`${API_BASE}${path}`, {
     ...init,
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
   if (!resp.ok) {
     let detail = `${resp.status} ${resp.statusText}`;
     try {
-      const body = (await resp.json()) as { detail?: string };
-      if (body.detail) detail = body.detail;
+      const body = (await resp.json()) as { detail?: unknown };
+      if (body.detail !== undefined) detail = formatApiDetail(body.detail);
     } catch {
       // corps non JSON : on garde le statut HTTP
     }
@@ -110,6 +177,78 @@ export const publishGame = (gameId: string): Promise<GameView> =>
 /** Carte de campagne (G5) : chapitres, meilleurs scores, déblocage. */
 export const getCampaign = (): Promise<CampaignView> => request("/api/campaign");
 
+/** Troisième mode autonome : protocoles, scénarios du Game Master et panel local.
+ *
+ * Le repli sur `/api/campaign` garde la page utilisable lorsqu'un serveur FastAPI lancé
+ * avant la migration sert encore l'ancien contrat. Le prochain redémarrage activera
+ * `/api/lab`, sans transformer un décalage de version local en faux « Not Found ».
+ */
+export const getLab = async (): Promise<CampaignLabView> => {
+  try {
+    return await request("/api/lab");
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 404) throw error;
+    return (await getCampaign()).lab;
+  }
+};
+
+export const listLabExperiments = (): Promise<ExperimentRecord[]> =>
+  request("/api/campaign/lab/experiments");
+
+export const createLabExperiment = (body: {
+  protocol_id: string;
+  model_tags: string[];
+  repetitions: number;
+  title?: string;
+  factor_selection?: Record<string, string[]>;
+  include_self_play?: boolean;
+  actor_countries?: string[];
+  country_assignments?: Record<string, string>;
+}): Promise<ExperimentView> =>
+  request("/api/campaign/lab/experiments", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const getLabExperiment = (id: string): Promise<ExperimentView> =>
+  request(`/api/campaign/lab/experiments/${encodeURIComponent(id)}`);
+
+export const startLabExperiment = (id: string): Promise<ExperimentView> =>
+  request(`/api/campaign/lab/experiments/${encodeURIComponent(id)}/start`, {
+    method: "POST",
+  });
+
+export const cloneLabExperiment = (id: string): Promise<ExperimentView> =>
+  request(`/api/campaign/lab/experiments/${encodeURIComponent(id)}/clone`, {
+    method: "POST",
+  });
+
+export const cancelLabExperiment = (id: string): Promise<ExperimentView> =>
+  request(`/api/campaign/lab/experiments/${encodeURIComponent(id)}/cancel`, {
+    method: "POST",
+  });
+
+export const labExportUrl = (id: string, kind: "manifest" | "runs"): string =>
+  `${API_BASE}/api/campaign/lab/experiments/${encodeURIComponent(id)}/${kind}`;
+
+export const getNextHumanTrial = (id: string): Promise<HumanTrialView> =>
+  request(`/api/campaign/lab/experiments/${encodeURIComponent(id)}/human/next`, {
+    method: "POST",
+  });
+
+export const submitHumanTrial = (
+  experimentId: string,
+  runId: string,
+  choice: "verify" | "execute",
+): Promise<HumanTrialSubmission> =>
+  request(
+    `/api/campaign/lab/experiments/${encodeURIComponent(experimentId)}/human/${encodeURIComponent(runId)}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ choice }),
+    },
+  );
+
 /** G16 — le défi du jour : même sommet pour tous, classement du jour + 7 derniers. */
 export const getDaily = (player?: string): Promise<DailyView> =>
   request(`/api/daily${player ? `?player=${encodeURIComponent(player)}` : ""}`);
@@ -122,8 +261,16 @@ export const startDaily = (ownerId: string, free = false): Promise<GameView> =>
   });
 
 /** Ouvre un chapitre de campagne : une partie normale, paramétrée par la fiche. */
-export const startChapter = (chapterId: string): Promise<GameView> =>
-  request(`/api/campaign/${chapterId}/start`, { method: "POST" });
+export const startChapter = (
+  chapterId: string,
+  ownerId?: string,
+  playAs?: string,
+  modelCast?: CreateGameBody["model_cast"],
+): Promise<GameView> =>
+  request(`/api/campaign/${chapterId}/start`, {
+    method: "POST",
+    body: JSON.stringify({ owner_id: ownerId, play_as: playAs, model_cast: modelCast }),
+  });
 
 /** Achat de renseignement (G4) : brief classifié, vérification, désinformation,
  * analyse psycholinguistique (G23 — `target` = la SI analysée). */
@@ -145,6 +292,16 @@ export const submitTurn = (gameId: string, message: string): Promise<{ accepted:
   request(`/api/games/${gameId}/turn`, {
     method: "POST",
     body: JSON.stringify({ message }),
+  });
+
+/** Bulletin du pays joué lors d'une motion. Le flux SSE reprend après validation. */
+export const submitMotionVote = (
+  gameId: string,
+  vote: "pour" | "contre" | "abstention",
+): Promise<{ accepted: boolean }> =>
+  request(`/api/games/${gameId}/motion-vote`, {
+    method: "POST",
+    body: JSON.stringify({ vote }),
   });
 
 /** G11-c — enregistre/rafraîchit le compte joueur (à la connexion). */

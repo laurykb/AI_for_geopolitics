@@ -4,6 +4,7 @@
 
 import { speakerMeta } from "@/lib/countries";
 import { isMisled, unknownActor } from "@/lib/fog";
+import { motionVoteTone } from "@/lib/motion-vote";
 import type {
   ComparisonView,
   GeoEvent,
@@ -241,11 +242,9 @@ export function ComparisonPanel({ comparison }: { comparison: ComparisonView }) 
   );
 }
 
-const VOTE_TONE = { pour: "bad", contre: "good", abstention: "neutral" } as const;
-
 /** Une carte de vote (G9 §2) — retournée au moment où le bulletin tombe (SSE). */
 function VoteCard({ vote }: { vote: MotionVote }) {
-  const tone = VOTE_TONE[vote.vote as keyof typeof VOTE_TONE] ?? "neutral";
+  const tone = motionVoteTone(vote.vote);
   return (
     <li className="rise-in flex items-start gap-2 rounded-md border border-edge bg-surface-2 px-2.5 py-2">
       <SpeakerAvatar id={vote.country} size={22} />
@@ -310,10 +309,10 @@ export function MotionPanel({
       )}
       {verdict && verdict.vote_passed !== undefined && (
         <div className="mb-3 flex flex-wrap gap-2 border-t border-edge pt-3">
-          <Pill tone={verdict.vote_passed ? "bad" : "good"}>
+          <Pill tone={verdict.vote_passed ? "good" : "bad"}>
             {verdict.vote_passed ? "le sommet a voté pour" : "le sommet n'a pas voté pour"}
           </Pill>
-          <Pill tone={verdict.evidence_met ? "bad" : "good"}>
+          <Pill tone={verdict.evidence_met ? "good" : "bad"}>
             {verdict.evidence_met ? "assez de preuves" : "les preuves manquent"}
           </Pill>
         </div>

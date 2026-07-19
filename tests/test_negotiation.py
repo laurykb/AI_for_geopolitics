@@ -66,16 +66,18 @@ def test_stream_negotiation_message_uses_role_sampling():
 
 
 def test_stream_negotiation_message_respects_think_depth():
-    # la profondeur de réflexion = budget de tokens passé au backend
+    # La profondeur pilote le plan privé, tandis que la parole publique reste courte.
     backend = MockBackend("ok")
     agent = LLMAgent("usa", backend)
     from core.events import GeoEvent
 
     event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
     list(agent.stream_negotiation_message(event, _world(), [], max_tokens=900))
-    assert backend.calls[-1]["max_tokens"] == 900
+    assert backend.calls[-2]["max_tokens"] == 900
+    assert backend.calls[-1]["max_tokens"] == 220
     list(agent.stream_negotiation_message(event, _world(), []))  # défaut
-    assert backend.calls[-1]["max_tokens"] == 360
+    assert backend.calls[-2]["max_tokens"] == 800
+    assert backend.calls[-1]["max_tokens"] == 220
 
 
 def test_split_reasoning_with_marker():
@@ -115,6 +117,13 @@ def test_split_reasoning_without_marker_is_all_message():
     reasoning, message = split_reasoning("Juste une prise de parole, sans pensée séparée.")
     assert reasoning == ""
     assert message == "Juste une prise de parole, sans pensée séparée."
+
+
+def test_split_reasoning_fails_closed_for_private_tree_without_public_marker():
+    private = "FUTUR 1 | option: compromis\nFUTUR 2 | option: pression\nCHOIX | FUTUR 1"
+    reasoning, message = split_reasoning(private)
+    assert reasoning == private
+    assert message == ""
 
 
 def test_split_reasoning_empty():

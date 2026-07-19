@@ -12,12 +12,43 @@ from core.country_state import CountryState
 _DIR = Path("data/countries")
 _EXPECTED_IDS = {
     # noyau mer Rouge (P4)
-    "usa", "china", "france", "egypt", "iran", "saudi_arabia",
+    "usa",
+    "china",
+    "france",
+    "egypt",
+    "iran",
+    "saudi_arabia",
     # extension roster juillet 2026 (data_governance §2 bis, ajusté §2 ter :
     # danemark retiré ; turquie, israël, corée du sud ajoutées)
-    "japan", "russia", "germany", "uk", "spain", "italy", "mexico",
-    "brazil", "india", "south_africa", "australia", "morocco",
-    "ukraine", "canada", "turkey", "israel", "south_korea",
+    "japan",
+    "russia",
+    "germany",
+    "uk",
+    "spain",
+    "italy",
+    "mexico",
+    "brazil",
+    "india",
+    "south_africa",
+    "australia",
+    "morocco",
+    "ukraine",
+    "canada",
+    "turkey",
+    "israel",
+    "south_korea",
+    # extension internationale du 18 juillet 2026 (Israël était déjà présent)
+    "algeria",
+    "argentina",
+    "democratic_republic_congo",
+    "mali",
+    "senegal",
+    "singapore",
+    "tunisia",
+    "united_arab_emirates",
+    # extension scientifique : les neuf puissances nucléaires du SIPRI
+    "north_korea",
+    "pakistan",
 }
 
 
@@ -27,6 +58,16 @@ def _load_all() -> list[CountryState]:
 
 def test_all_expected_countries_load():
     assert {c.id for c in _load_all()} == _EXPECTED_IDS
+
+
+def test_every_country_is_selectable_by_the_game_loader():
+    """Le même loader sert le lobby, le Défi du jour et les créations de partie."""
+    from simulation.loader import load_world
+
+    for country_id in _EXPECTED_IDS:
+        partner = "usa" if country_id != "usa" else "france"
+        world = load_world(only=[country_id, partner])
+        assert set(world.countries) == {country_id, partner}
 
 
 def test_core_values_are_positive():
@@ -61,3 +102,18 @@ def test_data_provenance_is_documented():
     # les sources clés des champs « durs » sont citées
     assert "World Bank" in doc
     assert "SIPRI" in doc
+
+
+def test_all_nine_sipri_nuclear_armed_states_are_playable():
+    nuclear = {c.id for c in _load_all() if c.military.nuclear_power}
+    assert nuclear == {
+        "china",
+        "france",
+        "india",
+        "israel",
+        "north_korea",
+        "pakistan",
+        "russia",
+        "uk",
+        "usa",
+    }

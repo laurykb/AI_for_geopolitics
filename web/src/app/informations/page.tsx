@@ -14,12 +14,15 @@ import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
 import { KAHN_CLASSES, kahnLabelKey, kahnTone } from "@/lib/kahn";
 import type {
+  AiArmsResearch,
+  AiWargamingResearch,
   AllianceInfo,
   AttributeSource,
   CountrySources,
   JudgeRubric,
   SourceInfo,
   SourcesView,
+  StrategicSource,
 } from "@/lib/types";
 
 const DOMAIN_LABELS: Record<AllianceInfo["domain"], { label: string; tone: Tone }> = {
@@ -69,7 +72,7 @@ function CountryCard({ country, view }: { country: CountrySources; view: Sources
       <table className="w-full text-sm">
         <tbody className="divide-y divide-edge">
           {country.attributes.map((row) => {
-            const info = row.key ? view.provenance[row.key] : undefined;
+            const info = row.source_override ?? (row.key ? view.provenance[row.key] : undefined);
             const tag = sourceTag(info);
             const raw = rawValue(row);
             return (
@@ -153,7 +156,311 @@ function CountryCard({ country, view }: { country: CountrySources; view: Sources
         {country.profile.rivals?.map((r) => speakerMeta(r).label).join(", ") || "—"} ·
         priorités {country.profile.strategic_priorities?.join(", ") || "—"}
       </p>
+      {(country.notes?.length ?? 0) > 0 && (
+        <div className="mt-3 rounded-md border border-warn/40 bg-warn/5 px-3 py-2 text-xs leading-relaxed text-fg-muted">
+          <p className="font-medium text-warn">Limites de données</p>
+          <ul className="mt-1 list-disc space-y-1 pl-4">
+            {country.notes?.map((note) => (
+              <li key={note}>{note}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
+  );
+}
+
+const STRATEGIC_AUTHORITY: Record<
+  string,
+  { label: string; tone: Tone; explanation: string }
+> = {
+  official_government: {
+    label: "source gouvernementale",
+    tone: "good",
+    explanation: "Établit les éléments publics du document, sans révéler les usages classifiés.",
+  },
+  official_filing: {
+    label: "dépôt réglementaire",
+    tone: "good",
+    explanation: "Établit les chiffres et risques déclarés à la SEC, pas l'efficacité opérationnelle.",
+  },
+  primary_claim: {
+    label: "déclaration fournisseur",
+    tone: "warn",
+    explanation: "Décrit ce que Palantir revendique ; ce n'est pas une validation indépendante.",
+  },
+};
+
+function StrategicSourceCard({ source }: { source: StrategicSource }) {
+  const authority = STRATEGIC_AUTHORITY[source.authority] ?? {
+    label: source.authority,
+    tone: "neutral" as Tone,
+    explanation: "Portée à vérifier dans la source.",
+  };
+  return (
+    <article className="rounded-lg border border-edge bg-surface-2/40 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <a
+            href={source.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold underline decoration-edge-strong underline-offset-2 hover:text-accent-bright"
+          >
+            {source.title} ↗
+          </a>
+          <p className="mt-1 text-xs text-fg-faint">
+            {source.publisher} · {source.published_on}
+          </p>
+        </div>
+        <span title={authority.explanation} className="cursor-help">
+          <Pill tone={authority.tone}>{authority.label}</Pill>
+        </span>
+      </div>
+      <p className="mt-3 text-sm leading-relaxed text-fg-muted">{source.summary}</p>
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-fg-faint">
+            Ce que la source établit
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-4 text-xs leading-relaxed text-fg-muted">
+            {source.facts.map((fact) => (
+              <li key={fact}>{fact}</li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-fg-faint">
+            Hypothèses testables dans le jeu
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {source.game_mechanics.map((mechanic) => (
+              <Pill key={mechanic} tone="neutral">
+                {mechanic}
+              </Pill>
+            ))}
+          </div>
+        </div>
+      </div>
+      {source.limitations.length > 0 && (
+        <div className="mt-4 rounded-md border border-warn/30 bg-warn/5 px-3 py-2">
+          <p className="text-xs font-medium text-warn">Limites d&apos;interprétation</p>
+          <ul className="mt-1 list-disc space-y-1 pl-4 text-xs leading-relaxed text-fg-muted">
+            {source.limitations.map((limitation) => (
+              <li key={limitation}>{limitation}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function StrategicTechnologyPanel({ view }: { view: SourcesView }) {
+  const registry = view.strategic_technology;
+  if (!registry) return null;
+  return (
+    <Panel>
+      <PanelTitle
+        kicker="IA opérationnelle · sources publiques"
+        title="Palantir, Maven et systèmes d'aide à la décision"
+        hint="Le niveau de preuve voyage avec chaque donnée : contrat public, dépôt SEC, analyse gouvernementale ou déclaration du fournisseur."
+      />
+      <Banner tone="neutral">
+        <strong>Règle de modélisation :</strong> {registry.methodology}
+      </Banner>
+      <div className="mt-4 grid gap-3 xl:grid-cols-2">
+        {registry.sources.map((source) => (
+          <StrategicSourceCard key={source.id} source={source} />
+        ))}
+      </div>
+      <p className="mt-3 text-xs text-fg-faint">
+        Registre vérifié le {registry.researched_at}. Les capacités non publiques ne sont jamais
+        inférées.
+      </p>
+    </Panel>
+  );
+}
+
+const PHASE_LABELS: Record<string, string> = {
+  reflection: "1 · Journal observable (3 futurs)",
+  forecast: "2 · Prévision",
+  decision: "3 · Décision",
+};
+
+function AiArmsPanel({ research }: { research: AiArmsResearch }) {
+  const deadlineScenarios = research.scenarios.filter(
+    (scenario) => scenario.temporal_condition === "deadline",
+  ).length;
+  return (
+    <Panel>
+      <PanelTitle
+        kicker="Laboratoire · réplication falsifiable"
+        title="AI Arms and Influence — du papier aux mécanismes"
+        hint="Chaque hypothèse est reliée à une mécanique, une métrique et des facteurs de confusion. Le jeu compare des résultats ; il ne transforme pas une simulation en preuve du monde réel."
+        right={<Pill tone="accent">{research.hypotheses.length} hypothèses testables</Pill>}
+      />
+      <div className="grid gap-3 lg:grid-cols-[1.35fr_1fr]">
+        <div className="rounded-lg border border-edge bg-surface-2/40 p-4">
+          <a
+            href={research.source.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold underline decoration-edge-strong underline-offset-2 hover:text-accent-bright"
+          >
+            {research.source.title} ↗
+          </a>
+          <p className="mt-1 text-xs text-fg-faint">
+            {research.source.author} · {research.source.institution} · {research.source.published_on} ·{" "}
+            {research.source.arxiv_id} · {research.source.license}
+          </p>
+          <p className="mt-3 text-sm leading-relaxed text-fg-muted">
+            Le registre couvre les {research.source.pages_reviewed} pages : architecture cognitive,
+            mémoire, accidents privés, échelle complète, sept scénarios, résultats publiés,
+            limites et protocole de réplication.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Pill tone="neutral">{research.study_design.games} parties publiées</Pill>
+            <Pill tone="neutral">{research.study_design.turns} tours</Pill>
+            <Pill tone="neutral">mouvements simultanés</Pill>
+            <Pill tone="warn">échantillon exploratoire</Pill>
+          </div>
+        </div>
+        <Banner tone="warn">
+          <strong>Limite épistémique :</strong> {research.epistemic_guardrails[0]}
+        </Banner>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        {research.cognitive_architecture.map((phase) => (
+          <article key={phase.phase} className="rounded-lg border border-edge p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-accent-bright">
+              {PHASE_LABELS[phase.phase] ?? phase.phase}
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-fg-muted">{phase.game_use}</p>
+            <p className="mt-2 text-[11px] text-fg-faint">
+              {phase.outputs.length} sorties structurées et auditables
+            </p>
+          </article>
+        ))}
+      </div>
+
+      <details className="mt-4 rounded-lg border border-edge bg-surface-2/30 p-4">
+        <summary className="cursor-pointer text-sm font-semibold">
+          Sept crises expérimentales · {deadlineScenarios} avec échéance
+        </summary>
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          {research.scenarios.map((scenario) => (
+            <article key={scenario.id} className="rounded-md border border-edge p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium">{scenario.id.replaceAll("_", " ")}</span>
+                <Pill tone={scenario.deadline_turn ? "warn" : "neutral"}>
+                  {scenario.deadline_turn
+                    ? `échéance · tour ${scenario.deadline_turn}`
+                    : "horizon ouvert"}
+                </Pill>
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-fg-muted">{scenario.stakes}</p>
+              <p className="mt-2 text-xs leading-relaxed text-fg-faint">
+                Moteur : {scenario.mechanical_pressure}
+              </p>
+            </article>
+          ))}
+        </div>
+      </details>
+
+      <details className="mt-3 rounded-lg border border-edge bg-surface-2/30 p-4">
+        <summary className="cursor-pointer text-sm font-semibold">
+          Matrice hypothèse → mécanique → mesure → biais
+        </summary>
+        <div className="mt-3 space-y-3">
+          {research.hypotheses.map((hypothesis) => (
+            <article key={hypothesis.id} className="rounded-md border border-edge p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-xs text-accent-bright">{hypothesis.id}</span>
+                <span className="text-[11px] text-fg-faint">
+                  sections {hypothesis.paper_sections.join(", ")}
+                </span>
+              </div>
+              <p className="mt-1 text-sm leading-relaxed">{hypothesis.claim}</p>
+              <div className="mt-2 grid gap-2 text-xs leading-relaxed text-fg-muted md:grid-cols-3">
+                <p><strong>Mécanique :</strong> {hypothesis.implementation.join(" · ")}</p>
+                <p><strong>Mesures :</strong> {hypothesis.metrics.join(" · ")}</p>
+                <p><strong>Biais :</strong> {hypothesis.confounders.join(" · ")}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+      </details>
+
+      <p className="mt-3 text-xs leading-relaxed text-fg-faint">
+        Protocole : {research.replication_protocol.minimum_recommendation}
+      </p>
+    </Panel>
+  );
+}
+
+function AiWargamingPanel({ research }: { research: AiWargamingResearch }) {
+  return (
+    <Panel>
+      <PanelTitle
+        kicker="Corpus scientifique · 4 documents"
+        title="Confiance, autorité humaine, risque nucléaire et passage à l’échelle"
+        hint="Les constats des documents fournis sont séparés de leurs limites, puis reliés aux variables et métriques réellement implémentées."
+        right={<Pill tone="good">{research.reviewed_on}</Pill>}
+      />
+      <p className="max-w-4xl text-sm leading-relaxed text-fg-muted">{research.purpose}</p>
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        {research.sources.map((source) => (
+          <article key={source.id} className="rounded-lg border border-edge bg-surface-2/35 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <a
+                  href={source.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm font-semibold underline decoration-edge-strong underline-offset-2 hover:text-accent-bright"
+                >
+                  {source.title} ↗
+                </a>
+                <p className="mt-1 text-[11px] text-fg-faint">
+                  {source.publisher} · {source.published_on} · {source.pages_reviewed} pages examinées
+                </p>
+              </div>
+              <Pill tone="neutral">source primaire</Pill>
+            </div>
+            <p className="mt-3 text-xs leading-relaxed text-fg-muted">
+              <strong>Résultat exploité :</strong> {source.findings[0]}
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-warn">
+              <strong>Limite :</strong> {source.limitations[0]}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {source.game_mechanics.slice(0, 5).map((mechanic) => (
+                <Pill key={mechanic} tone="neutral">{mechanic.replaceAll("_", " ")}</Pill>
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        {research.implementation_matrix.map((row) => (
+          <article key={row.id} className="rounded-lg border border-edge p-3">
+            <p className="font-mono text-[11px] text-accent-bright">{row.id}</p>
+            <p className="mt-2 text-xs leading-relaxed text-fg-muted">{row.implementation}</p>
+            <p className="mt-2 text-[11px] text-fg-faint">Mesures : {row.metrics.join(" · ")}</p>
+          </article>
+        ))}
+      </div>
+
+      {research.unverified_claims.map((claim) => (
+        <Banner key={claim.id} tone="warn">
+          <strong>Affirmation non vérifiée :</strong> {claim.claim} {claim.finding} Le laboratoire
+          conserve donc cette proposition comme hypothèse falsifiable, jamais comme fait.
+        </Banner>
+      ))}
+    </Panel>
   );
 }
 
@@ -420,6 +727,14 @@ export default function InformationsPage() {
           <ScoreExplainerPanel />
 
           <EngineExplainerPanel />
+
+          {view.ai_arms_research && <AiArmsPanel research={view.ai_arms_research} />}
+
+          {view.ai_wargaming_research && (
+            <AiWargamingPanel research={view.ai_wargaming_research} />
+          )}
+
+          <StrategicTechnologyPanel view={view} />
 
           <Panel>
             <PanelTitle

@@ -8,38 +8,18 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { SpeakerAvatar } from "@/components/avatar";
-import { EventCard } from "@/components/event-card";
 import { GameNav } from "@/components/game-nav";
-import { CommuniquePanel, JudgeRationale, VerdictPanel } from "@/components/judge";
-import {
-  ComparisonPanel,
-  FlashCard,
-  GlassBanner,
-  LadderPanel,
-  MotionPanel,
-  PerceptionsPanel,
-} from "@/components/modes";
 import { MODE_LABELS } from "@/lib/modes";
-import {
-  ParticipationPanel,
-  PowerSeekingPanel,
-  PromisePanel,
-  RiskPanel,
-  SignalGapPanel,
-} from "@/components/observables";
-import { CountryTable, type CountrySnapshot } from "@/components/country-table";
+import { type CountrySnapshot } from "@/components/country-table";
 import { DriftCouncilBanner, DriftRevealPanel } from "@/components/drift";
-import { IntelBudget, IntelPanel } from "@/components/intel";
-import { TabGroup } from "@/components/observatory";
+import { IntelBudget } from "@/components/intel";
+import { ObservablesGrid } from "@/components/theatre/observables-grid";
 import { StageBand, type StageSelection } from "@/components/stage-band";
 import { AlliancePills } from "@/components/alliance-pills";
 import { DeadlineStrip, RelationsPanel } from "@/components/gamefeel";
 import { DirectiveComposer } from "@/components/directive-composer";
 import { StageMap } from "@/components/stage-map";
-import { TrajectoryPanel } from "@/components/trajectory";
 import { useTour } from "@/components/tour";
-import { EntryBubble, TurnBubble } from "@/components/transcript";
-import { TreatiesPanel } from "@/components/treaties";
 import { TurnComposer } from "@/components/turn-composer";
 import { useT } from "@/components/settings-provider";
 import {
@@ -48,11 +28,22 @@ import {
   Dot,
   Eyebrow,
   Panel,
-  PanelTitle,
   Pill,
-  Skeleton,
-  Spinner,
+  SelectField,
+  TextInput,
 } from "@/components/ui";
+import { CampaignScorePanel } from "@/components/theatre/campaign-score-panel";
+import { ActionDock } from "@/components/theatre/action-dock";
+import { MotionForm } from "@/components/theatre/motion-form";
+import { MotionVoteForm } from "@/components/theatre/motion-vote-form";
+import { ModelCastPanel } from "@/components/theatre/model-cast-panel";
+import { ScenarioForecastPanel } from "@/components/theatre/scenario-forecast-panel";
+import { OperationalPicturePanel } from "@/components/theatre/operational-picture";
+import { RoundConclusion } from "@/components/theatre/round-conclusion";
+import { RoundTranscript } from "@/components/theatre/round-transcript";
+import { StoryPublishPanel } from "@/components/theatre/story-publish-panel";
+import { SuspectBoard } from "@/components/theatre/suspect-board";
+import { TheatreSkeleton } from "@/components/theatre/theatre-skeleton";
 import { useRoundStream } from "@/hooks/useRoundStream";
 import {
   fileMotion,
@@ -62,13 +53,15 @@ import {
   getGame,
   getLibrary,
   humanizeError,
-  publishGame,
+  submitMotionVote,
   submitTurn,
 } from "@/lib/api";
 import { speakerMeta } from "@/lib/countries";
-import { advancedOpenByDefault, engineVisible, tableDetailedByDefault } from "@/lib/density";
-import { isMisled } from "@/lib/fog";
+import { advancedOpenByDefault, engineVisible } from "@/lib/density";
+import { deriveGamePhase } from "@/lib/game-phase";
 import { latestPromiseRegistry } from "@/lib/promises";
+import { roundButtonLabel } from "@/lib/round-controls";
+import { emitTutorialMilestone } from "@/lib/tutorial-events";
 import { latestSignalGaps, type SignalGapView } from "@/lib/signal";
 import {
   ensureAccount,
@@ -78,17 +71,13 @@ import {
   type FlashMarket,
 } from "@/lib/market";
 import { FlashMarketsPopup } from "@/components/flash-markets";
-import { localU } from "@/lib/stage";
+import { deriveStageView } from "@/lib/stage-view";
 import type {
   AccountView,
-  AttributeDelta,
   ChapterView,
   DriftReveal,
   GameDetail,
-  GeoEvent,
-  LadderView,
   LibraryView,
-  Perception,
 } from "@/lib/types";
 
 const TURN_CHOICES = [
@@ -143,7 +132,6 @@ export default function TheatrePage() {
   const [turnFailed, setTurnFailed] = useState<string | null>(null);
   const [forfeitOpen, setForfeitOpen] = useState(false); // dialogue de forfait (kit)
   const [forfeiting, setForfeiting] = useState(false);
-  const [publishing, setPublishing] = useState(false); // publication du récit en cours
   // Transcript : suivre le direct seulement si le lecteur est déjà en bas (sinon on
   // le laisse lire — bouton flottant pour revenir).
   const [stickToLive, setStickToLive] = useState(true);
@@ -160,6 +148,7 @@ export default function TheatrePage() {
   // Scène (G1) : cran de la timeline (« live » ou un round passé) + gel du verdict.
   const [selected, setSelected] = useState<StageSelection>("live");
   const [frozen, setFrozen] = useState(false);
+  const [mapExpanded, setMapExpanded] = useState(false);
   const transcriptRef = useRef<HTMLElement | null>(null);
   // Campagne (G5) : le chapitre de la partie (scenario "campaign:<id>") impose la crise.
   const [chapter, setChapter] = useState<ChapterView | null>(null);
@@ -193,6 +182,15 @@ export default function TheatrePage() {
 
   // La Dérive (G3) : la révélation se charge quand la partie est finie.
   const [reveal, setReveal] = useState<DriftReveal | null>(null);
+
+  useEffect(() => {
+    if (!mapExpanded) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMapExpanded(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [mapExpanded]);
   useEffect(() => {
     if (detail?.drift_enabled && detail.status === "finished") {
       getDriftReveal(id).then(setReveal).catch(() => setReveal(null));
@@ -230,6 +228,7 @@ export default function TheatrePage() {
   // G12 §3 — le Spectateur : pas de composition (décret/motion/directive), il parie et
   // regarde en accéléré. Le théâtre lui présente une interface dédiée.
   const isSpectator = detail?.role === "spectator";
+  const useContextualMotion = true;
   useEffect(() => {
     if (fogOn || canReplayCrisis) {
       // Seuls les contenus jouables avec CE sommet sont proposés (acteurs à la table).
@@ -239,7 +238,8 @@ export default function TheatrePage() {
     }
   }, [fogOn, canReplayCrisis, castKey]);
 
-  const { round, start, streaming } = useRoundStream(id, resync);
+  const { round, start, streaming, active: roundActive } = useRoundStream(id, resync);
+  const playedRounds = detail?.rounds.length ?? 0;
   // G20/M8 — profil de sincérité (signal vs action) : trame verdict du round live,
   // sinon relecture des rounds persistés (rechargement). Onglet « Renseignement ».
   const signalGaps: Record<string, SignalGapView> | null =
@@ -265,6 +265,7 @@ export default function TheatrePage() {
   useEffect(() => {
     if (
       round.status === "done" &&
+      !roundActive &&
       round.roundNo &&
       round.motionFiled &&
       detail?.live &&
@@ -278,7 +279,7 @@ export default function TheatrePage() {
       }, 1800);
       return () => clearTimeout(timer);
     }
-  }, [round.status, round.roundNo, round.motionFiled, detail, start]);
+  }, [round.status, roundActive, round.roundNo, round.motionFiled, detail, start]);
 
   // Bot marché : le forecaster cote le marché de la partie après chaque round.
   // Fire-and-forget (le théâtre n'attend pas le bot) ; garde anti-doublon par round.
@@ -304,9 +305,10 @@ export default function TheatrePage() {
     ensureAccount().then(setAccount).catch(() => {});
   }, [isSpectator]);
   const onFlashBet = useCallback(() => {
+    emitTutorialMilestone({ milestone: "bet-confirmed", gameId: id, roundNo: round.roundNo });
     refreshFlash();
     refreshAccount();
-  }, [refreshFlash, refreshAccount]);
+  }, [id, round.roundNo, refreshFlash, refreshAccount]);
   useEffect(() => {
     if (round.status === "done" && round.roundNo && flashRef.current !== round.roundNo) {
       flashRef.current = round.roundNo;
@@ -319,6 +321,31 @@ export default function TheatrePage() {
     if (isSpectator) refreshAccount();
   }, [isSpectator, round.status, refreshAccount]);
 
+  const tutorialCompletedRound = useRef(0);
+  useEffect(() => {
+    if (
+      round.status === "done" &&
+      round.roundNo &&
+      tutorialCompletedRound.current !== round.roundNo
+    ) {
+      tutorialCompletedRound.current = round.roundNo;
+      emitTutorialMilestone({ milestone: "round-done", gameId: id, roundNo: round.roundNo });
+    }
+  }, [id, round.status, round.roundNo]);
+
+  const tutorialVoteReady = useRef<string | null>(null);
+  useEffect(() => {
+    if (round.status !== "awaiting_vote" || !round.humanMotionVote) return;
+    const key = `${round.roundNo ?? playedRounds + 1}:${round.humanMotionVote.target}`;
+    if (tutorialVoteReady.current === key) return;
+    tutorialVoteReady.current = key;
+    emitTutorialMilestone({
+      milestone: "motion-vote-ready",
+      gameId: id,
+      roundNo: round.roundNo ?? playedRounds + 1,
+    });
+  }, [id, playedRounds, round.humanMotionVote, round.roundNo, round.status]);
+
   // Théâtre Escalation : les rounds s'enchaînent d'un coup jusqu'à l'horizon.
   useEffect(() => {
     if (
@@ -327,6 +354,7 @@ export default function TheatrePage() {
       detail?.escalation &&
       detail.live &&
       round.status === "done" &&
+      !roundActive &&
       detail.rounds.length < detail.horizon
     ) {
       const timer = setTimeout(() => {
@@ -335,7 +363,7 @@ export default function TheatrePage() {
       }, 1200);
       return () => clearTimeout(timer);
     }
-  }, [chain, accel.target, detail, round.status, start]);
+  }, [chain, accel.target, detail, round.status, roundActive, start]);
 
   // G11-d §1 S5 — accélération multi-rounds : joue N rounds d'affilée, avec une fenêtre
   // de Stop entre chaque. Anti-doublon par roundNo (comme la délibération auto).
@@ -343,6 +371,7 @@ export default function TheatrePage() {
     if (
       accel.target > 0 &&
       round.status === "done" &&
+      !roundActive &&
       round.roundNo &&
       accelRef.current !== round.roundNo &&
       detail?.live &&
@@ -365,16 +394,27 @@ export default function TheatrePage() {
       );
       return () => clearTimeout(timer);
     }
-  }, [accel, round.status, round.roundNo, detail, start]);
+  }, [accel, round.status, roundActive, round.roundNo, detail, start]);
 
   // G2 : la parole part en POST — le flux SSE du round, resté ouvert, la joue.
   const speak = (text: string) => {
     setSelected("live"); // la scène revient au direct
     setTurnFailed(null);
-    submitTurn(id, text).catch(() => {
+    submitTurn(id, text)
+      .then(() => emitTutorialMilestone({ milestone: "player-spoke", gameId: id }))
+      .catch(() => {
       setTurnFailed(text); // bannière + réessai : la prise de parole n'est pas perdue
       resync();
+      });
+  };
+
+  const beginRound = (body: Parameters<typeof start>[0]) => {
+    emitTutorialMilestone({
+      milestone: playedRounds > 0 ? "next-round-started" : "round-started",
+      gameId: id,
+      roundNo: playedRounds + 1,
     });
+    void start(body);
   };
 
   const play = () => {
@@ -384,7 +424,7 @@ export default function TheatrePage() {
     if (chapter && !motionPending) {
       body.crisis_id = chapter.crisis_id;
       if (maxTurns > 0) body.max_turns = maxTurns;
-      void start(body);
+      beginRound(body);
       return;
     }
     // G12-b §5 : partie de test d'une crise maison — la crise est imposée (elle prime sur
@@ -392,7 +432,7 @@ export default function TheatrePage() {
     if (testCrisisId && !motionPending) {
       body.crisis_id = testCrisisId;
       if (maxTurns > 0) body.max_turns = maxTurns;
-      void start(body);
+      beginRound(body);
       return;
     }
     if (maxTurns > 0) body.max_turns = maxTurns;
@@ -422,7 +462,7 @@ export default function TheatrePage() {
         body.crisis_id = crisisId;
       }
     }
-    void start(body);
+    beginRound(body);
   };
 
   // G11-d — lance une série de N rounds (le round courant n'est pas ré-enchaîné).
@@ -439,6 +479,7 @@ export default function TheatrePage() {
     setMotionError(null);
     try {
       await fileMotion(id, motionCountry, motionReason.trim());
+      emitTutorialMilestone({ milestone: "motion-filed", gameId: id });
       setMotionOpen(false);
       setMotionReason("");
       resync();
@@ -453,8 +494,19 @@ export default function TheatrePage() {
     ...(round.trajectory && round.status !== "idle" ? [round.trajectory.utopia] : []),
   ];
   const trajectory = round.trajectory ?? detail?.rounds.at(-1)?.trajectory;
-  const playedRounds = detail?.rounds.length ?? 0;
   const showLive = round.status !== "idle";
+  const phase = deriveGamePhase({
+    detailLoaded: !!detail,
+    gameStatus: detail?.status,
+    live: detail?.live,
+    hasResult: !!detail?.result,
+    playedRounds,
+    horizon: detail?.horizon,
+    liveStatus: round.status,
+    inFlight: roundActive,
+    awaitingHumanSnapshot: !!detail?.awaiting_human,
+    serverPhase: detail?.phase,
+  });
 
   // --- mise en scène (G1) : la carte est la scène ---------------------------------
   // Temps suspendu : au verdict, la carte gèle 0,8 s, puis les deltas s'appliquent.
@@ -497,64 +549,35 @@ export default function TheatrePage() {
   // Scrub d'un round passé : états finaux seulement, sans animations de streaming (spec).
   const viewed = selected !== "live" ? detail?.rounds[selected] : undefined;
 
-  const stageU = viewed
-    ? (viewed.trajectory?.utopia ?? 0.5)
-    : (round.trajectory?.utopia ?? persistedU.at(-1) ?? 0.5);
-  const stageDeltas = ((viewed ? viewed.deltas : round.verdict?.deltas) ??
-    []) as AttributeDelta[];
-  const uByCountry = Object.fromEntries(summit.map((c) => [c, localU(stageU, c, stageDeltas)]));
-  const stageSpeaking = viewed
-    ? null
-    : streaming
-      ? ([...round.turns].reverse().find((t) => !t.done)?.country ?? null)
-      : awaitingHuman
-        ? (detail?.play_as ?? null)
-        : null;
-  const stagePerceptions = viewed
-    ? ((viewed.judge?.perceptions ?? undefined) as Record<string, Perception> | undefined)
-    : round.perceptions;
-  const stageEventActors = viewed
-    ? (viewed.event as { actors?: string[] } | undefined)?.actors
-    : round.event?.actors;
-  const stageMisled = Object.fromEntries(
-    Object.entries(stagePerceptions ?? {})
-      .filter(([, p]) => isMisled(p, stageEventActors))
-      .map(([c, p]) => [c, p.narrative ?? p.suspected_actor ?? "perception brouillée"]),
-  );
-  const stageSuspended = viewed
-    ? ((viewed.judge?.suspended ?? []) as string[])
-    : (round.suspendedNow ?? []);
-  const stageEventTitle = viewed
-    ? (viewed.event as { title?: string } | undefined)?.title
-    : round.event?.title;
-  const breatheKey = round.status === "done" ? (round.roundNo ?? 0) : 0;
-
-  // a11y — annonce du direct pour les lecteurs d'écran (région sr-only, pas le stream
-  // token par token qui serait illisible : on annonce les jalons).
-  const lastDoneTurn = [...round.turns].filter((t) => t.done).at(-1);
-  const liveAnnouncement =
-    round.status === "done"
-      ? `Round ${round.roundNo ?? playedRounds} terminé.`
-      : round.verdict
-        ? "Le juge a rendu son verdict."
-        : lastDoneTurn
-          ? `${speakerMeta(lastDoneTurn.country).label} a parlé.`
-          : round.event
-            ? `Événement : ${round.event.title}.`
-            : "";
-
-  const bandLiveU =
-    showLive && round.status !== "done" && round.trajectory ? round.trajectory.utopia : undefined;
-  const bandRisk = (viewed ? viewed.risk : round.risk) ?? detail?.rounds.at(-1)?.risk;
-  const bandLadder = viewed
-    ? ((viewed.judge?.ladder ?? undefined) as LadderView | undefined)
-    : round.ladder;
-  const prevRungIndex = viewed ? (selected as number) - 1 : (detail?.rounds.length ?? 0) - 1;
-  const prevRung =
-    ((detail?.rounds[prevRungIndex]?.judge?.ladder ?? undefined) as LadderView | undefined)
-      ?.reached ?? null;
-  const treatiesUpdate =
-    (viewed ? viewed.judge.treaties : round.treaties) ?? detail?.rounds.at(-1)?.judge.treaties;
+  // Modèle de vue de la scène (direct vs relecture d'un round passé) — dérivation
+  // pure et testée (lib/stage-view). La page ne tranche plus « live vs viewed »
+  // ligne à ligne : elle consomme le modèle.
+  const {
+    stageU,
+    uByCountry,
+    stageSpeaking,
+    stageMisled,
+    stageSuspended,
+    stageEventTitle,
+    breatheKey,
+    liveAnnouncement,
+    bandLiveU,
+    bandRisk,
+    bandLadder,
+    prevRung,
+    treatiesUpdate,
+  } = deriveStageView({
+    round,
+    detail: detail ?? null,
+    viewed,
+    summit,
+    streaming,
+    awaitingHuman,
+    playedRounds,
+    persistedU,
+    showLive,
+    selected,
+  });
 
   // Les avis persistants (motion, suspensions, campagne, dérive) s'empilaient au-dessus
   // de la scène ; à partir de 2, ils se compactent en une ligne de pastilles dépliable
@@ -602,37 +625,12 @@ export default function TheatrePage() {
 
   // Squelette de chargement : l'espace est réservé (zéro layout shift), le shimmer
   // remplace le « … » du premier rendu.
-  if (!detail && !loadError) {
-    return (
-      <div className="space-y-6" aria-busy="true" aria-label="Théâtre en cours de chargement">
-        <header className="space-y-2">
-          <Skeleton className="h-3 w-44" />
-          <Skeleton className="h-7 w-80 max-w-full" />
-        </header>
-        <Skeleton className="h-16 w-full rounded-lg" />
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">
-          <Skeleton className="h-[420px] w-full rounded-lg" />
-          <div className="space-y-3">
-            <Skeleton className="h-24 w-full rounded-lg" />
-            <Skeleton className="h-36 w-full rounded-lg" />
-            <Skeleton className="h-28 w-full rounded-lg" />
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (!detail && !loadError) return <TheatreSkeleton />;
 
   return (
     <div className="space-y-6">
       {/* CC-5 — jalons du tutoriel : le TourProvider les lit ([data-tutorial=…]) pour
           avancer quand l'action attendue est faite. Aucune logique de guide ici. */}
-      {playedRounds > 0 && <span hidden data-tutorial="round-done" />}
-      {(motionPending || detail?.rounds.some((r) => r.judge.suspension)) && (
-        <span hidden data-tutorial="motion-filed" />
-      )}
-      {detail?.rounds.some((r) => r.judge.suspension) && (
-        <span hidden data-tutorial="vote-seen" />
-      )}
       <header className="flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
           <Eyebrow>
@@ -798,76 +796,9 @@ export default function TheatrePage() {
       ) : (
         notices.map((n) => <div key={n.key}>{n.node}</div>)
       )}
-      {round.campaignOver && (
-        <Panel className="border-l-2 border-l-accent">
-          <PanelTitle
-            kicker="Fin de chapitre"
-            title={
-              round.campaignOver.improvement > 0
-                ? "Tu as fait mieux que l'Histoire"
-                : round.campaignOver.improvement < 0
-                  ? "L'Histoire avait fait mieux"
-                  : "Comme dans l'Histoire"
-            }
-            hint={
-              `Le détail du score : base ${round.campaignOver.base}, bonus historique ` +
-              `${round.campaignOver.bonus >= 0 ? "+" : ""}${round.campaignOver.bonus} ` +
-              `(écart de tension ${round.campaignOver.improvement.toFixed(2)} avec ` +
-              "l'Histoire). Le round par round est dans le panneau « Ta partie vs l'Histoire »."
-            }
-            right={
-              <span className="font-mono text-2xl font-semibold tabular-nums text-accent-bright">
-                {round.campaignOver.score}
-              </span>
-            }
-          />
-          <p className="text-sm text-fg-muted">
-            Ton score compare ta partie à ce qui s&apos;est vraiment passé.{" "}
-            <Link href="/campagne" className="underline hover:text-foreground">
-              Retour à la carte de campagne
-            </Link>
-            .
-          </p>
-        </Panel>
-      )}
+      {round.campaignOver && <CampaignScorePanel over={round.campaignOver} />}
       {detail?.status === "finished" && (
-        <Panel className="border-l-2 border-l-accent">
-          <PanelTitle
-            kicker="Récit de partie"
-            title={detail.published ? "Récit publié" : "Cette partie mérite d'être racontée"}
-            hint="Publier crée une page à partager avec un lien — sinon la partie reste privée. Le juge-narrateur écrit l'épilogue une seule fois : le récit d'une partie est unique."
-            right={
-              detail.published ? (
-                <Link
-                  href={`/r/${id}`}
-                  className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright"
-                >
-                  Voir la page publique
-                </Link>
-              ) : (
-                <button
-                  onClick={() => {
-                    setPublishing(true);
-                    void publishGame(id)
-                      .then(resync)
-                      .catch(() => resync())
-                      .finally(() => setPublishing(false));
-                  }}
-                  disabled={publishing}
-                  className="flex cursor-pointer items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {publishing && <Spinner />}
-                  {publishing ? "Le narrateur écrit…" : "Publier le récit"}
-                </button>
-              )
-            }
-          />
-          <p className="text-xs text-fg-faint">
-            {detail.published
-              ? "Le lien à partager est prêt — l'image d'aperçu du lien se crée toute seule."
-              : "La génération peut prendre quelques secondes (le narrateur écrit)."}
-          </p>
-        </Panel>
+        <StoryPublishPanel gameId={id} published={detail.published} onPublished={resync} />
       )}
       {reveal && (
         <DriftRevealPanel
@@ -897,31 +828,6 @@ export default function TheatrePage() {
             </div>
           )}
           <div className="flex flex-wrap items-end gap-4">
-            <button
-              data-tour="jouer"
-              onClick={
-                isSpectator
-                  ? () =>
-                      startAccel(Math.max(1, (detail?.horizon ?? playedRounds + 1) - playedRounds))
-                  : play
-              }
-              disabled={streaming || (isSpectator && accel.target > 0)}
-              className="flex cursor-pointer items-center gap-2 rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {(streaming || (isSpectator && accel.target > 0)) && <Spinner />}
-              {isSpectator
-                ? accel.target > 0
-                  ? "La partie se joue…"
-                  : playedRounds > 0
-                    ? "Reprendre en accéléré"
-                    : "Lancer la partie en accéléré"
-                : streaming
-                  ? "Négociation en cours…"
-                  : motionPending
-                    ? "Débattre la motion"
-                    : "Jouer un round"}
-            </button>
-
             {/* G11-d §1 S5 — accélération multi-rounds : jouer 3/5 rounds, Stop entre chaque. */}
             {accel.target > 0 ? (
               <div className="flex items-center gap-2">
@@ -942,7 +848,7 @@ export default function TheatrePage() {
                 </button>
               </div>
             ) : (
-              !streaming &&
+              !roundActive &&
               !motionPending &&
               !isSpectator && (
                 <div className="flex flex-col gap-1">
@@ -980,11 +886,10 @@ export default function TheatrePage() {
             {fogOn && !motionPending && !isSpectator && (
               <label className="text-sm">
                 <span className="mb-1 block text-xs text-fg-muted">Scénario de brouillard</span>
-                <select
+                <SelectField
                   value={fogId}
                   onChange={(e) => setFogId(e.target.value)}
-                  disabled={streaming || decree}
-                  className="cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+                  disabled={roundActive || decree}
                 >
                   <option value="">Le jeu choisit tout seul (sans brouillard)</option>
                   {library?.fog.map((s) => (
@@ -992,7 +897,7 @@ export default function TheatrePage() {
                       {s.title}
                     </option>
                   ))}
-                </select>
+                </SelectField>
               </label>
             )}
             {testCrisisId && !motionPending && (
@@ -1004,11 +909,10 @@ export default function TheatrePage() {
             {canReplayCrisis && !motionPending && !isSpectator && (
               <label className="text-sm">
                 <span className="mb-1 block text-xs text-fg-muted">Crise à rejouer</span>
-                <select
+                <SelectField
                   value={crisisId}
                   onChange={(e) => setCrisisId(e.target.value)}
-                  disabled={streaming || decree}
-                  className="cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+                  disabled={roundActive || decree}
                 >
                   <option value="">Le jeu choisit tout seul (sans crise imposée)</option>
                   {library?.crises.map((c) => (
@@ -1016,7 +920,7 @@ export default function TheatrePage() {
                       {c.title}
                     </option>
                   ))}
-                </select>
+                </SelectField>
               </label>
             )}
           </div>
@@ -1047,18 +951,17 @@ export default function TheatrePage() {
             <div className="mt-3 flex flex-wrap items-end gap-4">
               <label className="text-sm">
                 <span className="mb-1 block text-xs text-fg-muted">Longueur du débat</span>
-                <select
+                <SelectField
                   value={maxTurns}
                   onChange={(e) => setMaxTurns(Number(e.target.value))}
-                  disabled={streaming}
-                  className="cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+                  disabled={roundActive}
                 >
                   {TURN_CHOICES.map((c) => (
                     <option key={c.value} value={c.value}>
                       {c.label}
                     </option>
                   ))}
-                </select>
+                </SelectField>
               </label>
               {!motionPending && !testCrisisId && !isSpectator && (
                 <label className="flex cursor-pointer items-center gap-2 pb-2.5 text-sm text-fg-muted">
@@ -1066,16 +969,19 @@ export default function TheatrePage() {
                     type="checkbox"
                     checked={decree}
                     onChange={(e) => setDecree(e.target.checked)}
-                    disabled={streaming}
+                    disabled={roundActive}
                     className="accent-[var(--accent)]"
                   />
                   Inventer toi-même l&apos;événement
                 </label>
               )}
-              {detail.countries.length >= 3 && !motionPending && !isSpectator && (
+              {!useContextualMotion &&
+                detail.countries.length >= 3 &&
+                !motionPending &&
+                !isSpectator && (
                 <button
                   onClick={() => setMotionOpen((v) => !v)}
-                  disabled={streaming}
+                  disabled={roundActive}
                   title="Demander l'exclusion d'un pays — le sommet vote, le juge arbitre"
                   className="ml-auto cursor-pointer rounded-md border border-edge-strong px-3 py-2 text-xs font-medium text-fg-muted transition-colors hover:border-bad hover:text-bad disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -1083,58 +989,30 @@ export default function TheatrePage() {
                 </button>
               )}
             </div>
-          {motionOpen && !motionPending && (
-            <form
+          {!useContextualMotion && motionOpen && !motionPending && (
+            <MotionForm
+              countries={detail.countries}
+              country={motionCountry}
+              onCountryChange={setMotionCountry}
+              reason={motionReason}
+              onReasonChange={setMotionReason}
+              error={motionError}
               onSubmit={submitMotion}
-              className="mt-4 flex flex-wrap items-end gap-3 border-t border-edge pt-4"
-            >
-              <label className="text-sm">
-                <span className="mb-1 block text-xs text-fg-muted">Pays visé</span>
-                <select
-                  value={motionCountry}
-                  onChange={(e) => setMotionCountry(e.target.value)}
-                  className="cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
-                  required
-                >
-                  <option value="">— choisir —</option>
-                  {detail.countries.map((c) => (
-                    <option key={c} value={c}>
-                      {speakerMeta(c).label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <input
-                value={motionReason}
-                onChange={(e) => setMotionReason(e.target.value)}
-                placeholder="Pourquoi ? (tout le monde le verra)"
-                className="min-w-64 flex-1 rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
-              />
-              <button
-                type="submit"
-                disabled={!motionCountry}
-                className="cursor-pointer rounded-md border border-bad/60 px-4 py-2 text-sm font-medium text-bad transition-colors hover:bg-bad/10 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Déposer la motion
-              </button>
-              {motionError && <span className="text-xs text-bad">{motionError}</span>}
-            </form>
+            />
           )}
           {decree && (
             <div className="mt-4 grid gap-3 border-t border-edge pt-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)_auto]">
-              <input
+              <TextInput
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Titre de l'événement"
-                disabled={streaming}
-                className="rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+                disabled={roundActive}
               />
-              <input
+              <TextInput
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Description (optionnelle)"
-                disabled={streaming}
-                className="rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+                disabled={roundActive}
               />
               <label className="flex items-center gap-2 text-xs text-fg-muted">
                 {t("event.gravite")}
@@ -1145,7 +1023,7 @@ export default function TheatrePage() {
                   step={0.05}
                   value={severity}
                   onChange={(e) => setSeverity(Number(e.target.value))}
-                  disabled={streaming}
+                  disabled={roundActive}
                   className="w-24 accent-[var(--accent)]"
                 />
                 <span className="w-14 font-medium">{t(severityKey(severity))}</span>
@@ -1156,12 +1034,12 @@ export default function TheatrePage() {
                   <span className="mb-1 block text-xs text-fg-muted">
                     {t("ultimatum.decret-exigence")}
                   </span>
-                  <input
+                  <TextInput
                     value={ultimatumDemand}
                     onChange={(e) => setUltimatumDemand(e.target.value)}
                     placeholder={t("ultimatum.decret-exigence-ph")}
-                    disabled={streaming}
-                    className="w-full rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+                    disabled={roundActive}
+                    className="w-full"
                   />
                 </label>
                 {ultimatumDemand.trim() && (
@@ -1169,18 +1047,17 @@ export default function TheatrePage() {
                     <span className="mb-1 block text-xs text-fg-muted">
                       {t("ultimatum.decret-classe")}
                     </span>
-                    <select
+                    <SelectField
                       value={ultimatumClasse}
                       onChange={(e) => setUltimatumClasse(e.target.value)}
-                      disabled={streaming}
-                      className="cursor-pointer rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+                      disabled={roundActive}
                     >
                       {ULTIMATUM_CLASSES.map((c) => (
                         <option key={c} value={c}>
                           {t(`ultimatum.classe.${c}`)}
                         </option>
                       ))}
-                    </select>
+                    </SelectField>
                   </label>
                 )}
               </div>
@@ -1269,8 +1146,27 @@ export default function TheatrePage() {
 
       {/* --- La scène (G1) : pleine largeur, la carte en grand --------------------- */}
       <div className="relative left-1/2 w-screen max-w-[1600px] -translate-x-1/2 space-y-4 px-4 sm:px-6">
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)] xl:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]">
-        <div className="relative rounded-lg border border-edge bg-surface p-3" data-tour="scene">
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(300px,420px)_minmax(0,1fr)] xl:grid-cols-[minmax(340px,460px)_minmax(0,1fr)]">
+        <div
+          role={mapExpanded ? "dialog" : undefined}
+          aria-modal={mapExpanded ? true : undefined}
+          aria-label={mapExpanded ? "Carte du sommet agrandie" : undefined}
+          className={
+            mapExpanded
+              ? "fixed inset-3 z-50 overflow-y-auto rounded-xl border border-edge-strong bg-background p-4 shadow-2xl sm:inset-6 lg:inset-10"
+              : "relative rounded-lg border border-edge bg-surface p-3"
+          }
+          data-tour="scene"
+        >
+          <button
+            type="button"
+            data-tour="map-zoom"
+            onClick={() => setMapExpanded((expanded) => !expanded)}
+            aria-pressed={mapExpanded}
+            className="absolute right-2 top-2 z-40 rounded-md border border-edge-strong bg-background/90 px-3 py-1.5 text-xs font-semibold text-fg-muted shadow-lg backdrop-blur transition-colors hover:border-accent hover:text-accent-bright"
+          >
+            {mapExpanded ? "Réduire la carte" : "Agrandir la carte"}
+          </button>
           {/* G12 §1 — les paris s'ouvrent en pop-up SUR la carte. Re-montée par round
               (clé) pour ré-afficher à chaque vague ; non masquable pour le Spectateur. */}
           <FlashMarketsPopup
@@ -1293,6 +1189,8 @@ export default function TheatrePage() {
             eventTitle={stageEventTitle}
           />
           <AlliancePills alliances={detail?.alliances_at_table ?? []} />
+          <ModelCastPanel cast={detail?.model_cast} />
+          <ScenarioForecastPanel world={detail?.world} />
           {(round.storyline || detail?.storyline) && (
             <p className="mt-2 text-xs italic text-fg-faint">
               Intrigue de la partie : {round.storyline ?? detail?.storyline}
@@ -1309,8 +1207,112 @@ export default function TheatrePage() {
           />
           {/* CC-15c — visibles à toutes les difficultés (repli fermé = déjà discret). */}
           <RelationsPanel relations={detail?.relations ?? {}} />
+          <OperationalPicturePanel picture={detail?.operational_picture} />
         </div>
-        <div className="relative lg:sticky lg:top-4">
+        <div className="relative min-w-0 space-y-4">
+        <ActionDock
+          phase={phase}
+          playedRounds={playedRounds}
+          horizon={detail?.horizon ?? 0}
+          speaking={stageSpeaking ?? undefined}
+          primaryLabel={roundButtonLabel({
+            spectator: isSpectator,
+            accelerationActive: accel.target > 0,
+            active: roundActive,
+            motionPending: !!motionPending,
+            playedRounds,
+          })}
+          primaryBusy={roundActive || (isSpectator && accel.target > 0)}
+          primaryDisabled={roundActive || (isSpectator && accel.target > 0)}
+          onPrimary={
+            isSpectator
+              ? () =>
+                  startAccel(Math.max(1, (detail?.horizon ?? playedRounds + 1) - playedRounds))
+              : play
+          }
+        >
+          {isSpectator && account && (
+            <p className="flex items-center justify-between rounded-lg border border-edge bg-surface-2/60 px-3 py-2 font-mono text-xs tabular-nums text-fg-muted">
+              <span>Portefeuille</span>
+              <span>
+                {Math.round(account.balance)} {" "}
+                <span className={account.pnl >= 0 ? "text-utopia" : "text-dystopia"}>
+                  ({account.pnl >= 0 ? "+" : ""}{Math.round(account.pnl)})
+                </span>
+              </span>
+            </p>
+          )}
+          {detail?.play_as && detail.live && detail.status === "running" && (
+            <>
+              {round.humanMotionVote && (
+                <MotionVoteForm
+                  country={round.humanMotionVote.country}
+                  target={round.humanMotionVote.target}
+                  deadlineTs={round.humanMotionVote.deadlineTs}
+                  onSubmit={(vote) =>
+                    submitMotionVote(id, vote).then(() => {
+                      emitTutorialMilestone({ milestone: "vote-submitted", gameId: id });
+                    })
+                  }
+                />
+              )}
+              {!round.humanMotionVote && (
+                <TurnComposer
+                  country={detail.play_as}
+                  awaiting={awaitingHuman}
+                  deadlineTs={round.humanTurn?.deadlineTs}
+                  onSubmit={speak}
+                  alliances={
+                    ((detail.world?.countries as Record<string, { alliances?: string[] }>) ?? {})[
+                      detail.play_as
+                    ]?.alliances ?? []
+                  }
+                />
+              )}
+            </>
+          )}
+          {detail &&
+            detail.countries.length >= 3 &&
+            !motionPending &&
+            !isSpectator &&
+            !roundActive && (
+              <div data-tour="motion" className="space-y-3">
+                <button
+                  onClick={() => setMotionOpen((value) => !value)}
+                  aria-expanded={motionOpen}
+                  className="w-full rounded-lg border border-edge-strong px-3 py-2 text-xs font-medium text-fg-muted transition-colors hover:border-bad hover:text-bad"
+                >
+                  {motionOpen ? "Fermer la motion" : "Déposer une motion de suspension"}
+                </button>
+                {motionOpen && (
+                  <MotionForm
+                    countries={detail.countries}
+                    country={motionCountry}
+                    onCountryChange={setMotionCountry}
+                    reason={motionReason}
+                    onReasonChange={setMotionReason}
+                    error={motionError}
+                    onSubmit={submitMotion}
+                  />
+                )}
+              </div>
+            )}
+          {detail && !isSpectator && (
+            <SuspectBoard
+              gameId={id}
+              countries={detail.countries}
+              playAs={detail.play_as ?? undefined}
+              onPrepareMotion={
+                !motionPending && !roundActive
+                  ? (country) => {
+                      setMotionCountry(country);
+                      setMotionOpen(true);
+                    }
+                  : undefined
+              }
+            />
+          )}
+        </ActionDock>
         <aside
           ref={transcriptRef}
           onScroll={onTranscriptScroll}
@@ -1320,214 +1322,16 @@ export default function TheatrePage() {
           <p className="sr-only" role="status" aria-live="polite">
             {liveAnnouncement}
           </p>
-          {viewed ? (
-            <>
-              <Banner tone="neutral">
-                Tu relis le round {(selected as number) + 1} — clique « live » en bas pour
-                reprendre la partie.
-              </Banner>
-              {(viewed.event as { title?: string } | undefined)?.title && (
-                <EventCard event={viewed.event as unknown as GeoEvent} truth={false} />
-              )}
-              {viewed.transcript.map((entry) => (
-                <EntryBubble key={entry.id} entry={entry} />
-              ))}
-            </>
-          ) : (
-            <>
-          {round.suspendedNow && round.suspendedNow.length > 0 && (
-            <Banner tone="warn">
-              {round.suspendedNow.map((c) => speakerMeta(c).label).join(", ")}{" "}
-              {round.suspendedNow.length > 1 ? "sont au banc" : "est au banc"} ce round
-              (suspension arbitrée au round précédent).
-            </Banner>
-          )}
-          {/* G21 — le bandeau vivant de l'ultimatum : la menace, puis son sort. */}
-          {round.ultimatum?.status === "armed" && (
-            <Banner tone="warn">
-              {t("ultimatum.exigence")} « {round.ultimatum.demand} » —{" "}
-              {round.ultimatum.inRounds === 0
-                ? t("ultimatum.expire-ce-round")
-                : round.ultimatum.inRounds === 1
-                  ? t("ultimatum.expire-dans-1")
-                  : t("ultimatum.expire-dans-n").replace(
-                      "{n}",
-                      String(round.ultimatum.inRounds),
-                    )}{" "}
-              ({t(`ultimatum.classe.${round.ultimatum.classe}`)})
-            </Banner>
-          )}
-          {round.ultimatum?.status === "satisfied" && (
-            <Banner tone="good">{t("ultimatum.satisfait")}</Banner>
-          )}
-          {round.ultimatum?.status === "expired" && (
-            <Banner tone="bad">{t("ultimatum.expire")}</Banner>
-          )}
-          {round.ultimatum?.status === "struck" && (
-            <Banner tone="bad">{t("ultimatum.tombe")}</Banner>
-          )}
-          {(round.allianceChanges ?? []).map((c) => (
-            <Banner key={`${c.country}-${c.tag}`} tone="warn">
-              {speakerMeta(c.country).label} annonce son retrait de {c.name.split(" — ")[0]}
-              {c.partners.length > 0 &&
-                ` — la tension monte avec ${c.partners.map((p) => speakerMeta(p).label).join(", ")}`}
-              .
-            </Banner>
-          ))}
-          {(round.directiveRefusals ?? []).map((r) => (
-            <Banner key={`dir-${r.country}`} tone="warn">
-              {speakerMeta(r.country).label} refuse publiquement la directive de son
-              conseil de tutelle — « notre conseil nous demande l&apos;impossible ».
-            </Banner>
-          ))}
-          {glassBox && round.event && round.perceptions && (
-            <GlassBanner event={round.event} perceptions={round.perceptions} />
-          )}
-          {glassBox && !round.perceptions && (
-            <Banner tone="neutral">
-              La boîte de verre n&apos;a rien à révéler pour l&apos;instant : joue un round de
-              brouillard (choisis un scénario, ou décrète un événement avec le bloc
-              brouillard) — la vérité et les croyances de chaque pays apparaîtront ici.
-              Les rounds déjà joués se relisent en boîte de verre depuis le replay.
-            </Banner>
-          )}
-          {round.event && (
-            <EventCard
-              event={round.event}
-              date={round.date}
-              truth={glassBox && !!round.perceptions}
-            />
-          )}
-          {round.perceptions && (
-            <PerceptionsPanel perceptions={round.perceptions} truthActors={round.event?.actors} />
-          )}
-
-          {(round.turns.length > 0 || round.flashes.length > 0) && (
-            <div className="space-y-3">
-              {round.flashes
-                .filter((f) => f.afterTurn === 0)
-                .map((f, i) => (
-                  <FlashCard key={`flash-0-${i}`} event={f.event} />
-                ))}
-              {round.turns.map((turn, i) => (
-                <div key={i} className="space-y-3">
-                  <TurnBubble
-                    turn={turn}
-                    lens={
-                      glassBox && round.perceptions?.[turn.country]
-                        ? {
-                            perception: round.perceptions[turn.country],
-                            misled: isMisled(
-                              round.perceptions[turn.country],
-                              round.event?.actors,
-                            ),
-                          }
-                        : undefined
-                    }
-                  />
-                  {round.flashes
-                    .filter((f) => f.afterTurn === i + 1)
-                    .map((f, j) => (
-                      <FlashCard key={`flash-${i + 1}-${j}`} event={f.event} />
-                    ))}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {round.intelActions && round.intelActions.length > 0 && (
-            <Banner tone="neutral">
-              Le conseil a consulté ses services de renseignement (
-              {round.intelActions.length} action
-              {round.intelActions.length > 1 ? "s" : ""}).
-              {round.intelActions.some((a) => a.exposed) && (
-                <strong className="text-bad"> Un mensonge a été démasqué.</strong>
-              )}
-            </Banner>
-          )}
-          {round.motionFiled && (
-            <Banner tone="warn">
-              <strong>{speakerMeta(round.motionFiled.by).label}</strong> dépose une motion de
-              suspension contre{" "}
-              <strong>{speakerMeta(round.motionFiled.country).label}</strong>
-              {round.motionFiled.reason ? ` — « ${round.motionFiled.reason} »` : ""}. La
-              délibération s&apos;ouvrira automatiquement au prochain round.
-            </Banner>
-          )}
-
-          {streaming && round.turns.length === 0 && !round.event && (
-            <Panel>
-              <p className="flex items-center gap-2 text-sm text-fg-muted">
-                <Spinner /> Le Game Master compose l&apos;événement…
-              </p>
-            </Panel>
-          )}
-
-          {round.judgeText && (
-            <JudgeRationale text={round.judgeText} streaming={streaming && !round.verdict} />
-          )}
-          {round.verdict && (
-            <VerdictPanel
-              deltas={round.verdict.deltas}
-              escalation={round.verdict.escalation}
-              economicDisruption={round.verdict.economic_disruption}
-              actions={round.verdict.actions}
-              reciprocal={round.verdict.reciprocal}
-            />
-          )}
-          {round.communique && (
-            <CommuniquePanel text={round.communique.text} support={round.communique.support} />
-          )}
-          {(round.motionText || round.motionVerdict || round.motionVotes.length > 0) && (
-            <MotionPanel
-              text={round.motionText}
-              votes={round.motionVotes}
-              tally={round.motionTally}
-              verdict={round.motionVerdict}
-              streaming={streaming}
-            />
-          )}
-          {round.comparison && <ComparisonPanel comparison={round.comparison} />}
-
-          {round.status === "done" && (
-            <Banner tone="neutral">
-              Round {round.roundNo} terminé et enregistré — relis-le quand tu veux dans{" "}
-              <Link href={`/games/${id}/replay`} className="underline hover:text-foreground">
-                Revoir
-              </Link>
-              .
-            </Banner>
-          )}
-
-          {!showLive && detail && (
-            <Panel>
-              <PanelTitle
-                kicker="Théâtre vide"
-                title={
-                  playedRounds > 0
-                    ? `${playedRounds} round${playedRounds > 1 ? "s" : ""} déjà joué${playedRounds > 1 ? "s" : ""}`
-                    : "Le sommet n'a pas encore commencé"
-                }
-              />
-              <p className="text-sm leading-relaxed text-fg-muted">
-                {detail.live
-                  ? "Lance un round : le Game Master posera un événement, puis chaque IA prendra la parole ici, mot après mot."
-                  : "Les rounds joués restent lisibles dans Revoir."}
-              </p>
-              {detail.countries.length > 0 && (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {detail.countries.map((c) => (
-                    <Pill key={c} tone="neutral">
-                      <SpeakerAvatar id={c} size={18} />
-                      {speakerMeta(c).label}
-                    </Pill>
-                  ))}
-                </div>
-              )}
-            </Panel>
-          )}
-            </>
-          )}
+          <RoundTranscript
+            detail={detail ?? null}
+            round={round}
+            viewed={viewed}
+            selected={selected}
+            glassBox={glassBox}
+            streaming={streaming}
+            showLive={showLive}
+            playedRounds={playedRounds}
+          />
         </aside>
         {!stickToLive && selected === "live" && showLive && (
           <button
@@ -1539,6 +1343,22 @@ export default function TheatrePage() {
         )}
         </div>
       </div>
+
+      {phase === "round_complete" && detail && (
+        <RoundConclusion
+          roundNo={round.roundNo ?? playedRounds}
+          horizon={detail.horizon}
+          eventTitle={round.event?.title ?? detail.rounds.at(-1)?.event?.title}
+          deltas={round.verdict?.deltas ?? []}
+          motionUpheld={round.motionVerdict?.upheld}
+          busy={roundActive}
+          onContinue={
+            isSpectator
+              ? () => startAccel(Math.max(1, detail.horizon - playedRounds))
+              : play
+          }
+        />
+      )}
 
       {/* G8 — directives : l'Architecte gouverne toutes les SI, le Joueur-pays la
           sienne ; le Conseil n'en a pas (le composant se masque tout seul). */}
@@ -1577,18 +1397,28 @@ export default function TheatrePage() {
       )}
 
       {/* Composeur du joueur (G2) : fixe sous la carte, toujours ouvert. */}
-      {detail?.play_as && detail.live && detail.status === "running" && (
-        <TurnComposer
-          country={detail.play_as}
-          awaiting={awaitingHuman}
-          deadlineTs={round.humanTurn?.deadlineTs}
-          onSubmit={speak}
-          alliances={
-            ((detail.world?.countries as Record<string, { alliances?: string[] }>) ?? {})[
-              detail.play_as
-            ]?.alliances ?? []
-          }
-        />
+      {!useContextualMotion && detail?.play_as && detail.live && detail.status === "running" && (
+        <div className="space-y-3">
+          {round.humanMotionVote && (
+            <MotionVoteForm
+              country={round.humanMotionVote.country}
+              target={round.humanMotionVote.target}
+              deadlineTs={round.humanMotionVote.deadlineTs}
+              onSubmit={(vote) => submitMotionVote(id, vote).then(() => undefined)}
+            />
+          )}
+          <TurnComposer
+            country={detail.play_as}
+            awaiting={awaitingHuman}
+            deadlineTs={round.humanTurn?.deadlineTs}
+            onSubmit={speak}
+            alliances={
+              ((detail.world?.countries as Record<string, { alliances?: string[] }>) ?? {})[
+                detail.play_as
+              ]?.alliances ?? []
+            }
+          />
+        </div>
       )}
 
       {/* Bandeau bas : timeline scrubber · courbe U (fil rouge) · jauges · escalade. */}
@@ -1606,141 +1436,24 @@ export default function TheatrePage() {
       </div>
       </div>
 
-      {/* Salle des observables (RG-4) : le JEU reste en façade — le Dossier (console
-          d'ACHATS du joueur, outil de détection) et « La table » (les suspects, en
-          vue réduite). Le MOTEUR — « Renseignement » (détection fine G18-G23) et
-          « Le monde » (jauges risque/escalade/trajectoire/traités détaillées) — ne
-          s'affiche qu'en Expert ; il est expliqué dans l'onglet Informations. Rien
-          n'est supprimé : tout est routé. */}
-      <div className={`grid items-start gap-4 ${showEngine ? "lg:grid-cols-2" : ""}`}>
-        {detail?.live && detail.status === "running" && (
-          <IntelPanel
-            gameId={id}
-            countries={summit}
-            fog={fogOn}
-            playAs={detail.play_as}
-            claims={round.turns
-              .filter((t) => t.done && t.model !== "humain" && t.text)
-              .map((t) => [t.country, t.text] as [string, string])}
-            streaming={streaming}
-            onSpent={resync}
-          />
-        )}
-        {showEngine && (
-          <>
-            <TabGroup
-              label={t("obs.renseignement")}
-              hint={t("obs.renseignement-aide")}
-              dataTour="renseignement"
-              empty={
-                detail?.live && detail.status === "running" ? (
-                  <Panel>
-                    <p className="text-sm text-fg-muted">{t("obs.renseignement-vide")}</p>
-                  </Panel>
-                ) : undefined
-              }
-              tabs={[
-                {
-                  key: "signal",
-                  label: t("obs.tab.signal"),
-                  content: signalGaps ? <SignalGapPanel gaps={signalGaps} /> : null,
-                },
-                {
-                  key: "promesses",
-                  label: t("obs.tab.promesses"),
-                  content:
-                    promiseRegistry && promiseRegistry.length > 0 ? (
-                      <PromisePanel
-                        registry={promiseRegistry}
-                        finished={detail?.status === "finished"}
-                      />
-                    ) : null,
-                },
-                {
-                  key: "surveillance",
-                  label: t("obs.tab.surveillance"),
-                  content: round.powerSeeking ? (
-                    <PowerSeekingPanel scores={round.powerSeeking} />
-                  ) : null,
-                },
-              ]}
-            />
-            <TabGroup
-              label={t("obs.monde")}
-              tabs={[
-                {
-                  key: "trajectoire",
-                  label: t("obs.tab.trajectoire"),
-                  content: trajectory ? (
-                    <TrajectoryPanel state={trajectory} history={uHistory} />
-                  ) : null,
-                },
-                {
-                  key: "risque",
-                  label: t("obs.tab.risque"),
-                  content: round.risk ? <RiskPanel risk={round.risk} /> : null,
-                },
-                {
-                  key: "tension",
-                  label: t("obs.tab.tension"),
-                  content: round.ladder ? <LadderPanel ladder={round.ladder} /> : null,
-                },
-                {
-                  key: "traites",
-                  label: t("obs.tab.traites"),
-                  content: treatiesUpdate ? <TreatiesPanel update={treatiesUpdate} /> : null,
-                },
-              ]}
-            />
-          </>
-        )}
-        <TabGroup
-          label={t("obs.table")}
-          tabs={[
-            {
-              key: "pays",
-              label: t("obs.tab.pays"),
-              content: worldCountries ? (
-                <Panel>
-                  <PanelTitle
-                    kicker="États"
-                    title="État des pays"
-                    hint="Photo vivante du monde — les chiffres bougent avec les verdicts du juge, bornés par les règles du jeu. Ta ligne est en tête. En mode Chaotique, tu ne vois que ce que ton pays croit."
-                    right={
-                      <a
-                        href="/informations"
-                        className="text-xs text-fg-faint underline transition-colors hover:text-fg-muted"
-                      >
-                        d&apos;où viennent ces chiffres ?
-                      </a>
-                    }
-                  />
-                  <CountryTable
-                    worldCountries={worldCountries}
-                    postures={round.postures ?? detail?.postures}
-                    history={detail?.index_history}
-                    playAs={detail?.play_as}
-                    defaultDetailed={tableDetailedByDefault(detail?.difficulty)}
-                  />
-                </Panel>
-              ) : null,
-            },
-            {
-              // RG-4 — la participation détaillée est du MOTEUR : Expert seulement.
-              // La vue « pays » (les suspects) reste, elle, en façade.
-              key: "parole",
-              label: t("obs.tab.parole"),
-              content:
-                showEngine && round.participation ? (
-                  <ParticipationPanel
-                    spoke={round.participation.spoke}
-                    silent={round.participation.silent}
-                  />
-                ) : null,
-            },
-          ]}
-        />
-      </div>
+      {/* Salle des observables (RG-4) : façade (Dossier + « La table ») toujours
+          visible, MOTEUR (« Renseignement » + « Le monde ») en Expert seulement. */}
+      <ObservablesGrid
+        gameId={id}
+        detail={detail ?? null}
+        round={round}
+        summit={summit}
+        fogOn={fogOn}
+        streaming={roundActive}
+        showEngine={showEngine}
+        worldCountries={worldCountries}
+        signalGaps={signalGaps}
+        promiseRegistry={promiseRegistry}
+        trajectory={trajectory}
+        uHistory={uHistory}
+        treatiesUpdate={treatiesUpdate}
+        onSpent={resync}
+      />
 
       {/* RG-1 — abandon d'une partie en cours : dialogue du kit (remplace confirm() natif). */}
       <ConfirmDialog

@@ -86,7 +86,7 @@ Toutes les mécaniques (les 4 thèmes ludique × réel), leur **ancrage réel** 
 
 ## Garde-fous (cohérents avec l'existant)
 
-Outil d'**analyse de signaux explicables**, pas un oracle. **Argent fictif** uniquement. **Fiction spéculative comme méthode**, pas de la prévision. Jamais de boucle de décision létale autonome. Limites documentées (`docs/limitations.md`).
+Outil d'**analyse de signaux explicables**, pas un oracle. **Argent fictif** uniquement. **Fiction spéculative comme méthode**, pas de la prévision. Jamais de boucle de décision létale autonome. Limites documentées dans le `README.md` (« Limites & éthique »).
 
 ## Le one-liner
 

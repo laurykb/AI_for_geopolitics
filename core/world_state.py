@@ -9,8 +9,11 @@ from core.decisions import DiplomaticMessage
 from core.events import GeoEvent
 from simulation.alignment import SignalGap
 from simulation.corrigibility import CorrigibilityScore
+from simulation.model_cast import ModelCastState
 from simulation.power_seeking import PowerSeekingScore
 from simulation.promises import Promise
+from simulation.scenario_forecasts import ScenarioForecastMetrics, ScenarioForecastRecord
+from simulation.strategic_cognition import BetrayalMemory
 from simulation.trajectory import TrajectoryState
 from simulation.treaty import Treaty
 from simulation.value_drift import ValueVector
@@ -23,6 +26,9 @@ class WorldState(BaseModel):
     # G14 §1 — langue de la partie (« fr » | « en ») : les prompts la lisent ici
     # (dénominateur commun des agents, du GM et du juge). Figée à la création.
     language: str = "fr"
+    # Casting multi-modèle classique : absent = backend unique historique. Présent =
+    # tags et digests figés, reconstruits après redémarrage depuis ce snapshot.
+    model_cast: ModelCastState | None = None
     countries: dict[str, CountryState] = Field(default_factory=dict)
     # tensions[a][b] = niveau de tension symétrique entre a et b, dans [0, 1].
     tensions: dict[str, dict[str, float]] = Field(default_factory=dict)
@@ -44,6 +50,13 @@ class WorldState(BaseModel):
     treaties: list[Treaty] = Field(default_factory=list)
     # M8 — divergence signal-action : profil de sincérité par pays (moyenne mobile, G20).
     signal_gap: dict[str, SignalGap] = Field(default_factory=dict)
+    # AI Arms — mémoire privée par OBSERVATEUR des écarts signal-action nucléaires.
+    # Elle décroît lentement et survit au restart ; ce n'est pas une réputation globale.
+    betrayal_memory: dict[str, list[BetrayalMemory]] = Field(default_factory=dict)
+    # Prévisions structurées de la branche choisie, rapprochées de la réponse observée.
+    # Les entrées non encore observables restent explicitement `pending`.
+    scenario_forecasts: list[ScenarioForecastRecord] = Field(default_factory=list)
+    scenario_forecast_metrics: dict[str, ScenarioForecastMetrics] = Field(default_factory=dict)
     # G22 — registre de la parole donnée : promesses extraites par le juge, résolues à
     # l'échéance (tenue/rompue/caduque). Survit au restart via le snapshot de session.
     promises: list[Promise] = Field(default_factory=list)

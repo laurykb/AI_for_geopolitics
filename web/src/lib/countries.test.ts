@@ -8,6 +8,7 @@ import world from "world-atlas/countries-110m.json";
 import {
   DEFAULT_COUNTRIES,
   ISO_NUM,
+  MAP_POINT_COUNTRIES,
   ROSTER,
   SUMMIT_MAX,
   SUMMIT_MIN,
@@ -16,9 +17,9 @@ import {
 import { CAPITALS } from "./stage";
 
 describe("roster", () => {
-  it("compte 23 pays uniques (danemark hors roster depuis 2026-07-07)", () => {
-    expect(ROSTER).toHaveLength(23);
-    expect(new Set(ROSTER).size).toBe(23);
+  it("compte 33 pays uniques, dont les neuf puissances nucléaires", () => {
+    expect(ROSTER).toHaveLength(33);
+    expect(new Set(ROSTER).size).toBe(33);
     expect(ROSTER).not.toContain("denmark");
   });
 
@@ -43,7 +44,10 @@ describe("roster", () => {
     const ids = new Set(topo.objects.countries.geometries.map((g) => String(g.id)));
     for (const id of ROSTER) {
       expect(ISO_NUM[id], `${id}: pas d'entrée ISO_NUM`).toBeTruthy();
-      expect(ids.has(ISO_NUM[id]), `${id}: id ${ISO_NUM[id]} absent de world-atlas`).toBe(true);
+      expect(
+        ids.has(ISO_NUM[id]) || MAP_POINT_COUNTRIES.has(id),
+        `${id}: ni tracé world-atlas (${ISO_NUM[id]}) ni marqueur de micro-État`,
+      ).toBe(true);
     }
   });
 

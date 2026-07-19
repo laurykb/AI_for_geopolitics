@@ -18,6 +18,7 @@
   "alliances": [
     "AUKUS",
     "CPTPP",
+    "FPDA",
     "G7",
     "NATO",
     "Western"
@@ -38,6 +39,7 @@
     "global_trade",
     "intelligence_leadership"
   ],
+  "temperament": "opportuniste",
   "memory_summary": "",
   "mandate": {}
 }

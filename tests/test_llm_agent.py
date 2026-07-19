@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from agents.llm_agent import LLMAgent, _extract_json
+from agents.llm_agent import LLMAgent
 from agents.rule_based_agent import RuleBasedAgent
 from core.country_state import CountryState, Economy, Military, Resources
 from core.events import GeoEvent
@@ -52,23 +52,6 @@ def _decision_json(**over) -> str:
     }
     payload.update(over)
     return json.dumps(payload)
-
-
-# --- _extract_json -----------------------------------------------------------
-
-
-def test_extract_json_plain():
-    assert _extract_json('{"a": 1}') == {"a": 1}
-
-
-def test_extract_json_with_fences_and_prose():
-    text = 'Voici ma décision:\n```json\n{"a": 1, "b": "x"}\n```\nMerci.'
-    assert _extract_json(text) == {"a": 1, "b": "x"}
-
-
-def test_extract_json_garbage_returns_none():
-    assert _extract_json("pas de json ici") is None
-    assert _extract_json("") is None
 
 
 # --- LLMAgent.decide ---------------------------------------------------------

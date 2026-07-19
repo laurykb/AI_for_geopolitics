@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
 import { AuthGate } from "@/components/auth-gate";
@@ -7,16 +6,6 @@ import { AuthProvider } from "@/components/auth-provider";
 import { SettingsProvider } from "@/components/settings-provider";
 import { SiteHeader } from "@/components/site-header";
 import { TourProvider } from "@/components/tour";
-
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-});
-
-const jetbrains = JetBrains_Mono({
-  variable: "--font-jetbrains",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "Théâtre des super-intelligences",
@@ -31,7 +20,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="fr" className={`${inter.variable} ${jetbrains.variable} h-full antialiased`}>
+    <html lang="fr" className="h-full antialiased">
       <body className="flex min-h-full flex-col">
         {/* Décor spatial (lune + étoiles filantes) — derrière tout le contenu. */}
         <div className="space-backdrop" aria-hidden="true">

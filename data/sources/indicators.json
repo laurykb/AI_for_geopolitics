@@ -6,9 +6,9 @@
       "url": "https://data.worldbank.org/indicator/NY.GDP.MKTP.CD"
     },
     "growth_pct": {
-      "source": "IMF — World Economic Outlook (real GDP growth)",
+      "source": "World Bank — GDP growth (annual %) NY.GDP.MKTP.KD.ZG",
       "year": 2024,
-      "url": "https://www.imf.org/en/Publications/WEO"
+      "url": "https://data.worldbank.org/indicator/NY.GDP.MKTP.KD.ZG"
     },
     "defense_budget": {
       "source": "SIPRI — Military Expenditure Database",
@@ -19,6 +19,7 @@
       "source": "WIPO — Global Innovation Index 2024",
       "year": 2024,
       "of": 133,
+      "note": "Les économies non classées reçoivent le rang-plancher 133 ; toute imputation est signalée sur la fiche pays",
       "url": "https://www.wipo.int/global_innovation_index/en/2024/"
     },
     "trade_pct": {
@@ -30,6 +31,11 @@
       "source": "World Bank — WGI Political Stability (percentile)",
       "year": 2023,
       "url": "https://www.worldbank.org/en/publication/worldwide-governance-indicators"
+    },
+    "nuclear_power": {
+      "source": "SIPRI Yearbook 2025 — World nuclear forces",
+      "year": 2025,
+      "url": "https://www.sipri.org/yearbook/2025/06"
     },
     "projection": {
       "source": "Estimation analyste (informée par Global Firepower 2025)",
@@ -52,6 +58,69 @@
     }
   },
   "countries": {
+    "algeria": {
+      "name": "Algérie",
+      "raw": {
+        "gdp": 269322281664.773,
+        "growth_pct": 3.7,
+        "defense_budget": 21811242555.0313,
+        "gii_rank": 115,
+        "trade_pct": 44,
+        "wgi_stability_percentile": 23.22,
+        "projection": 0.35,
+        "oil_dependency": 0.05,
+        "energy_independence": 0.98,
+        "nuclear_power": false,
+        "compute": 5
+      },
+      "profile": {
+        "rivals": [
+          "morocco"
+        ],
+        "political_system": "authoritarian",
+        "ideology": [
+          "sovereignism",
+          "nonalignment",
+          "arab_nationalism"
+        ],
+        "strategic_priorities": [
+          "regime_stability",
+          "hydrocarbon_exports",
+          "western_sahara",
+          "sahel_security"
+        ]
+      }
+    },
+    "argentina": {
+      "name": "Argentine",
+      "raw": {
+        "gdp": 638365455340.04,
+        "growth_pct": -1.3,
+        "defense_budget": 4179838656.99,
+        "gii_rank": 76,
+        "trade_pct": 27,
+        "wgi_stability_percentile": 41.71,
+        "projection": 0.25,
+        "oil_dependency": 0.15,
+        "energy_independence": 0.9,
+        "nuclear_power": false,
+        "compute": 7
+      },
+      "profile": {
+        "rivals": [],
+        "political_system": "democracy",
+        "ideology": [
+          "economic_liberalism",
+          "national_sovereignty"
+        ],
+        "strategic_priorities": [
+          "inflation_stabilization",
+          "mercosur_trade",
+          "energy_exports",
+          "malvinas_claim"
+        ]
+      }
+    },
     "australia": {
       "name": "Australie",
       "raw": {
@@ -172,6 +241,39 @@
         ]
       }
     },
+    "democratic_republic_congo": {
+      "name": "République démocratique du Congo",
+      "notes": [
+        "Le GII 2024 ne classe pas la RDC parmi les 133 économies : le rang-plancher 133 est imputé pour conserver l'échelle du moteur."
+      ],
+      "raw": {
+        "gdp": 75716176105.0704,
+        "growth_pct": 6.1,
+        "defense_budget": 899187778.404,
+        "gii_rank": 133,
+        "trade_pct": 87,
+        "wgi_stability_percentile": 5.21,
+        "projection": 0.15,
+        "oil_dependency": 0.15,
+        "energy_independence": 0.65,
+        "nuclear_power": false,
+        "compute": 2
+      },
+      "profile": {
+        "rivals": [],
+        "political_system": "presidential_republic",
+        "ideology": [
+          "resource_sovereignty",
+          "pan_africanism"
+        ],
+        "strategic_priorities": [
+          "territorial_integrity",
+          "eastern_security",
+          "critical_minerals",
+          "infrastructure"
+        ]
+      }
+    },
     "egypt": {
       "name": "Égypte",
       "raw": {
@@ -277,7 +379,8 @@
       },
       "profile": {
         "rivals": [
-          "china"
+          "china",
+          "pakistan"
         ],
         "political_system": "democracy",
         "ideology": [
@@ -326,16 +429,19 @@
     },
     "israel": {
       "name": "Israël",
+      "notes": [
+        "Puissance nucléaire évaluée : arsenal non déclaré et politique d'ambiguïté officielle."
+      ],
       "raw": {
-        "gdp": 541000000000.0,
-        "growth_pct": 0.9,
-        "defense_budget": 46500000000.0,
+        "gdp": 542284494490.778,
+        "growth_pct": 1.0,
+        "defense_budget": 45921467209.9187,
         "gii_rank": 15,
-        "trade_pct": 55,
-        "wgi_stability_percentile": 13,
-        "projection": 0.6,
-        "oil_dependency": 0.6,
-        "energy_independence": 0.5,
+        "trade_pct": 58,
+        "wgi_stability_percentile": 9.95,
+        "projection": 0.65,
+        "oil_dependency": 0.65,
+        "energy_independence": 0.7,
         "nuclear_power": true,
         "compute": 20
       },
@@ -401,7 +507,8 @@
       },
       "profile": {
         "rivals": [
-          "china"
+          "china",
+          "north_korea"
         ],
         "political_system": "democracy",
         "ideology": [
@@ -412,6 +519,36 @@
           "maritime_security",
           "us_alliance",
           "tech_leadership"
+        ]
+      }
+    },
+    "mali": {
+      "name": "Mali",
+      "raw": {
+        "gdp": 26761281076.7658,
+        "growth_pct": 5.0,
+        "defense_budget": 932976642.568,
+        "gii_rank": 131,
+        "trade_pct": 58,
+        "wgi_stability_percentile": 0.47,
+        "projection": 0.1,
+        "oil_dependency": 0.95,
+        "energy_independence": 0.1,
+        "nuclear_power": false,
+        "compute": 1
+      },
+      "profile": {
+        "rivals": [],
+        "political_system": "authoritarian",
+        "ideology": [
+          "sovereignism",
+          "pan_africanism"
+        ],
+        "strategic_priorities": [
+          "regime_survival",
+          "counter_insurgency",
+          "territorial_control",
+          "resource_sovereignty"
         ]
       }
     },
@@ -460,7 +597,9 @@
         "compute": 4
       },
       "profile": {
-        "rivals": [],
+        "rivals": [
+          "algeria"
+        ],
         "political_system": "monarchy",
         "ideology": [
           "monarchical_stability",
@@ -470,6 +609,122 @@
           "territorial_integrity",
           "atlantic_africa_gateway",
           "phosphates_leverage"
+        ]
+      }
+    },
+    "north_korea": {
+      "name": "Corée du Nord",
+      "notes": [
+        "Le PIB 2024 est converti à partir de l'estimation de 43 678,9 milliards KRW de la Banque de Corée ; celle-ci précise que sa méthode emploie les prix et ratios de valeur ajoutée sud-coréens et ne permet pas une comparaison internationale directe.",
+        "Le budget militaire n'est pas publié de manière vérifiable : 8 Md USD est une imputation de scénario (25 % du PIB estimé, fourchette de sensibilité recommandée 20–30 %), pas une observation.",
+        "La Corée du Nord n'est pas classée au GII 2024 : le rang-plancher 133 est imputé pour conserver l'échelle du moteur.",
+        "Le ratio commercial est dérivé des 2,7 Md USD d'échanges de biens recensés par la Banque de Corée/KOTRA et du PIB estimé ; il exclut les flux non observés et illicites."
+      ],
+      "provenance_overrides": {
+        "gdp": {
+          "source": "Banque de Corée — estimation du PIB nord-coréen 2024",
+          "year": 2024,
+          "note": "dérivé",
+          "url": "https://www.bok.or.kr/eng/bbs/E0000634/view.do?menuNo=400423&nttId=10093293"
+        },
+        "growth_pct": {
+          "source": "Banque de Corée — estimation du PIB nord-coréen 2024",
+          "year": 2024,
+          "url": "https://www.bok.or.kr/eng/bbs/E0000634/view.do?menuNo=400423&nttId=10093293"
+        },
+        "defense_budget": {
+          "source": "Imputation de scénario — aucune série publique comparable",
+          "year": 2024,
+          "note": "illustratif"
+        },
+        "gii_rank": {
+          "source": "WIPO — Global Innovation Index 2024 (non classée)",
+          "year": 2024,
+          "note": "illustratif",
+          "url": "https://www.wipo.int/global_innovation_index/en/2024/"
+        },
+        "trade_pct": {
+          "source": "Banque de Corée / KOTRA — commerce extérieur nord-coréen",
+          "year": 2024,
+          "note": "dérivé",
+          "url": "https://www.bok.or.kr/eng/bbs/E0000634/view.do?menuNo=400423&nttId=10093293"
+        }
+      },
+      "raw": {
+        "gdp": 32050000000.0,
+        "growth_pct": 3.7,
+        "defense_budget": 8000000000.0,
+        "gii_rank": 133,
+        "trade_pct": 8.42,
+        "wgi_stability_percentile": 21.23,
+        "projection": 0.35,
+        "oil_dependency": 0.95,
+        "energy_independence": 0.35,
+        "nuclear_power": true,
+        "compute": 1.5
+      },
+      "profile": {
+        "rivals": [
+          "japan",
+          "south_korea",
+          "usa"
+        ],
+        "political_system": "one_party_state",
+        "ideology": [
+          "juche",
+          "regime_survival",
+          "military_first"
+        ],
+        "strategic_priorities": [
+          "regime_survival",
+          "nuclear_deterrence",
+          "sanctions_resilience",
+          "korean_peninsula_leverage"
+        ]
+      }
+    },
+    "pakistan": {
+      "name": "Pakistan",
+      "notes": [
+        "Le budget militaire 2024 (10,7 Md USD) est rétrodérivé du total SIPRI 2025 et de sa hausse réelle publiée ; utiliser la base SIPRI pour une analyse nominale détaillée.",
+        "Le statut nucléaire et l'arsenal restent estimés par le SIPRI : le gouvernement pakistanais ne publie pas la taille de son stock."
+      ],
+      "provenance_overrides": {
+        "defense_budget": {
+          "source": "SIPRI — Military Expenditure Database et fiche 2025",
+          "year": 2024,
+          "note": "dérivé",
+          "url": "https://www.sipri.org/media/press-release/2026/global-military-spending-rise-continues-european-and-asian-expenditures-surge"
+        }
+      },
+      "raw": {
+        "gdp": 371570000000.0,
+        "growth_pct": 3.0,
+        "defense_budget": 10700000000.0,
+        "gii_rank": 91,
+        "trade_pct": 28.4676925469837,
+        "wgi_stability_percentile": 4.64,
+        "projection": 0.4,
+        "oil_dependency": 0.85,
+        "energy_independence": 0.25,
+        "nuclear_power": true,
+        "compute": 5
+      },
+      "profile": {
+        "rivals": [
+          "india"
+        ],
+        "political_system": "hybrid_regime",
+        "ideology": [
+          "national_security",
+          "strategic_autonomy",
+          "islamic_republic"
+        ],
+        "strategic_priorities": [
+          "nuclear_deterrence",
+          "india_parity",
+          "cpec_security",
+          "domestic_stability"
         ]
       }
     },
@@ -536,6 +791,67 @@
         ]
       }
     },
+    "senegal": {
+      "name": "Sénégal",
+      "raw": {
+        "gdp": 32169996051.8502,
+        "growth_pct": 6.5,
+        "defense_budget": 638824014.514,
+        "gii_rank": 92,
+        "trade_pct": 72,
+        "wgi_stability_percentile": 41.23,
+        "projection": 0.15,
+        "oil_dependency": 0.45,
+        "energy_independence": 0.55,
+        "nuclear_power": false,
+        "compute": 3
+      },
+      "profile": {
+        "rivals": [],
+        "political_system": "democracy",
+        "ideology": [
+          "democratic_governance",
+          "pan_africanism"
+        ],
+        "strategic_priorities": [
+          "economic_emergence",
+          "regional_stability",
+          "energy_development",
+          "maritime_security"
+        ]
+      }
+    },
+    "singapore": {
+      "name": "Singapour",
+      "raw": {
+        "gdp": 572877260178.427,
+        "growth_pct": 5.3,
+        "defense_budget": 15325841295.183,
+        "gii_rank": 4,
+        "trade_pct": 324,
+        "wgi_stability_percentile": 97.16,
+        "projection": 0.4,
+        "oil_dependency": 0.98,
+        "energy_independence": 0.02,
+        "nuclear_power": false,
+        "compute": 25
+      },
+      "profile": {
+        "rivals": [],
+        "political_system": "democracy",
+        "ideology": [
+          "rules_based_order",
+          "trade_hub",
+          "strategic_nonalignment"
+        ],
+        "strategic_priorities": [
+          "sea_lane_security",
+          "open_trade",
+          "asean_centrality",
+          "technology_hub"
+        ]
+      }
+    },
     "south_africa": {
       "name": "Afrique du Sud",
       "raw": {
@@ -581,7 +897,9 @@
         "compute": 35
       },
       "profile": {
-        "rivals": [],
+        "rivals": [
+          "north_korea"
+        ],
         "political_system": "democracy",
         "ideology": [
           "liberal_democracy",
@@ -620,6 +938,36 @@
           "mediterranean_stability",
           "migration_management",
           "eu_cohesion"
+        ]
+      }
+    },
+    "tunisia": {
+      "name": "Tunisie",
+      "raw": {
+        "gdp": 51412122479.8468,
+        "growth_pct": 1.6,
+        "defense_budget": 1315226310.96236,
+        "gii_rank": 81,
+        "trade_pct": 112,
+        "wgi_stability_percentile": 22.27,
+        "projection": 0.15,
+        "oil_dependency": 0.75,
+        "energy_independence": 0.35,
+        "nuclear_power": false,
+        "compute": 3
+      },
+      "profile": {
+        "rivals": [],
+        "political_system": "presidential_republic",
+        "ideology": [
+          "state_sovereignty",
+          "arab_nationalism"
+        ],
+        "strategic_priorities": [
+          "economic_stability",
+          "water_security",
+          "migration_management",
+          "regional_trade"
         ]
       }
     },
@@ -714,6 +1062,39 @@
         ]
       }
     },
+    "united_arab_emirates": {
+      "name": "Émirats arabes unis",
+      "notes": [
+        "SIPRI ne publie plus de série exploitable pour les EAU depuis 2014 : budget défense 2024 estimé à 22,8 Md USD, avec forte incertitude."
+      ],
+      "raw": {
+        "gdp": 552324919095.872,
+        "growth_pct": 4.0,
+        "defense_budget": 22800000000.0,
+        "gii_rank": 32,
+        "trade_pct": 199,
+        "wgi_stability_percentile": 70.14,
+        "projection": 0.55,
+        "oil_dependency": 0.05,
+        "energy_independence": 0.95,
+        "nuclear_power": false,
+        "compute": 30
+      },
+      "profile": {
+        "rivals": [],
+        "political_system": "monarchy",
+        "ideology": [
+          "state_capitalism",
+          "strategic_autonomy"
+        ],
+        "strategic_priorities": [
+          "regime_security",
+          "energy_exports",
+          "trade_hub",
+          "technology_leadership"
+        ]
+      }
+    },
     "usa": {
       "name": "États-Unis",
       "raw": {
@@ -731,7 +1112,8 @@
       },
       "profile": {
         "rivals": [
-          "iran"
+          "iran",
+          "north_korea"
         ],
         "political_system": "democracy",
         "ideology": [

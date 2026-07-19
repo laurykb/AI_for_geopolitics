@@ -12,11 +12,10 @@ répond hors format. Argent **fictif**.
 
 from __future__ import annotations
 
-import json
-
 from core.events import GeoEvent
 from core.world_state import WorldState
 from inference.backend import InferenceBackend
+from inference.json_extract import extract_json
 from market.engine import MarketEngine, MarketError
 from market.models import Market, MarketStatus
 
@@ -24,26 +23,6 @@ FORECASTER_SYSTEM = (
     "Tu es un forecaster : tu estimes des probabilités HONNÊTES et CALIBRÉES sur l'issue d'un "
     "marché. Réponds STRICTEMENT en JSON, sans prose."
 )
-
-
-def _extract_json(text: str) -> dict | None:
-    """Extrait un objet JSON d'une sortie LLM (gère les fences et la prose autour)."""
-    text = text.strip()
-    if not text:
-        return None
-    try:
-        obj = json.loads(text)
-        return obj if isinstance(obj, dict) else None
-    except (json.JSONDecodeError, ValueError):
-        pass
-    start, end = text.find("{"), text.rfind("}")
-    if start != -1 and end > start:
-        try:
-            obj = json.loads(text[start : end + 1])
-            return obj if isinstance(obj, dict) else None
-        except (json.JSONDecodeError, ValueError):
-            return None
-    return None
 
 
 def _coerce_probs(data: dict | None, n: int) -> list[float] | None:
@@ -132,7 +111,7 @@ class LLMForecaster:
                 max_tokens=self.max_tokens,
                 temperature=self.temperature,
             )
-            data = _extract_json(result.text)
+            data = extract_json(result.text)
         except Exception:
             data = None
         probs = _coerce_probs(data, n)

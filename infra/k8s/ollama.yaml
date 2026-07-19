@@ -1,0 +1,37 @@
+# Inférence Ollama — NOTE D'ARCHI HONNÊTE
+# =========================================
+# Ollama a besoin du GPU. Le passthrough GPU vers un nœud kind sous Windows
+# n'est PAS trivial (pas de nvidia device-plugin simple, WSL2 au milieu).
+#
+# CHOIX de l'esquisse : l'inférence reste sur l'Ollama de l'HÔTE (celui que
+# `python serve.py` / `ollama serve` fait déjà tourner sur le poste, :11434).
+# On l'expose au cluster via un Service ExternalName qui pointe l'hôte Docker.
+#
+# Ainsi le backend garde une adresse stable et « cluster-native » :
+#   OLLAMA_HOST=http://ollama.theatre.svc.cluster.local:11434  (cf. ConfigMap)
+# et le jour où le GPU-in-cluster est résolu, il suffira de remplacer ce Service
+# par le Deployment de infra/k8s/optional/ollama-in-cluster.yaml — sans toucher
+# au code ni à la ConfigMap.
+#
+# ⚠️ Limite connue : `host.docker.internal` est fourni par Docker Desktop mais
+# n'est pas garanti résolvable depuis un nœud kind selon la version/OS. Si la
+# résolution échoue, deux replis documentés dans infra/README.md :
+#   - mapper host.docker.internal via `extraHostAliases` / l'IP de la gateway kind,
+#   - ou pointer OLLAMA_HOST directement sur l'IP hôte.
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama
+  namespace: theatre
+  labels:
+    app.kubernetes.io/name: ollama
+    app.kubernetes.io/component: inference
+spec:
+  type: ExternalName
+  # Relais vers l'Ollama de l'hôte (le port 11434 est porté par le client via OLLAMA_HOST).
+  externalName: host.docker.internal
+---
+# Placeholder Ollama-in-cluster : DÉSACTIVÉ (replicas: 0), à activer quand le
+# GPU-in-cluster sera résolu. Défini hors base (infra/k8s/optional/), voir ce dossier.
+# On ne le duplique pas ici pour éviter deux objets « ollama » en conflit ;
+# ce commentaire sert de panneau indicateur.

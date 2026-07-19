@@ -1,0 +1,40 @@
+{
+  "id": "mali",
+  "name": "Mali",
+  "economy": {
+    "gdp": 26761281076.7658,
+    "growth": 5.0,
+    "trade_dependency": 0.58
+  },
+  "military": {
+    "defense_budget": 932976642.568,
+    "nuclear_power": false,
+    "projection": 0.1
+  },
+  "resources": {
+    "oil_dependency": 0.95,
+    "energy_independence": 0.1
+  },
+  "alliances": [
+    "AES",
+    "AfricanUnion"
+  ],
+  "rivals": [],
+  "political_system": "authoritarian",
+  "political_stability": 0.0,
+  "technology_level": 0.02,
+  "compute": 1.0,
+  "ideology": [
+    "sovereignism",
+    "pan_africanism"
+  ],
+  "strategic_priorities": [
+    "regime_survival",
+    "counter_insurgency",
+    "territorial_control",
+    "resource_sovereignty"
+  ],
+  "temperament": "opportuniste",
+  "memory_summary": "",
+  "mandate": {}
+}

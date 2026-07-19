@@ -24,7 +24,8 @@
     "Western"
   ],
   "rivals": [
-    "china"
+    "china",
+    "north_korea"
   ],
   "political_system": "democracy",
   "political_stability": 0.88,
@@ -39,6 +40,7 @@
     "us_alliance",
     "tech_leadership"
   ],
+  "temperament": "opportuniste",
   "memory_summary": "",
   "mandate": {}
 }

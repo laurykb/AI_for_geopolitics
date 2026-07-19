@@ -10,6 +10,7 @@ from app.game_api import get_backend, get_store, sse_frame, step_event
 from app.main import app
 from inference.mock_backend import MockBackend
 from simulation.live_round import TokenStep, TurnStartStep
+from simulation.model_cast import CastModel, ModelCastState
 from storage.game_store import GameRecord, GameStatus, SQLiteGameStore
 from tests.sse import play as _play
 
@@ -40,6 +41,7 @@ def test_create_game_with_all_countries(client):
     game = _create(client)
     assert game["id"] and game["live"] is True
     assert game["status"] == "running" and game["horizon"] == 5
+    assert game["phase"] == "ready"
     assert len(game["countries"]) >= 2
 
 
@@ -47,6 +49,63 @@ def test_create_game_with_subset(client):
     game = _create(client, countries=["usa", "iran"], horizon=3)
     assert game["countries"] == ["iran", "usa"]
     assert game["horizon"] == 3
+
+
+def test_create_player_game_from_classic_lobby_payload(client):
+    """Le contrat réellement envoyé par le lobby doit toujours créer une partie jouable."""
+
+    response = client.post(
+        "/api/games",
+        json={
+            "scenario": "red_sea",
+            "countries": ["france", "usa", "china", "iran", "india", "israel", "russia"],
+            "horizon": 5,
+            "mode": "classic",
+            "fog": False,
+            "escalation": False,
+            "role": "player",
+            "difficulty": "intermediate",
+            "free": False,
+            "language": "fr",
+            "owner_id": "offline-lobby-test",
+            "play_as": "france",
+        },
+    )
+
+    assert response.status_code == 201, response.json()
+    game = response.json()
+    assert game["role"] == "player"
+    assert game["play_as"] == "france"
+    assert game["phase"] == "ready"
+
+
+def test_create_classic_game_persists_multi_model_cast(client, monkeypatch):
+    frozen = ModelCastState(
+        models=[
+            CastModel(tag="model-a:4b", family="A", digest="sha256:a", size_gb=2.5),
+            CastModel(tag="model-b:7b", family="B", digest="sha256:b", size_gb=4.5),
+        ],
+        assignments={"iran": "model-a:4b", "usa": "model-b:7b"},
+        game_master_model="model-a:4b",
+        judge_model="model-b:7b",
+    )
+    monkeypatch.setattr(game_api, "prepare_model_cast", lambda *args, **kwargs: frozen)
+    game = _create(
+        client,
+        countries=["usa", "iran"],
+        free=True,
+        model_cast={"strategy": "balanced", "models": ["model-a:4b", "model-b:7b"]},
+    )
+
+    assert game["model_cast"]["assignments"]["usa"] == "model-b:7b"
+    assert game["ranked"] is False
+    game_api._sessions.clear()
+    resumed = client.get(f"/api/games/{game['id']}")
+    assert resumed.status_code == 200
+    assert resumed.json()["model_cast"]["judge_model"] == "model-b:7b"
+    events = _play(client, game["id"], body={"max_turns": 2})
+    spoken_models = {payload["model"] for name, payload in events if name == "turn_start"}
+    assert spoken_models == {"model-a:4b", "model-b:7b"}
 
 
 def test_create_game_rejects_unknown_country(client):
@@ -60,6 +119,23 @@ def test_create_game_rejects_single_country(client):
     assert resp.status_code == 400
 
 
+def test_game_and_round_payloads_are_bounded(client):
+    assert client.post("/api/games", json={"horizon": 51}).status_code == 422
+    assert client.post("/api/games", json={"scenario": "x" * 121}).status_code == 422
+    game = _create(client, countries=["usa", "iran"])
+    assert (
+        client.post(f"/api/games/{game['id']}/rounds", json={"max_turns": 41}).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            f"/api/games/{game['id']}/rounds",
+            json={"event": {"title": "x" * 201}},
+        ).status_code
+        == 422
+    )
+
+
 # --- round SSE -----------------------------------------------------------------
 
 
@@ -71,7 +147,15 @@ def test_round_streams_full_step_sequence(client):
     assert names[0] == "date" and names[1] == "event"
     assert names[-1] == "done"
     # théâtre : au moins une prise de parole streamée token par token
-    assert "turn_start" in names and "token" in names and "message_done" in names
+    assert all(
+        name in names
+        for name in ("turn_start", "private_token", "private_plan_done", "token", "message_done")
+    )
+    assert any(payload["token"] for name, payload in events if name == "private_token")
+    private = "\n".join(
+        payload["text"] for name, payload in events if name == "private_plan_done"
+    )
+    assert "FUTUR 1" in private and "ARBITRAGE" in private
     # arbitrage + observables de fin de round
     for expected in ("participation", "verdict", "communique", "risk", "trajectory", "summary"):
         assert expected in names, f"étape manquante : {expected}"
@@ -184,6 +268,69 @@ def test_human_timeout_is_abstention(client):
     assert silences and all("garde le silence" in t["content"] for t in silences)
 
 
+def test_human_player_votes_on_motion(client):
+    import threading
+
+    game = _create(
+        client, countries=["usa", "iran", "china"], play_as="usa", turn_seconds=30
+    )
+    filed = client.post(
+        f"/api/games/{game['id']}/motions",
+        json={"country": "iran", "reason": "escalade répétée"},
+    )
+    assert filed.status_code == 201
+
+    voter_client = TestClient(app)
+    stop = threading.Event()
+    seen = {"turns": 0, "votes": 0, "duplicate": False}
+
+    def human_player():
+        while not stop.is_set():
+            session = game_api._sessions.get(game["id"])
+            turn = session.pending_turn if session else None
+            ballot = session.pending_motion_vote if session else None
+            if turn is not None and not turn.done:
+                response = voter_client.post(
+                    f"/api/games/{game['id']}/turn", json={"message": "Nous plaidons."}
+                )
+                seen["turns"] += response.status_code == 200
+            if ballot is not None and not ballot.done:
+                response = voter_client.post(
+                    f"/api/games/{game['id']}/motion-vote", json={"vote": "pour"}
+                )
+                if response.status_code == 200:
+                    seen["votes"] += 1
+                    duplicate = voter_client.post(
+                        f"/api/games/{game['id']}/motion-vote", json={"vote": "contre"}
+                    )
+                    seen["duplicate"] = duplicate.status_code == 409
+            time.sleep(0.02)
+
+    thread = threading.Thread(target=human_player, daemon=True)
+    thread.start()
+    try:
+        events = _play(client, game["id"])
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+    ballot_prompt = next(p for n, p in events if n == "human_motion_vote")
+    assert ballot_prompt["country"] == "usa" and ballot_prompt["target"] == "iran"
+    human_vote = next(
+        p for n, p in events if n == "motion_vote" and p["country"] == "usa"
+    )
+    assert human_vote["vote"] == "pour"
+    assert seen["votes"] == 1 and seen["duplicate"] is True
+
+
+def test_motion_vote_without_pending_ballot_is_409(client):
+    game = _create(client, countries=["usa", "iran"], play_as="usa")
+    response = client.post(
+        f"/api/games/{game['id']}/motion-vote", json={"vote": "pour"}
+    )
+    assert response.status_code == 409
+
+
 def test_turn_without_pending_turn_is_409(client):
     game = _create(client, countries=["usa", "iran"])
     resp = client.post(f"/api/games/{game['id']}/turn", json={"message": "bonjour"})
@@ -202,10 +349,12 @@ def test_turn_bounds_are_422(client):
     assert resp.status_code == 422
 
 
-def test_play_as_hides_ai_reasoning_while_running(client):
+def test_play_as_streams_structured_plan_but_hides_raw_persisted_reasoning(client):
     game = _create(client, countries=["usa", "iran"], play_as="usa", turn_seconds=2)
     events = _play(client, game["id"])
     dones = [p for n, p in events if n == "message_done"]
+    private = "\n".join(p["text"] for n, p in events if n == "private_plan_done")
+    assert "FUTUR 1" in private and "Revue humaine" in private
     assert dones and all(p["reasoning"] == "" for p in dones)  # jamais les pensées des SI
     detail = client.get(f"/api/games/{game['id']}").json()
     assert all(t["reasoning"] == "" for t in detail["rounds"][0]["transcript"])
@@ -532,10 +681,14 @@ def test_round_failure_emits_error_frame_and_releases_lock():
         names = [n for n, _ in events]
         assert names[-1] == "error" and "done" not in names
         assert "panne simulée" in events[-1][1]["detail"]
+        failed = client.get(f"/api/games/{game['id']}").json()
+        assert failed["world"]["current_round"] == 0
+        assert failed["rounds"] == []
 
-        # Verrou relâché : un nouveau round passe (la panne était one-shot).
+        # Verrou relâché et transaction restaurée : on rejoue bien le round 1,
+        # sans saut d'horloge ni demi-manche fantôme.
         events = _play(client, game["id"])
-        assert events[-1][0] == "done"
+        assert events[-1] == ("done", {"round_no": 1})
     finally:
         app.dependency_overrides.clear()
         game_api._sessions.clear()
@@ -742,6 +895,8 @@ def test_game_over_emitted_at_horizon(client):
     assert detail["result"] is not None
     assert detail["result"]["u_history"]  # la courbe U de la partie
     assert len(detail["result"]["countries"]) == 2  # récap des deux pays
+    assert detail["countries"] == ["iran", "usa"]  # casting relu depuis le snapshot
+    assert game["id"] not in game_api._sessions  # agents libérés après la fin
 
 
 def test_xp_awarded_on_finish_all_modes(client):

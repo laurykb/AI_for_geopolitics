@@ -1,6 +1,6 @@
 /** Kit UI sobre : panneaux, jauges, pastilles, bulles d'aide. Aucune dépendance. */
 
-import type { ReactNode } from "react";
+import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
 
 import { fmt } from "@/lib/format";
 
@@ -8,6 +8,35 @@ import { Hint } from "./hint";
 
 // Ré-exportée ici : tous les call sites importent la bulle d'aide depuis le kit.
 export { Hint };
+
+/** Habillage partagé des champs de saisie (bordure, fond, focus indigo). Recopié à
+ * l'identique sur neuf `<input>`/`<select>` du théâtre — factorisé ici pour que tous
+ * les champs vibrent pareil. `SelectField` ajoute juste le curseur pointeur. */
+const FIELD_BASE =
+  "rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo";
+
+/** `<input>` du kit : toutes les props natives passent, la classe de base se compose
+ * avec un éventuel `className` (largeur, flex…) fourni par l'appelant. */
+export function TextInput({
+  className = "",
+  ...props
+}: InputHTMLAttributes<HTMLInputElement>) {
+  return <input {...props} className={`${FIELD_BASE} ${className}`.trim()} />;
+}
+
+/** `<select>` du kit : même base que TextInput + curseur pointeur ; les `<option>`
+ * arrivent en enfants. */
+export function SelectField({
+  className = "",
+  children,
+  ...props
+}: SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select {...props} className={`cursor-pointer ${FIELD_BASE} ${className}`.trim()}>
+      {children}
+    </select>
+  );
+}
 
 /** Surtitre (« eyebrow ») du kit : le petit intitulé capitalisé, espacé, gris discret
  * qui coiffe titres de panneaux et d'écrans. UN seul réglage typographique partagé

@@ -1,0 +1,17 @@
+# Overlay FUTUR — piste distribuée (persistance + cache), cf. CLAUDE.md.
+# NON appliqué par la base. Aperçu / validation :
+#   kubectl kustomize infra/k8s/optional
+# Application (quand ces briques seront réellement câblées côté app) :
+#   kubectl apply -k infra/k8s/optional
+#
+# ollama-in-cluster.yaml n'est PAS listé ici : ce n'est pas un AJOUT mais un
+# REMPLACEMENT du Service ExternalName de la base (voir son en-tête). On le
+# garde comme fichier-placeholder à activer manuellement le moment venu.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: theatre
+
+resources:
+  - postgres.yaml
+  - redis.yaml

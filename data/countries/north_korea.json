@@ -1,0 +1,45 @@
+{
+  "id": "north_korea",
+  "name": "Corée du Nord",
+  "economy": {
+    "gdp": 32050000000.0,
+    "growth": 3.7,
+    "trade_dependency": 0.08
+  },
+  "military": {
+    "defense_budget": 8000000000.0,
+    "nuclear_power": true,
+    "projection": 0.35
+  },
+  "resources": {
+    "oil_dependency": 0.95,
+    "energy_independence": 0.35
+  },
+  "alliances": [
+    "ChinaDPRKTreaty",
+    "RussiaDPRKTreaty"
+  ],
+  "rivals": [
+    "japan",
+    "south_korea",
+    "usa"
+  ],
+  "political_system": "one_party_state",
+  "political_stability": 0.21,
+  "technology_level": 0.0,
+  "compute": 1.5,
+  "ideology": [
+    "juche",
+    "regime_survival",
+    "military_first"
+  ],
+  "strategic_priorities": [
+    "regime_survival",
+    "nuclear_deterrence",
+    "sanctions_resilience",
+    "korean_peninsula_leverage"
+  ],
+  "temperament": "opportuniste",
+  "memory_summary": "",
+  "mandate": {}
+}

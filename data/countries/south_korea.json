@@ -20,7 +20,9 @@
     "USKoreaTreaty",
     "Western"
   ],
-  "rivals": [],
+  "rivals": [
+    "north_korea"
+  ],
   "political_system": "democracy",
   "political_stability": 0.6,
   "technology_level": 0.96,
@@ -34,6 +36,7 @@
     "us_alliance",
     "semiconductor_leadership"
   ],
+  "temperament": "opportuniste",
   "memory_summary": "",
   "mandate": {}
 }

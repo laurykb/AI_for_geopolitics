@@ -1,0 +1,214 @@
+{
+  "methodology": "Registre de sources primaires sur l'emploi opérationnel de l'IA et des plateformes de décision. Un contrat public ou un dépôt réglementaire établit un fait observable ; une documentation fournisseur décrit une architecture revendiquée mais ne prouve pas à elle seule son efficacité. Les mécaniques de jeu associées restent des choix de modélisation explicites.",
+  "researched_at": "2026-07-18",
+  "principles": [
+    "Séparer les faits contractuels, les chiffres réglementaires, les analyses publiques et les affirmations du fournisseur.",
+    "Conserver l'URL, la date, le niveau d'autorité et les limites de chaque source jusqu'à l'interface joueur.",
+    "Ne jamais déduire une capacité classifiée, une efficacité militaire ou un résultat de terrain depuis une annonce publique.",
+    "Relier chaque information retenue à une mécanique testable, réversible et auditée."
+  ],
+  "sources": [
+    {
+      "id": "palantir-ontology-system",
+      "title": "Ontology system",
+      "publisher": "Palantir Technologies",
+      "url": "https://www.palantir.com/docs/foundry/architecture-center/ontology-system",
+      "published_on": "documentation continue",
+      "accessed_on": "2026-07-18",
+      "source_type": "vendor_documentation",
+      "authority": "primary_claim",
+      "summary": "Documentation de l'architecture Ontology : objets, liens, actions, fonctions, sécurité et mises à jour atomiques composent un modèle opérationnel partagé par les humains et les systèmes d'IA.",
+      "facts": [
+        "La documentation organise le domaine en objets, propriétés, liens, actions et fonctions.",
+        "Elle présente l'Ontology comme la couche qui relie données, logique, actions et politiques de sécurité.",
+        "Les abonnements temps réel et les mises à jour atomiques sont des propriétés revendiquées de la plateforme."
+      ],
+      "game_mechanics": [
+        "ontologie décisionnelle versionnée",
+        "graphe pays–alliances–engagements–événements",
+        "actions typées avec préconditions et effets",
+        "journal d'audit et contrôle d'accès par rôle"
+      ],
+      "limitations": [
+        "Source fournisseur : décrit le produit et ses intentions architecturales, pas son efficacité réelle.",
+        "Aucune capacité classifiée ou performance opérationnelle ne peut être inférée."
+      ]
+    },
+    {
+      "id": "palantir-platforms-aip-foundry-apollo",
+      "title": "Palantir platforms — AIP, Foundry and Apollo",
+      "publisher": "Palantir Technologies",
+      "url": "https://www.palantir.com/docs/foundry/architecture-center/platforms",
+      "published_on": "documentation continue",
+      "accessed_on": "2026-07-18",
+      "source_type": "vendor_documentation",
+      "authority": "primary_claim",
+      "summary": "Vue d'ensemble publiée par Palantir de trois couches : intégration et opérations sur les données, IA reliée au contexte opérationnel, et déploiement logiciel multi-environnements.",
+      "facts": [
+        "AIP, Foundry et Apollo sont présentés comme des plateformes complémentaires.",
+        "La documentation revendique un fonctionnement sur des environnements cloud, sur site et périphériques."
+      ],
+      "game_mechanics": [
+        "qualité et fraîcheur du renseignement",
+        "déploiement dégradé et résilience des communications",
+        "coût de latence entre collecte, analyse et décision",
+        "modèles IA liés au contexte et aux permissions"
+      ],
+      "limitations": [
+        "Taxonomie et capacités décrites par le fournisseur.",
+        "Le jeu doit mesurer séparément disponibilité, latence, erreurs et biais."
+      ]
+    },
+    {
+      "id": "palantir-aip-getting-started",
+      "title": "Getting started with AIP",
+      "publisher": "Palantir Technologies",
+      "url": "https://www.palantir.com/docs/foundry/aip/getting-started-with-aip",
+      "published_on": "documentation continue",
+      "accessed_on": "2026-07-18",
+      "source_type": "vendor_documentation",
+      "authority": "primary_claim",
+      "summary": "Documentation publique sur l'emploi de modèles de langage dans un contexte gouverné, relié aux données et aux opérations.",
+      "facts": [
+        "La documentation décrit des fonctions et agents alimentés par le contexte de l'Ontology.",
+        "Elle documente des mécanismes d'évaluation, de contrôle et de mise en production des usages IA."
+      ],
+      "game_mechanics": [
+        "agents limités par les informations auxquelles leur pays accède",
+        "évaluations avant déploiement d'un modèle",
+        "approbation humaine pour les actions irréversibles",
+        "traçabilité des recommandations et de leurs sources"
+      ],
+      "limitations": [
+        "Une documentation d'usage n'établit ni la qualité des décisions ni l'absence de défaillances.",
+        "Les mécanismes du jeu doivent inclure hallucination, surconfiance et données adversariales."
+      ]
+    },
+    {
+      "id": "pltr-2025-10k",
+      "title": "Palantir Technologies — Form 10-K 2025",
+      "publisher": "U.S. Securities and Exchange Commission",
+      "url": "https://www.sec.gov/Archives/edgar/data/1321655/000132165526000011/pltr-20251231.htm",
+      "published_on": "2026-02-17",
+      "accessed_on": "2026-07-18",
+      "source_type": "regulatory_filing",
+      "authority": "official_filing",
+      "summary": "Dépôt réglementaire annuel permettant de mesurer la place économique des activités gouvernementales sans extrapoler leurs usages opérationnels.",
+      "facts": [
+        "Le chiffre d'affaires gouvernemental déclaré pour 2025 est de 2,402 milliards USD, contre 1,570 milliard en 2024.",
+        "Le chiffre d'affaires gouvernemental américain déclaré pour 2025 est d'environ 1,9 milliard USD, contre 1,2 milliard en 2024.",
+        "Le document expose aussi des risques liés aux contrats publics, à la sécurité, à la réglementation et à la dépendance aux infrastructures."
+      ],
+      "game_mechanics": [
+        "indice d'adoption institutionnelle de l'IA",
+        "dépendance fournisseur et risque de concentration",
+        "coût budgétaire et inertie contractuelle",
+        "risques juridiques, cyber et de continuité"
+      ],
+      "limitations": [
+        "Le chiffre d'affaires mesure une activité commerciale, pas l'efficacité militaire.",
+        "Les catégories financières ne détaillent pas toutes les missions ni les pays utilisateurs."
+      ]
+    },
+    {
+      "id": "dod-maven-smart-system-2024-prototype",
+      "title": "Maven Smart System prototype agreement",
+      "publisher": "U.S. Department of Defense",
+      "url": "https://www.defense.gov/News/Contracts/Contract/Article/3790490/",
+      "published_on": "2024-05-29",
+      "accessed_on": "2026-07-18",
+      "source_type": "government_contract",
+      "authority": "official_government",
+      "summary": "Annonce contractuelle publique d'un accord prototype de 480 millions USD pour Maven Smart System.",
+      "facts": [
+        "Le plafond annoncé est de 480 millions USD.",
+        "L'annonce associe le système à l'exploitation de données issues de capteurs pour les opérations militaires."
+      ],
+      "game_mechanics": [
+        "fusion multi-capteurs avec incertitude",
+        "construction d'une image opérationnelle commune",
+        "priorisation de pistes sous contrainte de temps",
+        "risque de faux positif et d'information obsolète"
+      ],
+      "limitations": [
+        "Une annonce de contrat ne démontre pas les performances atteintes.",
+        "Les détails opérationnels non publics ne sont pas modélisés comme des faits."
+      ]
+    },
+    {
+      "id": "dod-maven-smart-system-2024-licenses",
+      "title": "Maven Smart System user licenses",
+      "publisher": "U.S. Department of Defense",
+      "url": "https://www.defense.gov/News/Contracts/Contract/Article/3910169/",
+      "published_on": "2024-09-18",
+      "accessed_on": "2026-07-18",
+      "source_type": "government_contract",
+      "authority": "official_government",
+      "summary": "Annonce d'un contrat de 99,8 millions USD pour des licences utilisateur Maven Smart System.",
+      "facts": [
+        "Le montant annoncé est de 99,8 millions USD.",
+        "La contractualisation de licences utilisateur est un signal public de diffusion au-delà d'un prototype isolé."
+      ],
+      "game_mechanics": [
+        "taux de diffusion d'un système d'aide à la décision",
+        "formation et adoption par les opérateurs",
+        "interopérabilité entre états-majors",
+        "effets de réseau et dépendance organisationnelle"
+      ],
+      "limitations": [
+        "Le nombre exact d'utilisateurs actifs et l'intensité d'usage ne sont pas établis par l'annonce.",
+        "Diffusion contractuelle ne signifie pas adoption réussie."
+      ]
+    },
+    {
+      "id": "dod-maven-smart-system-2025-modification",
+      "title": "Maven Smart System contract modification",
+      "publisher": "U.S. Department of Defense",
+      "url": "https://www.defense.gov/News/Contracts/Contract/Article/4194643/",
+      "published_on": "2025-05-21",
+      "accessed_on": "2026-07-18",
+      "source_type": "government_contract",
+      "authority": "official_government",
+      "summary": "Modification contractuelle publique de 795 millions USD portant la valeur cumulée annoncée du contrat Maven Smart System à environ 1,275 milliard USD.",
+      "facts": [
+        "La modification annoncée est de 795 millions USD.",
+        "La valeur cumulée annoncée après modification est d'environ 1,275 milliard USD."
+      ],
+      "game_mechanics": [
+        "montée en échelle d'une capacité d'IA publique",
+        "inertie d'acquisition et verrouillage fournisseur",
+        "capacité de traitement accrue contre surface d'attaque accrue",
+        "impact géopolitique d'un avantage informationnel perçu"
+      ],
+      "limitations": [
+        "Les montants sont des plafonds/valeurs contractuelles et non une mesure directe de dépenses exécutées.",
+        "Aucune conclusion sur les résultats en opération ne doit être tirée du seul montant."
+      ]
+    },
+    {
+      "id": "dod-ai-ml-common-operating-picture-2025",
+      "title": "AI and ML in the Common Operating Picture",
+      "publisher": "U.S. Department of Defense",
+      "url": "https://media.defense.gov/2025/Jul/15/2003754354/-1/-1/0/20250715_PFAFF-HICKEY_AIANDML_ONLINE.PDF",
+      "published_on": "2025-07-15",
+      "accessed_on": "2026-07-18",
+      "source_type": "government_analysis",
+      "authority": "official_government",
+      "summary": "Analyse publique des apports et des risques de l'IA/ML dans une image opérationnelle commune ; utile pour modéliser la compression temporelle, la fusion de données et l'incertitude.",
+      "facts": [
+        "Le document traite l'IA/ML comme un moyen d'améliorer l'analyse d'un volume croissant de données.",
+        "Il souligne la nécessité de conserver jugement humain, qualité des données, confiance et compréhension des limites."
+      ],
+      "game_mechanics": [
+        "brouillard de guerre probabiliste",
+        "confiance calibrée par source et fraîcheur",
+        "compression du temps de décision",
+        "biais d'automatisation et contestation humaine"
+      ],
+      "limitations": [
+        "Analyse institutionnelle publique, pas évaluation expérimentale indépendante d'un produit Palantir.",
+        "Les propositions doivent être testées dans le jeu comme hypothèses."
+      ]
+    }
+  ]
+}

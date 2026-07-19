@@ -1,5 +1,7 @@
 """Tests du moteur de marché : ouverture, cotation, paris au prix LMSR (offline)."""
 
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 
 from market import lmsr
@@ -120,6 +122,37 @@ def test_sell_credits_account_and_round_trip_is_neutral(engine):
     assert engine.store.get_account(account.id).balance == pytest.approx(STARTING_BALANCE)
     assert engine.store.get_market(market.id).q_vector() == pytest.approx([0.0, 0.0])
     assert engine.store.get_position(account.id, yes).shares == pytest.approx(0.0)
+
+
+def test_naked_short_sale_is_rejected(engine):
+    market = _open(engine)
+    account = engine.create_account("NoShort")
+    with pytest.raises(InvalidBet, match="position insuffisante"):
+        engine.place_bet(account.id, market.id, market.outcomes[0].id, shares=-1.0)
+    assert engine.store.get_account(account.id).balance == STARTING_BALANCE
+
+
+def test_concurrent_bets_do_not_lose_updates(engine):
+    market = _open(engine, b=100.0)
+    yes = market.outcomes[0].id
+    account = engine.create_account("Rafale")
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        trades = list(
+            pool.map(
+                lambda _: engine.place_bet(account.id, market.id, yes, shares=1.0),
+                range(20),
+            )
+        )
+
+    assert len(trades) == 20
+    assert engine.store.get_market(market.id).q_vector() == pytest.approx([20.0, 0.0])
+    assert engine.store.get_position(account.id, yes).shares == pytest.approx(20.0)
+    assert len(engine.store.list_trades(market_id=market.id)) == 20
+    total_cost = lmsr.cost_to_trade([0.0, 0.0], 100.0, 0, 20.0)
+    assert engine.store.get_account(account.id).balance == pytest.approx(
+        STARTING_BALANCE - total_cost
+    )
 
 
 def test_insufficient_balance_is_rejected(engine):

@@ -1,0 +1,41 @@
+{
+  "id": "democratic_republic_congo",
+  "name": "République démocratique du Congo",
+  "economy": {
+    "gdp": 75716176105.0704,
+    "growth": 6.1,
+    "trade_dependency": 0.87
+  },
+  "military": {
+    "defense_budget": 899187778.404,
+    "nuclear_power": false,
+    "projection": 0.15
+  },
+  "resources": {
+    "oil_dependency": 0.15,
+    "energy_independence": 0.65
+  },
+  "alliances": [
+    "AfricanUnion",
+    "EAC",
+    "SADC"
+  ],
+  "rivals": [],
+  "political_system": "presidential_republic",
+  "political_stability": 0.05,
+  "technology_level": 0.0,
+  "compute": 2.0,
+  "ideology": [
+    "resource_sovereignty",
+    "pan_africanism"
+  ],
+  "strategic_priorities": [
+    "territorial_integrity",
+    "eastern_security",
+    "critical_minerals",
+    "infrastructure"
+  ],
+  "temperament": "opportuniste",
+  "memory_summary": "",
+  "mandate": {}
+}

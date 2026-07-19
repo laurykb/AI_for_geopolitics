@@ -1,0 +1,7 @@
+# Espace de noms dédié : tout le jeu vit dans « theatre ».
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: theatre
+  labels:
+    app.kubernetes.io/part-of: theatre-des-super-intelligences

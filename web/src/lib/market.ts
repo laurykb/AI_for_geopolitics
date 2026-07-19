@@ -5,7 +5,7 @@
  * `/api/rounds/{round_id}/resolve` raisonne par round) — même dérivation côté back.
  */
 
-import { API_BASE, ApiError } from "./api";
+import { API_BASE, ApiError, fetchWithTimeout } from "./api";
 import type { AccountView, BotRunView, LeaderboardEntry, MarketView, TradeView } from "./types";
 
 const ACCOUNT_KEY = "si-theatre.market-account";
@@ -15,7 +15,7 @@ export function marketRoundId(gameId: string): number {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(`${API_BASE}${path}`, {
+  const resp = await fetchWithTimeout(`${API_BASE}${path}`, {
     ...init,
     headers: { "Content-Type": "application/json", ...init?.headers },
   });

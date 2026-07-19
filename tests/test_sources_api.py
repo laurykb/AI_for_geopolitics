@@ -13,7 +13,12 @@ def test_sources_expose_provenance_and_countries():
     assert "World Bank" in view["provenance"]["gdp"]["source"]
     assert view["provenance"]["projection"]["note"] == "subjectif"
     assert view["transformations"]["technology_level"]
-    assert len(view["countries"]) >= 6
+    assert len(view["countries"]) == 33
+    north_korea = next(c for c in view["countries"] if c["id"] == "north_korea")
+    defense = next(a for a in north_korea["attributes"] if a["key"] == "defense_budget")
+    assert defense["source_override"]["note"] == "illustratif"
+    drc = next(c for c in view["countries"] if c["id"] == "democratic_republic_congo")
+    assert drc["notes"] and "GII 2024" in drc["notes"][0]
 
 
 def test_sources_values_match_committed_profiles():
@@ -38,3 +43,63 @@ def test_sources_values_match_committed_profiles():
     assert view["alliances"]["Western"]["informal"] is True  # bloc d'affinité, pas un traité
     # le profil analyste (rivaux…) reste distinct des indicateurs chiffrés
     assert "rivals" in usa["profile"]
+
+
+def test_sources_distinguish_palantir_claims_from_public_records():
+    view = TestClient(app).get("/api/sources").json()
+    registry = view["strategic_technology"]
+    assert registry["researched_at"] == "2026-07-18"
+    entries = {entry["id"]: entry for entry in registry["sources"]}
+
+    ontology = entries["palantir-ontology-system"]
+    assert ontology["authority"] == "primary_claim"
+    assert ontology["source_type"] == "vendor_documentation"
+    assert ontology["limitations"]
+
+    filing = entries["pltr-2025-10k"]
+    assert filing["authority"] == "official_filing"
+    assert filing["publisher"] == "U.S. Securities and Exchange Commission"
+
+    contract = entries["dod-maven-smart-system-2025-modification"]
+    assert contract["authority"] == "official_government"
+    assert contract["game_mechanics"]
+    assert contract["url"].startswith("https://www.defense.gov/")
+
+
+def test_sources_expose_ai_arms_as_a_reproducible_research_framework():
+    view = TestClient(app).get("/api/sources").json()
+    research = view["ai_arms_research"]
+    assert research["source"]["arxiv_id"] == "2602.14740v1"
+    assert len(research["ladder"]) == 30
+    assert len(research["scenarios"]) == 7
+    assert len(research["hypotheses"]) >= 12
+    assert research["replication_protocol"]["controls"]
+    # Un chemin absolu de poste de travail ne doit jamais fuiter dans l'API publique.
+    assert "local_source" not in research["source"]
+
+
+def test_sources_expose_all_four_uploaded_wargaming_papers_and_unverified_claims():
+    view = TestClient(app).get("/api/sources").json()
+    research = view["ai_wargaming_research"]
+    assert len(research["sources"]) == 4
+    assert {source["id"] for source in research["sources"]} == {
+        "galindez-giraldo-2025-trust",
+        "sipri-2025-ai-nuclear-risk",
+        "cetas-2023-ai-wargaming",
+        "black-darken-2024-scaling-ai-wargaming",
+    }
+    assert research["unverified_claims"][0]["status"] == "not_supported_by_reviewed_sources"
+
+
+def test_campaign_exposes_selectable_scientific_protocols_and_local_model_panel():
+    view = TestClient(app).get("/api/campaign").json()
+    lab = view["lab"]
+    assert lab["classic_mode_unchanged"] is True
+    assert {protocol["id"] for protocol in lab["protocols"]} >= {
+        "uranium-alpha-beta-v1",
+        "ai-arms-opening-screen-v1",
+        "human-ai-authority-v1",
+        "language-framing-nuclear-v1",
+    }
+    assert lab["execution"]["max_models_in_memory"] == 1
+    assert lab["model_panel"]["hardware_profile"]["vram_mib"] == 8192

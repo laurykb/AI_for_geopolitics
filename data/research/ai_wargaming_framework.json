@@ -1,0 +1,180 @@
+{
+  "schema_version": 1,
+  "reviewed_on": "2026-07-18",
+  "purpose": "Transformer les quatre documents fournis en hypothèses falsifiables, variables de simulation et garde-fous d'interface sans présenter une partie comme une prédiction du monde réel.",
+  "epistemic_guardrails": [
+    "Un wargame aide à étudier des décisions sous incertitude ; il n'est ni une prédiction ni une copie complète de la réalité.",
+    "Une sortie de modèle renseigne d'abord sur ce modèle, son prompt et le protocole, pas directement sur le comportement futur d'un État ou d'un humain.",
+    "Confiance déclarée, recours à l'IA, exactitude et fiabilité réelle sont quatre mesures distinctes.",
+    "Les options rejetées, les informations disponibles, la version du modèle et les paramètres d'échantillonnage doivent être conservés pour toute comparaison.",
+    "Aucune décision nucléaire simulée n'est reliée à un système réel ; les niveaux d'autorité ne servent qu'à mesurer l'effet de la délégation dans le jeu.",
+    "Les effets causaux supposés de la culture, de la langue, du RLHF ou d'un fournisseur restent des hypothèses tant qu'un protocole contrôlé et répété ne les établit pas."
+  ],
+  "sources": [
+    {
+      "id": "galindez-giraldo-2025-trust",
+      "title": "Trust in AI emerges from distrust in humans: A machine learning study on decision-making guidance",
+      "authors": ["Johan Sebastián Galindez-Acosta", "Juan José Giraldo-Huertas"],
+      "publisher": "arXiv / University of La Sabana",
+      "published_on": "2025-11-20",
+      "url": "https://arxiv.org/abs/2511.16769",
+      "pages_reviewed": 40,
+      "method": {
+        "design": "Étude exploratoire de choix de guide dans 30 scénarios textuels statiques factuels, émotionnels et moraux.",
+        "sample": "55 étudiants de premier cycle en psychologie et soins infirmiers, hispanophones natifs, Université de La Sabana, Colombie.",
+        "analysis": ["K-Modes", "K-Means", "XGBoost", "SHAP"]
+      },
+      "findings": [
+        "Les adultes sont choisis dans 35,05 % des décisions et l'IA dans 28,29 % ; l'IA domine le groupe de scénarios factuels.",
+        "Une confiance préalable plus faible envers adultes, pairs ou prêtres est associée à davantage de choix de l'IA : hypothèse de confiance différée.",
+        "La fluidité et l'apparente neutralité peuvent favoriser la déférence sans démontrer une meilleure exactitude.",
+        "Le profil de forte confiance envers l'IA est associé de façon exploratoire à une moindre confiance humaine, un moindre usage technologique et un statut socio-économique plus élevé."
+      ],
+      "limitations": [
+        "Petit échantillon de convenance, homogène, jeune et issu d'une seule institution et culture.",
+        "Scénarios statiques et choix déclarés ; pas de crise dynamique, de coût réel ni de mesure nucléaire.",
+        "Les associations de modèles prédictifs ne démontrent pas la causalité ni une généralisation interculturelle.",
+        "Le papier ne teste ni le raisonnement en japonais ni un effet 95 % vers 17 %."
+      ],
+      "game_mechanics": ["source_specific_trust", "deferred_trust", "trust_calibration", "appropriate_override", "wrong_deference", "ai_literacy"]
+    },
+    {
+      "id": "sipri-2025-ai-nuclear-risk",
+      "title": "Impact of Military Artificial Intelligence on Nuclear Escalation Risk",
+      "authors": ["Vladislav Chernavskikh", "Jules Palayer"],
+      "publisher": "SIPRI",
+      "published_on": "2025-06-01",
+      "url": "https://www.sipri.org/publications/2025/sipri-insights-peace-and-security/impact-military-artificial-intelligence-nuclear-escalation-risk",
+      "doi": "10.55163/FZIW8544",
+      "pages_reviewed": 12,
+      "method": {
+        "design": "Cadre conceptuel des voies socio-techniques par lesquelles l'IA militaire, y compris non nucléaire, peut affecter le risque d'escalade nucléaire.",
+        "sample": "Revue analytique des systèmes d'aide à la décision, de l'autonomie à potentiel de contre-force et des facteurs de contexte."
+      },
+      "findings": [
+        "Les neuf États dotés de l'arme nucléaire sont la Chine, la France, Israël, l'Inde, la Corée du Nord, le Pakistan, la Russie, le Royaume-Uni et les États-Unis.",
+        "L'escalade peut être délibérée, involontaire par franchissement imprévu d'un seuil, ou accidentelle par erreur ou action non autorisée.",
+        "Une aide à la décision descriptive, prédictive ou prescriptive peut orienter le décideur par sa sélection, son formatage, sa formulation et son opacité.",
+        "La compression du temps, l'automatisation, le biais, la fragilité, les hallucinations, le désapprentissage et les attaques contre la confidentialité, l'intégrité ou la disponibilité augmentent certains risques.",
+        "L'amélioration ISR et la contre-force peuvent menacer la capacité de seconde frappe, surtout pour une force petite ou peu diversifiée, et créer des incitations à l'emploi en premier.",
+        "L'IA traite mieux certains problèmes physiques que les mystères d'intention, de détermination et de perception adverse."
+      ],
+      "limitations": [
+        "Le papier propose un cadre de risque et des pistes de recherche, pas des probabilités universelles d'escalade.",
+        "Plusieurs doctrines, architectures de commandement et capacités sont opaques ou contestées.",
+        "L'effet net de l'IA dépend du système, des données, de l'organisation, de l'adversaire et du contexte de crise."
+      ],
+      "game_mechanics": ["escalation_kind", "dss_role", "decision_window", "data_integrity", "recommendation_saturation", "second_strike_survivability", "entanglement", "authorization_layers", "cross_checks", "hotline"]
+    },
+    {
+      "id": "cetas-2023-ai-wargaming",
+      "title": "Artificial Intelligence in Wargaming: An evidence-based assessment of AI applications",
+      "authors": ["Anna Knack", "Rosamund Powell"],
+      "publisher": "Centre for Emerging Technology and Security, The Alan Turing Institute",
+      "published_on": "2023-06-01",
+      "url": "https://cetas.turing.ac.uk/publications/artificial-intelligence-wargaming",
+      "pages_reviewed": 60,
+      "method": {
+        "design": "Revue de littérature, 25 entretiens, études de cas et atelier réunissant plus de 40 experts.",
+        "scope": "Segments de wargames analytiques manuels comportant des éléments partiellement simulés."
+      },
+      "findings": [
+        "Les apports recherchés sont l'efficacité de conception et d'exécution, l'aide à la décision et l'amélioration des enseignements.",
+        "Les usages proches comprennent transcription, traduction, collecte, première passe de scénario, génération d'injects et aide à l'analyse.",
+        "Les usages à haut risque et fort rendement comprennent analyse de cours d'action, arbitrage par IA et analyse comportementale des joueurs.",
+        "Les applications tactiques, quantifiées, régies par des règles ou abductives sont plus mûres que les décisions stratégiques à causalité floue.",
+        "Gamebreaker, BrainSTORM, SHADE, COMBAT et SCEPTER illustrent des pistes, mais les preuves publiques et méthodes détaillées restent souvent limitées.",
+        "Si l'IA résout entièrement le jeu, elle peut supprimer précisément l'observation de la décision humaine qui donne sa valeur au wargame."
+      ],
+      "limitations": [
+        "État de l'art 2023 naissant et fortement influencé par le battage autour de l'IA.",
+        "Peu de validations publiques comparables et de preuves d'efficacité en conditions opérationnelles.",
+        "L'arbitrage stratégique souffre de résultats inconnus, d'une causalité disputée et de l'absence de tables de vérité.",
+        "Risques de surconfiance immersive, souveraineté des données, dépendance cognitive, désapprentissage, responsabilité et interface inadéquate."
+      ],
+      "use_cases": {
+        "design": ["red_team_agents", "procedural_content", "scenario_and_inject_generation", "gameplay_testing"],
+        "execution": ["opponent_response", "adjudication", "tactical_decisions", "course_of_action_support", "virtual_assistant"],
+        "analysis": ["interesting_interactions", "decision_capture", "player_behavior_analysis"],
+        "logistics": ["translation", "knowledge_collation", "transcription"]
+      },
+      "game_mechanics": ["parallel_human_adjudication", "discarded_options", "epistemic_model", "verification_and_validation", "progressive_trust", "data_sovereignty"]
+    },
+    {
+      "id": "black-darken-2024-scaling-ai-wargaming",
+      "title": "Scaling Artificial Intelligence for Digital Wargaming in Support of Decision-Making",
+      "authors": ["Scotty Black", "Christian Darken"],
+      "publisher": "NATO STO / Naval Postgraduate School",
+      "published_on": "2024-02-08",
+      "url": "https://arxiv.org/abs/2402.06075",
+      "pages_reviewed": 18,
+      "method": {
+        "design": "Architecture de recherche pour des agents de simulation de combat fondés sur l'apprentissage par renforcement hiérarchique.",
+        "scope": "Décisions longues et espaces d'états comportant des centaines ou milliers d'entités."
+      },
+      "findings": [
+        "Un wargame est centré sur des personnes qui décident et vivent avec les conséquences ; son enseignement principal concerne la décision sous incertitude.",
+        "Le concept centaure associe calcul machine et contexte, intuition, contrôle qualité et finalité stratégique humaine.",
+        "La décomposition hiérarchique rend réutilisables des compétences et permet des décisions à plusieurs niveaux d'abstraction et de durée.",
+        "Une solution optimale dans une décomposition hiérarchique n'est pas nécessairement optimale pour le problème original.",
+        "Les observations localisées et invariantes à la dimension réduisent l'espace de calcul tout en conservant une information distante atténuée.",
+        "Une approche multi-modèles peut évaluer plusieurs politiques spécialisées puis sélectionner dynamiquement le comportement adapté."
+      ],
+      "limitations": [
+        "Les succès dans les jeux aux règles fixes ne se transposent pas automatiquement à la guerre réelle.",
+        "Le DRL peut être instable, surapprendre des trajectoires et demander beaucoup de données.",
+        "Le cadre décrit une recherche en cours ; les niveaux manager et commander restaient des étapes suivantes.",
+        "Les objectifs de récompense et abstractions choisies structurent fortement ce que l'agent apprend."
+      ],
+      "research_goals": [
+        "hierarchical_agents_decisions_policies",
+        "multi_layer_hrl_training",
+        "dimension_invariant_observations",
+        "dynamic_multi_model_switching",
+        "low_and_high_fidelity_scalability"
+      ],
+      "game_mechanics": ["decision_hierarchy", "temporal_abstraction", "reusable_skills", "model_router", "local_observation", "centaur_quality_control"]
+    }
+  ],
+  "implementation_matrix": [
+    {
+      "id": "structured_deliberation",
+      "claim_basis": ["payne-2026-ai-arms-influence", "cetas-2023-ai-wargaming", "black-darken-2024-scaling-ai-wargaming"],
+      "implementation": "Chaque agent observe, génère des options, les note, les conteste puis choisit ; l'application conserve facteurs, incertitude, option retenue et options rejetées sans exposer de chaîne de pensée privée.",
+      "metrics": ["option_diversity", "discard_rate", "forecast_error", "signal_action_gap", "decision_latency"]
+    },
+    {
+      "id": "human_authority",
+      "claim_basis": ["sipri-2025-ai-nuclear-risk", "cetas-2023-ai-wargaming", "black-darken-2024-scaling-ai-wargaming"],
+      "implementation": "Comparer conseil descriptif, prédiction, prescription, veto humain et délégation simulée avec le même état initial.",
+      "metrics": ["override_rate", "appropriate_override", "wrong_deference", "time_to_decision", "outcome_regret"]
+    },
+    {
+      "id": "calibrated_trust",
+      "claim_basis": ["galindez-giraldo-2025-trust", "cetas-2023-ai-wargaming"],
+      "implementation": "La confiance porte sur chaque source et évolue séparément de sa fiabilité observée ; le jeu mesure la confiance différée après défaillance humaine.",
+      "metrics": ["trust_calibration_error", "deferred_trust_delta", "reliance_by_context", "vigilance_after_error"]
+    },
+    {
+      "id": "nuclear_risk_pathways",
+      "claim_basis": ["sipri-2025-ai-nuclear-risk", "payne-2026-ai-arms-influence"],
+      "implementation": "Séparer escalade délibérée, involontaire et accidentelle, puis faire varier délai, intégrité des données, entrelacement, seconde frappe et autorisations.",
+      "metrics": ["nuclear_use_rate", "escalation_kind_rate", "false_alarm_rate", "authorization_bypass_rate", "survivability_loss"]
+    },
+    {
+      "id": "multi_model_local",
+      "claim_basis": ["black-darken-2024-scaling-ai-wargaming", "cetas-2023-ai-wargaming"],
+      "implementation": "Exécuter les modèles locaux séquentiellement, persister chaque cellule et décharger entre modèles afin de rester compatible mono-GPU.",
+      "metrics": ["completion_rate", "tokens_per_second", "peak_vram", "model_disagreement", "run_cost"]
+    }
+  ],
+  "unverified_claims": [
+    {
+      "id": "japanese-language-95-to-17",
+      "claim": "Raisonner en japonais ferait passer une probabilité de frappe nucléaire de 95 % à 17 %.",
+      "status": "not_supported_by_reviewed_sources",
+      "finding": "Dans AI Arms and Influence, 17 % désigne le franchissement tactique de Gemini en partie ouverte, contre 100 % sous échéance. Aucun test japonais n'y est rapporté.",
+      "test_protocol": "Traduction aller-retour contrôlée, mêmes modèles et paramètres, ordre randomisé, au moins 30 répétitions par langue et scénario, codage aveugle, intervalles de confiance et correction des comparaisons multiples."
+    }
+  ]
+}

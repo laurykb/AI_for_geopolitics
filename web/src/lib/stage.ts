@@ -64,6 +64,8 @@ export function tensionLevel(
 /** [longitude, latitude] des capitales des pays connus. Un pays inventé n'a pas de
  * position : il n'apparaît pas sur la carte (règle existante, conservée). */
 export const CAPITALS: Record<string, [number, number]> = {
+  algeria: [3.06, 36.75], // Alger
+  argentina: [-58.38, -34.6], // Buenos Aires
   usa: [-77.04, 38.9], // Washington
   china: [116.4, 39.9], // Pékin
   iran: [51.39, 35.7], // Téhéran
@@ -88,6 +90,14 @@ export const CAPITALS: Record<string, [number, number]> = {
   turkey: [32.85, 39.93], // Ankara
   israel: [35.21, 31.78], // Jérusalem (siège du gouvernement)
   south_korea: [126.98, 37.57], // Séoul
+  north_korea: [125.75, 39.03], // Pyongyang
+  pakistan: [73.05, 33.69], // Islamabad
+  democratic_republic_congo: [15.27, -4.44], // Kinshasa
+  mali: [-8.0, 12.64], // Bamako
+  senegal: [-17.47, 14.72], // Dakar
+  singapore: [103.82, 1.35], // Singapour
+  tunisia: [10.18, 36.81], // Tunis
+  united_arab_emirates: [54.38, 24.45], // Abou Dabi
 };
 
 /** Centre du sommet : centroïde des capitales présentes (cible par défaut des arcs). */
@@ -149,26 +159,6 @@ export class StageQueue {
 }
 
 // --- divers -------------------------------------------------------------------------
-
-/** Point d'extension (son, haptique…) : G1 n'émet rien, le hook existe pour plus tard. */
-export type StageEventName =
-  | "event"
-  | "turn_start"
-  | "message_done"
-  | "verdict"
-  | "motion_verdict"
-  | "suspended"
-  | "done";
-
-let stageListener: ((name: StageEventName) => void) | null = null;
-
-export function onStageEvent(listener: ((name: StageEventName) => void) | null): void {
-  stageListener = listener;
-}
-
-export function emitStageEvent(name: StageEventName): void {
-  stageListener?.(name);
-}
 
 /** `prefers-reduced-motion` : tout devient transitions d'opacité simples. La classe
  * `noanim` (Réglages G14 « désactiver toutes les animations ») force le même

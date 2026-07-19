@@ -1,5 +1,10 @@
 # Recherche fonctionnalités — nouvelles mécaniques & approfondissements
 
+> ⚠️ **Réserve d'idées — hors du cap courant.** Une partie de ces mécaniques (le lot G18-G24)
+> a été **écartée** au resserrement gameplay ([`docs/JEU_VS_MOTEUR.md`](JEU_VS_MOTEUR.md) §5).
+> On les garde comme réserve si l'axe « plateforme d'éval » redevient un jour prioritaire — ce
+> n'est pas le cap. Ce document ne fait pas autorité sur le jeu livré.
+
 > Livrable Cowork (2026-07-15). Recherche approfondie multi-agents : 5 axes, 23 sources
 > lues, 114 affirmations extraites, les 25 centrales vérifiées par votes adversariaux
 > (3 vérificateurs indépendants chacune) : **24 confirmées, 1 réfutée**. Les axes 1-2

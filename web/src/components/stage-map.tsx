@@ -10,7 +10,7 @@
 import { geoNaturalEarth1, geoPath } from "d3-geo";
 import { useMemo } from "react";
 
-import { ISO_NUM, speakerMeta } from "@/lib/countries";
+import { ISO_NUM, MAP_POINT_COUNTRIES, speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
 import { CAPITALS, uTint } from "@/lib/stage";
 import { WORLD_FEATURES } from "@/lib/world";
@@ -138,6 +138,40 @@ export function StageMap({
             );
           })}
 
+          {/* Micro-États absents du fond world-atlas 110m (ex. Singapour). */}
+          {countries.filter((slug) => MAP_POINT_COUNTRIES.has(slug)).map((slug) => {
+            const xy = capital(slug);
+            if (!xy) return null;
+            const isSuspended = suspendedSet.has(slug);
+            const isSpeaking = slug === speaking;
+            const fill = isSpeaking
+              ? "var(--accent-bright)"
+              : isSuspended
+                ? SUSPENDED_FILL
+                : uTint(uByCountry[slug] ?? utopia);
+            return (
+              <circle
+                key={`point-${slug}`}
+                cx={xy[0]}
+                cy={xy[1]}
+                r={isSpeaking ? 5.5 : 4.5}
+                fill={fill}
+                stroke={isSpeaking ? "var(--accent-bright)" : "var(--ocean-night)"}
+                strokeWidth={isSpeaking ? 2 : 1.2}
+                opacity={isSuspended ? 0.7 : 0.95}
+                className={isSpeaking ? "stage-country stage-country-speaking" : "stage-country"}
+              >
+                <title>
+                  {isSpeaking
+                    ? `${speakerMeta(slug).label} — a la parole`
+                    : isSuspended
+                      ? `${speakerMeta(slug).label} — suspendu ce round (au banc)`
+                      : `${speakerMeta(slug).label} — U locale ${fmt(uByCountry[slug] ?? utopia)}`}
+                </title>
+              </circle>
+            );
+          })}
+
           {/* Voile de brouillard : les pays désinformés voient un autre monde. */}
           {Object.keys(misled).map((slug) => {
             const iso = ISO_NUM[slug];
@@ -155,6 +189,25 @@ export function StageMap({
               </path>
             );
           })}
+          {Object.keys(misled)
+            .filter((slug) => MAP_POINT_COUNTRIES.has(slug))
+            .map((slug) => {
+              const xy = capital(slug);
+              if (!xy) return null;
+              return (
+                <circle
+                  key={`veil-point-${slug}`}
+                  cx={xy[0]}
+                  cy={xy[1]}
+                  r="6"
+                  fill="#3b82f6"
+                  opacity={0.3}
+                  className="stage-veil"
+                >
+                  <title>{`${speakerMeta(slug).label} — trompé : « ${misled[slug]} »`}</title>
+                </circle>
+              );
+            })}
 
           {/* Assombrissement bref quand l'événement tombe. */}
           {pulseActors.length > 0 && (

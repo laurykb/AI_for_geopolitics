@@ -121,6 +121,29 @@ def test_bet_unknown_market_returns_404(client):
     assert resp.status_code == 404
 
 
+def test_market_payloads_are_bounded_and_finite(client):
+    assert client.post("/api/accounts", json={"name": "x", "balance": 1001}).status_code == 422
+    assert client.post("/api/accounts", json={"name": "x" * 81}).status_code == 422
+    assert (
+        client.post(
+            "/api/markets",
+            json={"round_id": 1, "question": "q" * 501, "b": 20, "labels": ["YES", "NO"]},
+        ).status_code
+        == 422
+    )
+    market = _open_trajectory_market(client)
+    account = _account(client)
+    assert _bet(client, account, market, market["outcomes"][0]["id"], 1001).status_code == 422
+
+
+def test_api_rejects_naked_short_sale(client):
+    market = _open_trajectory_market(client)
+    account = _account(client)
+    response = _bet(client, account, market, market["outcomes"][0]["id"], -5)
+    assert response.status_code == 400
+    assert "position insuffisante" in response.json()["detail"]
+
+
 # --- résolution + leaderboard ----------------------------------------------
 
 def test_resolve_trajectory_round_settles_and_ranks(client):

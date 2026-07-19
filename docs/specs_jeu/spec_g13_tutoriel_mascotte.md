@@ -50,8 +50,11 @@ attributs `data-tour`.
 
 - Étapes 6-9 : sur une **partie de démonstration** (game jetable créée en mode
   spectateur, non classée, 0 round joué) — pas de simulation à blanc à maintenir.
-- La bulle : tête-logo (`mascotte-tete.svg`) + texte court (≤ 2 phrases) + Suivant /
-  Passer ; positionnée par `getBoundingClientRect` avec repli plein écran sur mobile.
+- La bulle : tête-logo (`mascotte-tete.svg`) + texte court (≤ 2 phrases) + Retour /
+  Suivant / Passer ; positionnée par `getBoundingClientRect` avec repli plein écran sur mobile.
+- **Retour** rejoint la dernière étape explicative et ignore les jalons silencieux. Si
+  l'action demandée a déjà été accomplie, l'étape reste consultable et le joueur peut
+  reprendre avec Suivant sans rejouer l'action.
 - `prefers-reduced-motion` : aucune animation d'entrée de la mascotte.
 
 ## Répartition
@@ -66,7 +69,7 @@ attributs `data-tour`.
 
 ## Tests attendus
 
-Moteur : `next()`, `skip()`, `resume()` purs et testés ; une étape dont la cible manque
+Moteur : `next()`, `previous()`, `skip()`, `resume()` purs et testés ; une étape dont la cible manque
 est sautée sans crash ; le flag empêche la re-proposition ; la démo jetable n'apparaît
 ni dans « Tes dernières parties » ni au leaderboard.
 

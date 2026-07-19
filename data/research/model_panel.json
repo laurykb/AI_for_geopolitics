@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "reviewed_on": "2026-07-18",
+  "hardware_profile": {
+    "gpu": "NVIDIA GeForce RTX 2060 SUPER",
+    "vram_mib": 8192,
+    "execution_policy": "Un seul modèle chargé à la fois ; contexte de recherche plafonné ; persistance après chaque run.",
+    "scientific_limit": "Ce panel local à poids ouverts ne constitue pas une réplication directe des modèles propriétaires GPT-5.2, Claude Sonnet 4 ou Gemini 3 Flash."
+  },
+  "comparison_rules": [
+    "Comparer d'abord les modèles de 3 à 4 milliards de paramètres entre eux.",
+    "Rapporter séparément le palier 7 à 8 milliards et les modèles plus grands avec déport CPU probable.",
+    "Ne jamais attribuer à la famille du modèle un écart qui peut provenir de la taille, quantification, langue, température ou version du prompt.",
+    "Enregistrer le digest Ollama réel au lancement, pas seulement un tag mutable comme latest.",
+    "Randomiser l'ordre des modèles par bloc et décharger le modèle entre deux familles."
+  ],
+  "models": [
+    {
+      "tag": "llama3.2:3b",
+      "family": "Meta Llama 3.2",
+      "parameter_tier": "3-4b",
+      "expected_size_gb": 2.0,
+      "role": "core_comparison",
+      "source": "https://ollama.com/library/llama3.2",
+      "known_digest": "a80c4f17acd5"
+    },
+    {
+      "tag": "gemma3:4b",
+      "family": "Google Gemma 3",
+      "parameter_tier": "3-4b",
+      "expected_size_gb": 3.3,
+      "role": "core_comparison",
+      "source": "https://ollama.com/library/gemma3",
+      "known_digest": "a2af6cc3eb7f"
+    },
+    {
+      "tag": "qwen3:4b",
+      "family": "Alibaba Qwen 3",
+      "parameter_tier": "3-4b",
+      "expected_size_gb": 2.5,
+      "role": "core_comparison",
+      "source": "https://ollama.com/library/qwen3",
+      "known_digest": "359d7dd4bcda"
+    },
+    {
+      "tag": "phi4-mini:3.8b",
+      "family": "Microsoft Phi-4 Mini",
+      "parameter_tier": "3-4b",
+      "expected_size_gb": 2.5,
+      "role": "core_comparison",
+      "source": "https://ollama.com/library/phi4-mini",
+      "known_digest": "78fad5d182a7"
+    },
+    {
+      "tag": "mistral:latest",
+      "family": "Mistral 7B v0.3",
+      "parameter_tier": "7-8b",
+      "expected_size_gb": 4.4,
+      "role": "capacity_comparison",
+      "source": "https://ollama.com/library/mistral",
+      "known_digest": "6577803aa9a0"
+    },
+    {
+      "tag": "qwen2.5:7b-instruct",
+      "family": "Alibaba Qwen 2.5",
+      "parameter_tier": "7-8b",
+      "expected_size_gb": 4.7,
+      "role": "capacity_comparison",
+      "source": "https://ollama.com/library/qwen2.5",
+      "known_digest": "845dbda0ea48"
+    },
+    {
+      "tag": "llama3.1:8b",
+      "family": "Meta Llama 3.1",
+      "parameter_tier": "7-8b",
+      "expected_size_gb": 4.9,
+      "role": "capacity_comparison",
+      "source": "https://ollama.com/library/llama3.1",
+      "known_digest": "46e0c10c039e"
+    },
+    {
+      "tag": "deepseek-r1:7b",
+      "family": "DeepSeek R1 Distill Qwen",
+      "parameter_tier": "7-8b",
+      "expected_size_gb": 4.7,
+      "role": "reasoning_robustness",
+      "source": "https://ollama.com/library/deepseek-r1",
+      "known_digest": "755ced02ce7b"
+    },
+    {
+      "tag": "gpt-oss:latest",
+      "family": "GPT-OSS",
+      "parameter_tier": "large_cpu_offload",
+      "expected_size_gb": 13.0,
+      "role": "slow_robustness_only",
+      "source": "https://ollama.com/library/gpt-oss",
+      "known_digest": "17052f91a42e"
+    },
+    {
+      "tag": "magistral:latest",
+      "family": "Mistral Magistral",
+      "parameter_tier": "large_cpu_offload",
+      "expected_size_gb": 14.0,
+      "role": "slow_robustness_only",
+      "source": "https://ollama.com/library/magistral",
+      "known_digest": "27bcbbf6d324"
+    }
+  ]
+}

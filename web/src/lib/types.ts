@@ -73,11 +73,40 @@ export type MotionView = {
   round_no: number;
 };
 
+export type CastModelView = {
+  tag: string;
+  family: string;
+  digest: string;
+  size_gb: number;
+  benchmark_status: string;
+  warm_run_s: number;
+  load_time_s: number;
+};
+
+export type ModelCastView = {
+  strategy: "balanced" | "manual";
+  models: CastModelView[];
+  assignments: Record<string, string>;
+  game_master_model: string;
+  judge_model: string;
+  max_models_in_memory: number;
+  execution_policy: "sequential_mono_gpu" | string;
+  ranked: false;
+};
+
 export type GameView = {
   id: string;
   scenario: string;
   horizon: number;
   status: GameStatus;
+  phase?:
+    | "ready"
+    | "round_running"
+    | "awaiting_player"
+    | "awaiting_vote"
+    | "round_complete"
+    | "game_complete"
+    | "replay_only";
   created_at: string;
   countries: string[];
   live: boolean;
@@ -100,6 +129,7 @@ export type GameView = {
   drift_enabled: boolean; // G11 — la Dérive peut frapper une SI (transversal)
   result: GameResult | null; // G11-c — bilan de fin de partie (si finie)
   language?: "fr" | "en"; // G14 — langue des dialogues (une partie garde la sienne)
+  model_cast?: ModelCastView | null; // casting figé ; null = modèle unique historique
 };
 
 /** G8/G12 — le rôle choisi à la création (le Spectateur revient par le marché, G12 §3). */
@@ -463,6 +493,45 @@ export type GameDetail = GameView & {
   index_history: Record<string, Record<string, number[]>>;
   // G9 §5 — l'intrigue centrale de la partie
   storyline: string;
+  operational_picture?: OperationalPicture;
+};
+
+export type OntologyObject = {
+  id: string;
+  kind: string;
+  label: string;
+  properties: Record<string, unknown>;
+  provenance: string;
+  confidence: number;
+};
+
+export type OntologyLink = {
+  id: string;
+  kind: string;
+  source: string;
+  target: string;
+  weight: number;
+  provenance: string;
+};
+
+export type OntologyAction = {
+  id: string;
+  round_no: number;
+  actor: string;
+  action_type: string;
+  target: string;
+  summary: string;
+  status: string;
+  confidence: number;
+  provenance: string;
+};
+
+export type OperationalPicture = {
+  schema_version: string;
+  generated_round: number;
+  objects: OntologyObject[];
+  links: OntologyLink[];
+  actions: OntologyAction[];
 };
 
 export type HumanEvent = {
@@ -523,6 +592,13 @@ export type CreateGameBody = {
   free?: boolean; // G11-b — partie libre : non classée + consignes globales autorisées
   language?: "fr" | "en"; // G14 — langue des dialogues (lue par le backend dès CC-3)
   table?: "equilibree" | "colombes" | "faucons" | "aleatoire"; // G17 — partie libre
+  model_cast?: {
+    strategy: "balanced" | "manual";
+    models: string[];
+    assignments?: Record<string, string>;
+    game_master_model?: string;
+    judge_model?: string;
+  };
 };
 
 export type FogScenarioView = {
@@ -582,6 +658,8 @@ export type SseEvent =
   | { type: "date"; date: string }
   | { type: "event"; event: GeoEvent }
   | { type: "turn_start"; country: string; model: string; pass_no: number }
+  | { type: "private_token"; country: string; token: string }
+  | { type: "private_plan_done"; country: string; text: string; valid: boolean }
   | { type: "token"; country: string; token: string }
   | { type: "message_done"; country: string; seconds: number; text: string; reasoning: string }
   | { type: "judge_token"; token: string }
@@ -627,6 +705,8 @@ export type SseEvent =
   | ({ type: "comparison" } & ComparisonView)
   // Joueur-pays (G2) : le flux reste ouvert en attendant le message du joueur
   | { type: "human_turn"; country: string; pass_no: number; deadline_ts?: number }
+  // Vote du pays joué : le scrutin reste ouvert jusqu'au bulletin ou à la deadline
+  | { type: "human_motion_vote"; country: string; target: string; deadline_ts?: number }
   // théâtre Escalation : fait nouveau du GM en pleine négociation
   | { type: "flash"; event: GeoEvent }
   // Agentivité des SI : une SI dépose elle-même une motion en séance
@@ -681,6 +761,7 @@ export type ChapterView = {
   mode: string; // RG-2 — la fiche garde son libellé (classic/crisis/fog…), mappé au démarrage
   difficulty: number;
   horizon: number;
+  countries: string[];
   blurb: string;
   best: number | null;
   improvement: number | null;
@@ -696,6 +777,346 @@ export type CampaignView = {
   tagline: string;
   unlock_score: number;
   chapters: ChapterView[];
+  lab: CampaignLabView;
+};
+
+export type FactorLevel = {
+  id: string;
+  label: string;
+  value: string | number | boolean;
+  hypothesis_only: boolean;
+};
+
+export type ExperimentalFactor = {
+  id: string;
+  label: string;
+  levels: FactorLevel[];
+  randomized: boolean;
+};
+
+export type OutcomeMetric = {
+  id: string;
+  label: string;
+  kind: "binary" | "rate" | "duration" | "score" | "category";
+  primary: boolean;
+  unit: string;
+};
+
+export type ScenarioBeat = {
+  round_no: number;
+  title: string;
+  game_master_event: string;
+  inter_round_activity: string;
+  measurement: string;
+};
+
+export type CountryRoleEligibility = {
+  label: string;
+  description: string;
+  countries: string[];
+};
+
+export type ScenarioCountryEligibility = {
+  scenario_id: string;
+  alpha: CountryRoleEligibility;
+  beta: CountryRoleEligibility;
+  pairing_note: string;
+};
+
+export type ExperimentProtocol = {
+  id: string;
+  title: string;
+  research_question: string;
+  repetitions_per_cell: number;
+  execution_mode: "automated" | "human_interactive";
+  scenario_premise: string;
+  actors: string[];
+  hypotheses: string[];
+  scenario_beats: ScenarioBeat[];
+  country_eligibility?: ScenarioCountryEligibility[];
+  conclusion_rule: string;
+  factors: ExperimentalFactor[];
+  outcomes: OutcomeMetric[];
+  controls: string[];
+  stopping_rules: string[];
+  caveats: string[];
+};
+
+export type ResearchModel = {
+  tag: string;
+  family: string;
+  parameter_tier: string;
+  expected_size_gb: number;
+  role: string;
+  source: string;
+  known_digest: string;
+  installed: boolean;
+  local_digest: string;
+  local_size_bytes: number;
+  modified_at: string;
+  benchmark_status: string;
+  benchmark_wall_time_s: number;
+  benchmark_load_time_s: number;
+  benchmark_warm_run_s: number;
+  benchmark_tokens_per_second: number;
+  benchmark_prompt_version: string;
+};
+
+export type ModelPanel = {
+  schema_version: number;
+  reviewed_on: string;
+  hardware_profile: {
+    gpu: string;
+    vram_mib: number;
+    execution_policy: string;
+    scientific_limit: string;
+  };
+  comparison_rules: string[];
+  models: ResearchModel[];
+  ollama_available: boolean;
+};
+
+export type CampaignLabView = {
+  title: string;
+  purpose: string;
+  classic_mode_unchanged: boolean;
+  protocols: ExperimentProtocol[];
+  execution: {
+    strategy: "sequential";
+    max_models_in_memory: number;
+    persist_after_each_run: boolean;
+    resume_failed_cells: boolean;
+    unload_between_models: boolean;
+    model_order_randomized_per_block: boolean;
+  };
+  guardrails: string[];
+  model_panel: ModelPanel;
+};
+
+export type ExperimentRecord = {
+  id: string;
+  protocol_id: string;
+  title: string;
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  manifest: Record<string, unknown> & { planned_runs?: number; planned_model_calls?: number };
+  cancel_requested: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ExperimentProgress = {
+  experiment: ExperimentRecord;
+  total: number;
+  queued: number;
+  running: number;
+  completed: number;
+  failed: number;
+  cancelled: number;
+  by_model: Record<string, Record<string, number>>;
+};
+
+export type BinomialEstimate = {
+  successes: number;
+  total: number;
+  rate: number;
+  confidence_low: number;
+  confidence_high: number;
+  method: string;
+};
+
+export type ResearchResultGroup = {
+  model_id: string;
+  factors: Record<string, string | number | boolean>;
+  completed: number;
+  nuclear_use: BinomialEstimate;
+  nuclear_signal: BinomialEstimate;
+  moral_constraint: BinomialEstimate | null;
+  appropriate_override: BinomialEstimate | null;
+  wrong_deference: BinomialEstimate | null;
+  mean_outcome_regret: number | null;
+  median_latency_s: number;
+  mean_escalation_peak: number;
+  opponent_model_id: string;
+  mean_turns: number | null;
+  forecast_mae: number | null;
+  forecast_exact_rate: number | null;
+  severe_underestimate_rate: number | null;
+  signal_match_rate: number | null;
+  accident_rate: number | null;
+  alpha_win_rate: number | null;
+};
+
+export type ExperimentSummary = {
+  verdict:
+    | "running"
+    | "descriptive"
+    | "replicated"
+    | "qualified"
+    | "not_replicated"
+    | "insufficient_data";
+  verdict_label: string;
+  explanation: string;
+  primary_metric: string;
+  planned: number;
+  completed: number;
+  failed: number;
+  error_rate: number;
+  minimum_repetitions_per_group: number;
+  groups: ResearchResultGroup[];
+  caveats: string[];
+};
+
+export type ExperimentView = {
+  progress: ExperimentProgress;
+  worker_running: boolean;
+  summary: ExperimentSummary;
+  samples: DeliberationSample[];
+  live_traces: LiveActorTrace[];
+};
+
+export type ExperimentalRoundRecord = {
+  round_no: number;
+  event_seen: string;
+  forecast: string;
+  public_signal: string;
+  chosen_action: string;
+  activity_response: string;
+  escalation_level: number;
+};
+
+export type DeliberationCourse = {
+  id: string;
+  label: string;
+  expected_effects: string[];
+  risks: string[];
+  confidence: number;
+  rejected_reason: string;
+};
+
+export type DeliberationSample = {
+  model_id: string;
+  factors: Record<string, string | number | boolean>;
+  repetition: number;
+  round_records: ExperimentalRoundRecord[];
+  opponent_model_id: string;
+  strategic_turns: StrategicTurn[];
+  strategic_metrics: StrategicMetrics | null;
+  game_winner: string;
+  game_end_reason: string;
+  final_balance: number | null;
+  trace: {
+    situation_summary: string;
+    courses_of_action: DeliberationCourse[];
+    challenge_summary: string;
+    selected_course_id: string;
+    selection_factors: string[];
+    public_statement: string;
+  } | null;
+};
+
+export type StrategicTurn = {
+  game_id: string;
+  turn: number;
+  actor: "alpha" | "beta";
+  opponent: "alpha" | "beta";
+  temporal_condition: "open_ended" | "deadline";
+  turns_remaining: number | null;
+  system_prompt: string;
+  context_prompt: string;
+  deliberation_stream?: string;
+  reflection: {
+    opponent_signal_credibility: number;
+    opponent_resolve_credibility: number;
+    self_forecasting: number;
+    self_credibility_assessment: number;
+    self_metacognition: number;
+    opponent_forecasting: number;
+    opponent_credibility_assessment: number;
+    opponent_metacognition: number;
+    situation: string;
+    branches: Array<{
+      id: number;
+      course_of_action: string;
+      anticipated_response: string;
+      expected_effect: string;
+      second_order_effect: string;
+      disconfirming_indicator: string;
+      mandate_utility: number;
+      escalation_risk: number;
+      confidence: number;
+    }>;
+    selected_branch: number;
+    selection_criterion: string;
+    key_uncertainty: string;
+    intelligence_gaps: string[];
+    human_review_trigger: string;
+  };
+  forecast: {
+    predicted_action: string;
+    confidence: "low" | "medium" | "high";
+    miscalculation_risk: "low" | "medium" | "high";
+    reasoning: string;
+  };
+  decision: {
+    signal_action: string;
+    conditional_signal: string;
+    public_statement: string;
+    chosen_action: string;
+    consistency_statement: string;
+    private_rationale: string;
+  };
+  resolved_action: string | null;
+  accident: boolean;
+  accident_private_to: string | null;
+};
+
+export type LiveActorTrace = {
+  actor: "alpha" | "beta";
+  country: string;
+  model_id: string;
+  turn: number;
+  phase: "planning" | "forecast" | "decision" | "complete";
+  system_prompt: string;
+  context_prompt: string;
+  deliberation_stream?: string;
+  reflection: StrategicTurn["reflection"] | null;
+  forecast: StrategicTurn["forecast"] | null;
+  decision: StrategicTurn["decision"] | null;
+};
+
+export type StrategicMetrics = {
+  observations: number;
+  forecast_mae: number | null;
+  forecast_bias: number | null;
+  exact_forecast_rate: number | null;
+  severe_underestimate_rate: number | null;
+  signal_match_rate: number | null;
+  action_above_signal_rate: number | null;
+  action_below_signal_rate: number | null;
+  average_signal_gap: number | null;
+  accident_rate: number | null;
+  deliberate_strategic_war_rate: number | null;
+  resolved_strategic_war_rate: number | null;
+  concession_rate: number | null;
+};
+
+export type HumanTrialView = {
+  run_id: string;
+  experiment_id: string;
+  repetition: number;
+  factors: Record<string, string | number | boolean>;
+  context: string;
+  ai_output: string;
+  proposed_choice: "verify" | "execute";
+  authority_instruction: string;
+};
+
+export type HumanTrialSubmission = {
+  experiment: ExperimentView;
+  correct_choice: "verify" | "execute";
+  ai_choice: "verify" | "execute";
+  appropriate: boolean;
+  debrief: string;
 };
 
 /** G23 — les trois jauges d'une fenêtre de parole + la taille de l'échantillon. */
@@ -839,6 +1260,7 @@ export type AttributeSource = {
   raw_value: number | boolean | null;
   raw_unit: string;
   transformation: string; // clé dans transformations si une formule s'applique
+  source_override?: SourceInfo | null;
 };
 
 export type CountrySources = {
@@ -851,6 +1273,8 @@ export type CountrySources = {
     ideology?: string[];
     strategic_priorities?: string[];
   };
+  /** Imputations et limites de données spécifiques à ce pays. */
+  notes?: string[];
   /** Attribut à part entière, dérivé du registre sourcé (tags → SourcesView.alliances). */
   alliances: string[];
 };
@@ -876,6 +1300,113 @@ export type JudgeRubric = {
   source: string;
 };
 
+export type StrategicSource = {
+  id: string;
+  title: string;
+  publisher: string;
+  url: string;
+  published_on: string;
+  accessed_on: string;
+  source_type: string;
+  authority: "primary_claim" | "official_filing" | "official_government" | string;
+  summary: string;
+  facts: string[];
+  game_mechanics: string[];
+  limitations: string[];
+};
+
+export type StrategicTechnologyRegistry = {
+  methodology: string;
+  researched_at: string;
+  principles: string[];
+  sources: StrategicSource[];
+};
+
+export type AiArmsResearch = {
+  schema_version: number;
+  source: {
+    title: string;
+    author: string;
+    institution: string;
+    published_on: string;
+    arxiv_id: string;
+    url: string;
+    license: string;
+    pages_reviewed: number;
+  };
+  epistemic_guardrails: string[];
+  study_design: {
+    games: number;
+    turns: number;
+    approximate_words: number;
+    move_structure: string;
+    models: string[];
+    known_limitations: string[];
+  };
+  cognitive_architecture: {
+    phase: string;
+    order: number;
+    outputs: string[];
+    game_use: string;
+  }[];
+  scenarios: {
+    id: string;
+    paper_id: string;
+    temporal_condition: "open_ended" | "deadline";
+    deadline_turn: number | null;
+    stakes: string;
+    mechanical_pressure: string;
+    hypotheses: string[];
+  }[];
+  hypotheses: {
+    id: string;
+    paper_sections: string[];
+    claim: string;
+    implementation: string[];
+    metrics: string[];
+    confounders: string[];
+  }[];
+  replication_protocol: {
+    minimum_recommendation: string;
+    controls: string[];
+    exports: string[];
+    safety: string[];
+  };
+};
+
+export type AiWargamingResearch = {
+  schema_version: number;
+  reviewed_on: string;
+  purpose: string;
+  epistemic_guardrails: string[];
+  sources: {
+    id: string;
+    title: string;
+    authors: string[];
+    publisher: string;
+    published_on: string;
+    url: string;
+    pages_reviewed: number;
+    method: Record<string, string | string[]>;
+    findings: string[];
+    limitations: string[];
+    game_mechanics: string[];
+  }[];
+  implementation_matrix: {
+    id: string;
+    claim_basis: string[];
+    implementation: string;
+    metrics: string[];
+  }[];
+  unverified_claims: {
+    id: string;
+    claim: string;
+    status: string;
+    finding: string;
+    test_protocol: string;
+  }[];
+};
+
 export type SourcesView = {
   provenance: Record<string, SourceInfo>;
   transformations: Record<string, string>;
@@ -883,6 +1414,9 @@ export type SourcesView = {
   countries: CountrySources[];
   alliances: Record<string, AllianceInfo>;
   judge_rubric?: JudgeRubric; // absent d'un backend d'avant G18
+  strategic_technology?: StrategicTechnologyRegistry;
+  ai_arms_research?: AiArmsResearch;
+  ai_wargaming_research?: AiWargamingResearch;
 };
 
 export const AXIS_LABELS: Record<string, string> = {

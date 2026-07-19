@@ -14,6 +14,8 @@ dist/
 .env
 *.env
 .mcp.local.json
+# Secret K8s réel dérivé de infra/k8s/secret.example.yaml (jamais committé)
+infra/k8s/secret.yaml
 
 # Modèles & données lourdes
 *.gguf
@@ -23,6 +25,20 @@ data/corpus/
 chroma/
 *.sqlite
 *.db
+*.db-wal
+*.db-shm
+
+# Artefacts temporaires de benchmark, rendu PDF et QA locale
+tmp/
+
+# Node / web (le projet Node vit dans web/ ; voir aussi web/.gitignore — défensif ici)
+node_modules/
+.next/
+
+# Archives (copies de travail, exports tar — ne jamais committer)
+*.tar
+*.tgz
+*.tar.gz
 
 # OS / IDE
 .DS_Store
@@ -31,3 +47,4 @@ chroma/
 
 # Claude Code local (perso, non partagé)
 .claude/settings.local.json
+.tmp/

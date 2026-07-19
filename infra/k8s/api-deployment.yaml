@@ -1,0 +1,60 @@
+# API FastAPI — le moteur de jeu (rounds SSE, marché, sources, campagne, défi).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: theatre-api
+  namespace: theatre
+  labels:
+    app.kubernetes.io/name: theatre-api
+    app.kubernetes.io/component: backend
+spec:
+  # 1 réplique : l'état SQLite est pod-local (pas de session partagée dans
+  # l'esquisse). Scaler > 1 exige un store partagé (Postgres) — chantier futur.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: theatre-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: theatre-api
+        app.kubernetes.io/component: backend
+    spec:
+      containers:
+        - name: api
+          # Image construite localement puis chargée dans kind
+          # (kind load docker-image theatre-api:dev). imagePullPolicy=IfNotPresent
+          # évite un pull réseau de l'image :dev.
+          image: theatre-api:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: theatre-config
+            # Secret optionnel : absent en mode SQLite, le pod démarre quand même.
+            - secretRef:
+                name: theatre-secrets
+                optional: true
+          # Sondes sur /health (cf. app/main.py -> {"status": "ok"}).
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          # Garde-fous de ressources (esquisse — pas un tuning fin de prod).
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"

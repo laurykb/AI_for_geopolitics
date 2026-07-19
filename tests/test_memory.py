@@ -58,3 +58,66 @@ def test_negotiation_prompt_includes_perception_and_memory():
     assert "perception" in prompt.lower()  # fog of war
     assert "Vieux sommet" in prompt  # mémoire réinjectée (une ligne, G9 §1)
     assert "Penchant" not in prompt  # le dump de fiche a disparu (source du radotage)
+
+
+def test_major_nuclear_signal_gap_persists_as_private_observer_memory():
+    world = _world()
+    verdict = Verdict(
+        signals=[{"country": "iran", "classe": "statu_quo", "resume": "reste calme"}],
+        actions=[{"country": "iran", "classe": "nucleaire", "resume": "frappe"}],
+    )
+    update_memories(world, _event(rid=3), [], verdict)
+
+    assert len(world.betrayal_memory["usa"]) == 1
+    assert world.betrayal_memory["usa"][0].actor == "iran"
+    # L'acteur n'enregistre pas sa propre action comme une trahison adverse.
+    assert world.betrayal_memory["iran"] == []
+
+    from agents.prompts import build_negotiation_prompt
+    from simulation.perception import perceive
+
+    event = _event(rid=4)
+    prompt = build_negotiation_prompt(
+        world.countries["usa"], event, world, "(début)", perceive(event, world.countries["usa"])
+    )
+    assert "Mémoire longue de trahison" in prompt
+    assert "pas une vérité sur l'intention" in prompt
+
+
+def test_chosen_scenario_forecast_is_calibrated_against_later_observed_action():
+    world = _world()
+    reasoning = (
+        "FUTUR 1 | option: pression | réponses prévues: "
+        "iran=contre_escalade: sanctions | issue: tension | utilité: 70 | confiance: 80\n"
+        "FUTUR 2 | option: accord | réponses prévues: iran=coopere: accepte | "
+        "issue: accord | utilité: 60 | confiance: 60\n"
+        "CHOIX | FUTUR 1 | motif: levier\nINCERTITUDE | réaction iranienne"
+    )
+    messages = [
+        NegotiationMessage(country="usa", text="Pression.", reasoning=reasoning, pass_no=0),
+        NegotiationMessage(country="iran", text="Nous résistons.", pass_no=0),
+    ]
+    verdict = Verdict(
+        actions=[{"country": "iran", "classe": "non_violente", "resume": "sanctions"}]
+    )
+    update_memories(world, _event(), messages, verdict)
+
+    assert len(world.scenario_forecasts) == 1
+    forecast = world.scenario_forecasts[0]
+    assert forecast.observed_response == "contre_escalade"
+    assert forecast.exact is True
+    assert world.scenario_forecast_metrics["usa"].exact_rate == 1.0
+
+    from agents.prompts import build_negotiation_prompt
+    from simulation.perception import perceive
+
+    next_event = _event(rid=2)
+    prompt = build_negotiation_prompt(
+        world.countries["usa"],
+        next_event,
+        world,
+        "(début)",
+        perceive(next_event, world.countries["usa"]),
+    )
+    assert "CALIBRATION DE TES PRÉVISIONS" in prompt
+    assert "1/1 exactes" in prompt

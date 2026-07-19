@@ -1,0 +1,53 @@
+# Cluster kind local — 1 control-plane + 2 workers.
+# ESQUISSE de la topologie distribuée (roadmap P6/P7). Boot :
+#   kind create cluster --config infra/kind-cluster.yaml
+#
+# Prérequis : Docker Desktop DÉMARRÉ + binaire `kind` installé
+# (https://kind.sigs.k8s.io/docs/user/quick-start/#installation).
+#
+# Objectif : dresser la même topologie que la future prod (un plan de contrôle,
+# des workers qui portent les pods api/web/inférence) mais sur un seul poste.
+
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: theatre
+
+nodes:
+  # -------------------------------------------------------------------------
+  # Plan de contrôle : porte l'API server K8s + héberge l'Ingress nginx.
+  # Les extraPortMappings exposent l'Ingress du cluster sur le poste hôte,
+  # pour ouvrir le jeu à http://localhost/ (sans port-forward manuel).
+  # -------------------------------------------------------------------------
+  - role: control-plane
+    kubeadmConfigPatches:
+      # Étiquette le nœud pour que le DaemonSet ingress-nginx s'y programme
+      # (le manifeste kind d'ingress-nginx cible ingress-ready=true).
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      # Hôte 80  -> Ingress HTTP  (http://localhost/)
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+      # Hôte 443 -> Ingress HTTPS (non configuré dans l'esquisse, réservé)
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP
+
+  # -------------------------------------------------------------------------
+  # Workers : portent la charge (pods api, web ; plus tard Ollama-in-cluster,
+  # Postgres, Redis). Deux workers pour montrer la répartition multi-nœuds.
+  # -------------------------------------------------------------------------
+  - role: worker
+  - role: worker
+
+# -----------------------------------------------------------------------------
+# Note GPU / Ollama : le passthrough GPU vers un nœud kind sous Windows n'est
+# PAS trivial. Dans cette esquisse, l'inférence reste sur l'Ollama de l'HÔTE
+# (Service ExternalName -> host.docker.internal:11434, cf. infra/k8s/ollama.yaml).
+# Le Deployment Ollama-in-cluster (infra/k8s/optional/) est laissé en placeholder
+# pour quand le GPU-in-cluster sera résolu.
+# -----------------------------------------------------------------------------

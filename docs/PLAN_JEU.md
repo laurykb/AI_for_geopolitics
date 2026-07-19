@@ -1,6 +1,13 @@
 # Plan Jeu — du théâtre à un jeu complet
 
-> Suite de `docs/REFONTE_PLAN.md`. Sept phases G0→G6, chacune jouable/montrable en fin de
+> ⚠️ **Journal de travail interne — ne fait pas autorité.** Ce fichier est le log de
+> développement chronologique (des centaines de notes de session). La documentation de
+> **référence** est le [`README.md`](../README.md) + [`docs/JEU_VS_MOTEUR.md`](JEU_VS_MOTEUR.md)
+> (décision de design courante) + [`docs/PRINCIPE_SIMPLICITE.md`](PRINCIPE_SIMPLICITE.md).
+> Des notes anciennes décrivent des états **antérieurs au resserrement gameplay** (5 modes, LP,
+> `legacy/`) ; certains liens internes pointent vers des documents désormais dans `docs/archive/`.
+
+> Suite de `docs/archive/REFONTE_PLAN.md`. Sept phases G0→G6, chacune jouable/montrable en fin de
 > phase. Répartition : **Cowork** = specs de gameplay chiffrées, équilibrage (jouer +
 > analyser), revues, schéma/données ; **Claude Code** = implémentation (une grosse session
 > par bloc, prompts fournis).
@@ -2096,4 +2103,257 @@ L'UI note haut (≈ 26/30) → **REFINE, pas redesign**. Les trois principes per
   `27cc1ec` = RG-1→RG-5 + CC-15b).
 
 <!-- fin section RG-6 -->
+
+## CLEANUP-A — Hygiène du dépôt & code mort (2026-07-17)
+
+Passe « vitrine GitHub » : supprimer le mort / les artefacts obsolètes **sans toucher au
+comportement du jeu** (branche `chore/cleanup-a-hygiene`, base `e1ec82a`). Bilan : le dépôt
+*suivi* est déjà très propre — l'essentiel du travail a été de **prouver ce qui devait rester**.
+
+### Ce qui a été fait
+- **`.gitignore` durci** (`0832b5a`, `build:`) : ajout de `*.tar`/`*.tgz`/`*.tar.gz` (seule vraie
+  lacune — l'ancienne copie tar `web/_cloud_wip4` n'était couverte par aucune règle) + entrées
+  défensives `node_modules/` et `.next/` (déjà couvertes finement par `web/.gitignore`, mais
+  rendues explicites au niveau racine). `games.db`, `.venv`, `__pycache__` étaient **déjà**
+  couverts (`*.db`, `.venv/`, `__pycache__/`). Vérifié : aucun artefact (`__pycache__`,
+  `.ruff_cache`) n'est suivi — tout est correctement ignoré.
+
+### Ce qui a été REFUSÉ (preuve à l'appui)
+- **`legacy/` conservé intégralement.** `legacy/game.py` (`GameSession`, `AGENT_LLM`) est un
+  **import vivant** : `tests/test_legacy_game.py` fait `from legacy.game import AGENT_LLM,
+  GameSession` (5 tests réels, non-skippés, dans les 949 verts). Le garde-fou de la mission est
+  explicite : « si un test/mod importe réellement `legacy.*`, NE supprime pas et signale ».
+  Donc **rien** dans `legacy/` n'a été touché (dossier, `.claude/launch.json` `legacy-ui`, extra
+  `ui` de `pyproject.toml`). Le mot « legacy » ailleurs (`from_legacy_mode`, tests de rétro-compat
+  modes/LP/DB, `test_junk_legacy_field`) = sémantique différente, hors périmètre.
+
+### Non existant dans le worktree (rien à supprimer)
+- **`_to_delete/`** et **`web/_cloud_wip4/`** : absents du worktree. C'étaient des dossiers
+  **non-suivis** (untracked) du clone principal, jamais versionnés → ils n'apparaissent pas sur
+  GitHub et ne peuvent pas être retirés via cette branche. À purger manuellement dans le clone
+  live si l'user le souhaite (`C:\...\AI_for_geopolitics\_to_delete`, `web/_cloud_wip4`).
+
+### Barrières vertes (constatées)
+- **pytest : 949 passed, 3 skipped** (218 s) — **inchangé** (aucun fichier Python touché).
+- **ruff : All checks passed** (le dépôt était déjà sans import inutilisé — rien à retirer).
+- **web : `eslint` propre, `next build` OK, vitest 247 passed (32 fichiers)** — inchangé (aucun
+  fichier `web/` touché). Diff total de la passe = `.gitignore` + ce doc uniquement.
+
+### Vigilances pour les passes suivantes (mort entrelacé, non osé ici)
+- **B (backend) / D (docs)** : `legacy/app.py` (82 Ko, coquille Streamlit archivée) est, lui,
+  **vraiment mort** — seul lui importe `streamlit`/`plotly`, personne ne l'importe ni ne le teste.
+  Il ne peut pas partir tant qu'il partage le paquet `legacy/` avec `legacy/game.py` (testé). Piste
+  pour une passe qui a le droit de refactorer : sortir la surface testée de `game.py` (ou déplacer
+  `test_legacy_game.py`), puis supprimer `legacy/app.py` + l'extra `ui`
+  (`streamlit>=1.30, plotly>=5.20`, uniquement utile à cette coquille) + la config `legacy-ui` de
+  `.claude/launch.json` + les mentions Streamlit de `README.md`/`docs/`. Non fait ici : hors garde-fou
+  (import vivant) et = refactor de logique (périmètre B), pas simple suppression.
+- **C (frontend)** : `web/` tracké = propre (configs Next standard, aucun orphelin détecté).
+- **D (docs)** : plusieurs docs (`REFONTE_PLAN.md`, `SESSION_HANDOFF.md`, `DETTE_TECHNIQUE.md`)
+  décrivent encore `legacy/`/Streamlit comme « archivé, encore testé » — cohérent tant que
+  `legacy/game.py` reste ; à rafraîchir si une passe B fait sauter `app.py`.
+
+<!-- fin section CLEANUP-A -->
+
+## CLEANUP-B — Backend, simplification & outillage (2026-07-17)
+
+Passe « vitrine GitHub » côté **backend + outillage racine** (branche `chore/cleanup-b`,
+base `f898274`). Comportement du jeu **strictement préservé** (la suite est le filet).
+Quatre volets, quatre commits atomiques.
+
+### Volet 1 — Retrait du prototype `legacy/` (code mort) — `4c3ae75`
+CLEANUP-A avait **conservé** `legacy/` car `tests/test_legacy_game.py` importait
+`legacy.game` (garde-fou « import vivant »). CLEANUP-B avait mandat explicite de retirer le
+**tout, test compris**. Preuve de mort revérifiée : aucun fichier du chemin vivant (`app/`,
+`simulation/`, `core/`, `agents/`, `rag/`, `inference/`, `storage/`, `market/`) n'importe
+`legacy.*` ; seul `tests/test_legacy_game.py` le faisait ; `legacy/app.py` était le **seul**
+consommateur de `streamlit`/`plotly` du dépôt. Retiré : dossier `legacy/` (3 fichiers dont
+`app.py` 82 Ko), `tests/test_legacy_game.py`, l'extra `ui` de `pyproject.toml` (streamlit +
+plotly), la config `legacy-ui` de `.claude/launch.json`, `legacy*` des packages, et la mention
+`legacy/` de la docstring `app/main.py`. **949 → 944 tests** (les 5 tests legacy partent avec
+leur code). ⚠️ **Passe D** : les docs qui décrivent `legacy/`/Streamlit comme « archivé, encore
+testé » (`DETTE_TECHNIQUE.md` §D8, `REFONTE_PLAN.md`, `SESSION_HANDOFF.md`, `README.md`) sont
+désormais **caduques** → à rafraîchir.
+
+### Volet 2 — Dédup & découpe (comportement préservé)
+- **`_extract_json` factorisé** (`5d649cb`, dette D2.1) : les **4 copies identiques**
+  (`agents/llm_agent`, `market/forecaster`, `simulation/country_forge`,
+  `simulation/dialogue_integrity/message`) → un point unique `inference/json_extract.py`
+  (`extract_json`, module neutre stdlib, importable sans cycle). Consommateurs recâblés (dont
+  `judge`, `game_master`, `motions`, `metered_backend` : leurs 2 imports tardifs « anti-cycle »
+  deviennent directs ; `message` garde un import tardif car son en-tête promet « pas de dép
+  runtime sur inference »). Nouveau `tests/test_json_extract.py` (dont `None` + JSON non-objet).
+- **`game_api.py` amorcé** (`92b5eba`, dette D1, **4118 → 3883 l.**) : deux extractions PURES
+  ré-exportées — `app/game_schemas.py` (les ~22 modèles Pydantic requête/vue + alias, aucun
+  validator) et `app/game_sse.py` (`_jsonable`/`step_event`/`sse_frame`). **Aucune** API publique
+  renommée ; `GameView` (campaign/daily), `step_event`/`sse_frame` (tests) restent importables
+  depuis `app.game_api`.
+  **NON découpé par prudence (avant merge) → reste dette D1** : la couche session
+  (`GameSession`/snapshot/rebuild/horloge/`Deadline`), l'orchestration de round
+  (`_start_round`/`_handle_step`/`_run_stream` — l'ordre sémantique motion > conséquence > crise
+  > événement > fog et l'ordre des trames SSE sont des invariants à **verrouiller par test AVANT**
+  de bouger), les endpoints par domaine, et les DTO **locaux aux handlers**
+  (drift/intel/bot/flash/crises/directives/players — laissés près de leur route). Le découpage
+  restant = une session dédiée, pas un big-bang de fin de passe.
+
+### Volet 3 — Commentaires & lisibilité
+Constat : le backend a **0 module sans docstring** (scan AST sur 9 paquets) — la doc était déjà
+saine (cf. DETTE « dette structurelle, pas de laisser-aller »). Les 3 nouveaux modules
+(`json_extract`, `game_schemas`, `game_sse`) et `serve.py` sont dotés de docstrings de module +
+fonction ; les seams de `game_api` portent un bandeau pointant vers les modules extraits. Pas de
+sur-commentaire du trivial (consigne).
+
+### Volet 4 — Outillage : lanceur une-ligne + requirements.txt — `007db4d`
+- **`serve.py`** (racine, **stdlib SEULE**) : `python serve.py` démarre l'API (uvicorn :8000) ET
+  le front (Next.js :3000). Résout le Python du venv (repli interpréteur courant), `npm install`
+  si `web/node_modules` manque, PORT du front via variable d'env, **avertit** si Ollama absent
+  (127.0.0.1:11434) sans planter, logs préfixés `[api]`/`[web]`/`[serve]`, **Ctrl+C (et Ctrl+Break
+  sous Windows) arrête proprement les deux enfants ET leur arbre**. Ports configurables
+  (`--api-port`/`--web-port`) + `--api-only`/`--web-only`/`--no-ollama-check`.
+  ⚠️ **Leçon Windows** : `next dev` se **re-parente** hors de l'arbre `npm.cmd` (un `cmd.exe`
+  intermédiaire sort) → un `taskkill /T` sur le PID enregistré rate le serveur. Filet retenu :
+  `taskkill /T` sur les PID **plus** un balayage des PID qui écoutent encore nos ports (via
+  `netstat -ano`, décodé tolérant car code page OEM ≠ UTF-8). POSIX : SIGTERM→SIGKILL au groupe
+  (`start_new_session`, pas d'orphelin).
+- **`requirements.txt`** (racine, absent avant) : miroir des deps CORE de `pyproject.toml`
+  (source canonique), extra RAG noté en en-tête.
+- **Smoke réel** sur ports **alternatifs 8010/3010** (jamais 8000/3000) : API `/health` → 200,
+  front répond, `npm install` déclenché, Ctrl+C → arrêt propre (rc 0, **aucun port orphelin**).
+
+### Barrières vertes (constatées)
+- **pytest : 947 passed, 3 skipped** (216 s) — 949 base −5 legacy (+ leur code) +3 `test_json_extract`.
+- **ruff : All checks passed** (imports morts retirés au fil des dédups).
+- **serve.py** : smoke 8010/3010 vert (deux process démarrés, teardown propre).
+
+### Pour la passe D (docs — le contrat à documenter)
+- `serve.py` + `requirements.txt` à documenter dans le **README** selon le CONTRAT ci-dessus
+  (une commande `python serve.py` ; `pip install -r requirements.txt`).
+- `legacy/`/Streamlit **retiré** → purger les mentions « archivé/encore testé » des docs.
+
+<!-- fin section CLEANUP-B -->
+
+## CLEANUP-C — Frontend : simplification, découpe & lisibilité (2026-07-17)
+
+Passe « vitrine GitHub » côté `web/` **uniquement** (branche `chore/cleanup-c`, base `f898274`) :
+découper le monolithe front, dédupliquer, retirer le mort — **comportement et rendu strictement
+préservés** (filet = vitest + eslint + `next build` ; la page théâtre n'a pas de test de rendu, donc
+extractions verbatim vérifiées par tsc + revue). Barrière verte à chaque commit.
+
+### Ce qui a été fait
+- **Code mort retiré** (`f01c6f2`, `chore:`) : `fmtDate` (lib/format, 0 référence) + le bus
+  d'événements de scène spéculatif (`StageEventName`/`onStageEvent`/`emitStageEvent`/`stageListener`
+  dans lib/stage — « point d'extension pour plus tard » jamais câblé). `StageQueue`/`uTint`/`localU`…
+  restent (utilisés + testés). Vérifié par grep : 0 appelant hors tests.
+- **Champs de saisie partagés** (`8edeea0`, `refactor(ui)`) : `TextInput`/`SelectField` dans le kit
+  (`ui.tsx`, base `FIELD_BASE`) remplacent 9 `<input>`/`<select>` recopiés à l'identique dans
+  page.tsx. Rendu identique (mêmes utilitaires Tailwind ; l'ordre sans conflit ne change rien). Les 2
+  petits selects du bloc brouillard + `fogNarrative` (padding `px-2 py-1.5`) **non** convertis (base
+  différente) — conversion aurait été une régression.
+- **Monolithe `games/[id]/page.tsx` découpé : 1768 → 1286 lignes (−27 %)**, en composants/hook
+  cohérents sous `web/src/components/theatre/` + `web/src/lib/` :
+  - `490cf1f` : `TheatreSkeleton`, `CampaignScorePanel`, `StoryPublishPanel` (ce dernier porte
+    désormais l'état `publishing`).
+  - `f4d2f01` : `ObservablesGrid` (~135 l. — Dossier + « Le monde » + « Renseignement » + « La table » ;
+    le gate `showEngine` mode Expert préservé à l'identique).
+  - `2b038f2` : `deriveStageView` (lib/stage-view) — dérivation **pure** « direct vs relecture » sortie
+    du composant, consommée par destructuration (0 site d'appel JSX modifié) + **nouveau test**
+    `stage-view.test.ts` (4 cas) qui verrouille le comportement.
+  - `6d9f919` : `RoundTranscript` (~207 l. — colonne de droite ; splice exact ; le cadre `<aside>`
+    ref/scroll/annonce a11y reste dans page.tsx).
+  - `2ac3a97` : `MotionForm` (le seul sous-bloc du panneau de contrôle à frontière propre).
+- **Tests** : 247 → **251** (les 4 de `stage-view`). eslint 0, `next build` OK à chaque étape.
+- **Revue** (`superpowers:requesting-code-review` + `vercel:react-best-practices`) : **0 Critical /
+  0 Important** — refactor jugé byte-fidèle (props threadées = usage original, gates `showEngine`/fog/
+  ultimatum inchangés, className superset-égal, code mort à 0 référence).
+
+### Dette laissée (par prudence — « stop quand risqué »)
+- **Le panneau de contrôle** (« Jouer un round » + décret d'événement à état multiple : titre/desc/
+  gravité + ultimatum + champs brouillard) reste dans page.tsx. Le découper entièrement demanderait
+  ~21-30 props état+setter interdépendants (ou un refactor d'état groupé/reducer) — sans filet de
+  rendu, ça **déplacerait le fouillis** sans le réduire et risquerait une régression silencieuse. À
+  reprendre avec un test de rendu (RTL) ou un regroupement d'état assumé. `MotionForm` en a été sorti ;
+  le reste est bien commenté et intact.
+- **`ui.test.ts:40`** : une erreur `tsc --noEmit` **préexistante** (quirk d'overload
+  `createElement(Banner, …)`) — hors périmètre (fichier non modifié, `Banner` non touché ; `next build`
+  et vitest passent car les tests ne sont pas type-checkés par le build).
+
+### Fusion
+Périmètre `web/` **disjoint** de B (backend `app/`, `simulation/`…) et D (docs) → fusion triviale
+attendue. 7 commits atomiques, tête = `2ac3a97`.
+
+<!-- fin section CLEANUP-C -->
+
+## CLEANUP-D — Documentation & README (2026-07-17)
+
+Passe « vitrine GitHub », périmètre = documentation seule (`*.md`), disjointe de la passe B
+(code + outillage : `serve.py`, `requirements.txt`, retrait de `legacy/`) et de la passe C
+(`web/`). Réalisé :
+
+- **README réécrit** autour du jeu actuel : accroche « traque du traître » (1 ou 2 IA,
+  nombre caché) + garder le monde debout, pays-agents LLM locaux (Ollama), score mixte
+  monde/détection, 2 modes (Classique + Campagne) avec Brouillard/Réel en réglages, Défi du
+  jour, marché de prédiction, instrumentation M1-M7 en mode Expert. Installation et lancement
+  écrits selon le **contrat de la passe B** : `pip install -r requirements.txt` + `python serve.py`
+  (démarre API :8000 + front :3000, vérifie Ollama, `npm install` auto ; options
+  `--api-only`/`--web-only`/`--api-port`/`--web-port`). Retrait de toute mention `legacy/`/Streamlit
+  comme composant courant.
+- **CLAUDE.md recentré** : « Le projet en une phrase » et « Le nord » placent la Dérive au
+  cœur ; la vision super-intelligences/marché devient le décor intellectuel (le moteur).
+  Pointeur vers `docs/JEU_VS_MOTEUR.md` et double objectif conservés. Lien mort `docs/limitations.md`
+  corrigé.
+- **docs/ rangé** : `docs/archive/` créé (REFONTE_PLAN, SESSION_HANDOFF, PLAN_ACTION_CLAUDE_CODE,
+  DISPATCH_2026-07-14, DISPATCH_2026-07-15) avec un README d'archive ; en-tête « journal interne »
+  ajouté ici ; bannière de réserve sur RECHERCHE_FONCTIONNALITES(_2) ; liens morts `docs/limitations.md`
+  corrigés (vision, spec_alignment_frontier). Aucun historique détruit.
+
+Note pour la passe B : `docs/DETTE_TECHNIQUE.md` liste encore `legacy/` comme « supprimable » —
+cohérent une fois la suppression mergée.
+
+<!-- fin section CLEANUP-D -->
+
+## CLEANUP-E — Esquisse d'orchestration Kubernetes (2026-07-17)
+
+Passe **infra nouvelle uniquement**, disjointe des passes B/C/D : aucun fichier applicatif
+touché (`app/`, `simulation/`, `web/src/`, `serve.py`, tests). Périmètre = nouveaux
+Dockerfiles + dossier `infra/`. **ESQUISSE, pas une prod** (roadmap P6 Docker→K8s, P7
+distribué) : le but est de poser le squelette pour qu'un `kind create cluster` + `kubectl
+apply -k` dresse plus tard la topologie. Le dev quotidien reste `python serve.py`.
+
+Livré :
+
+- **`Dockerfile`** (API, multi-stage `python:3.11-slim`) : builder installe `requirements.txt`
+  dans un préfixe, runtime copie code + deps, non-root, `CMD uvicorn app.main:app :8000`,
+  HEALTHCHECK sur `/health`. ⚠️ La liste de copie inclut **`ingestion/`** (oubli du cadrage) :
+  `app.main → app.sources_api → ingestion.build`, sinon l'import casse au démarrage.
+- **`web/Dockerfile`** (front, multi-stage `node:20-slim`) : deps → build → runtime `next start`.
+  ⚠️ `NEXT_PUBLIC_API_BASE` est **inliné au build** par Next → passé en `--build-arg` (pas
+  seulement via ConfigMap). Standalone non activé (on ne touche pas à `next.config.ts`).
+- **`.dockerignore`** racine + `web/.dockerignore`.
+- **`infra/kind-cluster.yaml`** : 1 control-plane (label `ingress-ready`, ports 80/443 → hôte)
+  + 2 workers.
+- **`infra/k8s/`** (base kustomize) : namespace `theatre`, ConfigMap (STORE_BACKEND, OLLAMA_HOST,
+  CORS_ORIGINS, NEXT_PUBLIC_API_BASE), api Deployment+Service (probes `/health`, Secret
+  `optional:true`), web Deployment+Service, **Ingress** (`/`→web, `/api`→api avec rewrite +
+  annotations SSE). Secret = **template** `secret.example.yaml` (`CHANGE_ME`, hors base ;
+  `infra/k8s/secret.yaml` ajouté au `.gitignore`).
+- **Inférence Ollama = choix d'archi honnête** : Service **ExternalName** → `host.docker.internal:11434`
+  (Ollama de l'hôte, GPU), car le passthrough GPU dans kind/Windows n'est pas trivial. Le
+  Deployment in-cluster est un **placeholder `replicas: 0`** (`optional/ollama-in-cluster.yaml`),
+  à activer quand le GPU-in-cluster sera résolu.
+- **Postgres + Redis** esquissés **désactivés** sous `infra/k8s/optional/` (overlay `# FUTUR`,
+  le jeu tourne en SQLite).
+- **`infra/README.md`** : prérequis, séquence complète de boot, notes GPU/Ollama, RTX 2060
+  8 Go = 1 modèle 7-8B, cadrage esquisse, et « ce qu'une vraie prod ajouterait ».
+
+Validation (client-side, sans cluster — conforme au cadrage : `kind` absent, daemon Docker
+éteint) : `kubectl kustomize infra/k8s` **et** `infra/k8s/optional` compilent ; les 15 fichiers
+YAML parsent. **Constat outillage :** `kubectl apply --dry-run=client` en v1.34 exige la
+discovery d'un API server (RESTMapper) → **ne valide pas hors-ligne** ; `kubectl kustomize`
+est le vrai contrôle client-side disponible. La validation schéma OpenAPI se fera au premier
+`apply` sur cluster réel (ou `kubeconform`, non installé). Aucun test cassé (infra pure).
+
+Reste utilisateur (gestes hors périmètre agent) : installer `kind`, démarrer Docker Desktop,
+puis suivre `infra/README.md` ; PR vers `main`.
+
+<!-- fin section CLEANUP-E -->
 

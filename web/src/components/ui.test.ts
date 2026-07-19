@@ -37,7 +37,9 @@ describe("Hint — bulle d'aide cliquable", () => {
 
 describe("Banner — bordure et liseré par ton (TONE_BORDER)", () => {
   const render = (tone?: "good" | "warn" | "bad" | "neutral") =>
-    renderToStaticMarkup(createElement(Banner, { tone }, "message"));
+    renderToStaticMarkup(
+      createElement(Banner, { tone } as Parameters<typeof Banner>[0], "message"),
+    );
 
   it("chaque ton colore la bordure ET le liseré gauche assortis", () => {
     for (const tone of ["good", "warn", "bad"] as const) {

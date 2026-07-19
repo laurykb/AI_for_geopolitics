@@ -1,0 +1,17 @@
+# Service interne de l'API. ClusterIP : joignable dans le cluster (par le front
+# et par l'Ingress) sous « theatre-api:8000 ». L'exposition publique passe par l'Ingress.
+apiVersion: v1
+kind: Service
+metadata:
+  name: theatre-api
+  namespace: theatre
+  labels:
+    app.kubernetes.io/name: theatre-api
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: theatre-api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http

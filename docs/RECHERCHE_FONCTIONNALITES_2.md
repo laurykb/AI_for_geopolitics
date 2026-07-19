@@ -1,5 +1,9 @@
 # Recherche fonctionnalités — 2ᵉ passe : marché, evals safety, rétention
 
+> ⚠️ **Réserve d'idées — hors du cap courant.** Passe complémentaire à `RECHERCHE_FONCTIONNALITES.md` ;
+> même statut : réserve de recherche, écartée au resserrement gameplay
+> ([`docs/JEU_VS_MOTEUR.md`](JEU_VS_MOTEUR.md) §5). Ne fait pas autorité sur le jeu livré.
+
 > Livrable Cowork (2026-07-15). Passe complémentaire sur les 3 axes restés ouverts :
 > 21 sources, 99 affirmations extraites, 25 vérifiées — **25 confirmées, 0 réfutée**,
 > toutes sur le volet marché (le budget de vérification y est allé en priorité, les

@@ -16,6 +16,7 @@
     "energy_independence": 0.7
   },
   "alliances": [
+    "AfricanUnion",
     "ArabLeague",
     "BRICS"
   ],
@@ -32,6 +33,7 @@
     "regional_mediation",
     "economic_stability"
   ],
+  "temperament": "opportuniste",
   "memory_summary": "",
   "mandate": {}
 }

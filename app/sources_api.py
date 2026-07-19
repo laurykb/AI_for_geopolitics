@@ -9,7 +9,9 @@ change, l'onglet change avec lui.
 
 from __future__ import annotations
 
+import json
 from functools import lru_cache
+from pathlib import Path
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -18,6 +20,7 @@ from ingestion.build import build_all, load_indicators
 from ingestion.normalize import GII_TOTAL
 from simulation.alliances import AllianceInfo, load_alliances
 from simulation.grudges import load_gamefeel_params
+from simulation.strategic_cognition import load_framework as load_ai_arms_framework
 
 router = APIRouter(prefix="/api", tags=["sources"])
 
@@ -42,6 +45,9 @@ class AttributeSource(BaseModel):
     raw_value: float | bool | None = None  # donnée brute si différente de la valeur jeu
     raw_unit: str = ""  # unité de la donnée brute (%, % du PIB, rang, USD…)
     transformation: str = ""  # clé dans TRANSFORMATIONS si une formule s'applique
+    # Un pays à données lacunaires peut remplacer la provenance globale, sans masquer
+    # l'imputation derrière l'étiquette d'un dataset qui ne le couvre pas.
+    source_override: dict | None = None
 
 
 class CountrySources(BaseModel):
@@ -49,8 +55,33 @@ class CountrySources(BaseModel):
     name: str
     attributes: list[AttributeSource]
     profile: dict  # rivaux, système, idéologie, priorités (profil analyste)
+    notes: list[str] = Field(default_factory=list)  # imputations / limites propres au pays
     # Attribut à part entière, DÉRIVÉ du registre sourcé (data/sources/alliances.json).
     alliances: list[str] = Field(default_factory=list)
+
+
+class StrategicSource(BaseModel):
+    """Source primaire sur l'IA opérationnelle, avec sa portée et ses limites."""
+
+    id: str
+    title: str
+    publisher: str
+    url: str
+    published_on: str
+    accessed_on: str
+    source_type: str
+    authority: str
+    summary: str
+    facts: list[str] = Field(default_factory=list)
+    game_mechanics: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+
+
+class StrategicTechnologyRegistry(BaseModel):
+    methodology: str
+    researched_at: str
+    principles: list[str] = Field(default_factory=list)
+    sources: list[StrategicSource] = Field(default_factory=list)
 
 
 class SourcesView(BaseModel):
@@ -63,11 +94,34 @@ class SourcesView(BaseModel):
     # G18 — barème d'escalade du juge (transparence des règles, comme la provenance) :
     # {weights, score_floor, score_ceiling, reciprocal_multiplier, source}.
     judge_rubric: dict = Field(default_factory=dict)
+    strategic_technology: StrategicTechnologyRegistry | None = None
+    # Cadre de réplication traçable du papier AI Arms. Un dict versionné permet au
+    # laboratoire d'évoluer sans casser le contrat historique des données pays.
+    ai_arms_research: dict = Field(default_factory=dict)
+    ai_wargaming_research: dict = Field(default_factory=dict)
 
 
-def _country_rows(country, raw: dict) -> list[AttributeSource]:
+@lru_cache(maxsize=1)
+def _load_strategic_technology() -> StrategicTechnologyRegistry:
+    path = Path(__file__).resolve().parent.parent / "data" / "sources" / "strategic_technology.json"
+    with path.open(encoding="utf-8") as handle:
+        return StrategicTechnologyRegistry.model_validate(json.load(handle))
+
+
+@lru_cache(maxsize=1)
+def _load_ai_wargaming_framework() -> dict:
+    path = (
+        Path(__file__).resolve().parent.parent / "data" / "research" / "ai_wargaming_framework.json"
+    )
+    with path.open(encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def _country_rows(
+    country, raw: dict, provenance_overrides: dict[str, dict] | None = None
+) -> list[AttributeSource]:
     """Les attributs du jeu d'un pays, alignés sur leurs indicateurs sources."""
-    return [
+    rows = [
         AttributeSource(key="gdp", label="PIB", game_value=country.economy.gdp, raw_unit="USD"),
         AttributeSource(
             key="growth_pct",
@@ -90,7 +144,7 @@ def _country_rows(country, raw: dict) -> list[AttributeSource]:
             raw_unit="USD",
         ),
         AttributeSource(
-            key="",  # statut public, pas d'indicateur chiffré dans provenance
+            key="nuclear_power",
             label="Puissance nucléaire",
             game_value=country.military.nuclear_power,
         ),
@@ -127,6 +181,11 @@ def _country_rows(country, raw: dict) -> list[AttributeSource]:
         ),
         AttributeSource(key="compute", label="Compute (M6)", game_value=country.compute),
     ]
+    overrides = provenance_overrides or {}
+    for row in rows:
+        if row.key in overrides:
+            row.source_override = overrides[row.key]
+    return rows
 
 
 @lru_cache(maxsize=1)
@@ -137,8 +196,9 @@ def _sources_view() -> SourcesView:
         CountrySources(
             id=cid,
             name=entry["name"],
-            attributes=_country_rows(built[cid], entry["raw"]),
+            attributes=_country_rows(built[cid], entry["raw"], entry.get("provenance_overrides")),
             profile=entry["profile"],
+            notes=entry.get("notes", []),
             alliances=built[cid].alliances,
         )
         for cid, entry in sorted(indicators["countries"].items())
@@ -157,6 +217,9 @@ def _sources_view() -> SourcesView:
             "reciprocal_multiplier": kahn.reciprocal_multiplier,
             "source": "Rivera et al., FAccT 2024 (arXiv 2401.03408)",
         },
+        strategic_technology=_load_strategic_technology(),
+        ai_arms_research=load_ai_arms_framework(),
+        ai_wargaming_research=_load_ai_wargaming_framework(),
     )
 
 

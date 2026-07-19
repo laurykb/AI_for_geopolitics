@@ -20,12 +20,22 @@ def test_country_alliances_are_derived_from_registry():
     for cid, country in build_all().items():
         assert country.alliances == memberships(cid, reg), f"{cid}: alliances non dérivées"
     built = build_all()
-    # adhésions réelles clés (recherche du 2026-07-07)
+    # adhésions réelles clés (recherche actualisée le 2026-07-18)
     assert "BRICS" in built["iran"].alliances and "SCO" in built["iran"].alliances
     assert "BRICS" in built["egypt"].alliances  # membre depuis janvier 2024
     assert "CPTPP" in built["uk"].alliances  # en vigueur depuis le 15 décembre 2024
     assert "AbrahamAccords" in built["morocco"].alliances
     assert "USKoreaTreaty" in built["south_korea"].alliances
+    assert {"AfricanUnion", "SADC", "EAC"} <= set(
+        built["democratic_republic_congo"].alliances
+    )
+    assert {"ASEAN", "CPTPP", "RCEP", "FPDA"} <= set(built["singapore"].alliances)
+    assert {"BRICS", "GCC", "AbrahamAccords", "I2U2"} <= set(
+        built["united_arab_emirates"].alliances
+    )
+    assert "ECOWAS" in built["senegal"].alliances
+    assert "ECOWAS" not in built["mali"].alliances and "AES" in built["mali"].alliances
+    assert "OPEC" not in built["united_arab_emirates"].alliances
 
 
 def test_describe_alliances_names_treaties_and_falls_back():

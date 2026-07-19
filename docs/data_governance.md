@@ -5,17 +5,20 @@
 Acteurs couverts : `usa`, `china`, `france`, `egypt`, `iran`, `saudi_arabia` (crise mer Rouge),
 et depuis juillet 2026 (extension roster, §2 bis, ajustée §2 ter) : `japan`, `russia`,
 `germany`, `uk`, `spain`, `italy`, `mexico`, `brazil`, `india`, `south_africa`, `australia`,
-`morocco`, `ukraine`, `canada`, `turkey`, `israel`, `south_korea` — **23 acteurs**
+`morocco`, `ukraine`, `canada`, `turkey`, `israel`, `south_korea`, puis l'extension du
+18 juillet 2026 (§2 quinquies) : `algeria`, `argentina`, `democratic_republic_congo`,
+`mali`, `senegal`, `singapore`, `tunisia`, `united_arab_emirates`, puis l'extension
+scientifique nucléaire : `north_korea`, `pakistan` — **33 acteurs**
 (`denmark` retiré du roster le 7 juillet 2026, décision produit).
 Période de référence principale : **2024** (PIB, croissance, défense), avec quelques indices 2023–2025 (détaillés ci-dessous).
-Recherche réalisée : **1ᵉʳ juillet 2026**.
+Recherche initiale : **1ᵉʳ juillet 2026** ; extension actualisée le **18 juillet 2026**.
 
 ## 1. Statut de chaque champ (résumé)
 
 | Champ `CountryState` | Source | Année | Confiance |
 |---|---|---|---|
 | `economy.gdp` | World Bank, *GDP (current US$)* | 2024 | **Élevée** |
-| `economy.growth` | IMF, *World Economic Outlook* (real GDP growth) | 2024 | **Élevée** |
+| `economy.growth` | World Bank, *GDP growth (annual %)* | 2024 | **Élevée** |
 | `military.defense_budget` | SIPRI, *Military Expenditure Database* | 2024 | **Élevée** |
 | `military.nuclear_power` | Fait établi (statut nucléaire militaire) | — | **Élevée** |
 | `technology_level` | WIPO, *Global Innovation Index* (rang) | 2024 | **Élevée** (dérivé d'un rang) |
@@ -80,7 +83,7 @@ figer depuis les bases World Bank/IMF/SIPRI/GII comme le reste du roster** :
 | Pays | PIB 2024 (USD) | Croissance 2024 | Défense 2024 (USD) | GII 2024 |
 |---|---|---|---|---|
 | Turquie | 1 322 Md (approx.) | 3,2 % | 25,0 Md (approx.) | 37ᵉ |
-| Israël | 541 Md | 0,9 % (approx.) | 46,5 Md | 15ᵉ |
+| Israël | 542,3 Md | 1,0 % | 45,92 Md | 15ᵉ |
 | Corée du Sud | 1 870 Md | 2,0 % | 47,6 Md | 6ᵉ |
 
 Limites spécifiques :
@@ -95,18 +98,90 @@ Limites spécifiques :
   d'avril et octobre 2024 — critère « paires actives seulement » du §2 bis). La Turquie
   reste sans rival déclaré (rupture diplomatique Turquie–Israël jugée sous le seuil).
 
-## 2 quater. Alliances & traités — registre sourcé (7 juillet 2026)
+## 2 quinquies. Extension internationale — 18 juillet 2026 (+8 fiches, Israël consolidé)
+
+Israël était déjà jouable : sa fiche a été **mise à jour**, sans créer de doublon. Les
+huit autres profils ont été ajoutés à la source d'indicateurs, au build reproductible,
+au moteur, à la carte, au lobby, à l'onglet Informations et aux lexiques linguistiques.
+
+| Pays | PIB 2024 (USD) | Croissance 2024 | Défense 2024 (USD) | Commerce 2023 (% PIB) | WGI stabilité 2023 | GII 2024 |
+|---|---:|---:|---:|---:|---:|---:|
+| Algérie | 269,3 Md | 3,7 % | 21,81 Md | 44 % | 23,22 | 115ᵉ |
+| Argentine | 638,4 Md | −1,3 % | 4,18 Md | 27 % | 41,71 | 76ᵉ |
+| RDC | 75,7 Md | 6,1 % | 0,90 Md | 87 % | 5,21 | non classée → 133ᵉ imputé |
+| Mali | 26,8 Md | 5,0 % | 0,93 Md | 58 % | 0,47 | 131ᵉ |
+| Sénégal | 32,2 Md | 6,5 % | 0,64 Md | 72 % | 41,23 | 92ᵉ |
+| Singapour | 572,9 Md | 5,3 % | 15,33 Md | 324 % | 97,16 | 4ᵉ |
+| Tunisie | 51,4 Md | 1,6 % | 1,32 Md | 112 % | 22,27 | 81ᵉ |
+| Émirats arabes unis | 552,3 Md | 4,0 % | 22,8 Md *(est.)* | 199 % | 70,14 | 32ᵉ |
+
+Les PIB, croissances et ratios de commerce proviennent des séries World Bank [1][2][5] ;
+les percentiles de stabilité, du WGI [6] ; les rangs d'innovation, du rapport WIPO GII
+2024 [4] ; les dépenses militaires, du classeur SIPRI 2025 portant sur 2024 [3]. Les
+montants conservent la précision machine dans `indicators.json` mais sont arrondis ici.
+
+Limites particulières :
+
+- **RDC** : absente des 133 économies classées par le GII 2024. Le moteur exige une
+  valeur sur la même échelle ; le rang-plancher 133 est donc imputé, et cette limite est
+  affichée sur la fiche Informations.
+- **EAU** : SIPRI ne fournit plus de série exploitable depuis 2014. Le budget de défense
+  2024 est une estimation analyste de 22,8 Md USD, signalée comme incertaine dans l'UI.
+- **Commerce supérieur à 100 % du PIB** (Singapour, EAU, Tunisie) : phénomène possible
+  pour les économies très ouvertes ; la règle historique du jeu plafonne toutefois
+  `trade_dependency` à 1.
+- `projection`, énergie et `compute` restent des calibrages analyste sur l'échelle du
+  roster existant. Ils ne sont pas présentés comme des statistiques officielles.
+
+Alliances ajoutées ou étendues, à partir des listes officielles : Union africaine,
+MERCOSUR, ASEAN, SADC, EAC, CEDEAO, AES, OPEP, FPDA et I2U2 ; ajout des nouveaux membres
+aux BRICS, à la Ligue arabe, au CCG, au CPTPP, au RCEP et aux Accords d'Abraham. Deux
+statuts 2026 sont explicitement traités : retrait effectif du Mali de la CEDEAO en 2025
+et retrait des EAU de l'OPEP au 1ᵉʳ mai 2026. Le Mali reste membre de l'Union africaine
+mais sa participation demeure suspendue ; le registre porte la note au lieu de masquer
+ce statut.
+
+## 2 sexies. Couverture nucléaire mondiale — 18 juillet 2026 (+Pakistan, Corée du Nord)
+
+Le roster couvre désormais les **neuf États dotés de l'arme nucléaire recensés au début
+de 2025 par le SIPRI** [21] : Chine, États-Unis, France, Inde, Israël, Pakistan, Royaume-Uni,
+Russie et Corée du Nord. Les deux nouvelles fiches sont jouables dans tous les modes et
+présentes dans le lobby, les cartes, les lexiques, les relations et le laboratoire.
+
+| Pays | PIB 2024 | Croissance | Défense 2024 | Commerce | WGI stabilité | GII 2024 |
+|---|---:|---:|---:|---:|---:|---:|
+| Pakistan | 371,57 Md USD | 3,0 % | 10,7 Md USD *(dérivé SIPRI)* | 28,47 % | 4,64 | 91ᵉ |
+| Corée du Nord | 32,05 Md USD *(est. BOK)* | 3,7 % *(est. BOK)* | 8 Md USD *(imputé)* | 8,42 % *(dérivé)* | 21,23 | non classée → 133ᵉ imputé |
+
+Le Pakistan utilise les séries Banque mondiale, WGI et WIPO, plus le total SIPRI. Pour la
+Corée du Nord, l'absence de statistiques comparables impose une provenance par pays :
+l'API et l'UI remplacent donc la source globale par l'estimation 2024 de la Banque de
+Corée [22]. Celle-ci avertit que son PIB est calculé avec des prix et ratios de valeur
+ajoutée sud-coréens et **ne doit pas être comparé directement** aux PIB des autres pays.
+
+Le budget militaire nord-coréen de 8 Md USD est une variable de scénario égale à 25 % du
+PIB estimé. Ce n'est pas une mesure : les analyses doivent tester au minimum 20 %, 25 % et
+30 %. Le commerce (8,42 %) est le ratio des 2,7 Md USD d'échanges de biens BOK/KOTRA au
+PIB estimé ; les flux non observés ou illicites n'y figurent pas. Le rang GII plancher est
+également imputé. Ces limites sont affichées sur la fiche pays, attribut par attribut.
+
+Le registre ajoute l'adhésion du Pakistan à l'OCS et les traités Chine–RPDC (1961,
+réaffirmé en 2026) [23] et Russie–RPDC (signé et ratifié en 2024) [24].
+
+## 2 quater. Alliances & traités — registre sourcé (actualisé le 18 juillet 2026)
 
 L'attribut `alliances` de chaque pays n'est **plus codé à la main** : il est **dérivé**
 (par `ingestion.build`) du registre machine-lisible `data/sources/alliances.json` —
-16 accords/traités/blocs réels, chacun avec nom, domaine (militaire/économique/politique),
+28 accords/traités/blocs réels, chacun avec nom, domaine (militaire/économique/politique),
 traité fondateur daté, **URL officielle** et membres (restreints au roster). Les mêmes
 données alimentent l'onglet Informations et les prompts de négociation (les SI citent les
 traités par leur nom).
 
-Accords couverts : OTAN, UE, BRICS, OCS, QUAD, AUKUS, ACEUM/USMCA, G7, Ligue arabe, CCG,
-CPTPP, RCEP, Accords d'Abraham, traités de défense bilatéraux États-Unis–Japon (1960) et
-États-Unis–Corée du Sud (1953), plus le bloc `Western` (marqué `informal` : **codage
+Accords couverts : OTAN, UE, BRICS, OCS, QUAD, AUKUS, ACEUM/USMCA, G7, Union africaine,
+MERCOSUR, ASEAN, SADC, EAC, CEDEAO, AES, OPEP, Ligue arabe, CCG, CPTPP, RCEP, Accords
+d'Abraham, FPDA, I2U2, traités de défense bilatéraux États-Unis–Japon (1960) et
+États-Unis–Corée du Sud (1953), Chine–RPDC (1961), Russie–RPDC (2024), plus le bloc
+`Western` (marqué `informal` : **codage
 analyste d'affinité, pas un traité**).
 
 Limites documentées :
@@ -149,7 +224,9 @@ Limites documentées :
 
 ## 6. Note de coordination (P4 ↔ branches locales)
 
-- Les champs **qualitatifs** (`alliances`, `rivals`, `political_system`, `ideology`, `strategic_priorities`) sont **inchangés depuis P0** → le comportement des phases P1–P3 est préservé.
+- Les champs **qualitatifs** (`alliances`, `rivals`, `political_system`, `ideology`,
+  `strategic_priorities`) sont codés ou dérivés de façon explicite ; une extension du
+  roster peut donc modifier les interactions entre nouveaux voisins et partenaires.
 - En revanche, plusieurs **valeurs numériques changent** vs P0 (ex. Chine `trade_dependency` 0,70 → **0,37** ; budgets défense ; PIB). L'agent rule-based a des seuils (`gdp ≥ 1e12`, `trade_dependency ≥ 0.6`, `projection ≥ 0.6`) : la Chine passe désormais **sous** 0,6 en `trade_dependency` (médiation → neutralité dans certains cas). **À faire côté Claude Code local** : relancer `pytest`, ajuster toute assertion couplée à une donnée précise, puis committer sur une branche `feat/p4-data`.
 
 ## 7. Reproductibilité (build déterministe)
@@ -167,14 +244,38 @@ python -m ingestion.build --write    # (re)génère data/countries/*.json (forma
 du build depuis les sources (égalité sémantique). Les valeurs « dures » (PIB, croissance, défense,
 GII, commerce, WGI) vivent dans `indicators.json` ; quand elles seront rafraîchies depuis les API
 (World Bank/IMF…), il suffira de mettre à jour ce fichier et de relancer le build. *NB : l'egress
-réseau vers `api.worldbank.org` n'est pas disponible dans l'environnement de dev actuel — un mode
-`--refresh` live pourra être ajouté quand il le sera.*
+`--refresh` live n'est pas encore implémenté ; l'extension du 18 juillet a été vérifiée
+depuis les API et classeurs officiels avant saisie.*
+
+## 8. IA opérationnelle, Palantir et Maven — niveaux de preuve
+
+Le registre machine-lisible `data/sources/strategic_technology.json` documente les
+sources publiques utilisées pour les mécaniques d'aide à la décision, de fusion de
+renseignement, de contrôle humain et de résilience. Il applique quatre règles :
+
+1. Une documentation Palantir est une **source primaire sur ce que le fournisseur
+   revendique**, pas une preuve indépendante d'efficacité.
+2. Une annonce contractuelle du Department of Defense établit un montant, un objet et
+   une date publics ; elle ne permet pas d'inférer les performances ni les usages
+   classifiés.
+3. Le Form 10-K déposé à la SEC établit des chiffres financiers et des risques déclarés,
+   pas un effet militaire.
+4. Toute traduction en mécanique de jeu est identifiée comme une **hypothèse testable** :
+   qualité et fraîcheur des données, brouillard de guerre probabiliste, compression du
+   temps de décision, biais d'automatisation, approbation humaine, traçabilité, coût et
+   dépendance fournisseur.
+
+Les sources actuellement couvertes sont la documentation officielle Ontology/AIP,
+le Form 10-K 2025 de Palantir, trois annonces contractuelles publiques Maven Smart
+System (2024–2025) et une analyse publique du DoD sur l'IA/ML dans l'image
+opérationnelle commune. Le registre est exposé par `GET /api/sources` afin que les
+limites restent visibles dans le produit.
 
 ## Références
 
 [1] World Bank — GDP (current US$). <https://data.worldbank.org/indicator/NY.GDP.MKTP.CD>
 
-[2] IMF — World Economic Outlook (real GDP growth). <https://www.imf.org/external/datamapper/NGDP_RPCH@WEO>
+[2] World Bank — GDP growth (annual %). <https://data.worldbank.org/indicator/NY.GDP.MKTP.KD.ZG>
 
 [3] SIPRI — Military Expenditure Database / Fact Sheet 2024 (avril 2025). <https://www.sipri.org/databases/milex>
 
@@ -189,3 +290,36 @@ réseau vers `api.worldbank.org` n'est pas disponible dans l'environnement de de
 [8] U.S. EIA — International energy data. <https://www.eia.gov/international/>
 
 [9] IEA — Countries & Regions. <https://www.iea.org/countries>
+
+[10] Union africaine — Member States. <https://au.int/en/member_states/countryprofiles2>
+
+[11] MERCOSUR — Countries. <https://www.mercosur.int/en/about-mercosur/countries/>
+
+[12] ASEAN — Member States. <https://asean.org/member-states/>
+
+[13] SADC — Member States. <https://www.sadc.int/member-states>
+
+[14] EAC — Partner States. <https://www.eac.int/eac-partner-states>
+
+[15] CEDEAO — Member States. <https://www.ecowas.int/member_states/>
+
+[16] Confédération AES — Présentation. <https://aes.ml/a-propos-de-laes/>
+
+[17] FPDA — Five Power Defence Arrangements. <https://www.fivepowerdefencearrangements.org/>
+
+[18] Présidence des BRICS — About the BRICS. <https://brics.br/en/about-the-brics>
+
+[19] EIA — Retrait des EAU de l'OPEP au 1ᵉʳ mai 2026. <https://www.eia.gov/todayinenergy/detail.php?id=67804>
+
+[20] EAU, ministère des Affaires étrangères — coopération I2U2. <https://www.mofa.gov.ae/en/mediahub/news/2023/9/21/21-9-2023-uae-yemen-usa-uae>
+
+[21] SIPRI Yearbook 2025 — World nuclear forces. <https://www.sipri.org/yearbook/2025/06>
+
+[22] Banque de Corée — *Gross Domestic Product Estimates for North Korea in 2024*.
+<https://www.bok.or.kr/eng/bbs/E0000634/view.do?menuNo=400423&nttId=10093293>
+
+[23] Ministère chinois des Affaires étrangères — 65ᵉ anniversaire du traité
+Chine–RPDC. <https://www.mfa.gov.cn/eng/xw/zyxw/202607/t20260713_11980494.html>
+
+[24] Présidence de la Fédération de Russie — ratification du traité Russie–RPDC.
+<https://en.kremlin.ru/catalog/countries/KP/events/by-date/27.02.2025>

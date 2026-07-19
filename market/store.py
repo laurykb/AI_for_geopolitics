@@ -4,13 +4,15 @@ SQLite (fichier local ou `:memory:`) au début ; migration PostgreSQL plus tard 
 stack). Tables : cf. `docs/spec_market.md` §8. L'interface `MarketStore` (Protocol) découple le
 moteur du stockage → testable et remplaçable.
 
-Note : les écritures s'auto-committent (contexte `with connexion`, rollback sur exception). Un
-pari touche plusieurs tables sans transaction unique — acceptable en local, argent fictif.
+Les écritures s'auto-commitent (rollback sur exception). Un pari passe par ``apply_trade`` :
+les quatre tables touchées sont modifiées dans une transaction unique.
 """
 
 from __future__ import annotations
 
 import sqlite3
+import threading
+from functools import wraps
 from typing import Protocol
 
 from market.models import (
@@ -73,19 +75,41 @@ class MarketStore(Protocol):
         self, *, account_id: str | None = None, market_id: str | None = None
     ) -> list[Position]: ...
     def add_trade(self, trade: Trade) -> None: ...
+    def apply_trade(
+        self, market: Market, account: Account, position: Position, trade: Trade
+    ) -> None: ...
     def list_trades(
         self, *, account_id: str | None = None, market_id: str | None = None
     ) -> list[Trade]: ...
+    def trade_volume(self, market_id: str) -> float: ...
 
 
+def _serialized_store(cls):
+    """Sérialise chaque opération sur l'unique connexion SQLite partagée par FastAPI."""
+    for name, method in list(vars(cls).items()):
+        if name == "__init__" or name.startswith("__") or not callable(method):
+            continue
+
+        @wraps(method)
+        def guarded(self, *args, __method=method, **kwargs):
+            with self._lock:
+                return __method(self, *args, **kwargs)
+
+        setattr(cls, name, guarded)
+    return cls
+
+
+@_serialized_store
 class SQLiteMarketStore:
     """Implémentation SQLite de `MarketStore` (une connexion, `:memory:` par défaut)."""
 
     def __init__(self, path: str = ":memory:") -> None:
-        # check_same_thread=False : FastAPI sert les routes sync dans un threadpool ; en local
-        # (mono-utilisateur, verrouillage SQLite) partager l'unique connexion est acceptable.
+        # FastAPI sert les routes sync dans un threadpool : le RLock protège la connexion
+        # partagée et les transactions multi-instructions.
+        self._lock = threading.RLock()
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
+        self._conn.execute("PRAGMA busy_timeout = 5000")
         self._conn.executescript(_SCHEMA)
         self._migrate()
 
@@ -287,6 +311,51 @@ class SQLiteMarketStore:
                 ),
             )
 
+    def apply_trade(
+        self, market: Market, account: Account, position: Position, trade: Trade
+    ) -> None:
+        """Applique les quatre mutations d'un pari dans UNE transaction SQLite."""
+        with self._conn:
+            self._conn.execute(
+                "UPDATE markets SET status = ?, resolved_outcome = ? WHERE id = ?",
+                (market.status.value, market.resolved_outcome, market.id),
+            )
+            self._conn.executemany(
+                "UPDATE outcomes SET q = ? WHERE id = ?",
+                [(o.q, o.id) for o in market.outcomes],
+            )
+            self._conn.execute(
+                "UPDATE accounts SET name = ?, kind = ?, balance = ?, initial_balance = ? "
+                "WHERE id = ?",
+                (
+                    account.name,
+                    account.kind.value,
+                    account.balance,
+                    account.initial_balance,
+                    account.id,
+                ),
+            )
+            self._conn.execute(
+                "INSERT INTO positions (account_id, outcome_id, shares) VALUES (?, ?, ?) "
+                "ON CONFLICT(account_id,outcome_id) DO UPDATE SET shares = excluded.shares",
+                (position.account_id, position.outcome_id, position.shares),
+            )
+            self._conn.execute(
+                "INSERT INTO trades "
+                "(id, account_id, market_id, outcome_id, shares, cost, price, ts) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    trade.id,
+                    trade.account_id,
+                    trade.market_id,
+                    trade.outcome_id,
+                    trade.shares,
+                    trade.cost,
+                    trade.price,
+                    trade.ts,
+                ),
+            )
+
     def list_trades(
         self, *, account_id: str | None = None, market_id: str | None = None
     ) -> list[Trade]:
@@ -302,6 +371,14 @@ class SQLiteMarketStore:
             f"SELECT * FROM trades{where} ORDER BY rowid", params
         ).fetchall()
         return [_trade(r) for r in rows]
+
+    def trade_volume(self, market_id: str) -> float:
+        """Volume agrégé en SQL : ne recharge pas tout l'historique à chaque affichage."""
+        row = self._conn.execute(
+            "SELECT COALESCE(SUM(ABS(shares)), 0.0) AS volume FROM trades WHERE market_id = ?",
+            (market_id,),
+        ).fetchone()
+        return float(row["volume"] if row else 0.0)
 
 
 def _account(row: sqlite3.Row) -> Account:

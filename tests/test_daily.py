@@ -53,6 +53,28 @@ def test_challenge_pool_excludes_the_tutorial():
     assert len(picked) >= 2  # la rotation utilise bien le pool
 
 
+def test_daily_rotation_covers_the_complete_extended_roster():
+    """Le Défi du jour tire dans le loader global, pas dans une ancienne liste figée."""
+    roster = sorted(load_world().countries)
+    crises = load_crises()
+    seated = {
+        country
+        for i in range(365)
+        for country in challenge_for(f"coverage-{i}", crises, roster).countries
+    }
+    extension = {
+        "algeria",
+        "argentina",
+        "democratic_republic_congo",
+        "mali",
+        "senegal",
+        "singapore",
+        "tunisia",
+        "united_arab_emirates",
+    }
+    assert extension <= seated
+
+
 def test_date_of_scenario():
     assert date_of(f"{DATE_PREFIX}2026-07-15") == "2026-07-15"
     assert date_of("red_sea") is None
