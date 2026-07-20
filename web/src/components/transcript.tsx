@@ -183,10 +183,15 @@ function LiveThinking({
   const [open, setOpen] = useState(forcedOpen ?? false);
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
+    let active = true;
     queueMicrotask(() => {
+      if (!active) return;
       if (forcedOpen === undefined) setOpen(localStorage.getItem("wosi.pensee.open") === "1");
       setLoaded(true);
     });
+    return () => {
+      active = false;
+    };
   }, [forcedOpen]);
   useEffect(() => {
     if (loaded && forcedOpen === undefined)
@@ -210,11 +215,11 @@ function LiveThinking({
   );
 }
 
-/** Bulle live : suit un `LiveTurn` du stream.
- * `exposeThinking` (Pensée à découvert) pilotera les libellés en Task 6 — la fenêtre
- * de pensée en direct ci-dessous se déclenche sur la DONNÉE (`turn.reasoning` livé),
- * seul le serveur décidant de ce qui est exposé. Mémoïsée : un token touche un seul
- * tour, `withLastTurn` ne recrée que sa référence — les autres bulles ne re-rendent pas. */
+/** Bulle live : suit un `LiveTurn` du stream. `exposeThinking` (Pensée à découvert)
+ * pilote le libellé du placeholder — la fenêtre de pensée en direct ci-dessous se
+ * déclenche elle sur la DONNÉE (`turn.reasoning` livé), seul le serveur décidant de
+ * ce qui est exposé. Mémoïsée : un token touche un seul tour, `withLastTurn` ne
+ * recrée que sa référence — les autres bulles ne re-rendent pas. */
 export const TurnBubble = memo(function TurnBubble({
   turn,
   lens,
@@ -226,11 +231,10 @@ export const TurnBubble = memo(function TurnBubble({
   exposeThinking?: boolean;
   thinkingOpen?: boolean;
 }) {
-  void exposeThinking;
   const t = useT();
   const live = !turn.done;
   const countryLabel = speakerMeta(turn.country).label;
-  const { reasoning, message } = live
+  const { reasoning: draftReasoning, message } = live
     ? splitStreaming(turn.raw)
     : { reasoning: turn.reasoning, message: turn.text };
   const meta = [
@@ -254,27 +258,29 @@ export const TurnBubble = memo(function TurnBubble({
       <p
         className={`whitespace-pre-wrap text-sm leading-relaxed text-foreground ${live ? "stream-caret" : ""}`}
       >
-        {live && !message && !reasoning
-          ? t("transcript.planification-privee")
+        {live && !message && !draftReasoning
+          ? t(exposeThinking ? "transcript.pense-en-direct" : "transcript.planification-privee")
           : live && !message
             ? ""
             : live
               ? message
               : tidy(message)}
       </p>
-      {live && !message && reasoning ? (
+      {live && !message && draftReasoning ? (
         <div className="mt-1.5 whitespace-pre-wrap border-l border-accent/50 pl-3 text-[13px] italic leading-relaxed text-fg-muted">
-          <ThinkAwareText text={reasoning} />
+          <ThinkAwareText text={draftReasoning} />
         </div>
       ) : (
-        <Reasoning text={reasoning} />
+        <Reasoning text={draftReasoning} />
       )}
     </Bubble>
   );
 });
 
-/** Bulle de relecture : suit une ligne de la table `transcripts`.
- * `exposeThinking` reçue mais pas encore exploitée — voir note sur `TurnBubble`. */
+/** Bulle de relecture : suit une ligne de la table `transcripts`. La pensée brute
+ * (`entry.thinking`) n'est jamais vide qu'une fois la partie scellée — le repli
+ * `<details>` ci-dessous se déclenche donc sur la DONNÉE, pas sur `exposeThinking`
+ * (qui régit le direct, pas l'archive une fois la partie terminée). */
 export function EntryBubble({
   entry,
   lens,
@@ -285,6 +291,7 @@ export function EntryBubble({
   exposeThinking?: boolean;
 }) {
   void exposeThinking;
+  const t = useT();
   return (
     <Bubble
       speaker={entry.speaker}
@@ -296,6 +303,16 @@ export function EntryBubble({
         {tidy(entry.content)}
       </p>
       <Reasoning text={entry.reasoning} />
+      {entry.thinking ? (
+        <details className="mt-1">
+          <summary className="cursor-pointer text-xs text-fg-faint transition-colors hover:text-fg-muted">
+            {t("transcript.pensee-brute")}
+          </summary>
+          <div className="mt-2 border-l border-accent/50 pl-3 text-[13px] italic leading-relaxed text-fg-muted whitespace-pre-wrap">
+            <ThinkAwareText text={entry.thinking} />
+          </div>
+        </details>
+      ) : null}
     </Bubble>
   );
 }

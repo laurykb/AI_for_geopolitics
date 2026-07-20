@@ -126,4 +126,32 @@ describe("TurnBubble — fenêtre de pensée en direct (Pensée à découvert)",
     const html = renderTurn(sealed, {});
     expect(html).toContain("huis clos");
   });
+
+  it("expose : le placeholder devient « pense en direct »", () => {
+    const waiting = {
+      country: "usa",
+      model: "m",
+      passNo: 1,
+      raw: "",
+      text: "",
+      reasoning: "",
+      done: false,
+    } as LiveTurn;
+    const html = renderTurn(waiting, { exposeThinking: true });
+    expect(html).toContain("pense en direct");
+    expect(html).not.toContain("huis clos");
+  });
+});
+
+describe("EntryBubble — pensée brute au journal de relecture", () => {
+  it("relecture finie : la pensée brute apparaît dans le journal, balises retirées", () => {
+    const entry = { ...baseEntry, thinking: "<think>plan caché du traître</think>" };
+    const html = renderEntry(entry);
+    expect(html).toContain("plan caché du traître");
+    expect(html).not.toContain("&lt;think&gt;");
+  });
+
+  it("sans thinking, le journal reste identique (aucune section pensée brute)", () => {
+    expect(renderEntry({ ...baseEntry, thinking: "" })).not.toContain("Pensée brute");
+  });
 });
