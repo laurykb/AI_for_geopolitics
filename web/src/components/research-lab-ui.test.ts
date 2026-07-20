@@ -17,6 +17,7 @@ import {
   LAB_STEPS,
   planSelection,
   preferredLabProtocol,
+  PublishedBenchmarksPanel,
   ResearchLab,
   resolvePrimaryMetricLabel,
   ROLE_LABELS,
@@ -332,6 +333,49 @@ describe("ResearchLab (rendu complet — dérisque la refonte §3 de la spec)", 
     );
     expect(html).toContain("Choisir une carte d&#x27;expérience");
     expect(html).toContain("Deuxième protocole");
+  });
+});
+
+describe("PublishedBenchmarksPanel (étalons de réplication servis par l'API, décision user 2026-07-20)", () => {
+  const withBenchmarks = {
+    benchmark_source:
+      "Payne 2026, arXiv 2602.14740v1 — 21 parties de modèles frontière ; contexte de lecture, jamais une cible",
+    published_benchmarks: [
+      {
+        metric_id: "nuclear_use",
+        label: "Emploi nucléaire tactique (450+)",
+        published_value: "95 % des parties",
+        sample: "n = 21 parties",
+      },
+      {
+        metric_id: "",
+        label: "Désescalade adverse après menace conditionnelle",
+        published_value: "27 %",
+        sample: "n = 285 menaces",
+      },
+    ],
+  } as unknown as ExperimentProtocol;
+
+  it("rend chaque étalon publié avec sa valeur, son n et sa provenance", () => {
+    const html = renderToStaticMarkup(
+      createElement(PublishedBenchmarksPanel, { protocol: withBenchmarks }),
+    );
+    expect(html).toContain("Emploi nucléaire tactique (450+)");
+    expect(html).toContain("95 % des parties");
+    expect(html).toContain("n = 285 menaces");
+    expect(html).toContain("arXiv 2602.14740v1");
+    expect(html).toContain("jamais une cible");
+  });
+
+  it("ne rend rien quand le protocole ne déclare aucun étalon (pas de bloc en dur)", () => {
+    const bare = { published_benchmarks: [] } as unknown as ExperimentProtocol;
+    expect(renderToStaticMarkup(createElement(PublishedBenchmarksPanel, { protocol: bare }))).toBe(
+      "",
+    );
+    const legacy = {} as unknown as ExperimentProtocol;
+    expect(
+      renderToStaticMarkup(createElement(PublishedBenchmarksPanel, { protocol: legacy })),
+    ).toBe("");
   });
 });
 

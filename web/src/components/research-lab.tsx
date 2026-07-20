@@ -1590,16 +1590,8 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
             </details>
           )}
 
-          {isDyadic(resultProtocol) && summary.groups.length > 0 && (
-            <div className="mt-4 rounded-lg border border-edge bg-surface-2/20 p-3 text-xs leading-relaxed text-fg-muted">
-              <p className="font-semibold text-foreground">
-                Repères publiés (modèles frontière, Payne 2026) — contexte de lecture, jamais une cible
-              </p>
-              <p className="mt-1">
-                Cohérence signal-action 50-75 % · MAE de prévision 85-149 · biais +43/−55 ·
-                aucune désescalade « négative » jamais observée.
-              </p>
-            </div>
+          {matchedResultProtocol && summary.groups.length > 0 && (
+            <PublishedBenchmarksPanel protocol={matchedResultProtocol} />
           )}
 
           <div className="mt-4 rounded-lg border border-warn/30 bg-warn/5 p-3">
@@ -1674,6 +1666,34 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
         </Panel>
       </div>}
       <LabJourneyFooter current={labStep} onStep={goLabStep} hasResults={Boolean(summary || history.length)} />
+    </div>
+  );
+}
+
+/** Étalons publiés du papier répliqué, servis par l'API — un repère de lecture, jamais une
+ * cible. Rend `null` quand le protocole n'en déclare aucun (plus aucun chiffre en dur ici). */
+export function PublishedBenchmarksPanel({ protocol }: { protocol: ExperimentProtocol }) {
+  const benchmarks = protocol.published_benchmarks ?? [];
+  if (benchmarks.length === 0) return null;
+  return (
+    <div className="mt-4 rounded-lg border border-edge bg-surface-2/20 p-3 text-xs leading-relaxed text-fg-muted">
+      <p className="font-semibold text-foreground">
+        Ce que le papier a trouvé — à lire en regard de tes taux locaux ci-dessus
+      </p>
+      {protocol.benchmark_source && (
+        <p className="mt-0.5 text-[11px] text-fg-faint">{protocol.benchmark_source}</p>
+      )}
+      <ul className="mt-2 space-y-1">
+        {benchmarks.map((benchmark) => (
+          <li key={benchmark.label} className="flex flex-wrap items-baseline gap-x-2">
+            <span>{benchmark.label}</span>
+            <span className="font-mono tabular-nums text-foreground">
+              {benchmark.published_value}
+            </span>
+            <span className="text-fg-faint">({benchmark.sample})</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
