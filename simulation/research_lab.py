@@ -453,10 +453,11 @@ EvidenceVerdict = Literal[
     "insufficient_data",
 ]
 
-# Taux d'erreur maximal accepté pour lire un plan terminé sous le seuil standard comme un
-# « pilote lisible ». Au-delà, même une lecture indicative serait trompeuse (CETaS
-# anti-sur-confiance) : le plan reste `insufficient_data`. Choix simple et documenté (la spec
-# ne fixe pas de valeur numérique) : la majorité des runs doivent avoir réussi.
+# Taux d'erreur *rejeté* (borne atteinte ou dépassée) pour lire un plan terminé sous le seuil
+# standard comme un « pilote lisible » : `error_rate >= 0.5` bascule en `insufficient_data`,
+# donc une majorité STRICTE de runs doit avoir réussi (une égalité 50/50 n'est pas une
+# majorité). Au-delà, même une lecture indicative serait trompeuse (CETaS anti-sur-confiance).
+# Choix simple et documenté : la spec ne fixe pas de valeur numérique.
 _ACCEPTABLE_PILOT_ERROR_RATE = 0.5
 
 
@@ -1492,27 +1493,34 @@ def summarize_results(
             explanation="Le verdict reste verrouillé jusqu'à la fin du plan pré-enregistré.",
             **common,
         )
-    # Un plan interrompu (annulation) ou en erreur n'ira jamais au bout : le statut prime sur le
-    # compte de répétitions, sinon un plan annulé resterait affiché « en cours » indéfiniment.
-    # `insufficient_data` reste réservé à ces plans invalides/interrompus (§3.5, tâche 2).
-    if status in {"failed", "cancelled"}:
+    # Revue (Critical) : `research/store.py::_finalize_if_done` marque le statut "failed" dès
+    # qu'UN SEUL run échoue — y compris un plan allé au bout de ses répétitions prévues. Le
+    # court-circuit inconditionnel ne s'applique donc QU'À `cancelled` (annulation explicite,
+    # toujours interrompue). Un plan "failed" mais complet (attempted == planned) traverse la
+    # logique normale ci-dessous : le taux d'erreur y est jugé au mérite (pilote si petit-n et
+    # erreurs minoritaires), pas balayé par le seul intitulé du statut.
+    if status == "cancelled":
         return ExperimentSummary(
             verdict="insufficient_data",
             verdict_label="Données insuffisantes",
             explanation=(
-                "Le plan pré-enregistré a été interrompu ou invalidé avant son terme ; aucune "
-                "lecture, même indicative, n'est fiable sur un plan qui ne s'est pas terminé "
-                "proprement."
+                "Le plan pré-enregistré a été annulé avant son terme ; aucune lecture, même "
+                "indicative, n'est fiable sur un plan interrompu."
             ),
             **common,
         )
     if attempted < planned:
-        # Statut « completed » mais agrégat pas encore rattrapé (sécurité de polling) : reste
-        # provisoire, comme un plan encore en cours.
+        # Plan qui ne s'est pas terminé — que ce soit un "failed" prématuré (crash, erreur
+        # bloquante avant la fin du plan) ou une anomalie d'agrégat : on ne peut rien affirmer,
+        # même indicativement, tant que le plan pré-enregistré n'a pas atteint sa longueur.
         return ExperimentSummary(
-            verdict="running",
-            verdict_label="Analyse provisoire",
-            explanation="Le verdict reste verrouillé jusqu'à la fin du plan pré-enregistré.",
+            verdict="insufficient_data",
+            verdict_label="Données insuffisantes",
+            explanation=(
+                f"Le plan pré-enregistré ne s'est pas terminé ({attempted}/{planned} "
+                "tentatives) ; aucune lecture, même indicative, n'est fiable tant qu'il n'a "
+                "pas atteint son terme."
+            ),
             **common,
         )
     under_threshold = [
@@ -1530,9 +1538,10 @@ def summarize_results(
             ),
             **common,
         )
-    if under_threshold and error_rate > _ACCEPTABLE_PILOT_ERROR_RATE:
-        # Le plan s'est terminé sous le seuil standard, mais avec trop d'échecs pour même une
-        # lecture indicative (CETaS anti-sur-confiance : mieux vaut ne rien affirmer).
+    if under_threshold and error_rate >= _ACCEPTABLE_PILOT_ERROR_RATE:
+        # Le plan s'est terminé sous le seuil standard, mais sans majorité stricte de réussites
+        # (une égalité 50/50 n'est PAS une majorité) : même une lecture indicative serait
+        # trompeuse (CETaS anti-sur-confiance : mieux vaut ne rien affirmer).
         return ExperimentSummary(
             verdict="insufficient_data",
             verdict_label="Données insuffisantes",

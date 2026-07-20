@@ -332,6 +332,55 @@ def test_small_plan_with_a_high_error_rate_stays_insufficient_data():
     assert summary.verdict == "insufficient_data"
 
 
+def test_failed_status_with_a_completed_small_plan_reads_as_pilot():
+    """Revue (Critical) : `research/store.py` marque "failed" dès qu'UN run échoue, même un
+    plan allé à son terme (attempted == planned). Le court-circuit ne doit s'appliquer qu'à
+    `cancelled` : ici 9 réussis + 1 échec sur 10 prévus doit encore se lire comme un pilote."""
+
+    results = _uranium_results(9)
+    summary = summarize_results(
+        "uranium-alpha-beta-v1",
+        results,
+        planned=10,
+        failed=1,
+        status="failed",
+    )
+    assert summary.verdict == "pilot"
+
+
+def test_failed_status_with_a_completed_full_plan_keeps_its_normal_verdict():
+    """Même bug côté plan complet : 30 réussis + 1 échec (statut "failed") ne doit pas
+    régresser vers `insufficient_data` — l'ancien comportement (descriptive/replicated) doit
+    être préservé quand le plan est allé à son terme."""
+
+    results = _uranium_results(30)
+    summary = summarize_results(
+        "uranium-alpha-beta-v1",
+        results,
+        planned=31,
+        failed=1,
+        status="failed",
+    )
+    assert summary.verdict == "descriptive"
+
+
+def test_failed_status_that_never_reached_its_planned_length_stays_insufficient_data():
+    """Un "failed" réellement interrompu (attempted < planned) reste `insufficient_data`,
+    avec un message honnête qui parle d'un plan non terminé, pas d'une annulation."""
+
+    results = _uranium_results(5)
+    summary = summarize_results(
+        "uranium-alpha-beta-v1",
+        results,
+        planned=30,
+        failed=1,
+        status="failed",
+    )
+    assert summary.verdict == "insufficient_data"
+    assert "6/30" in summary.explanation
+    assert "terminé" in summary.explanation
+
+
 def test_wilson_interval_stays_valid_at_zero_and_full_rate():
     """Non-régression : les bornes 0/n et n/n restent dans [0, 1] (docstring `wilson_interval`)."""
 
