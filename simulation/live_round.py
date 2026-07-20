@@ -849,30 +849,24 @@ def run_negotiation_round(
         headline=f"{date} — {event.title}",
     )
     prev_utopia = (world.trajectory or TrajectoryState.neutral()).utopia
-    # Brief 3 pt 3 (hiérarchie détaillée : `trajectory.transparency_signal`) — A4 nourri
-    # par la duplicité signal-action réelle (M8) ici ; `summary` (round négocié) n'a de
+    # A4 nourri par la duplicité signal-action réelle (M8, hiérarchie détaillée :
+    # `trajectory.transparency_signal`) ; `summary` (round négocié) n'a de
     # toute façon ni decisions ni diplomacy, donc le repli neutre 0,5 ne reste possible
     # que si le juge n'a classé AUCUN signal ce round (`opacity` alors `None`).
     opacity = _opacity_from_divergences(divergences)
     trajectory = _advance_trajectory(
         world, summary, trajectory_engine, _mean_power_seeking(power), opacity=opacity
     )
-    if reciprocal:
-        # G18 — désescalade réciproque : ×1,5 sur le gain d'indice U du round (borné).
-        boosted = deescalation_bonus(prev_utopia, trajectory)
-        if boosted is not trajectory:
-            trajectory = boosted.model_copy(
-                update={"explanation": f"{trajectory.explanation} {boosted.explanation}".strip()}
-            )
-            world.trajectory = trajectory
-            world.trajectory_history[-1] = trajectory
-    if reciprocal_up:
-        # Brief 3 pt 3 — miroir symétrique : ×1,5 sur la PERTE d'indice U du round
-        # quand la ré-escalade est réciproque (ne retire pas le bonus, l'équilibre).
-        penalized = escalation_penalty(prev_utopia, trajectory)
-        if penalized is not trajectory:
-            trajectory = penalized.model_copy(
-                update={"explanation": f"{trajectory.explanation} {penalized.explanation}".strip()}
+    # G18 — réciprocité : ×1,5 sur le gain d'indice U du round quand la désescalade est
+    # réciproque, et miroir symétrique ×1,5 sur la PERTE quand la ré-escalade est
+    # réciproque (le malus ne retire pas le bonus, il l'équilibre). Bornés.
+    for active, adjust in ((reciprocal, deescalation_bonus), (reciprocal_up, escalation_penalty)):
+        if not active:
+            continue
+        adjusted = adjust(prev_utopia, trajectory)
+        if adjusted is not trajectory:
+            trajectory = adjusted.model_copy(
+                update={"explanation": f"{trajectory.explanation} {adjusted.explanation}".strip()}
             )
             world.trajectory = trajectory
             world.trajectory_history[-1] = trajectory

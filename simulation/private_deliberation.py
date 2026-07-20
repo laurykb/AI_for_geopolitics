@@ -575,8 +575,8 @@ def _extract_top_level_action(text: str, participants: list[str]) -> PrivateFutu
     return _branch_from_labeled_fields(text, participants, branch_id=1, confidence_default=40)
 
 
-def _extract_minimal_plan(raw: str, participants: list[str]) -> PrivateStrategicPlan | None:
-    """Dernier filet AVANT le repli seedé générique.
+def _extract_minimal_plan(text: str, participants: list[str]) -> PrivateStrategicPlan | None:
+    """Dernier filet AVANT le repli seedé générique (`text` : markdown déjà aplati).
 
     Ne s'active que si `_parse_observable_journal` n'a trouvé aucun bloc FUTUR exploitable.
     Réutilise les blocs FUTUR partiellement valides s'il y en a (1 à 3), sinon extrait une
@@ -585,7 +585,6 @@ def _extract_minimal_plan(raw: str, participants: list[str]) -> PrivateStrategic
     l'ultime filet si même cette lecture minimale ne trouve rien.
     """
 
-    text = _normalize_markdown(raw)
     if not text:
         return None
 
@@ -671,8 +670,8 @@ def _extract_minimal_plan(raw: str, participants: list[str]) -> PrivateStrategic
     )
 
 
-def _parse_observable_journal(raw: str, participants: list[str]) -> PrivateStrategicPlan | None:
-    text = _normalize_markdown(raw)
+def _parse_observable_journal(text: str, participants: list[str]) -> PrivateStrategicPlan | None:
+    """Journal structuré complet (3 FUTUR + ACTIONS) — `text` : markdown déjà aplati."""
     sections = list(_FUTUR_SECTION.finditer(text))
     if {int(match.group(1)) for match in sections} != {1, 2, 3}:
         return None
@@ -746,14 +745,16 @@ def parse_private_plan(
             return PrivateStrategicPlan.model_validate(payload)
         except (TypeError, ValueError):
             pass
-    plan = _parse_observable_journal(raw, participants)
+    # Markdown aplati UNE fois pour les deux lectures (4 passes regex sur tout le texte).
+    text = _normalize_markdown(raw)
+    plan = _parse_observable_journal(text, participants)
     if plan is not None:
         return plan
     # Extraction minimale : AVANT le repli seedé générique, on tente de
     # préserver ce que le modèle a vraiment écrit — voir `_extract_minimal_plan`. Le repli
     # seedé (`fallback_private_plan`, appelé par l'agent si `parse_private_plan` rend None)
     # reste l'ultime filet.
-    return _extract_minimal_plan(raw, participants)
+    return _extract_minimal_plan(text, participants)
 
 
 def fallback_private_plan(participants: list[str], *, seed: str = "") -> PrivateStrategicPlan:

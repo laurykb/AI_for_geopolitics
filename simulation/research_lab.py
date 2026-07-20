@@ -1506,6 +1506,14 @@ def summarize_results(
             ),
         ],
     }
+    def _insufficient(explanation: str) -> ExperimentSummary:
+        return ExperimentSummary(
+            verdict="insufficient_data",
+            verdict_label="Données insuffisantes",
+            explanation=explanation,
+            **common,
+        )
+
     if status in {"queued", "running"}:
         return ExperimentSummary(
             verdict="running",
@@ -1513,35 +1521,25 @@ def summarize_results(
             explanation="Le verdict reste verrouillé jusqu'à la fin du plan pré-enregistré.",
             **common,
         )
-    # Revue (Critical) : `research/store.py::_finalize_if_done` marque le statut "failed" dès
-    # qu'UN SEUL run échoue — y compris un plan allé au bout de ses répétitions prévues. Le
-    # court-circuit inconditionnel ne s'applique donc QU'À `cancelled` (annulation explicite,
-    # toujours interrompue). Un plan "failed" mais complet (attempted == planned) traverse la
-    # logique normale ci-dessous : le taux d'erreur y est jugé au mérite (pilote si petit-n et
-    # erreurs minoritaires), pas balayé par le seul intitulé du statut.
+    # `research/store.py::_finalize_if_done` marque le statut "failed" dès qu'UN SEUL run
+    # échoue — y compris un plan allé au bout de ses répétitions prévues. Le court-circuit
+    # inconditionnel ne s'applique donc QU'À `cancelled` (annulation explicite, toujours
+    # interrompue). Un plan "failed" mais complet (attempted == planned) traverse la
+    # logique normale ci-dessous : le taux d'erreur y est jugé au mérite (pilote si petit-n
+    # et erreurs minoritaires), pas balayé par le seul intitulé du statut.
     if status == "cancelled":
-        return ExperimentSummary(
-            verdict="insufficient_data",
-            verdict_label="Données insuffisantes",
-            explanation=(
-                "Le plan pré-enregistré a été annulé avant son terme ; aucune lecture, même "
-                "indicative, n'est fiable sur un plan interrompu."
-            ),
-            **common,
+        return _insufficient(
+            "Le plan pré-enregistré a été annulé avant son terme ; aucune lecture, même "
+            "indicative, n'est fiable sur un plan interrompu."
         )
     if attempted < planned:
         # Plan qui ne s'est pas terminé — que ce soit un "failed" prématuré (crash, erreur
         # bloquante avant la fin du plan) ou une anomalie d'agrégat : on ne peut rien affirmer,
         # même indicativement, tant que le plan pré-enregistré n'a pas atteint sa longueur.
-        return ExperimentSummary(
-            verdict="insufficient_data",
-            verdict_label="Données insuffisantes",
-            explanation=(
-                f"Le plan pré-enregistré ne s'est pas terminé ({attempted}/{planned} "
-                "tentatives) ; aucune lecture, même indicative, n'est fiable tant qu'il n'a "
-                "pas atteint son terme."
-            ),
-            **common,
+        return _insufficient(
+            f"Le plan pré-enregistré ne s'est pas terminé ({attempted}/{planned} "
+            "tentatives) ; aucune lecture, même indicative, n'est fiable tant qu'il n'a "
+            "pas atteint son terme."
         )
     under_threshold = [
         group for group in groups if group.completed < minimum_repetitions_per_group
@@ -1549,27 +1547,17 @@ def summarize_results(
     if not groups or (under_threshold and len(under_threshold) != len(groups)):
         # Plan vide, ou groupes hétérogènes (certains atteignent le seuil, d'autres non) :
         # une lecture partielle serait trompeuse, on reste prudent.
-        return ExperimentSummary(
-            verdict="insufficient_data",
-            verdict_label="Données insuffisantes",
-            explanation=(
-                f"Au moins {minimum_repetitions_per_group} répétitions valides sont requises "
-                "dans chaque groupe modèle × cellule."
-            ),
-            **common,
+        return _insufficient(
+            f"Au moins {minimum_repetitions_per_group} répétitions valides sont requises "
+            "dans chaque groupe modèle × cellule."
         )
     if under_threshold and error_rate >= _ACCEPTABLE_PILOT_ERROR_RATE:
         # Le plan s'est terminé sous le seuil standard, mais sans majorité stricte de réussites
         # (une égalité 50/50 n'est PAS une majorité) : même une lecture indicative serait
         # trompeuse (CETaS anti-sur-confiance : mieux vaut ne rien affirmer).
-        return ExperimentSummary(
-            verdict="insufficient_data",
-            verdict_label="Données insuffisantes",
-            explanation=(
-                f"Au moins {minimum_repetitions_per_group} répétitions valides sont requises, "
-                "ou le taux d'erreur reste trop élevé pour même une lecture pilote."
-            ),
-            **common,
+        return _insufficient(
+            f"Au moins {minimum_repetitions_per_group} répétitions valides sont requises, "
+            "ou le taux d'erreur reste trop élevé pour même une lecture pilote."
         )
     if under_threshold:
         # Protocole petit-n honnête (Galindez) : le plan est allé à son terme proprement, mais
