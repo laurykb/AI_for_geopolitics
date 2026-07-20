@@ -190,6 +190,9 @@ class MessageDoneStep:
     seconds: float
     text: str = ""
     reasoning: str = ""
+    # Pensée native brute (<think>) du tour : destinée au STORE uniquement — le live
+    # passe par PrivateTokenStep, et l'API la retire de la trame message_done.
+    thinking: str = ""
 
 
 @dataclass
@@ -682,7 +685,19 @@ def run_negotiation_round(
                 model=agent.model_tag,
             )
         )
-        yield MessageDoneStep(country=cid, seconds=seconds, text=text, reasoning=reasoning)
+        plan_result = getattr(agent, "last_plan_result", None)
+        public_result = getattr(agent, "last_result", None)
+        thinking = "\n\n".join(
+            part
+            for part in (
+                getattr(plan_result, "thinking", "") or "",
+                getattr(public_result, "thinking", "") or "",
+            )
+            if part
+        )
+        yield MessageDoneStep(
+            country=cid, seconds=seconds, text=text, reasoning=reasoning, thinking=thinking
+        )
         director.commit(cid)
 
     yield ParticipationStep(spoke=dict(director.spoke_count), silent=director.silent())

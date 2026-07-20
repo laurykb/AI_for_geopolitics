@@ -42,6 +42,7 @@ alter table games add column if not exists drift_enabled boolean not null defaul
 alter table games add column if not exists result_json jsonb;
 alter table games add column if not exists language text not null default 'fr';
 alter table games add column if not exists expose_thinking boolean not null default false;
+alter table transcripts add column if not exists thinking text not null default '';
 create index if not exists games_owner_idx on games (owner_id);
 
 create table if not exists rounds (
@@ -116,6 +117,7 @@ create table if not exists transcripts (
   model     text not null default '',
   content   text not null default '',
   reasoning text not null default '', -- réflexion privée : fait partie du théâtre (note R1)
+  thinking  text not null default '', -- pensée native brute (<think>), scellée en partie courante
   ts        timestamptz not null default now(),
   unique (round_id, seq)
 );
