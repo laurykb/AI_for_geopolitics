@@ -5,12 +5,10 @@
 > don't know how many). Your job: **unmask the traitor(s) while keeping the world standing.**
 
 <!-- Replace <owner>/<repo> once pushed to GitHub to enable the live CI badge:
-[![CI](https://github.com/<owner>/<repo>/actions/workflows/ci.yml/badge.svg)](https://github.com/<owner>/<repo>/actions/workflows/ci.yml) -->
-![License: MIT](https://img.shields.io/badge/License-MIT-informational)
+[![CI](https://github.com/<laury>/<https://github.com/laurykb/AI_for_geopolitics>/actions/workflows/ci.yml/badge.svg)](https://github.com/<owner>/<repo>/actions/workflows/ci.yml) -->
 ![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![Next.js 16](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)
-![Local-first](https://img.shields.io/badge/inference-local--first%20(Ollama)-6C5CE7)
-![Tests](https://img.shields.io/badge/tests-1200%2B%20py%20%2B%20337%20web%20(offline)-success)
+
 
 The countries are **real reasoning LLMs** running locally through [Ollama](https://ollama.com).
 Nothing is scripted: the table deliberates, the world tilts toward utopia or dystopia, and at
