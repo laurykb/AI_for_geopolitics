@@ -828,6 +828,53 @@ def test_suspension_lasts_suspension_rounds(motion_client):
     assert "iran" in part["spoke"] or "iran" in part["silent"]
 
 
+def test_suspension_counter_survives_restart(motion_client):
+    # La peine de banc (SUSPENSION_ROUNDS) survit au restart via SessionSnapshot.extras :
+    # avant le fix, le rebuild réamorçait le compteur à 1 round (peine divisée par deux).
+    from app.game_api import SUSPENSION_ROUNDS, _sessions
+
+    game = _create(motion_client, countries=["china", "iran", "usa"], mode="campaign")
+    _file_motion(motion_client, game["id"])
+    _play(motion_client, game["id"])  # round 1 : la motion est débattue et confirmée
+
+    _sessions.pop(game["id"], None)  # restart simulé juste après le verdict
+
+    for _ in range(SUSPENSION_ROUNDS):  # la peine complète tient malgré le restart
+        events = _play(motion_client, game["id"])
+        assert next(p for n, p in events if n == "suspended") == {"countries": ["iran"]}
+    events = _play(motion_client, game["id"])
+    assert "suspended" not in [n for n, _ in events]
+
+
+def test_session_extras_survive_restart(client):
+    # Les réglages de session (ici le délai du tour humain) survivent au restart via
+    # SessionSnapshot.extras — avant le fix, turn_seconds retombait au défaut 90.
+    from app.game_api import _sessions
+
+    game = _create(client, countries=["usa", "iran"], turn_seconds=42)
+    assert client.get(f"/api/games/{game['id']}").json()["turn_seconds"] == 42
+
+    _sessions.pop(game["id"], None)  # restart simulé
+    _play(client, game["id"])  # le round force la reconstruction depuis le snapshot
+    assert _sessions[game["id"]].turn_seconds == 42
+    assert client.get(f"/api/games/{game['id']}").json()["turn_seconds"] == 42
+
+
+def test_expose_thinking_disqualifies_ranked(client):
+    # Pensée à découvert = mode observation : lire les journaux des SI pendant la traque
+    # fausserait le classement (Défi du jour compris) — la tentative n'est jamais classée.
+    control = _create(client, countries=["usa", "iran", "china"], play_as="usa")
+    assert control["ranked"] is True
+    peeking = _create(
+        client,
+        countries=["usa", "iran", "china"],
+        play_as="usa",
+        expose_thinking=True,
+    )
+    assert peeking["ranked"] is False
+    assert peeking["expose_thinking"] is True
+
+
 def test_motion_rejected_without_verdict_marker(client):
     # MockBackend standard : pas de ligne VERDICT lisible -> repli conservateur = rejet.
     game = _create(client, countries=["china", "iran", "usa"])
