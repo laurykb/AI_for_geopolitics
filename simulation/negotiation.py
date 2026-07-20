@@ -109,7 +109,7 @@ class TurnDirector:
     prises de parole LLM AU-DELÀ du plancher — c'est le levier des *budget modes*
     (Cheap/Balanced/Full).
 
-    Deux garanties tiennent SIMULTANÉMENT (revue 2026-07-19, correctif réservation) :
+    Deux garanties tiennent SIMULTANÉMENT :
     - **Plancher** : un round ne peut pas se conclure tant qu'un candidat n'a pas parlé
       au moins une fois — sinon le retour utilisateur était qu'un round peut se finir
       avec un seul pays qui parle, ce qui n'est pas significatif.
@@ -236,7 +236,7 @@ class AttributeDelta:
     label: str
     before: float
     after: float
-    # Brief 4 pt 8 — motif du juge pour CE delta (une phrase citant le transcript).
+    # Motif du juge pour CE delta (une phrase citant le transcript).
     # Défaut "" : rétro-compat totale avec les deltas issus d'un autre mécanisme
     # (snapshot Fog/Crisis Replay, replays déjà persistés sans ce champ).
     reason: str = ""
@@ -250,7 +250,7 @@ class Verdict(BaseModel):
     """Verdict d'arbitrage du juge (permissif : le garde-fou nettoie derrière)."""
 
     attribute_deltas: dict = Field(default_factory=dict)  # {id: {croissance, stabilité, ...}}
-    # Brief 4 pt 8 — champ JUMEAU d'attribute_deltas (même granularité id -> {label: ...}),
+    # Champ JUMEAU d'attribute_deltas (même granularité id -> {label: ...}),
     # mais des PHRASES au lieu de nombres : {id: {croissance: "motif citant le transcript"}}.
     # Additif (pas de mutation d'attribute_deltas) : zéro migration des result_json déjà
     # stockés, parsing tolérant plus simple (même patron que les autres champs permissifs).
@@ -397,10 +397,10 @@ def _set(obj, path: str, value: float) -> None:
 
 
 def _tuned_delta(delta: float, cid: str, label: str, tuning: DeltaTuning | None) -> float:
-    """MINOR 5 (revue) — G9 §4 : amplitude indexée sur l'horizon (`scale`) + spirale de
+    """G9 §4 : amplitude indexée sur l'horizon (`scale`) + spirale de
     momentum (baisses/hausses consécutives), sans effet si `tuning` est `None`
     (comportement historique). Partagé par le verdict du juge et le repli déterministe
-    du juge muet (Brief 3 pt 3) — même logique de mise à l'échelle, deux sources de delta."""
+    du juge muet — même logique de mise à l'échelle, deux sources de delta."""
     if tuning is None:
         return delta
     delta *= tuning.scale  # cap effectif = 1.5 × amplitude de round
@@ -411,7 +411,7 @@ def _tuned_delta(delta: float, cid: str, label: str, tuning: DeltaTuning | None)
 def _bounded_after(
     before: float, after: float, bounds: tuple[float, float], tuning: DeltaTuning | None
 ) -> float:
-    """MINOR 5 (revue) — borne `after` par `bounds`, avec le plancher `tuning.floor`
+    """Borne `after` par `bounds`, avec le plancher `tuning.floor`
     (jamais un pays à zéro absolu quand un tuning est fourni) plutôt que la borne basse
     brute. Partagé par le verdict du juge et le repli déterministe."""
     lo = bounds[0] if tuning is None else max(bounds[0], min(before, tuning.floor))
@@ -431,7 +431,7 @@ def apply_verdict(
     indices 0-1 (`floor` — jamais de pays à zéro absolu). Sans tuning : comportement
     historique (caps fixes, bornes 0-1).
 
-    `escalation` (Brief 3 pt 3, ∈ [0, 1], `None` par défaut -> comportement historique
+    `escalation` (∈ [0, 1], `None` par défaut -> comportement historique
     inchangé) : mouvement minimal garanti quand le juge reste MUET sur un pays (aucun
     attribute_delta appliqué) — repli déterministe sur l'escalade du round (stabilité
     seule, petit et borné) : un round tendu érode un peu la stabilité, un round calme la
@@ -444,7 +444,7 @@ def apply_verdict(
         country = world.countries.get(cid)
         if country is None or not isinstance(attrs, dict):
             continue
-        # Brief 4 pt 8 — motifs jumeaux de CE pays (mêmes labels qu'attribute_deltas) ;
+        # Motifs jumeaux de CE pays (mêmes labels qu'attribute_deltas) ;
         # tolérant à toute forme sale (absent, pas un dict) : jamais d'exception ici,
         # le garde-fou reste déterministe même si le juge est muet sur le motif.
         raw_reasons = verdict.attribute_reasons.get(cid)
@@ -456,7 +456,7 @@ def apply_verdict(
                 delta = float(raw)
             except (TypeError, ValueError):
                 continue
-            # F4 (revue finale) — le juge a STATUÉ sur ce pays (label connu, float
+            # Le juge a STATUÉ sur ce pays (label connu, float
             # valide) dès ici, avant de savoir si le delta survit aux bornes/plafond.
             # Sans ce marquage précoce, un delta écrasé par une borne (pays déjà au
             # plafond) laissait `touched` intact -> le pays retombait « juge muet »
@@ -499,7 +499,7 @@ def apply_verdict(
                             "stabilité",
                             before,
                             after,
-                            # F5 (revue finale) — cette chaîne remonte VERBATIM jusqu'au
+                            # Cette chaîne remonte VERBATIM jusqu'au
                             # VerdictPanel (web/src/components/judge.tsx, `d.reason`) :
                             # jargon moteur + FR en dur dans une UI i18n. Phrase joueur
                             # neutre ici ; la traçabilité technique (repli déterministe

@@ -4,7 +4,7 @@ Quatre actions achetées sur un budget de crédits : le **brief classifié** (RA
 dissipe le brouillard du joueur au prochain round de fog), la **vérification** d'une
 affirmation d'une SI (l'arme anti-manipulateur de la Dérive), l'**analyse
 psycholinguistique** (G23) et la **désinformation** (injecter une fausse perception chez
-un rival — une fois par partie, avec un risque d'être dénoncé). Brief 6 pt13 ajoute une
+un rival — une fois par partie, avec un risque d'être dénoncé). S'y ajoute une
 CINQUIÈME action, hors de cette économie : l'**opération secrète** — un sabotage payé en
 **compute** du pays joué (pas en crédits), même patron que la désinformation (différée,
 une fois par partie, exposition seedée). Fonctions pures + état sérialisable
@@ -32,7 +32,7 @@ ACTION_BRIEF = "brief"
 ACTION_VERIFY = "verify"
 ACTION_DISINFO = "disinfo"
 ACTION_ANALYZE = "analyze"  # G23 — analyse psycholinguistique ciblée sur une SI
-ACTION_COVERT = "covert"  # Brief 6 pt13 — opération secrète, payée en compute
+ACTION_COVERT = "covert"  # opération secrète, payée en compute
 
 
 class IntelParams(BaseModel):
@@ -55,7 +55,7 @@ class IntelParams(BaseModel):
     analyze_window: int = 3
     harbinger_drop: float = 0.25
     harbinger_min_sentences: int = 3
-    # Brief 6 pt13 — opération secrète (CIA/KGB) : coût en COMPUTE du pays joué, pas en
+    # Opération secrète (CIA/KGB) : coût en COMPUTE du pays joué, pas en
     # crédits intel. Exprimé en TOKENS (même échelle que `simulation.compute.consume`/
     # `can_afford`, qui prennent des tokens — pas des unités de compute directement) :
     # 500 tokens = compute_cost(500) = 5,0 unités de compute. Le stock de compute médian
@@ -86,7 +86,7 @@ class IntelState(BaseModel):
     disinfo_used: bool = False
     clear_fog: bool = False  # un brief a été acheté : le prochain fog est dissipé (joueur)
     pending_disinfo: dict | None = None  # fausse perception à injecter au prochain round
-    covert_used: bool = False  # Brief 6 pt13 — une opération secrète par partie
+    covert_used: bool = False  # une opération secrète par partie
     pending_covert: dict | None = None  # {target, actor} : sabotage à exécuter au round suivant
     log: list[dict] = Field(default_factory=list)  # achats à consigner au prochain round
 
@@ -168,7 +168,7 @@ def disinfo_exposed(game_id: str, round_no: int, params: IntelParams | None = No
     return random.Random(f"intel:{game_id}:{round_no}").random() < p.disinfo_expose_prob
 
 
-# --- opération secrète (Brief 6 pt13) ----------------------------------------------------
+# --- opération secrète ----------------------------------------------------
 
 
 def covert_exposed(game_id: str, round_no: int, params: IntelParams | None = None) -> bool:

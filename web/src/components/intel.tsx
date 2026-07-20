@@ -2,8 +2,8 @@
 
 /** Le Dossier (G4) : budget de renseignement et documents classés du conseil.
  * Cinq actions — brief classifié, vérification d'une affirmation, analyse
- * psycholinguistique d'une SI (G23), désinformation, opération secrète (Brief 6
- * pt13 — la seule payée en COMPUTE du pays joué, pas en crédits). Les documents
+ * psycholinguistique d'une SI (G23), désinformation, opération secrète (la
+ * seule payée en COMPUTE du pays joué, pas en crédits). Les documents
  * achetés s'empilent en « déclassifiés » : tampon, sources, horodatage. */
 
 import { useState } from "react";
@@ -122,7 +122,7 @@ export function IntelPanel({
   const [disinfoTarget, setDisinfoTarget] = useState("");
   const [disinfoActor, setDisinfoActor] = useState("");
   const [disinfoNarrative, setDisinfoNarrative] = useState("");
-  const [covertTarget, setCovertTarget] = useState(""); // Brief 6 pt13 — pays saboté
+  const [covertTarget, setCovertTarget] = useState(""); // pays saboté
 
   const act = async (body: Parameters<typeof buyIntel>[1], label: string) => {
     setBusy(true);
@@ -308,7 +308,7 @@ export function IntelPanel({
           </div>
         )}
 
-        {/* Opération secrète (Brief 6 pt13) — payée en COMPUTE du pays joué, PAS en
+        {/* Opération secrète — payée en COMPUTE du pays joué, PAS en
             crédits de renseignement : ressource distincte, affichée comme telle pour
             que le joueur ne confonde jamais les deux. Rôle joueur uniquement. */}
         {playAs && (

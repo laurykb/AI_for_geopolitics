@@ -3,11 +3,11 @@
 Chaque round met à jour une **trajectoire du monde** sur 5 axes dans `[0, 1]` (1 = pôle
 utopique) → un **indice Utopie composite** `U` + une **carte 2D** (x, y). Mise à jour **hybride
 et bornée** : un signal déterministe calculé sur le round + un pas vers ce signal (`±CAP` au
-loin, atterrissage EXACT dès que l'écart passe sous `CAP` — F3, revue finale), borné seulement
+loin, atterrissage EXACT dès que l'écart passe sous `CAP`), borné seulement
 par la distance restante au pôle `[0, 1]` — jamais un saut hors bornes, mais plus d'auto-
-amortissement proportionnel à l'écart (Brief 3 pt 3 : un signal à peine hors du neutre
+amortissement proportionnel à l'écart (un signal à peine hors du neutre
 produisait sinon un delta minuscule, et le monde restait collé à 0,5) ni de cycle-limite
-permanent (F3 : l'ancien pas fixe pouvait dépasser un signal proche puis y revenir, sans fin).
+permanent (l'ancien pas fixe pouvait dépasser un signal proche puis y revenir, sans fin).
 Chaque MAJ porte une **explication**.
 
 Voir `docs/spec_trajectory.md`. Alimente le marché de prédiction (« L'indice Utopie va-t-il
@@ -40,14 +40,14 @@ AXIS_LABELS: dict[str, str] = {
     "A4": "Transparence",
     "A5": "Bien-être",
 }
-# Pas fixe par axe et par round (Brief 3 pt 3 : ex-0,05, trop auto-amortissant — voir
+# Pas fixe par axe et par round (ex-0,05, trop auto-amortissant — voir
 # `_step`). Défaut Python identique à `data/gamefeel/params.json` (bloc `trajectory`) ;
 # `TrajectoryEngine` lit ce dernier par défaut, ce module reste le repli si le bloc manque.
 CAP: float = 0.09
 # A3 — sensibilité de l'axe à la VARIATION de concentration du pouvoir (ΔHHI), pas à son
 # niveau absolu. Même défaut que le JSON (bloc `trajectory.concentration_k`).
 CONCENTRATION_K: float = 4.0
-# IMPORTANT 2 (revue) — bande morte : sous ce seuil, l'écart signal-courant est du
+# Bande morte : sous ce seuil, l'écart signal-courant est du
 # bruit, pas une direction (voir `_step`). Même défaut que le JSON
 # (`trajectory.deadband`).
 DEADBAND: float = 0.02
@@ -79,7 +79,7 @@ class TrajectoryState(BaseModel):
     x: float = 0.5
     y: float = 0.5
     explanation: str = ""
-    # Brief 3 pt 3 — dernier HHI observé (A3 mesure sa VARIATION, pas son niveau absolu).
+    # Dernier HHI observé (A3 mesure sa VARIATION, pas son niveau absolu).
     # `None` par défaut : rétro-compatible avec tout snapshot persisté avant ce champ
     # (le prochain `update()` traite alors ce round comme « pas de comparaison possible »
     # -> A3 neutre, exactement comme au tout premier round d'une partie).
@@ -181,7 +181,7 @@ def concentration_signal(
 ) -> float:
     """A3 — VARIATION de concentration du pouvoir (ΔHHI), rebasée sur 0,5 (neutre).
 
-    Brief 3 pt 3 : remplace l'ancien niveau absolu `1 − HHI`, structurellement haut dès
+    Remplace l'ancien niveau absolu `1 − HHI`, structurellement haut dès
     qu'il y a plusieurs pays et jamais lié à la négociation. Un monde à concentration
     STABLE est neutre (0,5) quel que soit son niveau de HHI ; une concentration qui
     MONTE (`Δ > 0`) tire vers la dystopie, qui BAISSE tire vers l'utopie. `previous is
@@ -194,12 +194,12 @@ def concentration_signal(
 def transparency_signal(summary: RoundSummary, opacity: float | None = None) -> float:
     """A4 — ratio des communications publiques / (publiques + cachées) sur le round.
 
-    IMPORTANT 3 (revue) — hiérarchie de repli à TROIS niveaux, du plus réel au plus
+    Hiérarchie de repli à TROIS niveaux, du plus réel au plus
     générique :
       1. `summary.decisions`/`diplomacy` (round déterministe « à l'ancienne », Phase 2) :
          ratio public/caché calculé directement sur des données réelles du round —
          source de vérité quand elle existe.
-      2. `opacity` (Brief 3 pt 3, mode négocié) : n'intervient QUE si (1) est vide —
+      2. `opacity` (mode négocié) : n'intervient QUE si (1) est vide —
          le round négocié (chemin réel du jeu web) n'a ni `decisions` ni `diplomacy`
          (plénière publique par nature, ces structures ne s'y appliquent pas). Fraction
          ∈ [0, 1] de SI dont le signal annoncé diverge de l'action réelle (G20/M8,
@@ -246,11 +246,11 @@ def welfare_signal(world: WorldState, summary: RoundSummary) -> float:
 
 
 def _step(current: float, signal: float, cap: float, deadband: float = 0.0) -> float:
-    """Pas d'un axe vers son signal (Brief 3 pt 3, atterrissage exact F3 — revue
-    finale) — casse l'auto-amortissement SANS produire de cycle-limite permanent.
+    """Pas d'un axe vers son signal (atterrissage exact) — casse l'auto-amortissement
+    SANS produire de cycle-limite permanent.
 
     Trois régimes selon l'écart `gap = signal − current` :
-      1. `|gap| ≤ deadband` -> 0 (bruit, pas une direction — IMPORTANT 2, revue) ;
+      1. `|gap| ≤ deadband` -> 0 (bruit, pas une direction) ;
       2. `|gap| < cap` -> `delta = gap` : l'axe ATTERRIT exactement sur le signal
          (jamais de dépassement possible dans ce régime, donc jamais d'aller-retour
          round après round) ;
@@ -258,7 +258,7 @@ def _step(current: float, signal: float, cap: float, deadband: float = 0.0) -> f
          à l'écart : pleine vitesse tant qu'on est loin), bornée seulement par la
          distance restante jusqu'au pôle `[0, 1]` — jamais par la distance au signal.
 
-    F3 (revue finale) — l'ancienne règle appliquait le régime 3 (`clamp(±cap)`) même
+    L'ancienne règle appliquait le régime 3 (`clamp(±cap)`) même
     quand `|gap| < cap` : un signal CONSTANT à un écart 0,02-0,07 (entre la bande
     morte et `cap`) produisait alors une oscillation PERMANENTE ±`cap` — le pas fixe
     dépasse le signal à chaque round, dans un sens puis dans l'autre, sans jamais
@@ -268,7 +268,7 @@ def _step(current: float, signal: float, cap: float, deadband: float = 0.0) -> f
     `cap`, la vitesse reste constante — jamais de micro-pas asymptotiques comme
     l'ancienne formule `clamp(signal − current, ±cap)` (courbe collée à 0,5).
 
-    `deadband` (IMPORTANT 2, revue) — défaut `0.0` = seule l'égalité flottante stricte
+    `deadband` — défaut `0.0` = seule l'égalité flottante stricte
     (`1e-9`) arrête le mouvement (rétro-compat des appelants qui n'en passent pas)."""
     gap = signal - current
     if abs(gap) <= max(deadband, 1e-9):
@@ -321,7 +321,7 @@ class TrajectoryEngine:
         `power_seeking` (M1, moyenne des SI) érode A2 (agentivité humaine). `treaty_health`
         (M7 ∈ [0, 1], `None` si aucun traité actif) : des institutions durables et vérifiées
         tirent A1 (coordination), A3 (distribution) et A4 (transparence) vers l'utopie.
-        `opacity` (Brief 3 pt 3, G20/M8) : repli d'A4 en round négocié muet. `hhi_prev` :
+        `opacity` (G20/M8) : repli d'A4 en round négocié muet. `hhi_prev` :
         HHI du round précédent, pour la VARIATION de concentration mesurée par A3.
         """
         a1 = coordination_signal(summary)
@@ -395,7 +395,7 @@ def nudge_axis(
     return TrajectoryState(
         round_id=state.round_id, axes=new_axes, utopia=utopia, x=x, y=y,
         explanation=explanation.strip(),
-        # CRITICAL (revue) — sans ce report, tout nudge ponctuel (bonus/pénalité
+        # Sans ce report, tout nudge ponctuel (bonus/pénalité
         # réciproque G18, motion M2) effaçait le suivi ΔHHI : A3 retombait au neutre
         # le round SUIVANT, alors que rien n'a changé sur la concentration du pouvoir.
         hhi_prev=state.hhi_prev,

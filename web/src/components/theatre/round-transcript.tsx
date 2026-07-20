@@ -72,7 +72,7 @@ export function RoundTranscript({
           streaming={false}
         />
       )}
-      {/* Brief 4 pt 8 — le délibéré du juge persisté se relit comme au direct
+      {/* Le délibéré du juge persisté se relit comme au direct
           (absent des rounds joués avant ce point : le panneau ne s'affiche pas). */}
       {viewed.judge.rationale && (
         <JudgeRationale text={viewed.judge.rationale} streaming={false} />

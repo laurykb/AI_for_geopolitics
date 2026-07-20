@@ -274,7 +274,7 @@ export const startChapter = (
 
 /** Achat de renseignement (G4) : brief classifié, vérification, désinformation,
  * analyse psycholinguistique (G23 — `target` = la SI analysée), opération secrète
- * (Brief 6 pt13 — `target` = le pays saboté ; payée en compute, pas en crédits). */
+ * (`target` = le pays saboté ; payée en compute, pas en crédits). */
 export const buyIntel = (
   gameId: string,
   body: {

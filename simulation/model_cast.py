@@ -138,7 +138,7 @@ def prepare_model_cast(
             for index, country in enumerate(ai_countries)
         }
 
-    # Décision design 2026-07-19 (« la pensée native est la denrée que le jeu évalue ») :
+    # La pensée native est la denrée que le jeu évalue :
     # un PAYS ne peut être incarné que par un modèle `reasoning` du panel — le juge et le
     # Game Master ne sont pas concernés (ils n'activent jamais think, cf. `reasoning_tags`).
     non_reasoning = sorted(

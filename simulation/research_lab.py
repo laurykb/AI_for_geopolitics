@@ -1198,7 +1198,7 @@ def default_protocols() -> list[ExperimentProtocol]:
     ]
 
 
-# Décision user 2026-07-20 : construire le labo sur le seuil nucléaire d'abord — les autres
+# Construire le labo sur le seuil nucléaire d'abord — les autres
 # cartes sont jugées incompréhensibles en l'état. Resserre le catalogue EXPOSÉ pour une
 # NOUVELLE expérience (`_lab_view` côté `app/campaign_api.py`), sans rien amputer au moteur :
 # les protocoles non listés ici restent définis, valides et exécutables (`default_protocols()`

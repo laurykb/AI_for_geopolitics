@@ -28,7 +28,7 @@ from simulation.private_deliberation import restream_without_think, strip_think
 # 400 tokens, un round à 3+ pays se tronque sur mistral et `extract_json` échoue —
 # TOUT le verdict retombe alors au neutre (escalade 0,5, deltas perdus). Constaté au
 # smoke réel POLISH-1. Le budget de prose (rationale/communiqué) reste `max_tokens`.
-# Brief 4 pt 8 — remonté 900 -> 1300 : `attribute_reasons` ajoute une phrase de
+# Remonté 900 -> 1300 : `attribute_reasons` ajoute une phrase de
 # justification par delta non nul (même risque de troncature mistral 7B qu'au
 # POLISH-1). À mesurer en live (troncature mistral 7B) — la mesure réelle est faite
 # par le contrôleur en phase finale.
@@ -91,7 +91,7 @@ class JudgeAgent:
                 max_tokens=max(self.max_tokens, VERDICT_MAX_TOKENS),
                 temperature=self.temperature,
             )
-            # F2 (revue finale) — verdict() est la SEULE sortie du juge non protégée par
+            # verdict() est la SEULE sortie du juge non protégée par
             # restream_without_think (rationale/communiqué le sont déjà) : un deepseek-r1
             # casté juge au lobby émet <think> inline même sans l'option think. Sans ce
             # strip, un faux JSON dans la pensée casse `extract_json` (ou pire, se fait

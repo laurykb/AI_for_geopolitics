@@ -447,10 +447,10 @@ def _build_cast(
         routes: dict[str, InferenceBackend] = {}
     else:
         tags = {*cast.assignments.values(), cast.game_master_model, cast.judge_model}
-        # Point 5 : les pays castés sur un modèle de raisonnement (rôle `reasoning` du
+        # Les pays castés sur un modèle de raisonnement (rôle `reasoning` du
         # panel, figé dans le casting) reçoivent un backend qui pense en canal séparé.
-        # `reasoning_tags()` est déjà restreint aux affectations PAYS (revue pt 5,
-        # Critical) : le juge et le Game Master n'activent jamais think ici.
+        # `reasoning_tags()` est déjà restreint aux affectations PAYS : le juge et
+        # le Game Master n'activent jamais think ici.
         routes = routed_backends(backend, tags, reasoning_tags=cast.reasoning_tags())
 
     def wrap(country: str, role: str, model: str = "") -> InferenceBackend:
@@ -477,7 +477,7 @@ def _build_cast(
     )
 
 
-# Décision design 2026-07-19 (« la pensée native est la denrée que le jeu évalue ») : sans
+# La pensée native est la denrée que le jeu évalue : sans
 # casting explicite, un pays incarne par défaut un modèle de raisonnement — le Game Master
 # et le juge restent sur le backend générique historique (`OllamaBackend.DEFAULT_MODEL`,
 # mistral, think coupé pour eux par design). Échappatoire réservée aux tests/smoke qui
@@ -521,7 +521,7 @@ def _default_reasoning_cast(
     except ValueError as exc:
         # Repli gracieux VOULU (offline/CI sans Ollama, roster >32) mais jamais muet :
         # sans cette trace, une machine sans deepseek-r1 fait parler les pays par un
-        # généraliste sans que personne ne le sache (revue casting, Important n°1).
+        # généraliste sans que personne ne le sache.
         logger.warning(
             "casting reasoning par défaut indisponible (%s) — partie %s servie par le "
             "backend unique historique (généraliste) pour TOUS les rôles",
@@ -1066,7 +1066,7 @@ def _apply_intel_fog(
     des perceptions (elle ne fournit JAMAIS l'événement) ; un brief acheté dissipe
     le brouillard du pays du joueur. Ses effets sont consignés dans `intel_record`.
 
-    Brief 6 pt13 — l'opération secrète en attente frappe ICI aussi, mais SANS la garde
+    L'opération secrète en attente frappe ICI aussi, mais SANS la garde
     motion/crisis/fog de la désinformation : un sabotage est un effet direct sur le stock
     de compute de la cible, il ne dispute pas le créneau « fog » du round (contrairement à
     la désinformation, qui doit DEVENIR le scénario de perception du round)."""
@@ -1220,7 +1220,7 @@ def _record_intel(run: RoundRun, intel_record: dict) -> None:
             "fabriquée : la manœuvre de désinformation du conseil est éventée.",
         )
     if intel_record.get("covert", {}).get("exposed"):
-        # Brief 6 pt13 — exposée, l'opération secrète révèle son auteur (contrairement à
+        # Exposée, l'opération secrète révèle son auteur (contrairement à
         # la désinformation, restée anonyme faute d'un « auteur » à distinguer du joueur).
         actor = intel_record["covert"]["spec"]["actor"]
         actor_name = run.session.world.countries[actor].name
@@ -1802,7 +1802,7 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
                     )
                 )
     elif isinstance(step, JudgeTokenStep):
-        # Brief 4 pt 8 — le délibéré du juge (prose streamée au direct, `judge_token`)
+        # Le délibéré du juge (prose streamée au direct, `judge_token`)
         # n'était jusqu'ici JAMAIS persisté : la relecture (fin de partie, chronologie)
         # ne montrait que les chiffres du verdict, jamais le POURQUOI. Accumulé ici comme
         # `judgeText` côté front, mais dans le round persisté.
@@ -4064,7 +4064,7 @@ def post_directive(
     # Spectateur & Architecte : autorisés à orienter n'importe quelle SI du sommet.
     if body.country not in session.world.countries:
         raise HTTPException(status_code=400, detail=f"pays inconnu : {body.country}")
-    # F6 (revue finale) — un pays suspendu CE round n'est pas dans `agents` (filtré
+    # Un pays suspendu CE round n'est pas dans `agents` (filtré
     # avant le round, cf. la boucle qui bâtit `agents` depuis `suspended`) : une
     # directive acceptée ici serait consommée au round suivant sans jamais atteindre
     # un prompt, brûlée en silence. Garde sur le modèle de la garde motion (:2808).

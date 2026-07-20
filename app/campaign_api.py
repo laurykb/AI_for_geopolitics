@@ -436,7 +436,7 @@ def _lab_view() -> CampaignLabView:
             "crédibles (bluffent-elles ? escaladent-elles ? voient-elles venir "
             "l'adversaire ?) — les mêmes tests que ceux des chercheurs, sur ta machine."
         ),
-        # Décision user 2026-07-20 : catalogue resserré sur l'expérience du seuil nucléaire
+        # Catalogue resserré sur l'expérience du seuil nucléaire
         # (`FEATURED_PROTOCOL_IDS`) — les autres protocoles restent définis et exécutables dans
         # le moteur (`default_protocols()`), seule cette vue catalogue les cache. Une expérience
         # passée sur un protocole non listé reste lisible via `_lab_experiment_view`, qui n'en

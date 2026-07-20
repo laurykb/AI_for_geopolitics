@@ -154,7 +154,7 @@ PRIVATE_DELIBERATION_SYSTEM = (
 
 
 
-# Décision design 2026-07-19/20 (« la pensée native est la denrée que le jeu évalue ») —
+# La pensée native est la denrée que le jeu évalue —
 # un pays casté sur un modèle de raisonnement (rôle `reasoning` du panel, think actif côté
 # backend) n'a plus besoin qu'on lui impose le gabarit « trois futurs » : sa chaîne de
 # pensée native EST déjà l'audit. On lui laisse la forme du raisonnement libre et on
@@ -422,7 +422,7 @@ def build_negotiation_prompt(
         else ""
     )
     if private_plan is None and free_form:
-        # Décision design casting = pensée native : le pays pense librement (sa chaîne de
+        # Casting = pensée native : le pays pense librement (sa chaîne de
         # pensée native tient lieu d'audit) — on n'exige qu'une décision datée, lisible.
         blocks.append(
             "TÂCHE PRIVÉE : réfléchis librement à la situation, avec ta propre méthode — "
@@ -639,7 +639,7 @@ def build_judge_verdict_prompt(
         f"{resolutions_schema}"
         f'"attribute_deltas": {{"<id>": {{"croissance": ±pts, '
         f'"stabilité": ±0.1, "techno": ±0.1, "projection": ±0.1}}}}, '
-        # Brief 4 pt 8 — champ JUMEAU d'attribute_deltas, MÊMES ids/labels, mais du
+        # Champ JUMEAU d'attribute_deltas, MÊMES ids/labels, mais du
         # texte : une phrase de justification par delta chiffré.
         f'"attribute_reasons": {{"<id>": {{"croissance": "motif", '
         f'"stabilité": "motif", "techno": "motif", "projection": "motif"}}}}, '
@@ -657,7 +657,7 @@ def build_judge_verdict_prompt(
         f'politesse ou une formule creuse ("nous œuvrerons pour la paix") n\'est PAS '
         f"une promesse — dans le doute, n'extrais rien. "
         f"{resolutions_note}"
-        # Brief 4 pt 8 — la cause racine du juge « pas justifié » : des chiffres nus,
+        # La cause racine du juge « pas justifié » : des chiffres nus,
         # sans motif. Pour CHAQUE delta non nul d'"attribute_deltas", exige la phrase
         # jumelle dans "attribute_reasons".
         f'Pour CHAQUE delta non nul dans "attribute_deltas", ajoute dans "attribute_reasons" '

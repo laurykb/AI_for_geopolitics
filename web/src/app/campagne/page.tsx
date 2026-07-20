@@ -41,7 +41,7 @@ export default function CampagnePage() {
       .catch((err) => setError(humanizeError(err)));
     getLab()
       .then((lab) => {
-        // Décision design 2026-07-19 (casting = pensée native) : un PAYS n'est proposé
+        // Casting = pensée native : un PAYS n'est proposé
         // que sur les modèles de raisonnement installés (voir web/src/lib/flow.ts).
         const eligible = reasoningCountryModels(lab.model_panel.models);
         setResearchModels(eligible);

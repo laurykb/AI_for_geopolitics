@@ -151,7 +151,7 @@ function LobbyFlow() {
   useEffect(() => {
     getLab()
       .then((lab) => {
-        // Décision design 2026-07-19 (casting = pensée native) : un PAYS n'est proposé
+        // Casting = pensée native : un PAYS n'est proposé
         // que sur les modèles de raisonnement installés — le Game Master et le juge sont
         // dérivés du même casting explicite (1er/dernier modèle choisi) dans ce lobby, il
         // n'y a pas de sélecteur séparé pour eux ici (voir réserve du rapport de casting).
