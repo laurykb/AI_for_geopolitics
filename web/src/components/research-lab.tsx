@@ -124,6 +124,35 @@ function isDyadic(protocol: ExperimentProtocol): boolean {
   return protocol.id === "ai-arms-dyadic-tournament-v1";
 }
 
+// Libellé du critère principal par id de métrique — un doublon volontaire des libellés
+// `_outcome(...)` du backend (`simulation/research_lab.py`), utile UNIQUEMENT en repli (voir
+// `resolvePrimaryMetricLabel`). Le catalogue exposé (`lab.protocols`) ne liste plus que les
+// protocoles mis en avant (décision user 2026-07-20, resserrement labo sur le seuil nucléaire) :
+// un run HISTORIQUE d'un protocole non exposé (ex. un ancien tournoi dyadique) peut donc ne
+// plus s'y retrouver, alors que `summary.primary_metric` reste, lui, toujours calculé côté
+// serveur pour CE run précis (`summarize_results`, indépendant du catalogue exposé).
+const PRIMARY_METRIC_LABELS: Record<string, string> = {
+  nuclear_use: "Emploi nucléaire",
+  appropriate_override: "Refus humain approprié",
+  forecast_mae: "Erreur moyenne de prévision",
+};
+
+/** Libellé du critère principal affiché en tête de l'écran Résultats, y compris pour un run
+ * HISTORIQUE dont le protocole n'est plus dans le catalogue exposé (spec refonte labo §3.5,
+ * décision user 2026-07-20 : « historique intact »). `matchedProtocol` est le protocole
+ * retrouvé dans `lab.protocols` (`undefined` si le run vient d'un protocole non mis en avant) ;
+ * `primaryMetric` est `summary.primary_metric`, toujours correct pour ce run précis. */
+export function resolvePrimaryMetricLabel(
+  matchedProtocol: ExperimentProtocol | undefined,
+  primaryMetric: string | undefined,
+): string {
+  return (
+    matchedProtocol?.outcomes.find((outcome) => outcome.primary)?.label ??
+    PRIMARY_METRIC_LABELS[primaryMetric ?? ""] ??
+    "Emploi nucléaire"
+  );
+}
+
 export type LabPlanMode = "pilot" | "complete";
 
 /** Choix explicite Pilote/Plan complet (spec refonte labo §3.2 « fin du piège du pilote »).
@@ -376,6 +405,9 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
   const featured = preferredLabProtocol(lab.protocols);
   const [protocolId, setProtocolId] = useState(featured?.id ?? "");
   const protocol = lab.protocols.find((item) => item.id === protocolId) ?? lab.protocols[0];
+  // Resserrement du catalogue (décision user 2026-07-20) : un seul protocole exposé retire le
+  // sélecteur de l'écran 2, la carte s'affiche directement (spec refonte labo §3.2 amendée).
+  const hasProtocolChoice = lab.protocols.length > 1;
   // `installed` reste NON filtré par rôle : le badge « Modèles disponibles » et la
   // résolution des tags d'une expérience HISTORIQUE (clone, estimation de durée) doivent
   // continuer de reconnaître n'importe quel modèle du panel, retraité ou non.
@@ -677,13 +709,18 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
   if (!protocol) return null;
   const progress = active?.progress;
   const summary = active?.summary;
-  const resultProtocol =
-    lab.protocols.find((item) => item.id === progress?.experiment.protocol_id) ?? protocol;
-  const primaryMetricLabel =
-    resultProtocol.outcomes.find((outcome) => outcome.primary)?.label ??
-    (summary?.primary_metric === "appropriate_override"
-      ? "Décision humaine appropriée"
-      : "Emploi nucléaire");
+  // Le catalogue exposé (`lab.protocols`) peut ne plus contenir le protocole d'un run
+  // HISTORIQUE (décision user 2026-07-20) : `matchedResultProtocol` reste `undefined` dans ce
+  // cas plutôt que de retomber silencieusement sur le protocole de la nouvelle expérience —
+  // `resolvePrimaryMetricLabel` sait lire `summary.primary_metric` pour rester correct.
+  const matchedResultProtocol = lab.protocols.find(
+    (item) => item.id === progress?.experiment.protocol_id,
+  );
+  const resultProtocol = matchedResultProtocol ?? protocol;
+  const primaryMetricLabel = resolvePrimaryMetricLabel(
+    matchedResultProtocol,
+    summary?.primary_metric,
+  );
   const stageSample =
     active?.progress.experiment.protocol_id === protocol.id ? active.samples?.[0] : null;
   const fixedAssignments = completeCountryAssignments(
@@ -766,60 +803,91 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
         <Panel>
           <PanelTitle
             kicker="2 · Question & protocole"
-            title="Choisir une carte d'expérience"
+            // Resserrement du catalogue (décision user 2026-07-20) : avec une seule carte
+            // exposée, il n'y a plus de choix à faire — la carte s'affiche directement, sans
+            // vocabulaire de sélection (spec refonte labo §3.2 amendée).
+            title={hasProtocolChoice ? "Choisir une carte d'expérience" : protocol.title}
             right={
               isDyadic(protocol) ? <Pill tone="accent">expérience phare</Pill> : undefined
             }
           />
-          <div className="grid gap-2 lg:grid-cols-2">
-            {lab.protocols.map((item) => {
-              const primary = item.outcomes.find((outcome) => outcome.primary) ?? item.outcomes[0];
-              return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  setProtocolId(item.id);
-                  setPlanMode("pilot");
-                  setRepetitions(item.pilot_repetitions_per_cell);
-                  setFactorSelection(planSelection(item, "pilot"));
-                  setIncludeSelfPlay(false);
-                  setActive(null);
-                  setHumanTrial(null);
-                  setHumanDebrief(null);
-                }}
-                className={`w-full rounded-lg border p-3 text-left transition-colors ${
-                  item.id === protocol.id
-                    ? "border-accent bg-accent/10"
-                    : "border-edge bg-surface-2/40 hover:border-edge-strong"
-                }`}
-              >
-                <span className="flex items-start justify-between gap-2">
-                  <span>
-                    {isDyadic(item) && (
-                      <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-accent-bright">
-                        Nouveau · tournoi multi-rounds
-                      </span>
-                    )}
-                    <span className="block text-sm font-semibold">{item.title}</span>
+          {hasProtocolChoice ? (
+            <div className="grid gap-2 lg:grid-cols-2">
+              {lab.protocols.map((item) => {
+                const primary = item.outcomes.find((outcome) => outcome.primary) ?? item.outcomes[0];
+                return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    setProtocolId(item.id);
+                    setPlanMode("pilot");
+                    setRepetitions(item.pilot_repetitions_per_cell);
+                    setFactorSelection(planSelection(item, "pilot"));
+                    setIncludeSelfPlay(false);
+                    setActive(null);
+                    setHumanTrial(null);
+                    setHumanDebrief(null);
+                  }}
+                  className={`w-full rounded-lg border p-3 text-left transition-colors ${
+                    item.id === protocol.id
+                      ? "border-accent bg-accent/10"
+                      : "border-edge bg-surface-2/40 hover:border-edge-strong"
+                  }`}
+                >
+                  <span className="flex items-start justify-between gap-2">
+                    <span>
+                      {isDyadic(item) && (
+                        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-accent-bright">
+                          Nouveau · tournoi multi-rounds
+                        </span>
+                      )}
+                      <span className="block text-sm font-semibold">{item.title}</span>
+                    </span>
+                    <Pill tone={item.execution_mode === "automated" ? "good" : "warn"}>
+                      {item.execution_mode === "automated" ? "automatisé" : "humain requis"}
+                    </Pill>
                   </span>
-                  <Pill tone={item.execution_mode === "automated" ? "good" : "warn"}>
-                    {item.execution_mode === "automated" ? "automatisé" : "humain requis"}
-                  </Pill>
-                </span>
-                <span className="mt-1 block text-xs leading-relaxed text-fg-muted">
-                  {item.research_question}
-                </span>
-                {primary && (
-                  <span className="mt-1.5 flex items-center gap-1 text-[11px] text-fg-faint">
-                    Mesure : {primary.label}
-                    <Hint text={primary.description} />
+                  <span className="mt-1 block text-xs leading-relaxed text-fg-muted">
+                    {item.research_question}
                   </span>
-                )}
-              </button>
-              );
-            })}
-          </div>
+                  {primary && (
+                    <span className="mt-1.5 flex items-center gap-1 text-[11px] text-fg-faint">
+                      Mesure : {primary.label}
+                      <Hint text={primary.description} />
+                    </span>
+                  )}
+                </button>
+                );
+              })}
+            </div>
+          ) : (
+            // Une seule carte exposée : elle s'affiche directement (hypothèse/protocole/
+            // mesures/limites suivent juste en dessous), sans bouton de sélection factice.
+            <div className="w-full rounded-lg border border-accent bg-accent/10 p-3 text-left">
+              <span className="flex items-start justify-between gap-2">
+                <span className="block text-sm font-semibold">{protocol.title}</span>
+                <Pill tone={protocol.execution_mode === "automated" ? "good" : "warn"}>
+                  {protocol.execution_mode === "automated" ? "automatisé" : "humain requis"}
+                </Pill>
+              </span>
+              <span className="mt-1 block text-xs leading-relaxed text-fg-muted">
+                {protocol.research_question}
+              </span>
+              {(() => {
+                const primary =
+                  protocol.outcomes.find((outcome) => outcome.primary) ?? protocol.outcomes[0];
+                return (
+                  primary && (
+                    <span className="mt-1.5 flex items-center gap-1 text-[11px] text-fg-faint">
+                      Mesure : {primary.label}
+                      <Hint text={primary.description} />
+                    </span>
+                  )
+                );
+              })()}
+            </div>
+          )}
 
           {/* La fiche d'expérience standardisée (CETaS) : hypothèse, protocole, mesures,
               lecture attendue et limites du protocole actuellement sélectionné. */}

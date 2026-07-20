@@ -95,7 +95,15 @@ def test_campaign_exposes_selectable_scientific_protocols_and_local_model_panel(
     view = TestClient(app).get("/api/campaign").json()
     lab = view["lab"]
     assert lab["classic_mode_unchanged"] is True
-    assert {protocol["id"] for protocol in lab["protocols"]} >= {
+    # Décision user 2026-07-20 (« garde uniquement l'expérience du seuil nucléaire ») : le
+    # catalogue exposé par `/api/campaign` (même vue que `/api/lab`) ne liste plus que ce
+    # protocole pour une NOUVELLE expérience. Les autres restent définis et exécutables dans le
+    # moteur (`default_protocols()`), seule cette vue les cache — voir test_campaign_api.py
+    # (catalogue resserré + historique d'un autre protocole toujours lisible) pour la garantie.
+    assert {protocol["id"] for protocol in lab["protocols"]} == {"uranium-alpha-beta-v1"}
+    from simulation.research_lab import default_protocols
+
+    assert {protocol.id for protocol in default_protocols()} >= {
         "uranium-alpha-beta-v1",
         "ai-arms-opening-screen-v1",
         "human-ai-authority-v1",

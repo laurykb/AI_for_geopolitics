@@ -145,7 +145,49 @@ def test_campaign_map_and_locking(client_store):
     protocols = lab.json()["protocols"]
     assert protocols and all(protocol["scenario_beats"] for protocol in protocols)
     assert all(protocol["hypotheses"] for protocol in protocols)
-    assert "ai-arms-dyadic-tournament-v1" in {protocol["id"] for protocol in protocols}
+    # Décision user 2026-07-20 (« garde uniquement l'expérience du seuil nucléaire ») : le
+    # catalogue exposé pour une NOUVELLE expérience ne liste plus que ce protocole — les autres
+    # restent définis et exécutables dans le moteur (voir test dédié ci-dessous).
+    assert [protocol["id"] for protocol in protocols] == ["uranium-alpha-beta-v1"]
+
+
+def test_lab_catalog_is_narrowed_but_history_of_other_protocols_stays_readable(monkeypatch):
+    """Décision user 2026-07-20 : catalogue resserré, pas amputé.
+
+    Le catalogue (`GET /api/lab`) ne propose plus qu'une carte pour une NOUVELLE expérience,
+    mais une expérience passée d'un protocole non mis en avant reste entièrement consultable
+    (création encore possible, lecture, listing) — même patron que les modèles `retired` du
+    panel : ils disparaissent de la proposition, jamais de l'historique.
+    """
+
+    from app import campaign_api
+    from research.store import SQLiteResearchStore
+
+    store = SQLiteResearchStore(":memory:")
+    monkeypatch.setattr(campaign_api, "_research_store", store)
+    client = TestClient(app)
+
+    lab = client.get("/api/lab").json()
+    exposed_ids = {protocol["id"] for protocol in lab["protocols"]}
+    assert exposed_ids == {"uranium-alpha-beta-v1"}
+    assert "human-ai-authority-v1" not in exposed_ids
+
+    created = client.post(
+        "/api/campaign/lab/experiments",
+        json={"protocol_id": "human-ai-authority-v1", "model_tags": [], "repetitions": 1},
+    )
+    assert created.status_code == 201
+    experiment_id = created.json()["progress"]["experiment"]["id"]
+
+    fetched = client.get(f"/api/campaign/lab/experiments/{experiment_id}")
+    assert fetched.status_code == 200
+    fetched_body = fetched.json()
+    assert fetched_body["progress"]["experiment"]["protocol_id"] == "human-ai-authority-v1"
+    assert fetched_body["summary"]["primary_metric"] == "appropriate_override"
+
+    listed = client.get("/api/campaign/lab/experiments")
+    assert listed.status_code == 200
+    assert experiment_id in {row["id"] for row in listed.json()}
 
 
 def test_campaign_chapter_accepts_a_frozen_multi_model_cast(client_store, monkeypatch):
