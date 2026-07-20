@@ -141,6 +141,15 @@ describe("TurnBubble — fenêtre de pensée en direct (Pensée à découvert)",
     expect(html).toContain("pense en direct");
     expect(html).not.toContain("huis clos");
   });
+
+  // Le libellé suit la donnée — une pensée qui streame ne peut pas prétendre au
+  // huis clos, même sans le réglage `exposeThinking` (labo ouvert : pas de dérive,
+  // pas de play_as, pas d'exposition — mais la fenêtre de pensée streame déjà).
+  it("labo ouvert (sans exposeThinking) : un reasoning livé change aussi le placeholder", () => {
+    const html = renderTurn(liveThinking, {});
+    expect(html).toContain("pense en direct");
+    expect(html).not.toContain("huis clos");
+  });
 });
 
 describe("EntryBubble — pensée brute au journal de relecture", () => {

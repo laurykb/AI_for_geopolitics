@@ -42,7 +42,6 @@ alter table games add column if not exists drift_enabled boolean not null defaul
 alter table games add column if not exists result_json jsonb;
 alter table games add column if not exists language text not null default 'fr';
 alter table games add column if not exists expose_thinking boolean not null default false;
-alter table transcripts add column if not exists thinking text not null default '';
 create index if not exists games_owner_idx on games (owner_id);
 
 create table if not exists rounds (
@@ -122,6 +121,8 @@ create table if not exists transcripts (
   unique (round_id, seq)
 );
 create index if not exists transcripts_round_idx on transcripts (round_id, seq);
+-- Migration des bases existantes (idempotent) :
+alter table transcripts add column if not exists thinking text not null default '';
 
 -- G7-c : prompts complets capturés en mode admin (même patron que transcripts).
 -- JAMAIS de lecture anon : ils révèlent la consigne secrète de la Dérive — RLS activée

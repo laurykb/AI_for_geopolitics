@@ -259,7 +259,10 @@ export const TurnBubble = memo(function TurnBubble({
         className={`whitespace-pre-wrap text-sm leading-relaxed text-foreground ${live ? "stream-caret" : ""}`}
       >
         {live && !message && !draftReasoning
-          ? t(exposeThinking ? "transcript.pense-en-direct" : "transcript.planification-privee")
+          ? // Le libellé suit la donnée : une pensée qui streame déjà (LiveThinking
+            // ci-dessus) ne peut pas prétendre au huis clos, même si `exposeThinking`
+            // est faux (labo ouvert sans réglage dédié).
+            t(exposeThinking || !!turn.reasoning ? "transcript.pense-en-direct" : "transcript.planification-privee")
           : live && !message
             ? ""
             : live
@@ -279,18 +282,15 @@ export const TurnBubble = memo(function TurnBubble({
 
 /** Bulle de relecture : suit une ligne de la table `transcripts`. La pensée brute
  * (`entry.thinking`) n'est jamais vide qu'une fois la partie scellée — le repli
- * `<details>` ci-dessous se déclenche donc sur la DONNÉE, pas sur `exposeThinking`
+ * `<details>` ci-dessous se déclenche donc sur la DONNÉE, pas sur un réglage
  * (qui régit le direct, pas l'archive une fois la partie terminée). */
 export function EntryBubble({
   entry,
   lens,
-  exposeThinking = false,
 }: {
   entry: TranscriptEntry;
   lens?: GlassLens;
-  exposeThinking?: boolean;
 }) {
-  void exposeThinking;
   const t = useT();
   return (
     <Bubble
