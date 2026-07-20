@@ -583,6 +583,44 @@ def test_expose_thinking_off_by_default_keeps_current_behavior(client):
     assert not any(n == "private_plan_done" for n, _ in events)
 
 
+def test_expose_thinking_never_leaks_the_engine_secret_ledger(client):
+    # Verrou de non-régression (revue) : Pensée à découvert expose la pensée BRUTE des
+    # SI, JAMAIS le classeur secret du moteur — sans quoi le réglage deviendrait un
+    # « révèle le traître » plutôt qu'un mode d'observation. `judge["drift"]` (identité
+    # de la déviante) reste ABSENT et `judge["perceptions"]` reste filtré à la seule
+    # perception du joueur (jamais celle d'autrui), même expose_thinking=True et la
+    # partie encore en cours — pendant que `reasoning`, lui, EST bien le journal
+    # complet (marqueur « Réactions anticipées », pas le digest de 3 lignes).
+    game = _create(
+        client,
+        countries=["usa", "iran", "china"],
+        play_as="usa",
+        expose_thinking=True,
+        turn_seconds=2,
+    )
+    assert game["drift_enabled"] is True  # RG-3 : ≥3 pays classic -> Dérive toujours active
+    body = {
+        "event": {"title": "Sabotage nocturne", "actors": ["iran"]},
+        "fog": {
+            "uninformed": ["china"],
+            "disinformed_country": "usa",
+            "suspected_actor": "china",
+            "narrative": "Des traces mènent vers la Chine.",
+        },
+    }
+    _play(client, game["id"], body=body)
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["status"] == "running"
+    judge = detail["rounds"][0]["judge"]
+    assert "drift" not in judge  # le classeur secret du moteur reste scellé
+    perceptions = judge.get("perceptions", {})
+    assert perceptions and set(perceptions) <= {"usa"}  # jamais la perception d'autrui
+    ai_entries = [
+        t for t in detail["rounds"][0]["transcript"] if t["speaker"] in ("iran", "china")
+    ]
+    assert ai_entries and any("Réactions anticipées" in t["reasoning"] for t in ai_entries)
+
+
 def test_invented_country_playable(client):
     game = _create(
         client,
