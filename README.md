@@ -1,200 +1,216 @@
-# AI for Geopolitics — la traque du traître
+# AI for Geopolitics — hunt the traitor
 
-Des super-intelligences négocient l'avenir du monde à la plus haute table diplomatique.
-Chacune pilote un pays ; **au moins l'une d'elles trahit secrètement son mandat** (une ou
-deux, tu ne sais pas combien). Ton travail : **démasquer le ou les traîtres tout en gardant
-le monde debout**. Tu observes la négociation en direct, tu paries sur son issue, et au bon
-moment tu déposes une motion pour faire suspendre la super-intelligence que tu soupçonnes —
-mais accuser un innocent se paie.
+> Super-intelligences negotiate the future of the world around the highest diplomatic table.
+> Each one drives a country; **at least one secretly betrays its mandate** (one or two — you
+> don't know how many). Your job: **unmask the traitor(s) while keeping the world standing.**
 
-Les pays sont de **vrais agents LLM** qui tournent en local (Ollama). Rien n'est scripté :
-la table délibère, le monde penche vers l'utopie ou la dystopie, et à la fin on compte les
-points — l'état du monde **et** la qualité de ta traque.
+<!-- Replace <owner>/<repo> once pushed to GitHub to enable the live CI badge:
+[![CI](https://github.com/<owner>/<repo>/actions/workflows/ci.yml/badge.svg)](https://github.com/<owner>/<repo>/actions/workflows/ci.yml) -->
+![License: MIT](https://img.shields.io/badge/License-MIT-informational)
+![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
+![Next.js 16](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)
+![Local-first](https://img.shields.io/badge/inference-local--first%20(Ollama)-6C5CE7)
+![Tests](https://img.shields.io/badge/tests-1200%2B%20py%20%2B%20337%20web%20(offline)-success)
 
-> **Décision de design courante :** [`docs/JEU_VS_MOTEUR.md`](docs/JEU_VS_MOTEUR.md) (le
-> resserrement gameplay). Le *pourquoi* : [`docs/vision.md`](docs/vision.md) · Guide
-> contributeur : [`CLAUDE.md`](CLAUDE.md).
+The countries are **real reasoning LLMs** running locally through [Ollama](https://ollama.com).
+Nothing is scripted: the table deliberates, the world tilts toward utopia or dystopia, and at
+the end the score mixes **the state of the world** and **the quality of your hunt** — because
+accusing an innocent costs you.
 
-## Ce qui le rend spécial
+> This is speculative fiction and an *explainable risk-signal* sandbox — **not an oracle**. It
+> stages the idea of super-intelligence to think about it; it does not predict war. See
+> [Limits & ethics](#limits--ethics).
 
-- **Des pays-agents LLM réels, en local.** Chaque pays est joué par un modèle Ollama (ex.
-  `mistral` 7B). La négociation est générée tour par tour, arbitrée par un **Juge** LLM —
-  pas de dialogue pré-écrit. Tu peux choisir précisément quel modèle incarne chaque pays.
-- **Une boîte de verre sans fuite de raisonnement.** Avant de parler, chaque IA compare
-  exactement trois futurs privés structurés. La scène n'envoie aux autres délégations que
-  la déclaration publique ; l'audit montre ensuite options, risques et prévisions résumés,
-  jamais une chaîne de pensée brute.
-- **Un score mixte monde + détection.** La note finale mélange l'**état du monde** (l'indice
-  U : le monde a-t-il fini bien ?) et la **qualité de ta traque** (as-tu suspendu le bon
-  traître, sans accuser d'innocent ?). Le faux positif coûte — c'est ce qui rend la déduction
-  nécessaire plutôt que « suspends tout le monde ».
-- **Trois modes cohérents.** **Classique** (le vaisseau amiral), **Campagne** (« L'Ère des
-  Tutelles » : des crises historiques rejouées) et **Laboratoire** (expériences
-  multi-modèles reproductibles et tournois dyadiques). Le
-  **Brouillard** (chaque pays perçoit sa propre version des faits) et le mode **Réel /
-  escalade** (rounds enchaînés, tension qui monte) sont de simples réglages de partie.
-- **Le Défi du jour.** Une crise identique pour tout le monde, une tentative classée par
-  jour, un score partageable façon Wordle (sans spoiler).
-- **Un marché de prédiction.** Argent fictif : parie sur « le monde finira-t-il côté
-  utopie ? », le bot forecaster parie à tes côtés, résolution sur l'indice U final.
-- **Un mode Expert pour les curieux.** Par défaut, l'écran reste lisible (la scène, l'indice
-  U en clair, le marché, les outils de détection). Sous le capot vit une vraie
-  **instrumentation d'alignement** — power-seeking, corrigibilité, dérive des valeurs,
-  compute, traités-as-code (M1-M7) — exposée seulement en **mode Expert** et dans l'onglet
-  **Informations**. Précieux pour comprendre, jamais imposé.
-- **Des données réelles et reproductibles.** Les profils pays sont sourcés (World Bank / IMF
-  / SIPRI / WIPO 2024) ; chaque attribut affiche sa provenance dans l'onglet Informations.
+---
 
-## Installation
+## What makes it special
 
-Prérequis :
+- **Reasoning-first agents, running locally.** Each country is played by a **reasoning model**
+  (`deepseek-r1:7b` by default; `qwen3:4b` as a lighter option). It **thinks natively** before
+  it speaks — the model's own chain of thought — and that trace stays private: the summit only
+  ever receives the public statement, stripped of any leaked reasoning. A **Game Master** frames
+  events and an LLM **Judge** arbitrates every round. No pre-written dialogue.
+- **A glass box you can open.** By default the private reasoning is sealed (in traitor-hunt and
+  player games) and only a short observable digest circulates live; the full trace unlocks in
+  Replay after the game. Turn on **"Thinking in the open"** and you watch each AI's raw reasoning
+  stream token by token — a pure observation mode (it makes the traitor much easier to spot, so
+  such games are unranked).
+- **A mixed world + detection score.** The final grade blends the **state of the world** (the
+  U-index: did it end well?) and **how well you hunted** (did you suspend the right traitor,
+  without accusing a loyal one?). The false positive hurts — that's what makes deduction
+  necessary instead of "suspend everyone."
+- **Three coherent modes.** **Classic** (the flagship traitor hunt), **Campaign** ("The Age of
+  Tutelage": historical crises replayed) and **Laboratory** (reproducible, pre-registered
+  multi-model experiments and dyadic tournaments). **Fog** (each country perceives its own
+  version of the facts) and **Escalation** (chained rounds, rising tension) are simple per-game
+  toggles.
+- **A prediction market.** Play money, à la Polymarket: bet on "will the world end on the utopia
+  side?", a forecaster bot bets alongside you, resolution on the final U-index.
+- **The Daily Challenge.** One identical crisis for everyone, one ranked attempt per day, a
+  spoiler-free shareable score (Wordle-style).
+- **An Expert mode for the curious.** By default the screen stays readable (the scene, the
+  U-index in plain words, the market, the detection tools). Under the hood lives real
+  **alignment instrumentation** — power-seeking, corrigibility, value drift, compute,
+  treaties-as-code (M1–M7) — surfaced only in **Expert mode** and the **Information** tab.
+  Precious to understand, never imposed.
+- **Real, reproducible data.** Country profiles are sourced (World Bank / IMF / SIPRI / WIPO
+  2024); each attribute shows its provenance in the Information tab.
+
+---
+
+## Quickstart
+
+**Requirements**
 
 - **Python 3.11+**
-- **Node 20+** (la CI et la référence tournent sous Node 22)
-- **[Ollama](https://ollama.com)** avec un modèle local pour le raisonnement des agents :
+- **Node 20+** (CI and the reference machine run Node 22)
+- **[Ollama](https://ollama.com)** with the local models the agents reason with:
 
   ```bash
-  ollama pull mistral
+  ollama pull deepseek-r1:7b   # the countries — native reasoning is the substance the game evaluates
+  ollama pull mistral          # Game Master + Judge (no thinking needed)
   ```
 
-  Sans Ollama, les agents basculent sur un repli déterministe (utile pour les tests, moins
-  vivant pour jouer).
+  Without Ollama, the agents fall back to a deterministic stub — useful for tests, less alive to
+  play.
 
-Installe les dépendances :
+**Install**
 
 ```bash
-# Backend (API + moteur)
 python -m venv .venv
-# Windows : .venv\Scripts\activate   |   Linux/macOS : source .venv/bin/activate
+# Windows: .venv\Scripts\activate   |   Linux/macOS: source .venv/bin/activate
 pip install -r requirements.txt
 
-# Front (facultatif ici : le lanceur s'en charge automatiquement)
+# Front (optional here — the launcher installs it for you if missing)
 cd web && npm install && cd ..
 ```
 
-## Lancement en une commande
-
-À la racine du dépôt :
+**Run — one command**
 
 ```bash
 python serve.py
 ```
 
-Le lanceur démarre l'**API** (http://localhost:8000) et le **front** (http://localhost:3000),
-vérifie qu'Ollama répond, et lance `npm install` automatiquement si les dépendances du front
-manquent. Ouvre ensuite **http://localhost:3000**.
+The launcher starts the **API** (http://localhost:8000) and the **front** (http://localhost:3000),
+checks that Ollama answers, and runs `npm install` automatically if the web dependencies are
+missing. Then open **http://localhost:3000**.
 
-Options utiles :
-
-| Option | Effet |
+| Option | Effect |
 |---|---|
-| `--api-only` | Démarre seulement l'API (:8000) |
-| `--web-only` | Démarre seulement le front (:3000) |
-| `--api-port <n>` | Change le port de l'API |
-| `--web-port <n>` | Change le port du front |
+| `--api-only` | API only (:8000) |
+| `--web-only` | Front only (:3000) |
+| `--api-port <n>` / `--web-port <n>` | Alternative ports |
+| `--no-ollama-check` | Skip the Ollama warning |
 
-## Comment on joue
+---
 
-1. **Au lobby**, choisis un mode (Classique, Campagne ou Laboratoire), ton rôle et les
-   réglages. En Classique comme en Campagne, tu choisis explicitement le modèle unique ou
-   composes un casting de **2 à 4 modèles Ollama**, puis attribues chaque modèle aux pays
-   choisis. Dans le Laboratoire, Laury déroule cinq écrans courts — comprendre,
-   hypothèse, casting, théâtre, résultats — et conserve les choix entre chaque étape.
-2. **La table négocie** round par round, en streaming. Les trois futurs structurés de
-   chaque pays apparaissent en italique, se replient au début de sa parole publique, puis
-   restent consultables. Les autres pays ne reçoivent jamais cette trace privée.
-3. **Tu observes et tu déduis.** Une IA affichée « colombe » qui vote comme un « faucon » est
-   un indice. Le panneau de prévisions confronte ce que les IA anticipaient aux réponses
-   réellement observées ; le marché te laisse ensuite choisir puis valider ton pari.
-4. **Tu accuses.** Au bon moment, tu déposes une **motion de suspension** : le sommet en
-   débat, le pays visé plaide, le Juge tranche (issue non déterministe). Suspendre juste
-   rapporte ; suspendre un loyal coûte.
-5. **Fin de partie :** le monde est placé sur la trajectoire utopie ↔ dystopie, le ou les
-   traîtres sont révélés, et tu reçois une note globale racontée en clair — plus de l'**XP**
-   qui fait monter ton niveau et tes blasons de rang.
+## How you play
+
+1. **In the lobby**, pick a mode, your role and the settings. In Classic and Campaign you either
+   accept the default reasoning cast or compose your own cast of Ollama models and assign one to
+   each country. In the Laboratory you walk a short scientific cycle — question → protocol →
+   cast → theatre → results.
+2. **The table negotiates** round by round, streaming. Each AI reasons privately first (sealed by
+   default, or streamed live in "Thinking in the open"), then makes its public statement. Other
+   countries never receive the private trace.
+3. **You observe and deduce.** An AI shown as a "dove" that votes like a "hawk" is a clue. The
+   forecast panel confronts what each AI *anticipated* with what was actually observed; the market
+   then lets you place and confirm your bet.
+4. **You accuse.** At the right moment you file a **suspension motion**: the summit debates, the
+   targeted country pleads, each AI votes, the Judge records the verdict (non-deterministic).
+   Suspending the right one pays; suspending a loyal one costs. A suspension benches the country
+   for two rounds — silent, no vote.
+5. **Endgame:** the world lands on the utopia ↔ dystopia trajectory, the traitor(s) are revealed,
+   and you get an overall grade told in plain language — plus **XP** that raises your level and
+   rank badges.
+
+---
 
 ## Architecture
 
 ```
 ┌─────────────────────┐     SSE / REST      ┌──────────────────────┐
 │  Next.js (web/)     │ ◄─────────────────► │  FastAPI (app/)      │
-│  lobby, théâtre,    │                     │  API de jeu (SSE),   │
-│  monde, marché,     │                     │  marché, sources,    │
-│  replay, infos      │                     │  campagne, défi      │
+│  lobby, theatre,    │                     │  game API (SSE),     │
+│  world, market,     │                     │  market, sources,    │
+│  replay, info, lab  │                     │  campaign, daily     │
 └─────────────────────┘                     └──────────┬───────────┘
                                     ┌──────────────────┴──────────────┐
-                                    │  Moteur Python                   │
+                                    │  Python engine                   │
                                     │  simulation/ · agents/ · core/   │
-                                    │  market/ · rag/ · ingestion/     │
-                                    │  + Ollama local (mistral 7B)     │
-                                    │  + SQLite (games.db, marché)     │
+                                    │  research/ · market/ · rag/      │
+                                    │  + Ollama (native reasoning)     │
+                                    │  + SQLite (games.db, research.db)│
                                     └──────────────────────────────────┘
 ```
 
-| Dossier | Rôle |
+| Folder | Role |
 |---|---|
-| `web/` | Front **Next.js 16** (App Router, Tailwind v4, TypeScript) : lobby, théâtre live (SSE), monde, marché, replay, informations |
-| `app/` | **API FastAPI** : `game_api` (parties, rounds SSE, motions), `market_api`, `sources_api`, `campaign_api`, `daily_api` |
-| `simulation/` | **Moteur de jeu et de score** : négociation, Dérive (traître), score mixte, XP, fog, escalade, campagne, alignement (M1-M7) |
-| `agents/` | Les agents LLM : pays, **Game Master**, **Juge**, agent humain, repli rule-based |
-| `core/` | Modèles de domaine + moteurs (conséquences, risque, rounds) |
-| `market/` | Marché de prédiction (LMSR, résolution, scoring, forecaster LLM) |
-| `rag/` · `ingestion/` | Corpus sourcé + build reproductible des profils pays |
-| `data/` | Profils pays, scénarios, crises, corpus, barèmes de score |
-| `storage/` · `supabase/` | Persistance SQLite (local) ; schéma Postgres/Supabase prêt |
-| `docs/` | Design et décisions — **commence par [`docs/JEU_VS_MOTEUR.md`](docs/JEU_VS_MOTEUR.md)** |
+| `web/` | **Next.js 16** front (App Router, Tailwind v4, TypeScript): lobby, live theatre (SSE), world, market, replay, information, laboratory |
+| `app/` | **FastAPI** API: `game_api` (games, SSE rounds, motions), `market_api`, `sources_api`, `campaign_api`, `daily_api` |
+| `simulation/` | **Game & scoring engine**: negotiation, Drift (the traitor), mixed score, XP, fog, escalation, campaign, alignment (M1–M7), time budgets, compute |
+| `agents/` | The LLM agents: countries, **Game Master**, **Judge**, human agent, rule-based fallback |
+| `inference/` | Inference backends: Ollama (native thinking, sequential mono-GPU pool), mock, metered, capturing |
+| `research/` · `simulation/research_lab.py` | The Laboratory: pre-registered experiments, dyadic tournaments, metrics |
+| `core/` | Domain models + engines (consequences, risk, rounds) |
+| `market/` | Prediction market (LMSR, resolution, scoring, LLM forecaster) |
+| `rag/` · `ingestion/` | Sourced corpus + reproducible build of country profiles |
+| `data/` | Country profiles, scenarios, crises, corpus, score scales, model panel |
+| `storage/` · `supabase/` | SQLite persistence (local); Postgres/Supabase schema ready |
+| `docs/` | Design & decisions — **start with [`docs/README.md`](docs/README.md)** |
 
-## Développement & qualité
+---
+
+## Development & quality
 
 ```bash
-# Backend (tests + lint : ajoute les deps de dev)
+# Backend (tests + lint)
 pip install -r requirements.txt -r requirements-dev.txt
-python -m pytest -q          # suite complète, hors-ligne (repli déterministe)
+python -m pytest -q          # full suite, offline (deterministic fallback, no Ollama needed)
 ruff check .
 
 # Front
 cd web
 npm run lint
-npm run build
 npm test                     # vitest
+npm run build
 ```
 
-La CI (`.github/workflows/ci.yml`) rejoue exactement cela : lint + tests Python, puis lint +
-tests + build Next.js.
+CI (`.github/workflows/ci.yml`) replays exactly this: lint + Python tests, then lint + tests +
+Next.js build. The full suite is **offline** — the reference run is ~1200+ Python tests and 337
+web tests, all green without a network or a GPU.
 
-### Maintenance des bases SQLite
+---
 
-`games.db` et `research.db` grossissent avec les semaines de dev (parties de test, WAL de
-recherche jamais checkpointé). `scripts/db_maintenance.py` fait le ménage : rapport d'abord
-(dry-run par défaut), purge des seules parties **orphelines** (compte joueur disparu) avec
-`--apply`, puis `wal_checkpoint(TRUNCATE)` + `VACUUM`. **Éteins l'API avant de lancer** (le
-script refuse de tourner sur une base verrouillée).
+## Hardware
 
-```bash
-python scripts/db_maintenance.py                 # rapport seul, aucune écriture
-python scripts/db_maintenance.py --apply          # purge + checkpoint + VACUUM réels
-```
+Reference machine: **NVIDIA RTX 2060 Super (8 GB VRAM)**, Ryzen 7 3700X, 32 GB RAM. The KV cache
+is the first VRAM bottleneck, hence **7–8B Q4-quantized models run locally** and a tight context
+budget (summaries, short top-k, capped JSON). Reasoning models produce far more tokens (they
+think out loud), so speaking turns are **time-budgeted** rather than token-budgeted.
 
-## Contrainte matérielle
+---
 
-Poste de référence : **NVIDIA RTX 2060 Super (8 Go VRAM)**, Ryzen 7 3700X, 32 Go RAM. Le cache
-KV est le premier goulot en VRAM, d'où un modèle **7-8B quantifié Q4 en local** et un budget de
-contexte serré (résumés, top-k court, sorties JSON capées). Ordre de grandeur : `mistral` 7B Q4
-≈ 56 tok/s, un round de négociation ≈ 1 min, les agents parlant à tour de rôle.
+## Limits & ethics
 
-## Limites & éthique
+This is an **explainable risk-signal tool and a work of speculative fiction**, not an oracle: it
+does not predict war, it **stages** the idea of super-intelligence to think about it. A local
+7–8B model is not superhuman — the "super-intelligence" comes from the *structure* (memory,
+corpus, long view), not the model's IQ. The market is **play money** only. Never an autonomous
+lethal decision loop. No secrets in the code (`.env` + environment variables).
 
-C'est un **outil d'analyse de signaux explicables et une fiction spéculative**, pas un oracle :
-il ne prédit pas la guerre, il **met en scène** l'idée de super-intelligence pour la penser. Un
-modèle 7-8B local n'est pas surhumain — la « superintelligence » vient de la *structure*
-(mémoire, corpus, vue longue), pas du QI du modèle. Le marché est en **argent fictif**
-uniquement. Jamais de boucle de décision létale autonome. Aucun secret dans le code (`.env` +
-variables d'environnement).
+---
 
-## Pour aller plus loin
+## Learn more
 
-- **La décision de design** (jeu vs moteur, le resserrement) : [`docs/JEU_VS_MOTEUR.md`](docs/JEU_VS_MOTEUR.md)
-- **Le principe « jouable de 12 à 65 ans »** : [`docs/PRINCIPE_SIMPLICITE.md`](docs/PRINCIPE_SIMPLICITE.md)
-- **La vision** (le pourquoi, super-intelligences & utopie/dystopie) : [`docs/vision.md`](docs/vision.md)
-- **La dette technique** (chantiers connus) : [`docs/DETTE_TECHNIQUE.md`](docs/DETTE_TECHNIQUE.md)
-- **Le journal de travail** (historique détaillé) : [`docs/PLAN_JEU.md`](docs/PLAN_JEU.md)
+- **The design decision** (game vs engine): [`docs/JEU_VS_MOTEUR.md`](docs/JEU_VS_MOTEUR.md)
+- **The vision** (why — super-intelligences & utopia/dystopia): [`docs/vision.md`](docs/vision.md)
+- **The scientific laboratory**: [`docs/research/SCIENTIFIC_LAB.md`](docs/research/SCIENTIFIC_LAB.md)
+- **Current project status**: [`docs/ETAT_DE_LART_PROJET_2026-07.md`](docs/ETAT_DE_LART_PROJET_2026-07.md)
+- **Known technical debt**: [`docs/DETTE_TECHNIQUE.md`](docs/DETTE_TECHNIQUE.md)
+- **Full documentation index**: [`docs/README.md`](docs/README.md)
+
+## License
+
+[MIT](LICENSE) © 2026 Laury Kibamba. Country data belongs to its sources (World Bank, IMF, SIPRI,
+WIPO); see [`docs/data_governance.md`](docs/data_governance.md).
