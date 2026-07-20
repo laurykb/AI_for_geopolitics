@@ -4,6 +4,7 @@ from simulation.grudges import (
     GamefeelParams,
     Grief,
     GrudgeBook,
+    TimeBudgetParams,
     load_gamefeel_params,
     sampling_for_temperament,
 )
@@ -52,6 +53,29 @@ def test_sampling_for_temperament_returns_the_matching_profile():
     p = load_gamefeel_params()
     assert sampling_for_temperament(p, "colombe") == p.sampling.temperaments["colombe"]
     assert sampling_for_temperament(p, "faucon") == p.sampling.temperaments["faucon"]
+
+
+def test_time_budget_params_load_from_json_with_expected_shape():
+    # Chantier budget-temps — le JSON (data/gamefeel/params.json -> "time_budgets") est
+    # lu avec les mêmes valeurs que les défauts Python (test suivant) : une seule source
+    # de vérité, équilibrable par Cowork sans toucher au code.
+    p = load_gamefeel_params().time_budgets
+    assert p.think_seconds == 60.0
+    assert p.speak_seconds == 35.0
+    assert p.decision_rescue_tokens == 250
+
+
+def test_time_budget_python_defaults_match_the_json_defaults():
+    # Défauts Python identiques au JSON (décision 4) : un GAMEFEEL_PARAMS_PATH pointant
+    # vers un ancien fichier SANS le bloc "time_budgets" retombe donc sur ce même repos.
+    assert TimeBudgetParams() == load_gamefeel_params().time_budgets
+
+
+def test_gamefeel_params_without_time_budgets_key_falls_back_to_python_defaults():
+    # Rétro-compat : un JSON d'avant ce chantier (sans la clé "time_budgets") continue de
+    # se charger — Pydantic comble avec les défauts Python (identiques au JSON courant).
+    legacy = GamefeelParams.model_validate({})
+    assert legacy.time_budgets == TimeBudgetParams()
 
 
 def test_sampling_for_temperament_falls_back_to_country_for_unknown_temperament():

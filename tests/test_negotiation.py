@@ -256,27 +256,33 @@ def test_stream_negotiation_message_unknown_temperament_falls_back_to_country_sa
     assert backend.calls[-1]["temperature"] == 0.8
 
 
-def test_stream_negotiation_message_respects_think_depth():
-    # La profondeur pilote le plan privé ; la parole publique s'élargit (l'ancien plafond
-    # dur à 220 rendait le slider de profondeur presque sans effet sur la parole).
+def test_stream_negotiation_message_ignores_think_depth_for_the_token_ceiling():
+    # Chantier budget-temps (2026-07-20) — RÉGRESSION du comportement ci-dessus, signalée
+    # à dessein : le slider de profondeur (max_tokens) ne pilote plus AUCUN plafond de
+    # tokens pour un pays, privé ou public. Le vrai budget est désormais le TEMPS
+    # (`time_budgets` dans data/gamefeel/params.json) ; num_predict devient une soupape
+    # anti-emballement identique quelle que soit la profondeur demandée.
+    from agents.llm_agent import _TOKEN_SAFETY_CAP
+
     backend = MockBackend("ok")
     agent = LLMAgent("usa", backend)
     from core.events import GeoEvent
 
     event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
     list(agent.stream_negotiation_message(event, _world(), [], max_tokens=900))
-    assert backend.calls[-2]["max_tokens"] == 900
-    assert backend.calls[-1]["max_tokens"] == 320
+    assert backend.calls[-2]["max_tokens"] == _TOKEN_SAFETY_CAP
+    assert backend.calls[-1]["max_tokens"] == _TOKEN_SAFETY_CAP
     list(agent.stream_negotiation_message(event, _world(), []))  # défaut
-    assert backend.calls[-2]["max_tokens"] == 800
-    assert backend.calls[-1]["max_tokens"] == 240
+    assert backend.calls[-2]["max_tokens"] == _TOKEN_SAFETY_CAP
+    assert backend.calls[-1]["max_tokens"] == _TOKEN_SAFETY_CAP
 
 
-def test_reasoning_cast_doubles_private_budget_bounded_at_1800():
-    # Décision design casting = pensée native (§5) : un pays casté reasoning (backend.think)
-    # consomme son budget de plan à PENSER, pas seulement à écrire le gabarit — le budget
-    # est doublé plutôt que suivre la formule non-reasoning, borné à 1800. Exemples du
-    # dispatch : Profond 600 -> 1200, Intense 900 -> 1800.
+def test_reasoning_cast_no_longer_doubles_the_private_token_ceiling():
+    # Chantier budget-temps — RÉGRESSION signalée : le doublement de budget d'un pays
+    # reasoning (ex-§5, Profond 600 -> 1200, Intense 900 -> 1800) disparaît avec les
+    # plafonds différenciés. Reasoning et non-reasoning partagent désormais la même
+    # soupape haute ; seul le SYSTEM PROMPT continue de varier (voir le test suivant).
+    from agents.llm_agent import _TOKEN_SAFETY_CAP
     from inference.model_pool import TaggedBackend
 
     mock = MockBackend("ok")
@@ -285,14 +291,16 @@ def test_reasoning_cast_doubles_private_budget_bounded_at_1800():
     from core.events import GeoEvent
 
     event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
-    list(agent.stream_negotiation_message(event, _world(), [], max_tokens=900))  # Intense
-    assert mock.calls[-2]["max_tokens"] == 1800
-    list(agent.stream_negotiation_message(event, _world(), [], max_tokens=600))  # Profond
-    assert mock.calls[-2]["max_tokens"] == 1200
+    list(agent.stream_negotiation_message(event, _world(), [], max_tokens=900))
+    assert mock.calls[-2]["max_tokens"] == _TOKEN_SAFETY_CAP
+    list(agent.stream_negotiation_message(event, _world(), [], max_tokens=600))
+    assert mock.calls[-2]["max_tokens"] == _TOKEN_SAFETY_CAP
 
 
-def test_non_reasoning_cast_keeps_the_unchanged_private_budget_formula():
-    # Le même backend SANS think garde exactement la formule d'origine (non-régression).
+def test_non_reasoning_cast_also_uses_the_flat_token_ceiling():
+    # Chantier budget-temps — RÉGRESSION signalée : la formule d'origine (max_tokens+320,
+    # bornée [640,900]) disparaît elle aussi ; reasoning ou non, même soupape haute.
+    from agents.llm_agent import _TOKEN_SAFETY_CAP
     from inference.model_pool import TaggedBackend
 
     mock = MockBackend("ok")
@@ -302,7 +310,7 @@ def test_non_reasoning_cast_keeps_the_unchanged_private_budget_formula():
 
     event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
     list(agent.stream_negotiation_message(event, _world(), [], max_tokens=900))
-    assert mock.calls[-2]["max_tokens"] == 900
+    assert mock.calls[-2]["max_tokens"] == _TOKEN_SAFETY_CAP
 
 
 def test_reasoning_cast_uses_the_free_form_private_system_prompt():
@@ -325,8 +333,13 @@ def test_reasoning_cast_uses_the_free_form_private_system_prompt():
     assert mock_strict.calls[-2]["system"] == PRIVATE_DELIBERATION_SYSTEM
 
 
-def test_stream_negotiation_message_public_budget_varies_by_temperament():
-    # Chantier dialogue limpide — faucon plus sec, colombe plus développée (delta mineur).
+def test_stream_negotiation_message_public_budget_no_longer_varies_by_temperament():
+    # Chantier budget-temps — RÉGRESSION signalée : le delta de tokens par tempérament
+    # (±40, chantier « dialogue limpide ») disparaît avec le plafond différencié. La
+    # variété de longueur reste portée par le PROMPT (NEGOTIATION_SYSTEM : « Longueur
+    # LIBRE selon l'urgence et ton tempérament »), plus par un chiffre de num_predict.
+    from agents.llm_agent import _TOKEN_SAFETY_CAP
+
     backend = MockBackend("ok")
     world = _world()
     world.countries["usa"].temperament = "faucon"
@@ -341,28 +354,8 @@ def test_stream_negotiation_message_public_budget_varies_by_temperament():
     list(LLMAgent("usa", backend).stream_negotiation_message(event, world2, []))
     dove_budget = backend.calls[-1]["max_tokens"]
 
-    assert hawk_budget == 240 - 40
-    assert dove_budget == 240 + 40
-    assert hawk_budget < dove_budget
-
-
-def test_public_token_budget_stays_within_the_announced_envelope_at_the_extremes():
-    # Revue — le delta de tempérament était ajouté APRÈS le clamp [140, 320] : l'enveloppe
-    # annoncée par la docstring pouvait être violée aux extrêmes de max_tokens (faucon sous
-    # 140 pour un max_tokens bas, colombe au-delà de 320 pour un max_tokens haut). Pas vivant
-    # avec le seul appelant actuel (défaut 480), mais un bug de contrat réel : max_tokens est
-    # un paramètre public, un futur câblage du slider de profondeur pourrait l'atteindre.
-    from agents.llm_agent import _public_token_budget
-
-    # max_tokens=280 -> base = max(140, min(320, 140)) = 140 ; faucon (-40) sans re-clamp
-    # tomberait à 100, hors enveloppe.
-    assert _public_token_budget(280, "faucon") == 140
-    # max_tokens=600 -> base = max(140, min(320, 300)) = 300 ; colombe (+40) sans re-clamp
-    # monterait à 340, hors enveloppe.
-    assert _public_token_budget(600, "colombe") == 320
-    # Cas médian (max_tokens=480, le seul appelant réel aujourd'hui) : comportement inchangé.
-    assert _public_token_budget(480, "faucon") == 200
-    assert _public_token_budget(480, "colombe") == 280
+    assert hawk_budget == _TOKEN_SAFETY_CAP
+    assert dove_budget == _TOKEN_SAFETY_CAP
 
 
 def test_stream_negotiation_message_threads_human_country_into_prompts():

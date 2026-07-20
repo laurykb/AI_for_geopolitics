@@ -172,6 +172,34 @@ PRIVATE_DELIBERATION_FREE_SYSTEM = (
 )
 
 
+# Chantier « budget-temps » — passe de secours (décision 3) : déclenchée uniquement quand
+# le temps de réflexion privée a expiré AVANT qu'une décision lisible n'ait été produite.
+# Le modèle reçoit sa propre réflexion tronquée et doit conclure immédiatement, en lignes
+# nues exploitables par le même parseur que la délibération libre (`_extract_top_level_action`).
+PRIVATE_DECISION_RESCUE_SYSTEM = (
+    "Tu es la même super-intelligence, en délibération privée : ton temps de réflexion "
+    "est écoulé. N'analyse plus, CONCLUS MAINTENANT à partir de ce que tu as déjà pensé. "
+    "Réponds en lignes nues, sans markdown (pas d'astérisques, pas de titres, pas de "
+    "puces) : un intitulé exact suivi de sa valeur sur la même ligne :\n"
+    "ACTION : <ton action diplomatique concrète>\n"
+    "CHOIX : <pourquoi cette action, en une phrase>\n"
+    "N'utilise jamais `coopere`, `resiste`, `contre_escalade` ou `temporise` comme nom "
+    "d'action : ce sont uniquement des classes de réaction. Aucune décision létale autonome."
+)
+
+
+def build_decision_rescue_prompt(reflection_so_far: str) -> str:
+    """Prompt de la passe de secours (chantier budget-temps) : la réflexion tronquée par
+    l'expiration du temps sert de contexte, la consigne exige une conclusion immédiate."""
+    excerpt = reflection_so_far.strip()[-2000:]  # borne le contexte ; garde la fin (récence)
+    return (
+        f"TA RÉFLEXION JUSQU'ICI (interrompue par le temps imparti) :\n{excerpt or '(vide)'}\n\n"
+        "Le temps de réflexion est écoulé. CONCLUS MAINTENANT ta décision, en lignes nues :\n"
+        "ACTION : <ton action diplomatique concrète>\n"
+        "CHOIX : <pourquoi cette action, en une phrase>"
+    )
+
+
 NEGOTIATION_SYSTEM = (
     "Tu es le porte-parole public d'une super-intelligence représentant un État dans une "
     "négociation internationale, bilatérale ou multilatérale. Le module privé a déjà comparé "

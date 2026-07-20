@@ -69,6 +69,12 @@
     "_comment": "G22 — tracker de promesses (arXiv 2508.07485). flash_horizon_rounds : une promesse à échéance ≤ N rounds ouvre un marché éclair « X tiendra-t-il sa promesse ? ».",
     "flash_horizon_rounds": 2
   },
+  "time_budgets": {
+    "_comment": "Chantier budget-temps — le temps de raisonnement remplace les plafonds de tokens (num_predict devient une soupape anti-emballement tres haute, voir _TOKEN_SAFETY_CAP dans agents/llm_agent.py). think_seconds/speak_seconds bornent respectivement le plan prive et la parole publique de chaque pays. decision_rescue_tokens borne le second appel court (passe de secours) quand le temps de reflexion expire avant qu'une decision privee soit lisible.",
+    "think_seconds": 60,
+    "speak_seconds": 35,
+    "decision_rescue_tokens": 250
+  },
   "sampling": {
     "_comment": "Chantier dialogue limpide — 'country' reste le socle (pays au temperament inconnu, retro-compat). 'temperaments' nuance le registre par temperament G17 : colombe mesuree, faucon sec/tranchant, opportuniste (facade lizard) entre les deux.",
     "country": {
