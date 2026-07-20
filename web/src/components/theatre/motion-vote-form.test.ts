@@ -20,7 +20,7 @@ describe("bulletin humain de motion", () => {
       ),
     );
 
-    expect(html).toContain("Faut-il suspendre Iran du prochain round ?");
+    expect(html).toContain("Faut-il suspendre Iran du sommet pour 2 rounds ?");
     expect(html).toContain("Pour la suspension");
     expect(html).toContain("Contre la suspension");
     expect(html).toContain("Abstention");
