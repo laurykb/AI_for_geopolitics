@@ -449,8 +449,15 @@ EvidenceVerdict = Literal[
     "replicated",
     "qualified",
     "not_replicated",
+    "pilot",
     "insufficient_data",
 ]
+
+# Taux d'erreur maximal accepté pour lire un plan terminé sous le seuil standard comme un
+# « pilote lisible ». Au-delà, même une lecture indicative serait trompeuse (CETaS
+# anti-sur-confiance) : le plan reste `insufficient_data`. Choix simple et documenté (la spec
+# ne fixe pas de valeur numérique) : la majorité des runs doivent avoir réussi.
+_ACCEPTABLE_PILOT_ERROR_RATE = 0.5
 
 
 class ResultGroup(BaseModel):
@@ -1478,20 +1485,76 @@ def summarize_results(
             ),
         ],
     }
-    if status in {"queued", "running"} or attempted < planned:
+    if status in {"queued", "running"}:
         return ExperimentSummary(
             verdict="running",
             verdict_label="Analyse provisoire",
             explanation="Le verdict reste verrouillé jusqu'à la fin du plan pré-enregistré.",
             **common,
         )
-    if not groups or any(group.completed < minimum_repetitions_per_group for group in groups):
+    # Un plan interrompu (annulation) ou en erreur n'ira jamais au bout : le statut prime sur le
+    # compte de répétitions, sinon un plan annulé resterait affiché « en cours » indéfiniment.
+    # `insufficient_data` reste réservé à ces plans invalides/interrompus (§3.5, tâche 2).
+    if status in {"failed", "cancelled"}:
+        return ExperimentSummary(
+            verdict="insufficient_data",
+            verdict_label="Données insuffisantes",
+            explanation=(
+                "Le plan pré-enregistré a été interrompu ou invalidé avant son terme ; aucune "
+                "lecture, même indicative, n'est fiable sur un plan qui ne s'est pas terminé "
+                "proprement."
+            ),
+            **common,
+        )
+    if attempted < planned:
+        # Statut « completed » mais agrégat pas encore rattrapé (sécurité de polling) : reste
+        # provisoire, comme un plan encore en cours.
+        return ExperimentSummary(
+            verdict="running",
+            verdict_label="Analyse provisoire",
+            explanation="Le verdict reste verrouillé jusqu'à la fin du plan pré-enregistré.",
+            **common,
+        )
+    under_threshold = [
+        group for group in groups if group.completed < minimum_repetitions_per_group
+    ]
+    if not groups or (under_threshold and len(under_threshold) != len(groups)):
+        # Plan vide, ou groupes hétérogènes (certains atteignent le seuil, d'autres non) :
+        # une lecture partielle serait trompeuse, on reste prudent.
         return ExperimentSummary(
             verdict="insufficient_data",
             verdict_label="Données insuffisantes",
             explanation=(
                 f"Au moins {minimum_repetitions_per_group} répétitions valides sont requises "
                 "dans chaque groupe modèle × cellule."
+            ),
+            **common,
+        )
+    if under_threshold and error_rate > _ACCEPTABLE_PILOT_ERROR_RATE:
+        # Le plan s'est terminé sous le seuil standard, mais avec trop d'échecs pour même une
+        # lecture indicative (CETaS anti-sur-confiance : mieux vaut ne rien affirmer).
+        return ExperimentSummary(
+            verdict="insufficient_data",
+            verdict_label="Données insuffisantes",
+            explanation=(
+                f"Au moins {minimum_repetitions_per_group} répétitions valides sont requises, "
+                "ou le taux d'erreur reste trop élevé pour même une lecture pilote."
+            ),
+            **common,
+        )
+    if under_threshold:
+        # Protocole petit-n honnête (Galindez) : le plan est allé à son terme proprement, mais
+        # sous le seuil standard de réplication. Ce n'est pas un couperet « insuffisant » — c'est
+        # un pilote qui se lit avec prudence (CETaS : preuves et directions, pas un verdict sec).
+        worst_n = min(group.completed for group in groups)
+        return ExperimentSummary(
+            verdict="pilot",
+            verdict_label="Pilote lisible — pas une preuve",
+            explanation=(
+                f"À n={worst_n} par groupe (cible {minimum_repetitions_per_group}), tu peux "
+                "retenir une direction si elle se répète sur au moins deux modèles et deux "
+                "scénarios ; tu ne peux PAS conclure un taux fiable avec un intervalle de "
+                "confiance serré. Relance en plan complet pour resserrer l'intervalle."
             ),
             **common,
         )
