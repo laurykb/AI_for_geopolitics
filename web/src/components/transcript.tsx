@@ -2,6 +2,8 @@
  * En live, la bulle affiche le flux token par token (pensée/message séparés dès que
  * le marqueur apparaît) ; `message_done` pose ensuite le découpage faisant foi. */
 
+import { memo, useEffect, useState } from "react";
+
 import { speakerMeta } from "@/lib/countries";
 import { unknownActor } from "@/lib/fog";
 import { fmt, splitStreaming, splitThinkSegments } from "@/lib/format";
@@ -162,21 +164,72 @@ function Bubble({
   );
 }
 
+const TAIL_WINDOW = 4000; // fenêtre de queue : une pensée de 5-10 k tokens ne doit pas peser sur le DOM
+
+/** Fenêtre de pensée en direct (Pensée à découvert) : la pensée native accumulée
+ * (`turn.reasoning`, alimentée par `private_token`) arrive dès que le serveur l'expose —
+ * ce repli `<details>` fermé par défaut évite d'imposer sa lecture, la queue borne le
+ * DOM sur les longues pensées, et le choix ouvert/fermé se retient d'une bulle à l'autre. */
+function LiveThinking({
+  country,
+  text,
+  forcedOpen,
+}: {
+  country: string;
+  text: string;
+  forcedOpen?: boolean;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(forcedOpen ?? false);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    queueMicrotask(() => {
+      if (forcedOpen === undefined) setOpen(localStorage.getItem("wosi.pensee.open") === "1");
+      setLoaded(true);
+    });
+  }, [forcedOpen]);
+  useEffect(() => {
+    if (loaded && forcedOpen === undefined)
+      localStorage.setItem("wosi.pensee.open", open ? "1" : "0");
+  }, [open, loaded, forcedOpen]);
+  return (
+    <details
+      className="mb-2"
+      open={open}
+      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
+    >
+      <summary className="cursor-pointer text-xs text-fg-faint transition-colors hover:text-fg-muted">
+        {t("transcript.pensee-en-cours").replace("{n}", country)}
+      </summary>
+      {open && (
+        <div className="mt-1.5 whitespace-pre-wrap border-l border-accent/50 pl-3 text-[13px] italic leading-relaxed text-fg-muted">
+          <ThinkAwareText text={text.slice(-TAIL_WINDOW)} />
+        </div>
+      )}
+    </details>
+  );
+}
+
 /** Bulle live : suit un `LiveTurn` du stream.
- * `exposeThinking` (Pensée à découvert) est reçue mais pas encore exploitée ici —
- * câblage prévu en Task 5/6, une fois la pensée native brute affichable. */
-export function TurnBubble({
+ * `exposeThinking` (Pensée à découvert) pilotera les libellés en Task 6 — la fenêtre
+ * de pensée en direct ci-dessous se déclenche sur la DONNÉE (`turn.reasoning` livé),
+ * seul le serveur décidant de ce qui est exposé. Mémoïsée : un token touche un seul
+ * tour, `withLastTurn` ne recrée que sa référence — les autres bulles ne re-rendent pas. */
+export const TurnBubble = memo(function TurnBubble({
   turn,
   lens,
   exposeThinking = false,
+  thinkingOpen,
 }: {
   turn: LiveTurn;
   lens?: GlassLens;
   exposeThinking?: boolean;
+  thinkingOpen?: boolean;
 }) {
   void exposeThinking;
   const t = useT();
   const live = !turn.done;
+  const countryLabel = speakerMeta(turn.country).label;
   const { reasoning, message } = live
     ? splitStreaming(turn.raw)
     : { reasoning: turn.reasoning, message: turn.text };
@@ -195,6 +248,9 @@ export function TurnBubble({
       glass={lens ? glassState(lens) : undefined}
     >
       {lens && <GlassAnnotation lens={lens} />}
+      {live && turn.reasoning ? (
+        <LiveThinking country={countryLabel} text={turn.reasoning} forcedOpen={thinkingOpen} />
+      ) : null}
       <p
         className={`whitespace-pre-wrap text-sm leading-relaxed text-foreground ${live ? "stream-caret" : ""}`}
       >
@@ -215,7 +271,7 @@ export function TurnBubble({
       )}
     </Bubble>
   );
-}
+});
 
 /** Bulle de relecture : suit une ligne de la table `transcripts`.
  * `exposeThinking` reçue mais pas encore exploitée — voir note sur `TurnBubble`. */
