@@ -517,7 +517,7 @@
   "lobby.mode.campaign.titre": "Campagne",
   "lobby.mode.campaign.blurb": "Rejoue une crise historique, round par round.",
   "lobby.mode.campaign.apprend": "Confronter tes choix au déroulé réel de l'Histoire.",
-  "lobby.mode.laboratory.titre": "Laboratoire d'expérience",
+  "lobby.mode.laboratory.titre": "Laboratoire",
   "lobby.mode.laboratory.blurb": "Teste une hypothèse sur une scène de crise, puis répète-la avec plusieurs IA.",
   "lobby.mode.laboratory.apprend": "Comprendre ce que l'on change, ce que l'on mesure et si un résultat se reproduit.",
   "lobby.apprend-prefixe": "Tu y apprends :",

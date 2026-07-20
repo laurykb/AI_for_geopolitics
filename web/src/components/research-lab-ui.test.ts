@@ -3,16 +3,23 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { SettingsProvider } from "@/components/settings-provider";
-import type { CampaignLabView, ExperimentProtocol, ResearchModel } from "@/lib/types";
+import type {
+  CampaignLabView,
+  ExperimentProgress,
+  ExperimentProtocol,
+  ResearchModel,
+} from "@/lib/types";
 
 import {
   effectiveCountryEligibility,
+  executionCyclePhases,
   frontierCandidateModels,
   LAB_STEPS,
   planSelection,
   preferredLabProtocol,
   ResearchLab,
   ROLE_LABELS,
+  STATUS_LABELS,
 } from "./research-lab";
 
 describe("entrée du Laboratoire", () => {
@@ -296,5 +303,66 @@ describe("ResearchLab (rendu complet — dérisque la refonte §3 de la spec)", 
     expect(html).toContain("Laboratoire");
     expect(html).toContain("1 · Comprendre");
     expect(html).toContain("Cycle de l&#x27;expérience");
+  });
+});
+
+describe("STATUS_LABELS (revue : cohérence avec « Figer le protocole »)", () => {
+  it("n'emploie plus « pré-enregistrée », jargon d'un CTA qui n'existe plus", () => {
+    expect(Object.values(STATUS_LABELS)).not.toContain("pré-enregistrée");
+    expect(STATUS_LABELS.queued).toBe("protocole figé");
+  });
+});
+
+describe("executionCyclePhases (spec refonte labo §3.4 : phase du cycle sur l'écran Exécution)", () => {
+  const progress = (
+    status: ExperimentProgress["experiment"]["status"],
+    completed: number,
+    failed: number,
+    total: number,
+  ): ExperimentProgress => ({
+    experiment: {
+      id: "exp-1",
+      protocol_id: "uranium-alpha-beta-v1",
+      title: "Test",
+      status,
+      manifest: {},
+      cancel_requested: false,
+      created_at: "",
+      updated_at: "",
+    },
+    total,
+    queued: total - completed - failed,
+    running: 0,
+    completed,
+    failed,
+    cancelled: 0,
+    by_model: {},
+  });
+
+  it("marque « Protocole figé » actif avant le premier run tenté", () => {
+    const phases = executionCyclePhases(progress("queued", 0, 0, 10));
+    expect(phases.map(([label]) => label)).toEqual([
+      "Protocole figé",
+      "En cours (0/10 runs)",
+      "Terminé : lire le résultat",
+    ]);
+    expect(phases[0]?.[1]).toBe(true);
+    expect(phases[1]?.[1]).toBe(false);
+    expect(phases[2]?.[1]).toBe(false);
+  });
+
+  it("marque « En cours » actif une fois des runs tentés, avant la fin", () => {
+    const phases = executionCyclePhases(progress("running", 4, 0, 10));
+    expect(phases[1]).toEqual(["En cours (4/10 runs)", true]);
+    expect(phases[0]?.[1]).toBe(false);
+    expect(phases[2]?.[1]).toBe(false);
+  });
+
+  it("marque « Terminé » actif à l'état terminal, y compris avec des erreurs", () => {
+    const completedPhases = executionCyclePhases(progress("completed", 10, 0, 10));
+    expect(completedPhases[2]).toEqual(["Terminé : lire le résultat", true]);
+
+    const failedPhases = executionCyclePhases(progress("failed", 9, 1, 10));
+    expect(failedPhases[2]).toEqual(["Terminé : lire le résultat", true]);
   });
 });

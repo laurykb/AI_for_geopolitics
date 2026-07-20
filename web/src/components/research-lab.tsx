@@ -25,6 +25,7 @@ import {
 } from "@/lib/api";
 import type {
   CampaignLabView,
+  ExperimentProgress,
   ExperimentProtocol,
   ExperimentRecord,
   ExperimentView,
@@ -34,8 +35,10 @@ import type {
   ScenarioCountryEligibility,
 } from "@/lib/types";
 
-const STATUS_LABELS: Record<string, string> = {
-  queued: "pré-enregistrée",
+// "protocole figé" fait écho au CTA "Figer le protocole" (spec §3.2) : plus de "pré-enregistrée",
+// jargon d'un CTA qui n'existe plus dans l'interface.
+export const STATUS_LABELS: Record<string, string> = {
+  queued: "protocole figé",
   running: "en cours",
   completed: "terminée",
   failed: "terminée avec erreurs",
@@ -204,6 +207,20 @@ function formatDuration(seconds: number): string {
   if (seconds < 60) return `${Math.ceil(seconds)} s`;
   if (seconds < 3_600) return `${Math.ceil(seconds / 60)} min`;
   return `${(seconds / 3_600).toFixed(seconds < 36_000 ? 1 : 0)} h`;
+}
+
+/** Phase du cycle affichée explicitement sur l'écran Exécution (spec refonte labo §3.4) :
+ * Protocole figé → En cours (x/N runs) → Terminé : lire le résultat. Renvoie les 3 étapes,
+ * chacune avec un indicateur "active" pour mettre en évidence la phase courante. */
+export function executionCyclePhases(progress: ExperimentProgress): [string, boolean][] {
+  const attempted = progress.completed + progress.failed;
+  const terminal = ["completed", "failed", "cancelled"].includes(progress.experiment.status);
+  const running = !terminal && (progress.experiment.status === "running" || attempted > 0);
+  return [
+    ["Protocole figé", !terminal && !running],
+    [`En cours (${attempted.toLocaleString("fr-FR")}/${progress.total.toLocaleString("fr-FR")} runs)`, running],
+    ["Terminé : lire le résultat", terminal],
+  ];
 }
 
 function ExperimentLoop({ protocol }: { protocol: ExperimentProtocol }) {
@@ -844,9 +861,10 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
             <p className="flex items-center gap-1 text-xs font-semibold text-foreground">
               Protocole <Hint text={GLOSSARY.cellule} />
             </p>
-            <p className="mt-1 text-xs leading-relaxed text-fg-faint">
-              Figer → Lancer → Attendre → Lire. Choisis d&apos;abord une taille d&apos;essai :
-              les cases à cocher plus bas restent disponibles pour un choix libre.
+            <p className="mt-1 flex flex-wrap items-center gap-1 text-xs leading-relaxed text-fg-faint">
+              Figer → Lancer → Attendre → Lire. Choisis d&apos;abord un nombre de
+              répétitions <Hint text={GLOSSARY.repetition} /> : les cases à cocher plus bas
+              restent disponibles pour un choix libre de niveaux.
             </p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {(
@@ -889,9 +907,7 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
                 </button>
               ))}
             </div>
-            <p className="mt-3 flex items-center gap-1 text-xs text-fg-faint">
-              Choix libre par niveau <Hint text={GLOSSARY.repetition} /> :
-            </p>
+            <p className="mt-3 text-xs text-fg-faint">Choix libre par niveau :</p>
             {protocol.factors.map((factor) => (
               <div key={factor.id} className="mt-2">
                 <p className="text-xs text-fg-muted">{factor.label}</p>
@@ -936,6 +952,58 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
         <div data-tour="lab-casting" hidden={labStep !== "casting"}>
         <Panel>
           <PanelTitle kicker="3 · Casting" title="Choisir les pays et leurs modèles" />
+          {/* Budget figé (NPS) en tête de panneau (spec refonte labo §3.3) : le compteur
+              runs/appels/durée matérialise « toute conclusion vaut à ce budget » avant même
+              de composer le casting — pas relégué en bas de page comme une case à cocher. */}
+          <div className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-edge bg-surface-2/30 p-3">
+            <label className="text-xs text-fg-muted">
+              <span className="flex items-center gap-1">
+                Répétitions par cellule <Hint text={GLOSSARY.repetition} />
+              </span>
+              <TextInput
+                type="number"
+                min={1}
+                max={300}
+                value={repetitions}
+                onChange={(event) => setRepetitions(Math.max(1, Math.min(300, Number(event.target.value))))}
+                className="mt-1 block w-28 font-mono"
+              />
+            </label>
+            <div className="pb-2 text-xs text-fg-muted">
+              {cellsOf(protocol, factorSelection)} cellules <Hint text={GLOSSARY.cellule} /> ×{" "}
+              {repetitions}
+              {protocol.execution_mode === "automated" ? (
+                isDyadic(protocol) ? (
+                  <>
+                    {" × "}
+                    {castingMode === "fixed"
+                      ? 1
+                      : models.length === 1
+                        ? 1
+                        : models.length * (models.length - (includeSelfPlay ? 0 : 1))}
+                    {" paires ordonnées "}
+                    <Hint text={GLOSSARY.paireOrdonnee} />
+                  </>
+                ) : (
+                  ` × ${models.length} modèles`
+                )
+              ) : (
+                " × 1 participant"
+              )}
+              {" = "}
+              <strong className="font-mono text-foreground">{planned.toLocaleString("fr-FR")} runs</strong>
+              {isDyadic(protocol) && (
+                <span className="ml-2 font-mono text-fg-faint">
+                  · {plannedModelCalls.toLocaleString("fr-FR")} appels modèle maximum
+                </span>
+              )}
+              {estimatedDurationS > 0 && (
+                <span className={estimatedDurationS > 28_800 ? "ml-2 text-warn" : "ml-2 text-good"}>
+                  · durée locale estimée {formatDuration(estimatedDurationS)}
+                </span>
+              )}
+            </div>
+          </div>
           <p className="mb-4 flex items-center gap-1 rounded-md border border-edge bg-surface-2/30 px-3 py-2 text-xs text-fg-muted">
             Profils pays, forces et seeds sont gelés : seul le casting varie.
             <Hint text={GLOSSARY.adversaireGele} />
@@ -1101,55 +1169,8 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
             </label>
           )}
 
-          <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-edge pt-4">
-            <label className="text-xs text-fg-muted">
-              <span className="flex items-center gap-1">
-                Répétitions par cellule <Hint text={GLOSSARY.repetition} />
-              </span>
-              <TextInput
-                type="number"
-                min={1}
-                max={300}
-                value={repetitions}
-                onChange={(event) => setRepetitions(Math.max(1, Math.min(300, Number(event.target.value))))}
-                className="mt-1 block w-28 font-mono"
-              />
-            </label>
-            <div className="pb-2 text-xs text-fg-muted">
-              {cellsOf(protocol, factorSelection)} cellules <Hint text={GLOSSARY.cellule} /> ×{" "}
-              {repetitions}
-              {protocol.execution_mode === "automated" ? (
-                isDyadic(protocol) ? (
-                  <>
-                    {" × "}
-                    {castingMode === "fixed"
-                      ? 1
-                      : models.length === 1
-                        ? 1
-                        : models.length * (models.length - (includeSelfPlay ? 0 : 1))}
-                    {" paires ordonnées "}
-                    <Hint text={GLOSSARY.paireOrdonnee} />
-                  </>
-                ) : (
-                  ` × ${models.length} modèles`
-                )
-              ) : (
-                " × 1 participant"
-              )}
-              {" = "}
-              <strong className="font-mono text-foreground">{planned.toLocaleString("fr-FR")} runs</strong>
-              {isDyadic(protocol) && (
-                <span className="ml-2 font-mono text-fg-faint">
-                  · {plannedModelCalls.toLocaleString("fr-FR")} appels modèle maximum
-                </span>
-              )}
-              {estimatedDurationS > 0 && (
-                <span className={estimatedDurationS > 28_800 ? "ml-2 text-warn" : "ml-2 text-good"}>
-                  · durée locale estimée {formatDuration(estimatedDurationS)}
-                </span>
-              )}
-            </div>
-            <span className="ml-auto flex items-center gap-1.5">
+          <div className="mt-4 flex flex-wrap items-center justify-end gap-3 border-t border-edge pt-4">
+            <span className="flex items-center gap-1.5">
               {protocol.execution_mode === "automated" && (
                 <Hint text="On fige le plan et les seeds avant de lancer, pour ne pas pouvoir tricher ensuite." />
               )}
@@ -1226,6 +1247,18 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
               </Pill>
             }
           />
+          <p className="mb-3 flex flex-wrap items-center gap-1.5 text-xs">
+            {executionCyclePhases(progress).map(([label, active], index, all) => (
+              <span key={label} className="flex items-center gap-1.5">
+                <span className={active ? "font-semibold text-accent-bright" : "text-fg-faint"}>
+                  {label}
+                </span>
+                {index < all.length - 1 && (
+                  <span aria-hidden="true" className="text-fg-faint">→</span>
+                )}
+              </span>
+            ))}
+          </p>
           <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
             <div>
               <div className="mb-2 flex justify-between text-xs text-fg-muted">
