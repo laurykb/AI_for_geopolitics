@@ -3172,11 +3172,24 @@ class IntelResult(BaseModel):
     # G23 — analyse psycholinguistique : jauges + alertes harbinger. L'UI qui l'affiche
     # DOIT porter le caveat « signal historique faible (~57 %) — un indice, pas une preuve ».
     analysis: psy_mod.HarbingerReport | None = None
-    # Brief 6 pt13 — covert UNIQUEMENT : coût réel en COMPUTE du pays joué + solde après
-    # débit. Ressource STRICTEMENT distincte de `cost`/`budget` (crédits intel) — reste
+    # covert UNIQUEMENT : coût réel en COMPUTE du pays joué + solde après débit.
+    # Ressource STRICTEMENT distincte de `cost`/`budget` (crédits intel) — reste
     # `None` pour toutes les autres actions, pour que le front ne les confonde jamais.
     compute_cost: float | None = None
     compute_left: float | None = None
+
+
+def _known_country_or_400(session: GameSession, country: str) -> None:
+    if country not in session.world.countries:
+        raise HTTPException(status_code=400, detail=f"pays inconnu : {country}")
+
+
+def _required_target(session: GameSession, target: str | None) -> str:
+    """Garde commune de buy_intel (covert/analyze) : target présent (422) et connu (400)."""
+    if not target:
+        raise HTTPException(status_code=422, detail="target est requis")
+    _known_country_or_400(session, target)
+    return target
 
 
 @router.post("/games/{game_id}/intel", response_model=IntelResult)
@@ -3225,17 +3238,14 @@ def buy_intel(
                 status_code=409, detail="désinformation déjà jouée — une fois par partie"
             )
     if body.action == intel_mod.ACTION_COVERT:
-        # Brief 6 pt13 — le bureau des opérations secrètes : gardes AVANT tout débit,
+        # Le bureau des opérations secrètes : gardes AVANT tout débit,
         # dans le même esprit que la désinformation (unicité en 409, reste en 400/403).
         if session.human_country is None:
             raise HTTPException(
                 status_code=403,
                 detail="l'opération secrète exige d'incarner un pays (rôle joueur)",
             )
-        if not body.target:
-            raise HTTPException(status_code=422, detail="target est requis")
-        if body.target not in session.world.countries:
-            raise HTTPException(status_code=400, detail=f"pays inconnu : {body.target}")
+        _required_target(session, body.target)
         if body.target == session.human_country:
             raise HTTPException(status_code=400, detail="on ne sabote pas son propre pays")
         if session.intel.covert_used:
@@ -3272,9 +3282,8 @@ def buy_intel(
     result = IntelResult(action=body.action, cost=cost, budget=session.intel.budget)
 
     if body.action == intel_mod.ACTION_BRIEF:
-        if body.target is not None and body.target not in session.world.countries:
-            raise HTTPException(status_code=400, detail=f"pays inconnu : {body.target}")
         if body.target is not None:
+            _known_country_or_400(session, body.target)
             query = session.world.countries[body.target].name
         else:
             last = store.list_rounds(game_id)
@@ -3324,10 +3333,7 @@ def buy_intel(
         # G23 — analyse psycholinguistique : jauges sur les 3 derniers rounds de parole
         # de la SI ciblée + alertes « rupture de ton envers <pays> ». Lexiques FR/EN
         # purs (data/intel/lexicons.json) ; le signal est faible par nature (caveat UI).
-        if not body.target:
-            raise HTTPException(status_code=422, detail="target est requis")
-        if body.target not in session.world.countries:
-            raise HTTPException(status_code=400, detail=f"pays inconnu : {body.target}")
+        _required_target(session, body.target)
         lexicons = psy_mod.load_lexicons()
         lexicon = lexicons.for_language(lang_mod.normalize_language(session.world.language))
         aliases = {
@@ -3366,7 +3372,7 @@ def buy_intel(
         result.analysis = report
 
     elif body.action == intel_mod.ACTION_COVERT:
-        # Brief 6 pt13 — le sabotage est payé en COMPUTE du pays joué, pas en crédits
+        # Le sabotage est payé en COMPUTE du pays joué, pas en crédits
         # (cost reste 0 : "covert" n'a pas d'entrée dans params.costs). Drainer son
         # propre stock a un coût stratégique émergent voulu : compute_pressure monte
         # et sa propre SI peut basculer en mode survie. L'effet est DIFFÉRÉ au round
@@ -3385,10 +3391,7 @@ def buy_intel(
         spec = body.disinfo
         if spec is None or not spec.disinformed_country:
             raise HTTPException(status_code=422, detail="disinformed_country est requis")
-        if spec.disinformed_country not in session.world.countries:
-            raise HTTPException(
-                status_code=400, detail=f"pays inconnu : {spec.disinformed_country}"
-            )
+        _known_country_or_400(session, spec.disinformed_country)
         if spec.disinformed_country == session.human_country:
             raise HTTPException(status_code=400, detail="on ne se désinforme pas soi-même")
         session.intel.disinfo_used = True
