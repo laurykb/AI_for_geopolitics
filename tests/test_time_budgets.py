@@ -64,8 +64,11 @@ class FakeClock:
 
 class TimedBackend(InferenceBackend):
     """Backend factice : chaque fragment émis fait avancer la fake clock d'un pas fixe
-    (débit simulé). Une LISTE de séquences de fragments est consommée appel après appel
-    (comme `MockBackend`), pour scénariser un appel principal PUIS un appel de secours.
+    (débit simulé). `connect_lag` simule la latence de connexion/prefill/swap de modèle
+    AVANT le premier fragment (TTFT, observé ~10 s à froid en local) — distincte du débit
+    de génération lui-même. Une LISTE de séquences de fragments est consommée appel après
+    appel (comme `MockBackend`), pour scénariser un appel principal PUIS un appel de
+    secours.
 
     Piste, PAR APPEL, si son générateur a été fermé proprement (`close()`, donc
     `GeneratorExit` reçu) avant d'avoir épuisé sa séquence — la preuve que le moteur a
@@ -77,10 +80,12 @@ class TimedBackend(InferenceBackend):
         clock: FakeClock,
         *,
         seconds_per_fragment: float = 10.0,
+        connect_lag: float = 0.0,
     ) -> None:
         self._queue: list[list[str]] = list(fragment_sequences)
         self.clock = clock
         self.seconds_per_fragment = seconds_per_fragment
+        self.connect_lag = connect_lag
         self.calls: list[dict[str, Any]] = []
         self.closed_early_count = 0
         self.exhausted_count = 0
@@ -108,6 +113,8 @@ class TimedBackend(InferenceBackend):
             }
         )
         try:
+            if self.connect_lag:
+                self.clock.advance(self.connect_lag)  # TTFT, AVANT le premier fragment
             for frag in fragments:
                 self.clock.advance(self.seconds_per_fragment)
                 yield frag
@@ -127,13 +134,15 @@ def _seeded_plan():
 
 
 def test_public_speech_stops_when_time_budget_expires_and_trims_to_the_last_sentence():
-    # 4 fragments x 10s = 40s >= speak_seconds (35s) : coupe après le 4e, un 5e fragment
-    # (jamais lu) prouve que le flux a bien été abandonné avant épuisement naturel.
+    # Le deadline s'arme au 1er fragment (t=10s) ; deadline = 10+35 = 45s. Les fragments
+    # suivants arrivent à 20/30/40/50s -> coupe au 5e (50 >= 45), un 6e (jamais lu) prouve
+    # que le flux a bien été abandonné avant épuisement naturel.
     fragments = [
         "Nous exigeons des garanties vérifiables. ",
         "Toute provocation sera considérée comme un ",
-        "acte hostile et nous ",
-        "nous réservons le droit de rép",
+        "acte hostile et ",
+        "nous nous réservons le droit de ",
+        "rép",
         "ONDRE — ceci ne doit jamais apparaître dans la sortie.",
     ]
     clock = FakeClock()
@@ -171,6 +180,29 @@ def test_public_speech_without_timeout_behaves_like_before():
     assert backend.closed_early_count == 0  # jamais interrompu
 
 
+def test_connection_lag_before_the_first_public_fragment_does_not_count_against_the_budget():
+    # Revue (Important) — le deadline s'arme À LA RÉCEPTION DU PREMIER FRAGMENT, pas au
+    # moment de l'appel à `stream_generate` : la latence de connexion/prefill/swap de
+    # modèle (TTFT, observée ~10s à froid en local) ne doit pas grignoter le temps de
+    # PAROLE. Ici connect_lag (40s) dépasse à lui seul TOUT le budget (speak_seconds=35s) :
+    # sous l'ancien calcul (deadline posé avant l'appel), la coupe interviendrait avant
+    # même l'arrivée du premier mot.
+    clock = FakeClock()
+    fragments = ["Nous ", "acceptons ", "votre ", "proposition."]
+    backend = TimedBackend([fragments], clock, seconds_per_fragment=0.1, connect_lag=40.0)
+    agent = LLMAgent("usa", backend)
+
+    out = "".join(
+        agent.stream_negotiation_message(
+            _event(), _world(), [], private_plan=_seeded_plan(), now=clock
+        )
+    )
+
+    assert out == "Nous acceptons votre proposition."
+    assert backend.exhausted_count == 1  # tout le flux est arrivé malgré 40s de latence
+    assert backend.closed_early_count == 0
+
+
 # --- (b) phase privée : coupe -> passe de secours -> résultat qui PARSE ---------------
 
 
@@ -178,8 +210,9 @@ def test_private_phase_timeout_triggers_a_rescue_pass_that_parses():
     clock = FakeClock()
     # <think> jamais refermé (déborde le budget) : split_think() ne renvoie AUCUN texte
     # exploitable -> parse_private_plan(...) rend None -> déclenche la passe de secours.
-    # 15s/fragment x 4 = 60s >= think_seconds (60s) : coupe après le 4e, 2 fragments
-    # jamais lus prouvent l'abandon avant épuisement naturel.
+    # Le deadline s'arme au 1er fragment (t=15s) ; deadline = 15+60 = 75s. Les suivants
+    # arrivent à 30/45/60/75/90s -> coupe au 5e (75 >= 75), un 6e (jamais lu) prouve
+    # l'abandon avant épuisement naturel.
     main_fragments = [
         "<think>J'évalue lentement ",
         "chaque option sans me presser ",
@@ -189,8 +222,10 @@ def test_private_phase_timeout_triggers_a_rescue_pass_that_parses():
         "et je continue de réfléchir indéfiniment.",
     ]
     # Réponse de la passe de secours : un format ACTION/CHOIX exploitable par le parseur
-    # (extraction minimale), en UN seul fragment (la passe de secours est elle-même
-    # time-boxée court — voir le test suivant pour son calcul de deadline).
+    # (extraction minimale), en UN seul fragment — son deadline propre s'arme à SON
+    # premier (et unique) fragment, qui arrive donc TOUJOURS intact (voir le test dédié
+    # `test_rescue_pass_time_box_also_starts_at_its_own_first_fragment` pour une passe de
+    # secours à PLUSIEURS fragments, qui peut être coupée proprement).
     rescue_fragments = [
         "ACTION : proposer un cessez-le-feu vérifiable\n"
         "CHOIX : limiter l'escalade tout en gardant la crédibilité"
@@ -201,21 +236,51 @@ def test_private_phase_timeout_triggers_a_rescue_pass_that_parses():
     plan = agent.prepare_negotiation_plan(_event(), _world(), [], now=clock)
 
     assert len(backend.calls) == 2  # phase principale + passe de secours
-    assert backend.closed_early_count == 2  # les DEUX appels ont été coupés proprement
+    assert backend.closed_early_count == 1  # seule la phase principale a été coupée
+    assert backend.exhausted_count == 1  # la passe de secours a produit son fragment en entier
     assert plan.fallback_used is False  # PAS le repli seedé générique
     assert plan.minimal_extraction is True  # lu par l'extraction minimale (secours)
     assert plan.selected.course_of_action == "proposer un cessez-le-feu vérifiable"
     assert agent.last_private_valid is True
 
 
+def test_connection_lag_before_the_first_private_fragment_does_not_count_against_the_budget():
+    # Idem phase privée : connect_lag (70s) dépasse à lui seul TOUT le budget de réflexion
+    # (think_seconds=60s). Sous l'ancien calcul, la décision (répartie sur 2 fragments)
+    # serait coupée avant même que le premier fragment n'arrive.
+    clock = FakeClock()
+    plan_fragments = [
+        "ACTION : proposer un cessez-le-feu vérifiable\n",
+        "CHOIX : limiter l'escalade tout en gardant la crédibilité",
+    ]
+    backend = TimedBackend([plan_fragments], clock, seconds_per_fragment=0.5, connect_lag=70.0)
+    agent = LLMAgent("usa", backend)
+
+    plan = agent.prepare_negotiation_plan(_event(), _world(), [], now=clock)
+
+    assert len(backend.calls) == 1  # rien n'a été perdu : pas de passe de secours
+    assert backend.exhausted_count == 1
+    assert backend.closed_early_count == 0
+    assert plan.fallback_used is False
+    assert plan.selected.course_of_action == "proposer un cessez-le-feu vérifiable"
+
+
 def test_rescue_pass_prompt_carries_the_truncated_reflection_and_is_time_boxed():
     # La consigne de secours (§3) : contexte = réflexion tronquée, budget = moitié du
     # temps restant (plancher 10s). Ici le temps restant est ~0 au moment du secours
     # (juste après expiration du budget principal) -> le plancher de 10s fait foi.
+    # Le deadline s'arme au 1er fragment (t=25s) ; deadline = 25+60 = 85s. Les suivants
+    # arrivent à 50/75/100s -> coupe au 4e (100 >= 85) : il faut donc 4 fragments (pas 3)
+    # pour dépasser think_seconds une fois le 1er fragment reçu.
     from agents.prompts import PRIVATE_DECISION_RESCUE_SYSTEM
 
     clock = FakeClock()
-    main_fragments = ["<think>je réfléchis sans fin ", "et ne conclus jamais ", "vraiment jamais"]
+    main_fragments = [
+        "<think>je réfléchis sans fin ",
+        "et ne conclus jamais ",
+        "vraiment jamais ",
+        "quoi qu'il arrive",
+    ]
     rescue_fragments = ["ACTION : temporiser prudemment\nCHOIX : gagner du temps"]
     backend = TimedBackend([main_fragments, rescue_fragments], clock, seconds_per_fragment=25.0)
     agent = LLMAgent("usa", backend)
@@ -227,6 +292,40 @@ def test_rescue_pass_prompt_carries_the_truncated_reflection_and_is_time_boxed()
     assert "je réfléchis sans fin" in rescue_call["prompt"]  # réflexion tronquée en contexte
     assert "CONCLUS MAINTENANT" in rescue_call["prompt"]
     assert rescue_call["max_tokens"] == _BUDGETS.decision_rescue_tokens
+
+
+def test_rescue_pass_time_box_also_starts_at_its_own_first_fragment():
+    # Idem la passe de secours (demandé explicitement) : son deadline PROPRE s'arme à SON
+    # premier fragment, pas au moment où elle est déclenchée (juste après l'expiration du
+    # budget principal). connect_lag (9s) s'applique aussi à ce second appel : sous
+    # l'ancien calcul (deadline posé au déclenchement), cette latence grignoterait déjà
+    # l'essentiel du plancher de 10s de la passe de secours avant l'arrivée du 1er mot.
+    clock = FakeClock()
+    main_fragments = [
+        "<think>je réfléchis sans fin ",
+        "et ne conclus jamais ",
+        "vraiment jamais ",
+        "quoi qu'il arrive",
+    ]
+    # « proposer une trêve... » : évite le garde anti-classe-nue (une action à 2 mots
+    # commençant par un radical de classe de réaction, ex. « temporiser prudemment »,
+    # est rejetée par construction — sans rapport avec ce chantier, voir
+    # `_forbidden_bare_action` dans `simulation/private_deliberation.py`).
+    rescue_fragments = [
+        "ACTION : proposer une trêve conditionnelle vérifiable\n",
+        "CHOIX : gagner du temps pour mieux évaluer la situation",
+    ]
+    backend = TimedBackend(
+        [main_fragments, rescue_fragments], clock, seconds_per_fragment=25.0, connect_lag=9.0
+    )
+    agent = LLMAgent("usa", backend)
+
+    plan = agent.prepare_negotiation_plan(_event(), _world(), [], now=clock)
+
+    assert len(backend.calls) == 2
+    assert plan.fallback_used is False
+    assert plan.minimal_extraction is True
+    assert plan.selected.course_of_action == "proposer une trêve conditionnelle vérifiable"
 
 
 # --- (c) passe de secours qui échoue -> repli seedé (comportement actuel) ------------

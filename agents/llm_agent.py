@@ -72,12 +72,19 @@ _TOKEN_SAFETY_CAP = 4096
 
 
 def _consume_timed(
-    stream: Iterator[str], deadline: float, now: Callable[[], float]
-) -> Generator[str, None, tuple[str, bool]]:
-    """Re-streame `stream` fragment par fragment jusqu'à épuisement OU expiration de
-    `deadline` (horloge `now`) ; renvoie `(texte_accumulé, a_expiré)`.
+    stream: Iterator[str], budget: float, now: Callable[[], float]
+) -> Generator[str, None, tuple[str, bool, float | None]]:
+    """Re-streame `stream` fragment par fragment jusqu'à épuisement OU expiration du
+    budget-temps ; renvoie `(texte_accumulé, a_expiré, deadline_armée)`.
 
-    Dans les deux cas, referme EXPLICITEMENT `stream` (`.close()`) : `OllamaBackend.
+    Revue (Important) — le deadline est armé À LA RÉCEPTION DU PREMIER FRAGMENT, pas
+    avant l'appel à `stream_generate` : la latence de connexion/prefill/swap de modèle
+    (TTFT observé ~10 s à froid en local) ne doit PAS être décomptée d'un budget dont la
+    sémantique est un temps de RAISONNEMENT, pas un temps bout-en-bout incluant la mise en
+    route du backend. Avant le premier fragment, aucune coupe n'est possible ; `deadline`
+    (3e élément renvoyé) vaut `None` si le flux n'a produit AUCUN fragment.
+
+    Dans tous les cas, referme EXPLICITEMENT `stream` (`.close()`) : `OllamaBackend.
     stream_generate` enveloppe le générateur de la librairie ollama dans un simple
     `for chunk in stream: yield ...` (pas `yield from`) — fermer NOTRE générateur y
     déclenche, par cascade de refcount CPython (le générateur interne perd sa dernière
@@ -91,8 +98,13 @@ def _consume_timed(
     épuisé est un no-op sûr (chemin sans expiration : comportement inchangé)."""
     chunks: list[str] = []
     timed_out = False
+    deadline: float | None = None
     try:
         for fragment in stream:
+            if deadline is None:
+                # Premier fragment reçu : le budget commence à courir MAINTENANT, pas au
+                # moment (antérieur) où `stream_generate` a été appelé.
+                deadline = now() + budget
             chunks.append(fragment)
             yield fragment
             if now() >= deadline:
@@ -100,20 +112,21 @@ def _consume_timed(
                 break
     finally:
         stream.close()
-    return "".join(chunks), timed_out
+    return "".join(chunks), timed_out, deadline
 
 
 def _collect_timed(
-    stream: Iterator[str], deadline: float, now: Callable[[], float]
+    stream: Iterator[str], budget: float, now: Callable[[], float]
 ) -> tuple[str, bool]:
     """Version bufferisée de `_consume_timed` : rien n'est émis avant la fin (la parole
     publique reste fail-closed devant le filtre anti-fuite, comme avant ce chantier)."""
-    consumer = _consume_timed(stream, deadline, now)
+    consumer = _consume_timed(stream, budget, now)
     try:
         while True:
             next(consumer)
     except StopIteration as done:
-        return done.value
+        text, timed_out, _deadline = done.value
+        return text, timed_out
 
 
 # Sonde réelle (mistral) — la longueur libre encourage parfois un 7B à déborder son
@@ -322,7 +335,6 @@ class LLMAgent(Agent):
         # (`budgets.think_seconds`) est désormais la vraie limite, pas ce plafond.
         plan_temperature = max(0.35, sampling.temperature - 0.05)
         try:
-            deadline = clock() + budgets.think_seconds
             stream = self.backend.stream_generate(
                 private_prompt,
                 system=plan_system,
@@ -332,7 +344,13 @@ class LLMAgent(Agent):
                 temperature=plan_temperature,
                 repeat_penalty=sampling.repeat_penalty,
             )
-            raw, timed_out = yield from _consume_timed(stream, deadline, clock)
+            # Revue (Important) — le budget (durée), pas un deadline précalculé : le
+            # deadline s'arme dans `_consume_timed` À LA RÉCEPTION DU PREMIER FRAGMENT,
+            # pour exclure la latence de connexion/prefill/swap de modèle (TTFT) du temps
+            # de RAISONNEMENT réellement budgété.
+            raw, timed_out, deadline = yield from _consume_timed(
+                stream, budgets.think_seconds, clock
+            )
             raw = raw.strip()
             # Revue pt 5 (Minor) — .text porte le texte STRIPPÉ, la pensée va dans
             # .thinking (jamais mélangée à ce que l'audit affiche comme texte).
@@ -342,11 +360,13 @@ class LLMAgent(Agent):
             if plan is None and timed_out:
                 # Décision 3 — le temps a expiré AVANT une décision lisible : passe de
                 # secours COURTE (réflexion tronquée en contexte, consigne « conclus
-                # MAINTENANT »), elle-même time-boxée (moitié du temps restant, plancher
-                # 10 s) ; ses fragments sont AUSSI streamés (donc facturés au compute
-                # comme le reste, cf. `simulation/live_round.py::consume`).
-                remaining = max(0.0, deadline - clock())
-                rescue_deadline = clock() + max(10.0, remaining / 2)
+                # MAINTENANT »), elle-même time-boxée (moitié du temps restant sur le
+                # budget principal, plancher 10 s) — et son PROPRE deadline s'arme pareil,
+                # à SON premier fragment (même exclusion de la latence de connexion). Ses
+                # fragments sont AUSSI streamés (donc facturés au compute comme le reste,
+                # cf. `simulation/live_round.py::consume`).
+                remaining = max(0.0, (deadline or clock()) - clock())
+                rescue_budget = max(10.0, remaining / 2)
                 rescue_stream = self.backend.stream_generate(
                     build_decision_rescue_prompt(raw),
                     system=PRIVATE_DECISION_RESCUE_SYSTEM,
@@ -354,7 +374,9 @@ class LLMAgent(Agent):
                     temperature=plan_temperature,
                     repeat_penalty=sampling.repeat_penalty,
                 )
-                rescue_raw, _ = yield from _consume_timed(rescue_stream, rescue_deadline, clock)
+                rescue_raw, _rescue_timed_out, _rescue_deadline = yield from _consume_timed(
+                    rescue_stream, rescue_budget, clock
+                )
                 rescue_text, rescue_thinking = split_think(rescue_raw.strip())
                 self.last_plan_result = InferenceResult(
                     text=rescue_text, thinking=f"{thinking}\n{rescue_thinking}".strip()
@@ -449,7 +471,6 @@ class LLMAgent(Agent):
             # la longueur elle-même reste LIBRE (consigne déjà portée par
             # `NEGOTIATION_SYSTEM`, pas par ce plafond).
             budgets = load_gamefeel_params().time_budgets
-            deadline = clock() + budgets.speak_seconds
             stream = self.backend.stream_generate(
                 public_prompt,
                 system=NEGOTIATION_SYSTEM,
@@ -457,7 +478,10 @@ class LLMAgent(Agent):
                 temperature=sampling.temperature,
                 repeat_penalty=sampling.repeat_penalty,
             )
-            raw_public, _timed_out = _collect_timed(stream, deadline, clock)
+            # Revue (Important) — budget (durée) plutôt que deadline précalculé : voir
+            # `_consume_timed` (le deadline s'arme à la réception du premier fragment,
+            # la latence de connexion/prefill/swap ne grignote pas le temps de parole).
+            raw_public, _timed_out = _collect_timed(stream, budgets.speak_seconds, clock)
             # Strip AVANT le filtre anti-fuite : la trace <think> d'un modèle de
             # raisonnement contient des marqueurs privés (FUTUR n, CHOIX…) qui, laissés
             # en place, feraient vider un message public pourtant légitime. Revue pt 5
