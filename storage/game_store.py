@@ -488,7 +488,8 @@ class SQLiteGameStore:
 
     def delete_game(self, game_id: str) -> None:
         """G14 §3 — purge complète d'une partie : rounds, transcripts, prompts capturés,
-        snapshot de session, puis la ligne games elle-même."""
+        snapshot de session, scores de campagne, score du défi du jour (G16), puis la
+        ligne games elle-même."""
         with self._conn:
             round_ids = [
                 r[0]
@@ -502,6 +503,7 @@ class SQLiteGameStore:
             self._conn.execute("DELETE FROM rounds WHERE game_id = ?", (game_id,))
             self._conn.execute("DELETE FROM game_sessions WHERE game_id = ?", (game_id,))
             self._conn.execute("DELETE FROM campaign_scores WHERE game_id = ?", (game_id,))
+            self._conn.execute("DELETE FROM daily_scores WHERE game_id = ?", (game_id,))
             self._conn.execute("DELETE FROM games WHERE id = ?", (game_id,))
 
     # --- rounds ----------------------------------------------------------------

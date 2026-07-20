@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from storage.game_store import (
     CustomCrisisRecord,
+    DailyScore,
     GameRecord,
     GameStatus,
     PlayerRecord,
@@ -82,6 +83,22 @@ def test_ownership_fields_roundtrip():
     got.owner_id = "u_other"
     store.save_game(got)
     assert store.get_game("g5").owner_id == "u_other"
+
+
+def test_delete_game_purges_daily_score_row():
+    # Trou pré-existant trouvé en revue de db_maintenance : delete_game oubliait
+    # daily_scores (G16, le défi du jour) — une ligne pendante référençant une partie
+    # supprimée survivait à la purge (touche aussi DELETE /api/players, purge invités).
+    store = SQLiteGameStore(":memory:")
+    store.add_game(_game("g10"))
+    store.add_daily_score(
+        DailyScore(date="2026-07-20", player_id="p1", game_id="g10", score=0.8, created_at="t")
+    )
+    assert len(store.list_daily_scores()) == 1
+
+    store.delete_game("g10")
+
+    assert store.list_daily_scores() == []
 
 
 def test_ownership_defaults():
