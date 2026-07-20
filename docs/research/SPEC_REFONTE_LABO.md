@@ -230,6 +230,14 @@ méthode ; l'utilisateur doit savoir « à quoi ça sert » avant « comment ça
 
 ## 4. Bibliothèque de 6 expériences guidées (les « cartes »)
 
+> **Catalogue actuel (décision user 2026-07-20)** : l'expérience du seuil nucléaire — les
+> autres protocoles restent dans le moteur, réintroduits quand leurs cartes seront jugées
+> limpides. Concrètement, seule la **carte 4** (« Le rapport de force fait-il franchir le
+> seuil nucléaire ? », protocole `uranium-alpha-beta-v1`) est proposée par l'écran « Question &
+> protocole » (`FEATURED_PROTOCOL_IDS`, `simulation/research_lab.py`) ; les cartes 1-3, 5 et 6
+> ci-dessous restent une documentation valide de configurations exécutables, en réserve pour
+> une réintroduction future.
+
 Toutes = **configurations des 5 protocoles existants** (`default_protocols()`), zéro
 code moteur. Panel frontière : `qwen3:4b` et `deepseek-r1:7b` (rôle `reasoning`),
 `gpt-oss:latest` / `magistral:latest` (voie lente `slow_robustness_only`, réservée à

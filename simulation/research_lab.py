@@ -1198,6 +1198,26 @@ def default_protocols() -> list[ExperimentProtocol]:
     ]
 
 
+# Décision user 2026-07-20 : construire le labo sur le seuil nucléaire d'abord — les autres
+# cartes sont jugées incompréhensibles en l'état. Resserre le catalogue EXPOSÉ pour une
+# NOUVELLE expérience (`_lab_view` côté `app/campaign_api.py`), sans rien amputer au moteur :
+# les protocoles non listés ici restent définis, valides et exécutables (`default_protocols()`
+# les garde tous), et une expérience passée les utilisant reste lisible (`_lab_experiment_view`
+# n'en dépend pas). Réintroduire un id ici suffira à le remettre au catalogue.
+FEATURED_PROTOCOL_IDS: tuple[str, ...] = ("uranium-alpha-beta-v1",)
+
+
+def featured_protocols() -> list[ExperimentProtocol]:
+    """Sous-ensemble de `default_protocols()` proposé au catalogue pour une NOUVELLE expérience.
+
+    Ordonné selon `FEATURED_PROTOCOL_IDS`, pas selon `default_protocols()` — un id absent du
+    moteur est ignoré plutôt que de lever une erreur (défense contre une constante désynchronisée).
+    """
+
+    by_id = {protocol.id: protocol for protocol in default_protocols()}
+    return [by_id[protocol_id] for protocol_id in FEATURED_PROTOCOL_IDS if protocol_id in by_id]
+
+
 def _stable_seed(protocol_id: str, factors: dict[str, object], repetition: int) -> int:
     material = f"{protocol_id}|{sorted(factors.items())}|{repetition}".encode()
     return int.from_bytes(hashlib.sha256(material).digest()[:8], "big") & 0x7FFF_FFFF

@@ -18,6 +18,7 @@ import {
   planSelection,
   preferredLabProtocol,
   ResearchLab,
+  resolvePrimaryMetricLabel,
   ROLE_LABELS,
   STATUS_LABELS,
 } from "./research-lab";
@@ -303,6 +304,56 @@ describe("ResearchLab (rendu complet — dérisque la refonte §3 de la spec)", 
     expect(html).toContain("Laboratoire");
     expect(html).toContain("1 · Comprendre");
     expect(html).toContain("Cycle de l&#x27;expérience");
+  });
+
+  it("n'affiche pas de sélecteur multi-protocoles quand un seul protocole est exposé (décision user 2026-07-20)", () => {
+    const html = renderToStaticMarkup(
+      createElement(SettingsProvider, null, createElement(ResearchLab, { lab })),
+    );
+    // React échappe l'apostrophe en SSR (&#x27;) — même convention que le test « Comprendre »
+    // ci-dessus (« Cycle de l&#x27;expérience »).
+    expect(html).not.toContain("Choisir une carte d&#x27;expérience");
+    expect(html).toContain("Seuil nucléaire dans une négociation pour l&#x27;uranium");
+  });
+
+  it("garde le sélecteur multi-cartes quand le catalogue expose plusieurs protocoles", () => {
+    const secondProtocol: ExperimentProtocol = {
+      ...lab.protocols[0]!,
+      id: "second-protocol-v1",
+      title: "Deuxième protocole",
+      research_question: "Une deuxième question falsifiable ?",
+    };
+    const labWithChoice: CampaignLabView = {
+      ...lab,
+      protocols: [lab.protocols[0]!, secondProtocol],
+    };
+    const html = renderToStaticMarkup(
+      createElement(SettingsProvider, null, createElement(ResearchLab, { lab: labWithChoice })),
+    );
+    expect(html).toContain("Choisir une carte d&#x27;expérience");
+    expect(html).toContain("Deuxième protocole");
+  });
+});
+
+describe("resolvePrimaryMetricLabel (résultat historique d'un protocole non exposé, décision user 2026-07-20)", () => {
+  it("utilise le libellé du protocole quand il est encore dans le catalogue exposé", () => {
+    const protocol = {
+      outcomes: [{ id: "nuclear_use", label: "Emploi nucléaire", primary: true }],
+    } as unknown as ExperimentProtocol;
+    expect(resolvePrimaryMetricLabel(protocol, "nuclear_use")).toBe("Emploi nucléaire");
+  });
+
+  it("retombe sur le libellé générique du critère quand le protocole n'est plus exposé", () => {
+    expect(resolvePrimaryMetricLabel(undefined, "appropriate_override")).toBe(
+      "Refus humain approprié",
+    );
+    expect(resolvePrimaryMetricLabel(undefined, "forecast_mae")).toBe(
+      "Erreur moyenne de prévision",
+    );
+  });
+
+  it("retombe sur « Emploi nucléaire » si même le critère principal est inconnu", () => {
+    expect(resolvePrimaryMetricLabel(undefined, undefined)).toBe("Emploi nucléaire");
   });
 });
 

@@ -3,6 +3,7 @@
 import pytest
 
 from simulation.research_lab import (
+    FEATURED_PROTOCOL_IDS,
     STANDARD_MINIMUM_REPETITIONS_PER_GROUP,
     CourseOfAction,
     LabRunResult,
@@ -12,6 +13,7 @@ from simulation.research_lab import (
     assess_invariant,
     build_cells,
     default_protocols,
+    featured_protocols,
     language_probe_protocol,
     summarize_results,
     uranium_protocol,
@@ -31,6 +33,34 @@ def test_uranium_protocol_builds_three_cells_times_thirty():
     assert [beat.round_no for beat in protocol.scenario_beats] == [1, 2, 3]
     assert all(beat.inter_round_activity and beat.measurement for beat in protocol.scenario_beats)
     assert "Comparer" in protocol.conclusion_rule
+
+
+def test_featured_protocol_ids_keeps_only_the_nuclear_threshold_experiment():
+    """Décision user 2026-07-20 : « garde uniquement l'expérience du seuil nucléaire ».
+
+    Le protocole du seuil nucléaire est `uranium-alpha-beta-v1` (carte 4 de la spec refonte
+    labo : « le rapport de force fait-il franchir le seuil nucléaire ? ») — pas le protocole
+    de langue (`language-framing-nuclear-v1`, la carte « langue → retenue ») ni le tournoi
+    dyadique (`ai-arms-dyadic-tournament-v1`).
+    """
+
+    assert FEATURED_PROTOCOL_IDS == ("uranium-alpha-beta-v1",)
+
+
+def test_featured_protocols_exposes_only_the_featured_ids_in_declared_order():
+    protocols = featured_protocols()
+    assert [protocol.id for protocol in protocols] == list(FEATURED_PROTOCOL_IDS)
+    assert protocols[0].id == uranium_protocol().id
+
+
+def test_featured_protocols_narrows_the_catalog_without_amputating_the_engine():
+    """Catalogue resserré, pas amputé (décision 1) : les autres protocoles restent définis,
+    valides et exécutables par le moteur — seule la vue catalogue les cache."""
+
+    all_ids = {protocol.id for protocol in default_protocols()}
+    assert set(FEATURED_PROTOCOL_IDS) <= all_ids
+    assert len(default_protocols()) == 5  # non-régression : rien n'a été supprimé du moteur
+    assert len(featured_protocols()) < len(default_protocols())
 
 
 def test_language_claim_is_an_explicit_hypothesis_not_a_fact():

@@ -97,6 +97,15 @@ un rechargement de page.
 
 ## Protocoles livrés
 
+> **Catalogue actuel (décision user 2026-07-20)** : l'écran « Question & protocole » ne propose
+> plus que **l'expérience du seuil nucléaire** (`uranium-alpha-beta-v1`, carte 4 ci-dessous) —
+> les autres cartes ont été jugées incompréhensibles en l'état. Les cinq protocoles ci-dessous
+> restent tous définis et exécutables par le moteur (`simulation/research_lab.py
+> default_protocols()`) ; seule la vue catalogue (`featured_protocols()`,
+> `FEATURED_PROTOCOL_IDS`) les filtre pour une NOUVELLE expérience — une expérience passée sur
+> l'un d'eux reste consultable normalement (historique, export, clone). Ils seront réintroduits
+> au catalogue quand leurs cartes seront jugées limpides.
+
 | Protocole | Facteurs | Mesure principale | Pilote / plan complet | Mode |
 |---|---|---|---|---|
 | Négociation pour l'uranium | rapport de force 80/20, 50/50, 20/80 | emploi nucléaire | 5 / 30 rép. par cellule | automatisé |
