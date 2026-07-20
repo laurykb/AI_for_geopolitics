@@ -295,6 +295,16 @@ en moins.
 - **`VERDICT_MAX_TOKENS = 1300`** — pari raisonné, smoke mistral vert, mais la
   troncature du JSON enrichi (reasons) n'est pas mesurée sous stress (6 pays, transcript
   long). À surveiller au playtest. —
+- **`num_ctx` jamais posé** (`inference/ollama_backend.py`) — la fenêtre de contexte suit
+  le défaut du serveur Ollama ; avec la soupape de sortie à 4096 (budget-temps), le pire
+  cas théorique prompt+sortie peut déclencher la troncature silencieuse des tokens les
+  plus anciens (system prompt compris). Rendu acceptable par le budget-temps (~1200-3000
+  tok réels) et la discipline de prompts bornés, mais à poser explicitement
+  (`num_ctx` + `num_keep` protégeant le system) si le débit local monte. **S**
+- **Réglage par-partie du budget-temps** — think/speak_seconds sont globaux
+  (`data/gamefeel/params.json`) ; un bouton au lobby (patron expose_thinking) rendrait le
+  rythme réglable par partie. **S** — et `MeteredBackend.stream_generate` perd son
+  enregistrement de télémétrie si le flux est fermé avant épuisement (non câblé en prod). **S**
 
 ---
 
