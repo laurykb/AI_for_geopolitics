@@ -375,6 +375,9 @@ class StartChapterRequest(BaseModel):
     owner_id: str | None = Field(default=None, max_length=128)
     play_as: str | None = Field(default=None, max_length=128)
     model_cast: ModelCastRequest | None = None
+    # Pensée à découvert (même sémantique qu'en Classique) : mode observation — le
+    # garde-fou classement (expose → non classé) s'applique aussi aux chapitres.
+    expose_thinking: bool = False
 
 
 def _best_scores(store: GameStore) -> dict[str, tuple[float, float]]:
@@ -759,6 +762,7 @@ def start_chapter(
         owner_id=request.owner_id,
         play_as=play_as,
         role="player" if play_as else "council",
+        expose_thinking=request.expose_thinking,
         model_cast=request.model_cast,
     )
     return game_api.create_game(body, backend, store)

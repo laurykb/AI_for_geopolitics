@@ -256,3 +256,15 @@ def test_history_bonus_reflects_comparison(client_store):
         assert over["bonus"] == pytest.approx(15 * improvement, abs=0.1)
     elif improvement < 0:
         assert over["bonus"] == -10
+
+
+def test_chapter_transmits_expose_thinking(client_store):
+    # Le réglage « Pensée à découvert » vaut aussi en Campagne : mode observation
+    # assumé, et le garde-fou classement existant (expose → non classé) s'applique.
+    client, _ = client_store
+    body = client.post(
+        "/api/campaign/c1/start", json={"play_as": "usa", "expose_thinking": True}
+    ).json()
+    assert body["expose_thinking"] is True and body["ranked"] is False
+    default = client.post("/api/campaign/c1/start", json={"play_as": "usa"}).json()
+    assert default["expose_thinking"] is False
