@@ -4,7 +4,7 @@
 
 import { speakerMeta } from "@/lib/countries";
 import { unknownActor } from "@/lib/fog";
-import { fmt, splitStreaming } from "@/lib/format";
+import { fmt, splitStreaming, splitThinkSegments } from "@/lib/format";
 import type { LiveTurn } from "@/hooks/useRoundStream";
 import type { Perception, TranscriptEntry } from "@/lib/types";
 
@@ -71,6 +71,33 @@ function GlassAnnotation({ lens }: { lens: GlassLens }) {
   );
 }
 
+/** Pensée à découvert — habillage visuel pur des balises `<think>…</think>` (posées
+ * par le backend, cf. `inference/ollama_backend.py`) : chaque segment de pensée reçoit
+ * un préfixe et un style distincts, le reste (journal/décision) s'affiche tel quel.
+ * Aucune balise ne survit à l'affichage ; le contenu et l'ordre de génération (pensée
+ * d'abord, décision ensuite) restent intacts — fidélité de retranscription : ni
+ * paraphrase, ni résumé, seulement les balises retirées à l'affichage. Sans balise
+ * (cas courant : le journal validé n'en porte plus), rendu inchangé. */
+function ThinkAwareText({ text }: { text: string }) {
+  const t = useT();
+  return (
+    <>
+      {splitThinkSegments(text).map((segment, i) =>
+        segment.kind === "think" ? (
+          <span key={i} className="my-1 block text-accent-bright/80">
+            <span className="mr-1.5 not-italic text-[10px] font-medium uppercase tracking-[0.12em] text-fg-faint">
+              {t("transcript.pensee")}
+            </span>
+            {segment.content}
+          </span>
+        ) : (
+          <span key={i}>{segment.content}</span>
+        ),
+      )}
+    </>
+  );
+}
+
 function Reasoning({ text, open = false }: { text: string; open?: boolean }) {
   const t = useT();
   if (!text) return null;
@@ -81,7 +108,7 @@ function Reasoning({ text, open = false }: { text: string; open?: boolean }) {
       </summary>
       <div className="mt-2 border-l border-edge-strong pl-3">
         <p className="whitespace-pre-wrap text-[13px] italic leading-relaxed text-fg-faint">
-          {text}
+          <ThinkAwareText text={text} />
         </p>
         <p className="mt-2 text-[10px] not-italic text-fg-faint">{t("transcript.journal-note")}</p>
       </div>
@@ -170,7 +197,7 @@ export function TurnBubble({ turn, lens }: { turn: LiveTurn; lens?: GlassLens })
       </p>
       {live && !message && reasoning ? (
         <div className="mt-1.5 whitespace-pre-wrap border-l border-accent/50 pl-3 text-[13px] italic leading-relaxed text-fg-muted">
-          {reasoning}
+          <ThinkAwareText text={reasoning} />
         </div>
       ) : (
         <Reasoning text={reasoning} />

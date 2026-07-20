@@ -257,6 +257,10 @@ class GameSession:
     fog: bool = False
     escalation: bool = False
     drift_enabled: bool = False
+    # Pensée à découvert (réglage par partie) : lève le scellement du journal de
+    # délibération (trames privées + résumé) pendant que la partie tourne — voir
+    # `_journal_sealed`. Ne couvre pas le classeur secret du moteur (Dérive/Fog).
+    expose_thinking: bool = False
     # RG-3 — graine de la Dérive : `game_id` en général, le SCÉNARIO pour le Défi du jour
     # (même sommet pour tous ⇒ mêmes traîtres ⇒ classement équitable). Cf. `_drift_seed`.
     drift_seed: str = ""
@@ -353,6 +357,24 @@ def _alliances_at_table(world: dict | None) -> list[AllianceAtTable]:
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _journal_sealed(*, drift_enabled: bool, play_as: str | None, expose_thinking: bool) -> bool:
+    """Prédicat UNIQUE de scellement du journal de délibération (résumé observable),
+    partagé par les quatre sites qui le consultent : suppression des trames
+    `PrivateTokenStep`/`PrivatePlanDoneStep` en direct, digest de `message_done`,
+    digest de la réflexion à la relecture (`get_game`) et caviardage d'`option_summary`.
+
+    Par défaut (Dérive ou Joueur-pays), le journal est scellé pendant que la partie
+    tourne. Pensée à découvert (réglage par partie) lève CE scellement précis : les
+    trames privées circulent et le journal complet redevient lisible, verbatim, sans
+    résumé ni paraphrase — fidélité de retranscription.
+
+    NE COUVRE PAS le classeur secret du moteur (identité de la déviante, perceptions
+    Fog d'autrui — `_public_judge` dans `get_game`) : Pensée à découvert expose la
+    pensée BRUTE des SI, pas le classeur du moteur, sinon le réglage deviendrait un
+    « révèle le traître » plutôt qu'un mode d'observation."""
+    return (drift_enabled or play_as is not None) and not expose_thinking
 
 
 def _day(ts: str) -> str:
@@ -546,6 +568,7 @@ def _rebuild_session(
         fog=game.fog,
         escalation=game.escalation,
         drift_enabled=game.drift_enabled,
+        expose_thinking=game.expose_thinking,
         drift_seed=_drift_seed(game.scenario, game.id),  # RG-3 — recalculé (rien à persister)
         human_country=snapshot.play_as,
         admin=game.admin,
@@ -738,6 +761,7 @@ def _view(
         drift_enabled=game.drift_enabled,
         result=game.result,
         language=game.language,
+        expose_thinking=game.expose_thinking,
         model_cast=(
             session.world.model_cast
             if session
@@ -1650,7 +1674,11 @@ def _emit_escalation_ladder(run: RoundRun, step: VerdictStep) -> list[str]:
 def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
     """Trames SSE d'une étape + effets de bord (record, transcript, suspension)."""
     session = run.session
-    hide = session.drift_enabled or session.human_country is not None
+    hide = _journal_sealed(
+        drift_enabled=session.drift_enabled,
+        play_as=session.human_country,
+        expose_thinking=session.expose_thinking,
+    )
     if hide and isinstance(step, (PrivateTokenStep, PrivatePlanDoneStep)):
         # Résumé observable : en Dérive le journal brut trahirait la déviante en direct ;
         # en Joueur-pays l'humain n'a jamais accès aux pensées des SI (spec G2). Ni le
@@ -2673,6 +2701,7 @@ def create_game(
         difficulty=body.difficulty,
         drift_enabled=drift_enabled,
         language=body.language,
+        expose_thinking=body.expose_thinking,
     )
     store.add_game(game)
     prompt_sink: list[CapturedPrompt] = []
@@ -2687,6 +2716,7 @@ def create_game(
         fog=body.fog,
         escalation=body.escalation,
         drift_enabled=drift_enabled,
+        expose_thinking=body.expose_thinking,
         drift_seed=drift_seed,
         human_country=play_as,
         turn_seconds=body.turn_seconds,
@@ -4096,10 +4126,18 @@ def get_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> G
         snap = store.get_session_snapshot(game_id)
         play_as = snap.play_as if snap else None
     running = game.status is GameStatus.RUNNING
-    hide = running and (game.drift_enabled or play_as is not None)
+    # Classeur secret du moteur (identité de la déviante, perceptions Fog d'autrui) :
+    # scellé tant que la partie tourne, INDÉPENDAMMENT de Pensée à découvert (voir
+    # `_journal_sealed` — ce réglage n'expose que la pensée brute, jamais ce classeur).
+    judge_hidden = running and (game.drift_enabled or play_as is not None)
+    # Scellement du journal de délibération (résumé observable) : Pensée à découvert
+    # le lève pendant que la partie tourne.
+    hide = running and _journal_sealed(
+        drift_enabled=game.drift_enabled, play_as=play_as, expose_thinking=game.expose_thinking
+    )
 
     def _public_judge(judge: dict) -> dict:
-        if not hide:
+        if not judge_hidden:
             return judge
         out = {k: v for k, v in judge.items() if k != "drift"}
         perceptions = out.get("perceptions")

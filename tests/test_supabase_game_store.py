@@ -75,6 +75,19 @@ def test_ownership_fields_roundtrip(store):
     )
 
 
+def test_expose_thinking_roundtrip(store):
+    # Pensée à découvert — même patron que fog/escalation/drift_enabled : survit au
+    # store Supabase (PostgREST simulé), défaut False sur une ligne qui l'omet.
+    game = _game("g8")
+    game.expose_thinking = True
+    store.add_game(game)
+    assert store.get_game("g8").expose_thinking is True
+    assert store.get_game("g1") is None  # id différent : pas de fuite entre lignes
+
+    store.add_game(_game("g9"))  # omis -> défaut du modèle
+    assert store.get_game("g9").expose_thinking is False
+
+
 def test_player_and_xp_history_roundtrip(store):
     # G11-c/RG-1 — comptes joueurs via PostgREST simulé : XP + historique d'XP.
     store.upsert_player(PlayerRecord(id="u1", pseudo="Laury"))

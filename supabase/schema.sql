@@ -27,8 +27,12 @@ create table if not exists games (
               check (difficulty in ('beginner', 'intermediate', 'expert')),
   drift_enabled boolean not null default true,       -- la Dérive peut frapper une SI (transversal)
   result_json jsonb,                                 -- G11-c : bilan de fin de partie (§1 S6)
-  language    text not null default 'fr'             -- G14 §1 : langue des dialogues (fr | en)
-              check (language in ('fr', 'en'))
+  language    text not null default 'fr',            -- G14 §1 : langue des dialogues (fr | en)
+              check (language in ('fr', 'en')),
+  -- Pensée à découvert (réglage par partie) : False (huis clos) par défaut — ON lève
+  -- le scellement du journal de délibération pendant que la partie tourne (trames
+  -- privées + journal complet verbatim). Ne couvre pas le classeur secret du moteur.
+  expose_thinking boolean not null default false
 );
 -- Migration des bases existantes (idempotent) :
 alter table games add column if not exists owner_id uuid references auth.users(id) on delete set null;
@@ -37,6 +41,7 @@ alter table games add column if not exists difficulty text not null default 'int
 alter table games add column if not exists drift_enabled boolean not null default true;
 alter table games add column if not exists result_json jsonb;
 alter table games add column if not exists language text not null default 'fr';
+alter table games add column if not exists expose_thinking boolean not null default false;
 create index if not exists games_owner_idx on games (owner_id);
 
 create table if not exists rounds (

@@ -113,6 +113,7 @@ describe("buildCreateBody", () => {
     rounds: 8,
     difficulty: "expert" as const,
     free: false,
+    expose_thinking: false,
   };
   const seven = ["china", "usa", "iran", "france", "egypt", "saudi_arabia", "uk"];
 
@@ -136,6 +137,18 @@ describe("buildCreateBody", () => {
     expect(body.free).toBe(false);
     expect(body.owner_id).toBe("offline_laury");
     expect(body.countries).toEqual(seven);
+    expect(body.expose_thinking).toBe(false);
+  });
+
+  it("Pensée à découvert : le réglage part tel quel dans le corps de la requête", () => {
+    const body = buildCreateBody({
+      scenario: "red_sea",
+      baseMode: "classic",
+      settings: { ...settings, expose_thinking: true },
+      role: "gm",
+      selected: seven,
+    });
+    expect(body.expose_thinking).toBe(true);
   });
 
   it("réglages Brouillard + Crise qui monte : drapeaux composables transmis", () => {
