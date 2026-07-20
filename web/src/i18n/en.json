@@ -347,7 +347,7 @@
   "turn.parler": "Speak",
   "motion.vote.aria": "Vote on the suspension motion",
   "motion.vote.a-toi": "your turn to vote",
-  "motion.vote.question": "Should {pays} be suspended from the next round?",
+  "motion.vote.question": "Should {pays} be suspended from the summit for 2 rounds?",
   "motion.vote.pour": "For suspension",
   "motion.vote.contre": "Against suspension",
   "motion.vote.abstention": "Abstain",

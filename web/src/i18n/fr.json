@@ -347,7 +347,7 @@
   "turn.parler": "Parler",
   "motion.vote.aria": "Voter sur la motion de suspension",
   "motion.vote.a-toi": "à toi de voter",
-  "motion.vote.question": "Faut-il suspendre {pays} du prochain round ?",
+  "motion.vote.question": "Faut-il suspendre {pays} du sommet pour 2 rounds ?",
   "motion.vote.pour": "Pour la suspension",
   "motion.vote.contre": "Contre la suspension",
   "motion.vote.abstention": "Abstention",
