@@ -4230,7 +4230,9 @@ def get_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> G
             judge=_public_judge(r.judge),
             trajectory=r.trajectory,
             transcript=[
-                e.model_copy(update={"reasoning": observable_digest(e.reasoning)})
+                e.model_copy(
+                    update={"reasoning": observable_digest(e.reasoning), "thinking": ""}
+                )
                 if hide
                 else e
                 for e in store.list_transcript(r.id)
