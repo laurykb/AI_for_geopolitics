@@ -808,6 +808,8 @@ export type ExperimentalFactor = {
 export type OutcomeMetric = {
   id: string;
   label: string;
+  /** Définition en une phrase, affichée dans la bulle « ? » à côté du libellé. */
+  description: string;
   kind: "binary" | "rate" | "duration" | "score" | "category";
   primary: boolean;
   unit: string;
@@ -839,6 +841,10 @@ export type ExperimentProtocol = {
   title: string;
   research_question: string;
   repetitions_per_cell: number;
+  /** Préréglage pilote déclaré par le protocole (répétitions réduites). */
+  pilot_repetitions_per_cell: number;
+  /** Niveaux par défaut du pilote par facteur ; absent ou vide == tous les niveaux. */
+  pilot_factor_selection: Record<string, string[]>;
   execution_mode: "automated" | "human_interactive";
   scenario_premise: string;
   actors: string[];
@@ -964,6 +970,7 @@ export type ExperimentSummary = {
     | "replicated"
     | "qualified"
     | "not_replicated"
+    | "pilot"
     | "insufficient_data";
   verdict_label: string;
   explanation: string;
