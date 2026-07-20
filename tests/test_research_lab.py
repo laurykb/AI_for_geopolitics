@@ -35,6 +35,97 @@ def test_uranium_protocol_builds_three_cells_times_thirty():
     assert "Comparer" in protocol.conclusion_rule
 
 
+def test_uranium_protocol_is_an_explicit_replication_card():
+    """Décision user 2026-07-20 : la carte dit « Réplication de Payne 2026 », et l'hypothèse
+    affichée en tête est CELLE du papier, en une phrase falsifiable."""
+
+    protocol = uranium_protocol()
+    assert "Réplication" in protocol.title
+    assert "Payne 2026" in protocol.title
+    first_hypothesis = protocol.hypotheses[0].strip()
+    assert "seuil nucléaire" in first_hypothesis
+    assert "concéder" in first_hypothesis
+    # Une seule ponctuation terminale : l'hypothèse reste une phrase, pas un paragraphe.
+    assert sum(char in ".?!" for char in first_hypothesis[:-1]) == 0
+    assert first_hypothesis[-1] in ".?!"
+
+
+def test_uranium_conclusion_rule_cites_published_figures_with_the_guardrail():
+    """La « Lecture attendue » cite les chiffres publiés (avec leur n) comme points de
+    comparaison, jamais comme des constantes (garde-fou épistémique du framework)."""
+
+    from simulation.strategic_cognition import load_framework
+
+    framework = load_framework()
+    baselines = framework["published_baselines"]["nuclear_threshold_game_rate"]
+    rule = uranium_protocol().conclusion_rule
+    assert "Comparer" in rule
+    assert f"{round(baselines['tactical_use_450_plus'] * 100)} %" in rule
+    assert str(framework["study_design"]["games"]) in rule
+    assert "pas des constantes" in rule
+
+
+def test_uranium_published_benchmarks_are_sourced_from_the_framework():
+    """Les étalons de l'écran Résultats viennent de `ai_arms_framework.json`, pas du TSX."""
+
+    from simulation.strategic_cognition import load_framework
+
+    framework = load_framework()
+    baselines = framework["published_baselines"]
+    protocol = uranium_protocol()
+    assert framework["source"]["arxiv_id"] in protocol.benchmark_source
+    assert "jamais une cible" in protocol.benchmark_source
+    by_metric = {row.metric_id: row for row in protocol.published_benchmarks if row.metric_id}
+    tactical = baselines["nuclear_threshold_game_rate"]["tactical_use_450_plus"]
+    assert f"{round(tactical * 100)} %" in by_metric["nuclear_use"].published_value
+    threats = baselines["threat_response"]
+    samples = " ".join(row.sample for row in protocol.published_benchmarks)
+    assert str(threats["conditional_threats_count"]) in samples
+    assert all(
+        row.label and row.published_value and row.sample for row in protocol.published_benchmarks
+    )
+
+
+def test_dyadic_published_benchmarks_replace_the_hardcoded_ui_lines():
+    """Le patron étalons du tournoi dyadique est servi par l'API depuis le framework."""
+
+    from simulation.strategic_cognition import load_framework
+
+    framework = load_framework()
+    protocol = ai_arms_dyadic_protocol()
+    assert framework["source"]["arxiv_id"] in protocol.benchmark_source
+    by_metric = {row.metric_id: row for row in protocol.published_benchmarks if row.metric_id}
+    maes = [row["mae"] for row in framework["published_baselines"]["forecast"].values()]
+    assert str(min(maes)) in by_metric["forecast_mae"].published_value
+    assert str(max(maes)) in by_metric["forecast_mae"].published_value
+    assert "signal_match_rate" in by_metric
+
+
+def test_uranium_caveats_declare_the_adapted_replication_honestly():
+    """Ce qui ne peut pas être répliqué localement est DIT : modèles 7-8B au lieu des
+    frontière, crise compressée, Bêta nucléaire dans le papier, grille de rapport de force
+    locale."""
+
+    caveats = " ".join(uranium_protocol().caveats)
+    assert "frontière" in caveats
+    assert "l'écart" in caveats and "résultat" in caveats
+    assert "40 tours" in caveats
+    assert "Bêta possède aussi l'arme nucléaire" in caveats
+    assert "80/20" in caveats
+
+
+def test_uranium_runner_contract_is_intact_after_the_replication_rewrite():
+    """Anti-scope strict : le runner lit `alpha_win_prior` (3 niveaux flottants) et le
+    protocole garde son id historique — seules les données de la fiche changent."""
+
+    protocol = uranium_protocol()
+    assert protocol.id == "uranium-alpha-beta-v1"
+    factor = protocol.factors[0]
+    assert factor.id == "alpha_win_prior"
+    assert [level.value for level in factor.levels] == [0.8, 0.5, 0.2]
+    assert protocol.repetitions_per_cell == 30
+
+
 def test_featured_protocol_ids_keeps_only_the_nuclear_threshold_experiment():
     """Décision user 2026-07-20 : « garde uniquement l'expérience du seuil nucléaire ».
 

@@ -836,6 +836,15 @@ export type ScenarioCountryEligibility = {
   pairing_note: string;
 };
 
+/** Étalon publié du papier répliqué, servi par l'API depuis le registre versionné. */
+export type PublishedBenchmark = {
+  /** Métrique locale mise en regard ; vide pour un repère global du papier. */
+  metric_id: string;
+  label: string;
+  published_value: string;
+  sample: string;
+};
+
 export type ExperimentProtocol = {
   id: string;
   title: string;
@@ -852,6 +861,9 @@ export type ExperimentProtocol = {
   scenario_beats: ScenarioBeat[];
   country_eligibility?: ScenarioCountryEligibility[];
   conclusion_rule: string;
+  /** Provenance des étalons publiés (contexte de lecture, jamais une cible). */
+  benchmark_source?: string;
+  published_benchmarks?: PublishedBenchmark[];
   factors: ExperimentalFactor[];
   outcomes: OutcomeMetric[];
   controls: string[];

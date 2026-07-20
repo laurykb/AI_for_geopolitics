@@ -6,11 +6,15 @@
 
 ## En une phrase
 
-Le laboratoire, c'est l'endroit où tu poses une question sur le comportement des IA du jeu, où
-tu la fais jouer plusieurs fois dans des conditions contrôlées, et où tu lis une réponse
-chiffrée avec sa marge d'erreur. C'est le banc d'essai du jeu (crédibilité des IA candidates
-au rôle de traîtresse) **et** le vecteur d'apprentissage AI-engineering : les mêmes tests que
-ceux des chercheurs, sur ta machine.
+Le laboratoire est **le banc de réplication de Payne 2026** (« AI Arms and Influence »,
+arXiv 2602.14740) : il rejoue l'expérience du papier avec tes modèles locaux et affiche les
+taux publiés en regard des tiens — l'écart est lui-même un résultat.
+
+Concrètement : tu poses une question sur le comportement des IA du jeu, tu la fais jouer
+plusieurs fois dans des conditions contrôlées, et tu lis une réponse chiffrée avec sa marge
+d'erreur. C'est le banc d'essai du jeu (crédibilité des IA candidates au rôle de traîtresse)
+**et** le vecteur d'apprentissage AI-engineering : les mêmes tests que ceux des chercheurs,
+sur ta machine.
 
 ## Le cycle d'une expérience (cadre méthodologique)
 
@@ -81,8 +85,9 @@ numéro, un temps du cycle ci-dessus :
 5. **Résultat & limites** : la table de résultats est pilotée par les métriques déclarées du
    protocole (plus de colonne hors-sujet), chaque taux binaire affiche son intervalle de
    Wilson à 95 %, un encart Limites toujours déplié combine les biais du protocole, la limite
-   matérielle du panel et l'effectif par groupe, et pour le tournoi dyadique une ligne
-   d'étalons publiés (Payne 2026) sert de repère de lecture — jamais de cible.
+   matérielle du panel et l'effectif par groupe, et les étalons publiés du papier (servis par
+   l'API depuis `data/research/ai_arms_framework.json`, jamais en dur dans l'UI) s'affichent
+   en regard des taux locaux — un repère de lecture, jamais une cible.
 
 Un glossaire au point d'usage (bulles « ? ») remplace le bloc générique unique : cellule,
 répétition, seed, digest, manifeste, IC Wilson, pilote, paire ordonnée, self-play, échange de
@@ -97,18 +102,20 @@ un rechargement de page.
 
 ## Protocoles livrés
 
-> **Catalogue actuel (décision user 2026-07-20)** : l'écran « Question & protocole » ne propose
-> plus que **l'expérience du seuil nucléaire** (`uranium-alpha-beta-v1`, carte 4 ci-dessous) —
-> les autres cartes ont été jugées incompréhensibles en l'état. Les cinq protocoles ci-dessous
-> restent tous définis et exécutables par le moteur (`simulation/research_lab.py
-> default_protocols()`) ; seule la vue catalogue (`featured_protocols()`,
-> `FEATURED_PROTOCOL_IDS`) les filtre pour une NOUVELLE expérience — une expérience passée sur
-> l'un d'eux reste consultable normalement (historique, export, clone). Ils seront réintroduits
-> au catalogue quand leurs cartes seront jugées limpides.
+> **Catalogue actuel (décision user 2026-07-20)** : le labo cherche uniquement à **reproduire
+> l'expérience de Payne 2026** — l'écran « Question & protocole » ne propose donc que la fiche
+> de réplication (`uranium-alpha-beta-v1`, carte 4 ci-dessous) : titre, hypothèse, lecture
+> attendue (chiffres publiés + n) et limites disent explicitement ce qui est répliqué et ce qui
+> est adapté. Les cinq protocoles ci-dessous restent tous définis et exécutables par le moteur
+> (`simulation/research_lab.py default_protocols()`) ; seule la vue catalogue
+> (`featured_protocols()`, `FEATURED_PROTOCOL_IDS`) les filtre pour une NOUVELLE expérience —
+> une expérience passée sur l'un d'eux reste consultable normalement (historique, export,
+> clone). Ils seront réintroduits au catalogue quand leurs cartes serviront cet objectif de
+> réplication aussi clairement.
 
 | Protocole | Facteurs | Mesure principale | Pilote / plan complet | Mode |
 |---|---|---|---|---|
-| Négociation pour l'uranium | rapport de force 80/20, 50/50, 20/80 | emploi nucléaire | 5 / 30 rép. par cellule | automatisé |
+| Réplication Payne 2026 — crise de l'uranium | rapport de force 80/20, 50/50, 20/80 | emploi nucléaire | 5 / 30 rép. par cellule | automatisé |
 | AI Arms — décisions d'ouverture | 7 scénarios × rôles Alpha/Bêta | franchissement du seuil nucléaire | 5 / 30 rép. (scénario vedette au pilote) | automatisé, screening |
 | AI Arms — tournoi dyadique | scénario × horizon × 6/12/40 tours × paires ordonnées | erreur prévision–action observée | 5 / 30 rép. (scénario vedette, 6 tours au pilote) | automatisé, multi-agent |
 | Autorité humaine | recommandation correcte/incorrecte × veto × urgence | décision humaine appropriée | 2 / 30 essais par cellule | humain requis |
