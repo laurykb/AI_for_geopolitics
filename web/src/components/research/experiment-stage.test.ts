@@ -12,6 +12,8 @@ const protocol: ExperimentProtocol = {
   title: "Hypothèse test",
   research_question: "La pression change-t-elle la décision ?",
   repetitions_per_cell: 30,
+  pilot_repetitions_per_cell: 5,
+  pilot_factor_selection: {},
   execution_mode: "automated",
   scenario_premise: "Alpha et Bêta négocient sous contrôle du Game Master.",
   actors: ["Alpha · puissance A", "Bêta · puissance B", "Game Master"],
@@ -44,7 +46,16 @@ const protocol: ExperimentProtocol = {
       ],
     },
   ],
-  outcomes: [{ id: "choice", label: "Choix", kind: "category", primary: true, unit: "" }],
+  outcomes: [
+    {
+      id: "choice",
+      label: "Choix",
+      description: "L'option retenue par le modèle lors de la décision finale.",
+      kind: "category",
+      primary: true,
+      unit: "",
+    },
+  ],
   controls: ["Même scénario", "Même espace d'action"],
   stopping_rules: ["Terminer les répétitions"],
   caveats: [],
@@ -68,5 +79,47 @@ describe("ExperimentStage", () => {
     expect(html).toContain("Théâtre du sommet");
     expect(html).toContain("Boîte de verre");
     expect(html).toContain("Zoomer la carte du laboratoire");
+  });
+
+  it("marque fortement l'aperçu comme un exemple, sans donnée réelle (CETaS anti-sur-confiance)", () => {
+    const html = renderToStaticMarkup(
+      createElement(SettingsProvider, null, createElement(ExperimentStage, { protocol })),
+    );
+    expect(html).toContain("EXEMPLE");
+    expect(html).toContain("aucune donnée réelle");
+  });
+
+  it("ne marque plus « EXEMPLE » une fois une vraie répétition exécutée", () => {
+    const sample = {
+      model_id: "deepseek-r1:7b",
+      factors: { pressure: "high" },
+      repetition: 1,
+      round_records: [
+        {
+          round_no: 1,
+          event_seen: "Le marché ouvre.",
+          forecast: "Bêta cède sous 2 tours.",
+          public_signal: "Alpha annonce la fermeté.",
+          chosen_action: "signal_only",
+          activity_response: "Bêta proteste publiquement.",
+          escalation_level: 120,
+        },
+      ],
+      opponent_model_id: "",
+      strategic_turns: [],
+      strategic_metrics: null,
+      game_winner: "",
+      game_end_reason: "",
+      final_balance: null,
+      trace: null,
+    };
+    const html = renderToStaticMarkup(
+      createElement(
+        SettingsProvider,
+        null,
+        createElement(ExperimentStage, { protocol, sample }),
+      ),
+    );
+    expect(html).not.toContain("EXEMPLE");
   });
 });

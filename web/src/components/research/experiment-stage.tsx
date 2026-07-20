@@ -94,7 +94,7 @@ export function ExperimentStage({
     <div data-tour="lab-stage">
     <Panel className="overflow-hidden border-indigo-soft/50 bg-[radial-gradient(circle_at_50%_0%,rgba(99,102,241,0.14),transparent_42%)]">
       <PanelTitle
-        kicker="3 · Théâtre expérimental"
+        kicker="4 · Théâtre"
         title="La même scène, sous protocole contrôlé"
         hint="Le laboratoire ajoute un protocole avant la partie, mais conserve la carte, les prises de parole et la boîte de verre du mode Classique."
         right={
@@ -103,6 +103,19 @@ export function ExperimentStage({
           </Pill>
         }
       />
+
+      {!sample && (
+        // Marquage fort et permanent (spec refonte labo §3.4, CETaS anti-sur-confiance) :
+        // un aperçu indistinguable de vraies données EST le piège que ce bandeau évite.
+        <div
+          aria-label="Aperçu : aucune donnée réelle"
+          className="relative mb-4 overflow-hidden rounded-lg border-2 border-dashed border-warn/60 bg-warn/10 px-4 py-2 text-center"
+        >
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-warn">
+            EXEMPLE — aucune donnée réelle avant exécution
+          </p>
+        </div>
+      )}
 
       <div className="mb-4 rounded-lg border border-accent/30 bg-accent/5 px-4 py-3">
         <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-accent-bright">
@@ -179,7 +192,16 @@ export function ExperimentStage({
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(19rem,0.8fr)]">
+      <div className="relative grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(19rem,0.8fr)]">
+        {!sample && (
+          <p
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 z-20 flex select-none items-center justify-center overflow-hidden text-4xl font-black uppercase tracking-widest text-warn/15 sm:text-6xl"
+            style={{ transform: "rotate(-18deg)" }}
+          >
+            EXEMPLE
+          </p>
+        )}
         <div className="min-w-0 overflow-auto rounded-xl border border-edge bg-background/35 p-2">
           <div style={{ width: `${zoom * 100}%`, minWidth: "100%" }}>
             <StageMap
