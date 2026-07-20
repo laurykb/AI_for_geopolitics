@@ -4,6 +4,7 @@ import pytest
 
 from storage.game_store import (
     CustomCrisisRecord,
+    DailyScore,
     GameRecord,
     GameStatus,
     PlayerRecord,
@@ -73,6 +74,19 @@ def test_ownership_fields_roundtrip(store):
         "beginner",
         False,
     )
+
+
+def test_delete_game_purges_daily_score_row(store):
+    # Parité D3 avec le store SQLite (même trou pré-existant, même correctif).
+    store.add_game(_game("g10"))
+    store.add_daily_score(
+        DailyScore(date="2026-07-20", player_id="p1", game_id="g10", score=0.8, created_at="t")
+    )
+    assert len(store.list_daily_scores()) == 1
+
+    store.delete_game("g10")
+
+    assert store.list_daily_scores() == []
 
 
 def test_expose_thinking_roundtrip(store):
