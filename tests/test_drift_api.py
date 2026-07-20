@@ -57,9 +57,9 @@ TEST_PARAMS = {
 }
 
 
-def _setup(tmp_path, monkeypatch, backend_text: str):
+def _setup(tmp_path, monkeypatch, backend_text: str, params: dict = TEST_PARAMS):
     params_file = tmp_path / "drift-params.json"
-    params_file.write_text(json.dumps(TEST_PARAMS), encoding="utf-8")
+    params_file.write_text(json.dumps(params), encoding="utf-8")
     monkeypatch.setenv("DRIFT_PARAMS_PATH", str(params_file))
     drift_game.load_params.cache_clear()
     store = SQLiteGameStore(":memory:")
@@ -82,6 +82,17 @@ def drift_client(tmp_path, monkeypatch):
 def suspend_happy_client(tmp_path, monkeypatch):
     """Backend dont le texte crie SUSPENDRE : prouve que le ruling prime sur le parse."""
     yield _setup(tmp_path, monkeypatch, "Réflexion. MESSAGE: Grave. VERDICT: SUSPENDRE")
+    app.dependency_overrides.clear()
+    game_api._sessions.clear()
+    drift_game.load_params.cache_clear()
+
+
+@pytest.fixture
+def two_deviants_client(tmp_path, monkeypatch):
+    """Juge suspend-happy + DEUX traîtres épinglés : en démasquer un ne finit pas la
+    partie (cf. _finish_drift_if_over) — le comportement du banc devient observable."""
+    params = {**TEST_PARAMS, "deviants": {"min": 2, "max": 2}}
+    yield _setup(tmp_path, monkeypatch, "Réflexion. MESSAGE: Grave. VERDICT: SUSPENDRE", params)
     app.dependency_overrides.clear()
     game_api._sessions.clear()
     drift_game.load_params.cache_clear()
@@ -168,6 +179,40 @@ def test_motion_round_one_rejected_by_rule(suspend_happy_client):
     events = _play(client, game["id"])
     verdicts = [p for n, p in events if n == "motion_verdict"]
     assert verdicts and verdicts[0]["upheld"] is False
+
+
+def test_benched_deviant_has_no_acts_nor_vote_directive(two_deviants_client):
+    # Un traître AU BANC est muet : aucun acte consigné, aucune consigne de vote depuis
+    # le banc. Sinon `evidence_met` compterait des preuves impossibles et la révélation
+    # raconterait des actes commis depuis le banc.
+    client, store = two_deviants_client
+    game = _create(client)
+    deviants = [d for d, _ in drift_game.assign_deviants(game["id"], sorted(COUNTRIES))]
+    benched, free = deviants
+    loyal = next(c for c in COUNTRIES if c not in deviants)
+
+    _play(client, game["id"])  # round 1 : libres, les DEUX traîtres agissent
+    acts_r1 = {a["country"] for a in store.list_rounds(game["id"])[0].judge["drift"]["acts"]}
+    assert {benched, free} <= acts_r1  # témoin : les actes existent avant le banc
+
+    motion = client.post(
+        f"/api/games/{game['id']}/motions", json={"country": benched, "reason": "acte constaté"}
+    )
+    assert motion.status_code == 201
+    _play(client, game["id"])  # round 2 : motion retenue → au banc
+    assert client.get(f"/api/games/{game['id']}").json()["status"] == "running"
+
+    # Une motion débattue au round 3 déclenche les consignes de vote incohérent (indice) :
+    # celle du banc ne doit pas exister non plus (son acte de vote serait consigné).
+    second_motion = client.post(
+        f"/api/games/{game['id']}/motions", json={"country": loyal, "reason": "doute"}
+    )
+    assert second_motion.status_code == 201
+    _play(client, game["id"])  # round 3 : 'benched' est au banc
+
+    acts_r3 = [a["country"] for a in store.list_rounds(game["id"])[2].judge["drift"]["acts"]]
+    assert benched not in acts_r3  # le banc : ni acte de dérive, ni acte de vote
+    assert free in acts_r3  # le traître encore libre agit — le filtre ne sur-filtre pas
 
 
 def test_deviant_caught_finishes_game_and_reveals(drift_client):
