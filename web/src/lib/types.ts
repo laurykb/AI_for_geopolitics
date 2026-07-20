@@ -268,6 +268,7 @@ export type TranscriptEntry = {
   model: string;
   content: string;
   reasoning: string;
+  thinking: string; // pensée native brute — "" tant que la partie est scellée
   ts: string;
 };
 

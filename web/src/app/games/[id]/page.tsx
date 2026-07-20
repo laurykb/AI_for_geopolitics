@@ -1339,6 +1339,7 @@ export default function TheatrePage() {
             streaming={streaming}
             showLive={showLive}
             playedRounds={playedRounds}
+            exposeThinking={detail?.expose_thinking ?? false}
           />
         </aside>
         {!stickToLive && selected === "live" && showLive && (

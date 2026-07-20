@@ -31,6 +31,7 @@ const baseEntry: TranscriptEntry = {
   model: "deepseek-r1:7b",
   content: "Nous proposons un compromis.",
   reasoning: "",
+  thinking: "",
   ts: "",
 };
 

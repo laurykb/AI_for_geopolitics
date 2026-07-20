@@ -37,6 +37,7 @@ export function RoundTranscript({
   streaming,
   showLive,
   playedRounds,
+  exposeThinking = false,
 }: {
   detail: GameDetail | null;
   round: LiveRound;
@@ -46,6 +47,7 @@ export function RoundTranscript({
   streaming: boolean;
   showLive: boolean;
   playedRounds: number;
+  exposeThinking?: boolean;
 }) {
   const t = useT();
   return viewed ? (
@@ -58,7 +60,7 @@ export function RoundTranscript({
         <EventCard event={viewed.event as unknown as GeoEvent} truth={false} />
       )}
       {viewed.transcript.map((entry) => (
-        <EntryBubble key={entry.id} entry={entry} />
+        <EntryBubble key={entry.id} entry={entry} exposeThinking={exposeThinking} />
       ))}
       {/* Historique : CE qui a bougé ce round-là (données déjà persistées dans RoundView).
           Rejoue le verdict/deltas, la trajectoire et la motion pour qu'on comprenne, round
@@ -169,6 +171,7 @@ export function RoundTranscript({
                       }
                     : undefined
                 }
+                exposeThinking={exposeThinking}
               />
               {round.flashes
                 .filter((f) => f.afterTurn === i + 1)

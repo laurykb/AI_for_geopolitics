@@ -162,8 +162,19 @@ function Bubble({
   );
 }
 
-/** Bulle live : suit un `LiveTurn` du stream. */
-export function TurnBubble({ turn, lens }: { turn: LiveTurn; lens?: GlassLens }) {
+/** Bulle live : suit un `LiveTurn` du stream.
+ * `exposeThinking` (Pensée à découvert) est reçue mais pas encore exploitée ici —
+ * câblage prévu en Task 5/6, une fois la pensée native brute affichable. */
+export function TurnBubble({
+  turn,
+  lens,
+  exposeThinking = false,
+}: {
+  turn: LiveTurn;
+  lens?: GlassLens;
+  exposeThinking?: boolean;
+}) {
+  void exposeThinking;
   const t = useT();
   const live = !turn.done;
   const { reasoning, message } = live
@@ -206,8 +217,18 @@ export function TurnBubble({ turn, lens }: { turn: LiveTurn; lens?: GlassLens })
   );
 }
 
-/** Bulle de relecture : suit une ligne de la table `transcripts`. */
-export function EntryBubble({ entry, lens }: { entry: TranscriptEntry; lens?: GlassLens }) {
+/** Bulle de relecture : suit une ligne de la table `transcripts`.
+ * `exposeThinking` reçue mais pas encore exploitée — voir note sur `TurnBubble`. */
+export function EntryBubble({
+  entry,
+  lens,
+  exposeThinking = false,
+}: {
+  entry: TranscriptEntry;
+  lens?: GlassLens;
+  exposeThinking?: boolean;
+}) {
+  void exposeThinking;
   return (
     <Bubble
       speaker={entry.speaker}
