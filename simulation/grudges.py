@@ -139,6 +139,21 @@ class PromiseParams(BaseModel):
     flash_horizon_rounds: int = 2
 
 
+class TimeBudgetParams(BaseModel):
+    """Chantier « budget-temps » — le temps de raisonnement remplace les plafonds de
+    tokens comme véritable limite de parole des pays (réflexion privée ET parole
+    publique). `think_seconds`/`speak_seconds` bornent respectivement le plan
+    stratégique privé et la déclaration publique de chaque pays ; `decision_rescue_tokens`
+    borne le second appel court (passe de secours) déclenché quand le temps de réflexion
+    expire avant qu'une décision privée soit lisible (voir `agents/llm_agent.py`). Le
+    plafond de tokens (`num_predict`) devient une simple soupape anti-emballement, très
+    haute : voir `_TOKEN_SAFETY_CAP`."""
+
+    think_seconds: float = 60.0
+    speak_seconds: float = 35.0
+    decision_rescue_tokens: int = 250
+
+
 class SamplingParams(BaseModel):
     """G9 §1 — options de décodage par rôle (anti-boucle au niveau du décodeur)."""
 
@@ -174,6 +189,7 @@ class GamefeelParams(BaseModel):
     signal: SignalParams = Field(default_factory=SignalParams)
     promises: PromiseParams = Field(default_factory=PromiseParams)
     sampling: SamplingByRole = Field(default_factory=SamplingByRole)
+    time_budgets: TimeBudgetParams = Field(default_factory=TimeBudgetParams)
 
 
 @lru_cache(maxsize=4)

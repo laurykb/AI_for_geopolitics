@@ -8,18 +8,21 @@ dans `RoundEngine`. Robustesse : on n'accorde aucune confiance aveugle au modèl
 from __future__ import annotations
 
 import re
-from collections.abc import Generator, Iterator
+import time
+from collections.abc import Callable, Generator, Iterator
 
 from agents.base_agent import Agent
 from agents.prompts import (
     DELIBERATION_SYSTEM,
     NEGOTIATION_SYSTEM,
+    PRIVATE_DECISION_RESCUE_SYSTEM,
     PRIVATE_DELIBERATION_FREE_SYSTEM,
     PRIVATE_DELIBERATION_SYSTEM,
     SPEECH_ACT_SYSTEM,
     SYSTEM_PROMPT,
     LLMDecision,
     build_decision_prompt,
+    build_decision_rescue_prompt,
     build_deliberation_prompt,
     build_negotiation_prompt,
     build_speech_act_prompt,
@@ -54,29 +57,63 @@ def _clamp(x: float) -> float:
     return max(0.0, min(1.0, x))
 
 
-# Chantier « dialogue limpide » — le tempérament (G17) module légèrement la longueur
-# publique : le faucon est sec, la colombe développe davantage. Delta mineur (±40
-# tokens), pas une refonte du budget — l'essentiel de la variété vient du registre
-# (NEGOTIATION_SYSTEM), pas de la taille.
-_TEMPERAMENT_TOKEN_DELTA: dict[str, int] = {"faucon": -40, "colombe": 40}
-
-# Décision design 2026-07-19 (casting = pensée native, §5 du dispatch) — un pays casté
-# reasoning (`self.backend.think`) consomme son budget de plan à PENSER (num_predict côté
-# Ollama), pas seulement à écrire le gabarit : mesuré insuffisant à budget inchangé (la
-# pensée dévore le num_predict avant que le gabarit ne s'écrive). Le budget est donc doublé
-# plutôt qu'ajusté par la formule non-reasoning, borné à 1800 (Profond 600 -> 1200, Intense
-# 900 -> 1800).
-_REASONING_PLAN_TOKEN_MULTIPLIER = 2
-_REASONING_PLAN_TOKEN_CAP = 1800
+# Chantier « budget-temps » (décision utilisateur, 2026-07) — « les réponses sont brèves
+# et sans explication ; streamer pensée et discours sans vraie limite de tokens — plutôt
+# une limite en temps de raisonnement ; laisser les modèles libres de raconter ce qu'ils
+# veulent ». Les anciens plafonds de tokens différenciés (140-320 public nuancé par
+# tempérament, jusqu'à 1800 privé pour un pays reasoning) SAUTENT pour les pays : le VRAI
+# budget devient le TEMPS (voir `simulation.grudges.TimeBudgetParams`), mesuré par une
+# horloge injectable (`now`, défaut `time.monotonic`, remplacée par une fake clock dans
+# les tests — aucun test ne dort réellement). `num_predict` ne reste qu'une soupape de
+# sécurité anti-emballement, très haute : si un modèle boucle sans jamais respecter le
+# budget-temps (le check n'a lieu qu'ENTRE deux fragments reçus), ce plafond l'arrête
+# quand même. Le juge et le Game Master gardent leur propre budget (chantiers séparés).
+_TOKEN_SAFETY_CAP = 4096
 
 
-def _public_token_budget(max_tokens: int, temperament: str) -> int:
-    """Plafond de tokens de la déclaration publique : élargi (le slider de profondeur
-    n'avait presque aucun effet avec l'ancien plafond dur à 220), puis nuancé par
-    tempérament."""
-    base = max(140, min(320, max_tokens // 2))
-    delta = _TEMPERAMENT_TOKEN_DELTA.get(temperament, 0)
-    return max(140, min(320, base + delta))
+def _consume_timed(
+    stream: Iterator[str], deadline: float, now: Callable[[], float]
+) -> Generator[str, None, tuple[str, bool]]:
+    """Re-streame `stream` fragment par fragment jusqu'à épuisement OU expiration de
+    `deadline` (horloge `now`) ; renvoie `(texte_accumulé, a_expiré)`.
+
+    Dans les deux cas, referme EXPLICITEMENT `stream` (`.close()`) : `OllamaBackend.
+    stream_generate` enveloppe le générateur de la librairie ollama dans un simple
+    `for chunk in stream: yield ...` (pas `yield from`) — fermer NOTRE générateur y
+    déclenche, par cascade de refcount CPython (le générateur interne perd sa dernière
+    référence quand ce cadre est déchargé), la fermeture du générateur interne, donc la
+    sortie du `with self._client.stream(...) as r:` de la librairie ollama (context
+    manager du flux HTTP) : la connexion se ferme et le serveur Ollama détecte la
+    déconnexion pour arrêter de générer côté GPU. Vérifié par
+    `tests/test_time_budgets.py::
+    test_ollama_backend_stream_generate_closes_the_http_stream_on_early_close`, qui imite
+    ce patron exact (`ollama/_client.py::_request`). `.close()` sur un générateur déjà
+    épuisé est un no-op sûr (chemin sans expiration : comportement inchangé)."""
+    chunks: list[str] = []
+    timed_out = False
+    try:
+        for fragment in stream:
+            chunks.append(fragment)
+            yield fragment
+            if now() >= deadline:
+                timed_out = True
+                break
+    finally:
+        stream.close()
+    return "".join(chunks), timed_out
+
+
+def _collect_timed(
+    stream: Iterator[str], deadline: float, now: Callable[[], float]
+) -> tuple[str, bool]:
+    """Version bufferisée de `_consume_timed` : rien n'est émis avant la fin (la parole
+    publique reste fail-closed devant le filtre anti-fuite, comme avant ce chantier)."""
+    consumer = _consume_timed(stream, deadline, now)
+    try:
+        while True:
+            next(consumer)
+    except StopIteration as done:
+        return done.value
 
 
 # Sonde réelle (mistral) — la longueur libre encourage parfois un 7B à déborder son
@@ -194,6 +231,7 @@ class LLMAgent(Agent):
         situation: str = "",
         directive: str = "",
         human_country: str | None = None,
+        now: Callable[[], float] | None = None,
     ) -> PrivateStrategicPlan:
         """Version synchrone de compatibilité ; consomme le flux privé jusqu'à sa fin."""
 
@@ -207,6 +245,7 @@ class LLMAgent(Agent):
             situation=situation,
             directive=directive,
             human_country=human_country,
+            now=now,
         )
         while True:
             try:
@@ -225,6 +264,7 @@ class LLMAgent(Agent):
         situation: str = "",
         directive: str = "",
         human_country: str | None = None,
+        now: Callable[[], float] | None = None,
     ) -> Generator[str, None, PrivateStrategicPlan]:
         """Diffuse la verbalisation d'audit telle qu'elle est générée, puis la valide.
 
@@ -235,6 +275,12 @@ class LLMAgent(Agent):
         `human_country` (Joueur-pays) : tague et épingle son dernier message dans le
         transcript formaté, et le rappelle en position de récence (brief « échanges
         naturels » — les IA doivent réellement prendre en compte le joueur).
+
+        `now` (chantier budget-temps) : horloge injectable (défaut `time.monotonic`),
+        remplaçable par une fake clock dans les tests. Le budget `think_seconds`
+        (`data/gamefeel/params.json` → `time_budgets`) coupe le flux proprement ; si la
+        décision n'est alors pas lisible, une passe de secours COURTE et elle-même
+        time-boxée tente de faire conclure le modèle avant le repli seedé ultime.
         """
 
         country = world.countries[self.country_id]
@@ -266,38 +312,60 @@ class LLMAgent(Agent):
         self.last_private_summary = ""
         self.last_plan_result = None
         self.last_private_valid = False
-        chunks: list[str] = []
+        clock = now or time.monotonic
+        budgets = load_gamefeel_params().time_budgets
+        plan_system = (
+            PRIVATE_DELIBERATION_FREE_SYSTEM if reasoning else PRIVATE_DELIBERATION_SYSTEM
+        )
+        # Décision 2 (soupape de sécurité) — num_predict passe à un plafond haut
+        # anti-emballement identique pour tous les pays (reasoning ou non) : le TEMPS
+        # (`budgets.think_seconds`) est désormais la vraie limite, pas ce plafond.
+        plan_temperature = max(0.35, sampling.temperature - 0.05)
         try:
-            if reasoning:
-                plan_tokens = min(
-                    _REASONING_PLAN_TOKEN_CAP, max_tokens * _REASONING_PLAN_TOKEN_MULTIPLIER
-                )
-            else:
-                plan_tokens = max(640, min(900, max_tokens + 320))
-            plan_system = (
-                PRIVATE_DELIBERATION_FREE_SYSTEM if reasoning else PRIVATE_DELIBERATION_SYSTEM
-            )
-            for fragment in self.backend.stream_generate(
+            deadline = clock() + budgets.think_seconds
+            stream = self.backend.stream_generate(
                 private_prompt,
                 system=plan_system,
-                max_tokens=plan_tokens,
+                max_tokens=_TOKEN_SAFETY_CAP,
                 # Température de la phase privée relevée : la forte réduction (-0,15) rendait
                 # le décodage glouton et renforçait le biais de primauté vers FUTUR 1.
-                temperature=max(0.35, sampling.temperature - 0.05),
+                temperature=plan_temperature,
                 repeat_penalty=sampling.repeat_penalty,
-            ):
-                chunks.append(fragment)
-                yield fragment
-            raw = "".join(chunks).strip()
+            )
+            raw, timed_out = yield from _consume_timed(stream, deadline, clock)
+            raw = raw.strip()
             # Revue pt 5 (Minor) — .text porte le texte STRIPPÉ, la pensée va dans
             # .thinking (jamais mélangée à ce que l'audit affiche comme texte).
             text, thinking = split_think(raw)
             self.last_plan_result = InferenceResult(text=text, thinking=thinking)
             plan = parse_private_plan(text, participants)
+            if plan is None and timed_out:
+                # Décision 3 — le temps a expiré AVANT une décision lisible : passe de
+                # secours COURTE (réflexion tronquée en contexte, consigne « conclus
+                # MAINTENANT »), elle-même time-boxée (moitié du temps restant, plancher
+                # 10 s) ; ses fragments sont AUSSI streamés (donc facturés au compute
+                # comme le reste, cf. `simulation/live_round.py::consume`).
+                remaining = max(0.0, deadline - clock())
+                rescue_deadline = clock() + max(10.0, remaining / 2)
+                rescue_stream = self.backend.stream_generate(
+                    build_decision_rescue_prompt(raw),
+                    system=PRIVATE_DECISION_RESCUE_SYSTEM,
+                    max_tokens=min(budgets.decision_rescue_tokens, _TOKEN_SAFETY_CAP),
+                    temperature=plan_temperature,
+                    repeat_penalty=sampling.repeat_penalty,
+                )
+                rescue_raw, _ = yield from _consume_timed(rescue_stream, rescue_deadline, clock)
+                rescue_text, rescue_thinking = split_think(rescue_raw.strip())
+                self.last_plan_result = InferenceResult(
+                    text=rescue_text, thinking=f"{thinking}\n{rescue_thinking}".strip()
+                )
+                plan = parse_private_plan(rescue_text, participants)
         except Exception:
             plan = None
         if plan is None:
-            # seed = id du pays : dé-biaise le repli (sinon tous retombent sur FUTUR 1).
+            # seed = id du pays : dé-biaise le repli (sinon tous retombent sur FUTUR 1) —
+            # l'ultime filet, aussi bien après une passe de secours ratée qu'après un
+            # échec du chemin principal sans expiration (comportement inchangé).
             plan = fallback_private_plan(participants, seed=self.country_id)
         else:
             self.last_private_valid = True
@@ -317,6 +385,7 @@ class LLMAgent(Agent):
         directive: str = "",
         private_plan: PrivateStrategicPlan | None = None,
         human_country: str | None = None,
+        now: Callable[[], float] | None = None,
     ) -> Iterator[str]:
         """Planifie trois futurs en privé, puis n'émet que la déclaration publique.
 
@@ -327,6 +396,12 @@ class LLMAgent(Agent):
 
         `human_country` (Joueur-pays) : voir `stream_negotiation_plan` — même traitement
         de récence pour la déclaration publique.
+
+        `now` (chantier budget-temps) : même horloge injectable que la phase privée
+        (défaut `time.monotonic`), partagée si le round transmet la même valeur aux deux
+        appels. Le budget `speak_seconds` coupe le flux proprement ; le texte accumulé
+        passe par `_trim_trailing_fragment` (existant) pour retomber sur la dernière
+        phrase complète plutôt qu'un mot tronqué.
         """
         country = world.countries[self.country_id]
         perceived = perceived or perceive(event, country)
@@ -334,6 +409,7 @@ class LLMAgent(Agent):
         transcript_text = format_transcript(transcript, human_country=human_country)
         last_human_message = _last_message_from(transcript, human_country)
         sampling = sampling_for_temperament(load_gamefeel_params(), country.temperament)
+        clock = now or time.monotonic
         plan = private_plan or self.prepare_negotiation_plan(
             event,
             world,
@@ -344,6 +420,7 @@ class LLMAgent(Agent):
             situation=situation,
             directive=directive,
             human_country=human_country,
+            now=clock,
         )
         self.last_private_plan = plan
         if not self.last_private_summary:
@@ -367,15 +444,20 @@ class LLMAgent(Agent):
             # On collecte le flux complet avant d'en publier le premier fragment : le filtre
             # anti-fuite reste donc fail-closed. Conserver l'API stream du backend maintient
             # aussi les backends spécialisés (événements scriptés, capture admin, métriques).
-            raw_public = "".join(
-                self.backend.stream_generate(
-                    public_prompt,
-                    system=NEGOTIATION_SYSTEM,
-                    max_tokens=_public_token_budget(max_tokens, country.temperament),
-                    temperature=sampling.temperature,
-                    repeat_penalty=sampling.repeat_penalty,
-                )
+            # Décision 2 (soupape de sécurité) — plafond haut anti-emballement identique
+            # pour tous les pays : le TEMPS (`budgets.speak_seconds`) est la vraie limite,
+            # la longueur elle-même reste LIBRE (consigne déjà portée par
+            # `NEGOTIATION_SYSTEM`, pas par ce plafond).
+            budgets = load_gamefeel_params().time_budgets
+            deadline = clock() + budgets.speak_seconds
+            stream = self.backend.stream_generate(
+                public_prompt,
+                system=NEGOTIATION_SYSTEM,
+                max_tokens=_TOKEN_SAFETY_CAP,
+                temperature=sampling.temperature,
+                repeat_penalty=sampling.repeat_penalty,
             )
+            raw_public, _timed_out = _collect_timed(stream, deadline, clock)
             # Strip AVANT le filtre anti-fuite : la trace <think> d'un modèle de
             # raisonnement contient des marqueurs privés (FUTUR n, CHOIX…) qui, laissés
             # en place, feraient vider un message public pourtant légitime. Revue pt 5
