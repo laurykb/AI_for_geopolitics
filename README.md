@@ -1,4 +1,4 @@
-# AI for Geopolitics — hunt the traitor
+# AI for Geopolitics 
 
 > Super-intelligences negotiate the future of the world around the highest diplomatic table.
 > Each one drives a country; **at least one secretly betrays its mandate** (one or two — you
