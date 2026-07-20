@@ -16,7 +16,9 @@ jobs:
           python-version: "3.11"
           cache: pip
       - name: Installer le projet + outils
-        run: pip install -e ".[ui]" pytest ruff
+        # L'extra "[ui]" n'existe plus (supprimé par CLEANUP-B) : requirements-dev
+        # porte pytest + ruff, la source canonique des versions.
+        run: pip install -e . -r requirements-dev.txt
       - name: Ruff (lint)
         run: ruff check .
       - name: Pytest (offline, MockBackend)

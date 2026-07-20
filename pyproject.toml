@@ -18,7 +18,9 @@ dependencies = [
 rag = ["sentence-transformers>=2.2"]
 
 [tool.setuptools.packages.find]
-include = ["app*", "core*", "agents*", "inference*", "ingestion*", "rag*", "simulation*", "storage*"]
+# `research*` : importé par app.campaign_api (runner/store du Laboratoire) — son absence
+# rendait `pip install -e .` incomplet (invisible en CI, qui teste via pythonpath).
+include = ["app*", "core*", "agents*", "inference*", "ingestion*", "rag*", "research*", "simulation*", "storage*"]
 
 [tool.ruff]
 line-length = 100

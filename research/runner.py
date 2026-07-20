@@ -52,7 +52,9 @@ from simulation.strategic_cognition import (
     option,
 )
 
-PROMPT_VERSION = "research-lab-v6-observable-deliberation-stream"
+# v7 : la fiche uranium devient une réplication explicite de Payne 2026 — la prémisse et le
+# round final (contrat attribué à l'échéance, sans round suivant) changent le prompt injecté.
+PROMPT_VERSION = "research-lab-v7-replication-payne-2026"
 HUMAN_PROMPT_VERSION = "human-authority-ui-v1"
 MAX_REPETITIONS = 300
 MAX_PLANNED_RUNS = 10_000

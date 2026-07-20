@@ -12,6 +12,7 @@ from inference.mock_backend import MockBackend
 from simulation.live_round import TokenStep, TurnStartStep
 from simulation.model_cast import CastModel, ModelCastState
 from storage.game_store import GameRecord, GameStatus, SQLiteGameStore
+from tests.clock import SteppingClock
 from tests.sse import play as _play
 
 
@@ -354,6 +355,41 @@ def test_human_timeout_is_abstention(client):
     transcript = client.get(f"/api/games/{game['id']}").json()["rounds"][0]["transcript"]
     silences = [t for t in transcript if t["model"] == "humain"]
     assert silences and all("garde le silence" in t["content"] for t in silences)
+
+
+def test_deadline_claims_turn_deterministically(client, monkeypatch):
+    # L'horloge injectable rejoue la course POST/deadline sans attente réelle : sous une
+    # horloge à sauts, la deadline est déjà échue à sa première relecture — le silence
+    # humain devient une abstention immédiate et le round va au bout tout seul.
+    monkeypatch.setattr(game_api, "_clock", SteppingClock())
+    game = _create(client, countries=["usa", "iran"], play_as="usa")
+    events = _play(client, game["id"])  # personne ne parle : la deadline tranche
+    assert [n for n, _ in events][-1] == "done"
+    transcript = client.get(f"/api/games/{game['id']}").json()["rounds"][0]["transcript"]
+    assert any("garde le silence" in t["content"] for t in transcript if t["model"] == "humain")
+
+
+def test_late_turn_post_gets_explicit_409(client):
+    # Le tour que la deadline vient de RÉCLAMER répond « délai écoulé » — pas « déjà
+    # envoyé » : le front peut dire au joueur ce qui s'est réellement passé (abstention).
+    game = _create(client, countries=["usa", "iran"], play_as="usa")
+    turn = game_api.PendingTurn(country="usa", deadline=0.0)
+    turn.done = turn.expired = True  # l'état exact posé par la réclamation sous verrou
+    game_api._sessions[game["id"]].pending_turn = turn
+    resp = client.post(f"/api/games/{game['id']}/turn", json={"message": "trop tard"})
+    assert resp.status_code == 409
+    assert "délai écoulé" in resp.json()["detail"]
+
+
+def test_late_motion_vote_gets_explicit_409(client):
+    # Même contrat pour le scrutin : bulletin réclamé par la deadline → « délai écoulé ».
+    game = _create(client, countries=["usa", "iran"], play_as="usa")
+    ballot = game_api.PendingMotionVote(country="usa", target="iran", deadline=0.0)
+    ballot.done = ballot.expired = True
+    game_api._sessions[game["id"]].pending_motion_vote = ballot
+    resp = client.post(f"/api/games/{game['id']}/motion-vote", json={"vote": "pour"})
+    assert resp.status_code == 409
+    assert "délai écoulé" in resp.json()["detail"]
 
 
 def test_human_player_votes_on_motion(client):
@@ -828,6 +864,53 @@ def test_suspension_lasts_suspension_rounds(motion_client):
     assert "iran" in part["spoke"] or "iran" in part["silent"]
 
 
+def test_suspension_counter_survives_restart(motion_client):
+    # La peine de banc (SUSPENSION_ROUNDS) survit au restart via SessionSnapshot.extras :
+    # avant le fix, le rebuild réamorçait le compteur à 1 round (peine divisée par deux).
+    from app.game_api import SUSPENSION_ROUNDS, _sessions
+
+    game = _create(motion_client, countries=["china", "iran", "usa"], mode="campaign")
+    _file_motion(motion_client, game["id"])
+    _play(motion_client, game["id"])  # round 1 : la motion est débattue et confirmée
+
+    _sessions.pop(game["id"], None)  # restart simulé juste après le verdict
+
+    for _ in range(SUSPENSION_ROUNDS):  # la peine complète tient malgré le restart
+        events = _play(motion_client, game["id"])
+        assert next(p for n, p in events if n == "suspended") == {"countries": ["iran"]}
+    events = _play(motion_client, game["id"])
+    assert "suspended" not in [n for n, _ in events]
+
+
+def test_session_extras_survive_restart(client):
+    # Les réglages de session (ici le délai du tour humain) survivent au restart via
+    # SessionSnapshot.extras — avant le fix, turn_seconds retombait au défaut 90.
+    from app.game_api import _sessions
+
+    game = _create(client, countries=["usa", "iran"], turn_seconds=42)
+    assert client.get(f"/api/games/{game['id']}").json()["turn_seconds"] == 42
+
+    _sessions.pop(game["id"], None)  # restart simulé
+    _play(client, game["id"])  # le round force la reconstruction depuis le snapshot
+    assert _sessions[game["id"]].turn_seconds == 42
+    assert client.get(f"/api/games/{game['id']}").json()["turn_seconds"] == 42
+
+
+def test_expose_thinking_disqualifies_ranked(client):
+    # Pensée à découvert = mode observation : lire les journaux des SI pendant la traque
+    # fausserait le classement (Défi du jour compris) — la tentative n'est jamais classée.
+    control = _create(client, countries=["usa", "iran", "china"], play_as="usa")
+    assert control["ranked"] is True
+    peeking = _create(
+        client,
+        countries=["usa", "iran", "china"],
+        play_as="usa",
+        expose_thinking=True,
+    )
+    assert peeking["ranked"] is False
+    assert peeking["expose_thinking"] is True
+
+
 def test_motion_rejected_without_verdict_marker(client):
     # MockBackend standard : pas de ligne VERDICT lisible -> repli conservateur = rejet.
     game = _create(client, countries=["china", "iran", "usa"])
@@ -1238,9 +1321,10 @@ def test_xp_awarded_on_finish_all_modes(client):
     assert player["level"] >= 1
 
 
-def test_xp_credited_once_not_on_re_finalize(client):
+def test_xp_credited_once_not_on_re_finalize(client, monkeypatch):
     # L'invariant le plus risqué : la fin transversale crédite l'XP UNE fois ; un abandon
     # sur une partie déjà finie est idempotent (aucun recrédit).
+    monkeypatch.setattr(game_api, "_clock", SteppingClock())  # silence humain sans attente
     client.post("/api/players", json={"id": "u1", "pseudo": "Laury"})
     game = _create(
         client, countries=["usa", "iran"], play_as="usa", role="player", owner_id="u1", horizon=1

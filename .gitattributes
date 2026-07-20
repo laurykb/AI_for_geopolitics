@@ -1,0 +1,11 @@
+# Police de fins de ligne : LF dans le dépôt pour tout le texte (checkout fidèle),
+# CRLF seulement là où Windows l'exige. Pose la base du commit de normalisation
+# `git add --renormalize .` — voir docs/RUNBOOK_VAGUE1_GIT.md.
+* text=auto
+*.ps1 text eol=crlf
+*.png binary
+*.ico binary
+*.db binary
+*.pdf binary
+*.docx binary
+*.gguf binary

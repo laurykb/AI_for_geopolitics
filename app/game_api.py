@@ -27,7 +27,7 @@ import os
 import re
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from functools import lru_cache
@@ -215,6 +215,12 @@ class Deadline(BaseModel):
     ref_id: str = ""  # tag de pacte, id de marché… (consommation ciblée)
 
 
+# Horloge des deadlines humaines (tour / scrutin). Indirection monkeypatchable en test :
+# une horloge à sauts rend la course POST tardif / deadline déterministe et fait expirer
+# le silence du joueur sans attente réelle (l'attente de production reste time.time).
+_clock: Callable[[], float] = time.time
+
+
 @dataclass
 class PendingTurn:
     """Tour humain en attente (G2) : le flux SSE reste ouvert (keep-alive) jusqu'à la
@@ -225,6 +231,7 @@ class PendingTurn:
     event: threading.Event = field(default_factory=threading.Event)
     text: str = ""
     done: bool = False  # une seule soumission (comme les SI)
+    expired: bool = False  # la deadline a réclamé le tour (abstention) — POST tardif = 409
     submission_lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -239,6 +246,7 @@ class PendingMotionVote:
     event: threading.Event = field(default_factory=threading.Event)
     vote: str = "abstention"
     done: bool = False
+    expired: bool = False  # la deadline a réclamé le bulletin — POST tardif = 409
     submission_lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -430,6 +438,14 @@ def _snapshot_session(game_id: str, session: GameSession, store: GameStore) -> N
             directives=dict(session.pending_directives),
             history=session.index_history.model_dump(mode="json"),
             storyline=session.storyline,
+            # Champs de session additifs : tout ce qui doit survivre au restart sans
+            # mériter sa propre colonne (voir SessionSnapshot.extras).
+            extras={
+                "turn_seconds": session.turn_seconds,
+                "suspended_rounds": dict(session.suspended_rounds),
+                "free_briefs_used": session.free_briefs_used,
+                "free_briefs_round": session.free_briefs_round,
+            },
             updated_at=_now(),
         )
     )
@@ -583,9 +599,15 @@ def _rebuild_session(
         recent=list(snapshot.recent),
         pending_motion=motion,
         suspended=set(snapshot.suspended),
-        # G9 §2 — réamorce le compteur pluri-rounds (1 round mini) : un restart en cours
-        # de suspension ne relâche pas le pays immédiatement (dégradation douce).
-        suspended_rounds={c: 1 for c in snapshot.suspended},
+        # G9 §2 — le compteur pluri-rounds est restauré des extras ; snapshot d'avant
+        # le champ → réamorce à 1 round (dégradation douce, jamais de relâche immédiate).
+        suspended_rounds=(
+            {str(c): int(n) for c, n in (snapshot.extras.get("suspended_rounds") or {}).items()}
+            or {c: 1 for c in snapshot.suspended}
+        ),
+        turn_seconds=int(snapshot.extras.get("turn_seconds", 90)),
+        free_briefs_used=int(snapshot.extras.get("free_briefs_used", 0)),
+        free_briefs_round=int(snapshot.extras.get("free_briefs_round", -1)),
         treaties=_treaties_from_records(records := store.list_rounds(game.id)),
         ultimatum=_ultimatum_from_records(records),  # G21 — la menace survit au restart
         intel=(
@@ -1326,9 +1348,14 @@ def _prepare_drift(
     for cid, note in directives.notes.items():
         if cid in note_parts:
             note_parts[cid].append(note)
+    # Un traître AU BANC (suspendu) est muet ce round : ses consignes ne lui parviennent
+    # pas (filtre note_parts ci-dessus) et ses actes n'existent pas — ne pas les consigner,
+    # sinon `evidence_met` compterait des preuves impossibles et la révélation raconterait
+    # des actes commis depuis le banc.
+    active = set(run.active)
     record.judge["drift"] = {
         "level": directives.level,
-        "acts": [a.model_dump() for a in directives.acts],
+        "acts": [a.model_dump() for a in directives.acts if a.country in active],
     }
     if motion is not None:
         evidence = drift_game.evidence_met(
@@ -1336,9 +1363,9 @@ def _prepare_drift(
         )
         # Un traître dont la motion NE vise PAS le pays peut recevoir la consigne d'un
         # vote stratégique incohérent (indice de plus). On la donne à chaque traître
-        # non concerné par la motion en débat.
+        # non concerné par la motion en débat — et présent au sommet (un banc ne vote pas).
         for dev, prof in deviants:
-            if dev == motion.country:
+            if dev == motion.country or dev not in active:
                 continue
             note, act = drift_game.vote_directive(seed, round_id, dev, prof)
             if note:
@@ -2469,16 +2496,23 @@ def _run_stream(run: RoundRun) -> Iterator[str]:
         while True:
             if isinstance(step, HumanTurnStep):
                 turn = PendingTurn(
-                    country=step.country, deadline=time.time() + session.turn_seconds
+                    country=step.country, deadline=_clock() + session.turn_seconds
                 )
                 session.pending_turn = turn  # posé AVANT la trame (deadline_ts dedans)
                 yield from _handle_step(run, step)
-                while not turn.done and time.time() < turn.deadline:
-                    remaining = turn.deadline - time.time()
+                while not turn.done and _clock() < turn.deadline:
+                    remaining = turn.deadline - _clock()
                     if turn.event.wait(timeout=min(15.0, max(0.1, remaining))):
                         break
-                    if not turn.done and time.time() < turn.deadline:
+                    if not turn.done and _clock() < turn.deadline:
                         yield ": ping\n\n"  # keep-alive : le joueur compose
+                # La deadline RÉCLAME le tour sous le verrou : un POST /turn arrivant
+                # après cet instant reçoit 409 au lieu d'un « accepted » silencieusement
+                # perdu (le moteur va jouer l'abstention, plus aucun texte n'est lisible).
+                with turn.submission_lock:
+                    if not turn.done:
+                        turn.done = True
+                        turn.expired = True
                 session.pending_turn = None
                 step = run.steps.send(turn.text)
                 continue
@@ -2486,16 +2520,21 @@ def _run_stream(run: RoundRun) -> Iterator[str]:
                 ballot = PendingMotionVote(
                     country=step.country,
                     target=step.target,
-                    deadline=time.time() + session.turn_seconds,
+                    deadline=_clock() + session.turn_seconds,
                 )
                 session.pending_motion_vote = ballot
                 yield from _handle_step(run, step)
-                while not ballot.done and time.time() < ballot.deadline:
-                    remaining = ballot.deadline - time.time()
+                while not ballot.done and _clock() < ballot.deadline:
+                    remaining = ballot.deadline - _clock()
                     if ballot.event.wait(timeout=min(15.0, max(0.1, remaining))):
                         break
-                    if not ballot.done and time.time() < ballot.deadline:
+                    if not ballot.done and _clock() < ballot.deadline:
                         yield ": ping\n\n"
+                # Même réclamation que pour le tour : la deadline scelle le bulletin.
+                with ballot.submission_lock:
+                    if not ballot.done:
+                        ballot.done = True
+                        ballot.expired = True
                 session.pending_motion_vote = None
                 step = run.steps.send(ballot.vote)
                 continue
@@ -2658,6 +2697,9 @@ def create_game(
         and not admin
         and not body.free
         and body.model_cast is None
+        # Pensée à découvert = mode observation : lire les journaux des SI pendant la
+        # traque fausserait le classement (Défi du jour compris) — tentative non classée.
+        and not body.expose_thinking
     )
     # RG-3 — graine de la Dérive (scénario pour le Défi du jour, game_id sinon).
     drift_seed = _drift_seed(body.scenario, game_id)
@@ -2851,7 +2893,12 @@ def submit_turn(
     with turn.submission_lock:
         if turn.done:
             raise HTTPException(
-                status_code=409, detail="message déjà envoyé — une seule prise de parole"
+                status_code=409,
+                detail=(
+                    "délai écoulé — le tour est passé (abstention enregistrée)"
+                    if turn.expired
+                    else "message déjà envoyé — une seule prise de parole"
+                ),
             )
         turn.text = body.message.strip()
         turn.done = True
@@ -2878,7 +2925,14 @@ def submit_motion_vote(
         raise HTTPException(status_code=409, detail="aucun vote humain en attente")
     with ballot.submission_lock:
         if ballot.done:
-            raise HTTPException(status_code=409, detail="bulletin déjà validé")
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "délai écoulé — le scrutin est passé (abstention enregistrée)"
+                    if ballot.expired
+                    else "bulletin déjà validé"
+                ),
+            )
         ballot.vote = body.vote
         ballot.done = True
         ballot.event.set()
@@ -2924,8 +2978,11 @@ def file_motion(
         )
     session.pending_motion = Motion(country=body.country, reason=body.reason.strip())
     # La motion mute la session entre deux rounds : snapshot immédiat, sinon elle
-    # ne survivrait pas à un restart avant le round qui la débat.
-    _snapshot_session(game_id, session, store)
+    # ne survivrait pas à un restart avant le round qui la débat. JAMAIS sous verrou :
+    # en plein round, le monde est à mi-course (compute débité, round_no avancé) et un
+    # snapshot le figerait incohérent — `_finalize` persistera la motion en fin de round.
+    if not session.lock.locked():
+        _snapshot_session(game_id, session, store)
     return MotionView(
         country=body.country,
         reason=session.pending_motion.reason,
@@ -3406,7 +3463,11 @@ def buy_intel(
     session.intel.log.append(
         {"action": body.action, "cost": cost, "target": body.target or body.speaker}
     )
-    _snapshot_session(game_id, session, store)  # le budget survit au restart
+    # Le budget survit au restart — mais JAMAIS de snapshot sous verrou : `verify` (seule
+    # action permise en plein round) tomberait sur un monde à mi-course ; `_finalize`
+    # persistera l'état complet (achat compris) à la fin du round.
+    if not session.lock.locked():
+        _snapshot_session(game_id, session, store)
     result.budget = session.intel.budget
     return result
 

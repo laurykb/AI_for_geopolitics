@@ -49,6 +49,8 @@ COPY rag/        ./rag/
 COPY storage/    ./storage/
 COPY market/     ./market/
 COPY ingestion/  ./ingestion/
+# `research/` EST nécessaire au runtime (app.main -> app.campaign_api -> research.runner).
+COPY research/   ./research/
 COPY data/       ./data/
 
 # Utilisateur non-root (bonne hygiène, même pour une esquisse).

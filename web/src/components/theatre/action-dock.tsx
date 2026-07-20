@@ -43,6 +43,7 @@ export function ActionDock({
   primaryBusy = false,
   primaryDisabled = false,
   onPrimary,
+  onResync,
   children,
 }: {
   phase: GamePhase;
@@ -53,6 +54,9 @@ export function ActionDock({
   primaryBusy?: boolean;
   primaryDisabled?: boolean;
   onPrimary?: () => void;
+  /** Relit l'état serveur après une coupure : sans lui, `disconnected`/`error` sont
+   *  des impasses sans bouton (seule issue : recharger la page). */
+  onResync?: () => void;
   children?: ReactNode;
 }) {
   const progress = horizon > 0 ? Math.min(100, (playedRounds / horizon) * 100) : 0;
@@ -113,6 +117,15 @@ export function ActionDock({
         >
           {primaryBusy && <Spinner />}
           {primaryLabel}
+        </button>
+      )}
+
+      {onResync && (phase === "disconnected" || phase === "error") && (
+        <button
+          onClick={onResync}
+          className="mt-4 flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-edge-strong px-4 py-3 text-sm font-semibold text-foreground transition-colors hover:border-accent-bright hover:text-accent-bright"
+        >
+          Resynchroniser
         </button>
       )}
 

@@ -151,6 +151,7 @@ class SupabaseGameStore:
             "directives_json": snapshot.directives,
             "history_json": snapshot.history,
             "storyline": snapshot.storyline,
+            "extras_json": snapshot.extras,
             "suspended_json": snapshot.suspended,
             "play_as": snapshot.play_as,
         }
@@ -175,6 +176,7 @@ class SupabaseGameStore:
             directives=r.get("directives_json") or {},
             history=r.get("history_json") or {},
             storyline=r.get("storyline") or "",
+            extras=r.get("extras_json") or {},
             suspended=r["suspended_json"],
             play_as=r["play_as"],
             updated_at=r["updated_at"] or "",

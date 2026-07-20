@@ -77,24 +77,24 @@ export function phaseLabel(phase: GamePhase): string {
     case "loading":
       return "Chargement du sommet";
     case "ready":
-      return "Le sommet est pret";
+      return "Le sommet est prêt";
     case "round_running":
-      return "Negociation en cours";
+      return "Négociation en cours";
     case "awaiting_player":
-      return "A toi de parler";
+      return "À toi de parler";
     case "awaiting_vote":
       return "Ton vote est attendu";
     case "resolving":
-      return "Le round est enregistre";
+      return "Le round est enregistré";
     case "round_complete":
-      return "Round termine";
+      return "Round terminé";
     case "game_complete":
-      return "Partie terminee";
+      return "Partie terminée";
     case "replay_only":
       return "Relecture seule";
     case "disconnected":
       return "Connexion interrompue";
     case "error":
-      return "Le moteur a rencontre une erreur";
+      return "Le moteur a rencontré une erreur";
   }
 }

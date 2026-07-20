@@ -1221,6 +1221,7 @@ export default function TheatrePage() {
           phase={phase}
           playedRounds={playedRounds}
           horizon={detail?.horizon ?? 0}
+          onResync={resync}
           speaking={stageSpeaking ?? undefined}
           primaryLabel={roundButtonLabel({
             spectator: isSpectator,
