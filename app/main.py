@@ -55,7 +55,7 @@ try:
     # une machine multi-GPU via l'environnement, sans rendre la configuration locale instable.
     _max_expensive = max(1, min(int(os.getenv("MAX_CONCURRENT_SIMULATIONS", "1")), 64))
 except ValueError:
-    _max_expensive = 8
+    _max_expensive = 1  # valeur invalide → même défaut prudent que l'absence (mono-GPU)
 app.add_middleware(ExpensiveRequestLimitMiddleware, max_concurrent=_max_expensive)
 app.add_middleware(SecurityHeadersMiddleware)
 app.include_router(market_router)

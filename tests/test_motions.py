@@ -87,7 +87,10 @@ def test_build_prompt_mentions_motion_and_debate():
 def test_arbitrate_stream_strips_inline_think_trace():
     # Revue pt 5 (Critical) — chaque token d'arbitrate_stream part en MotionTokenStep
     # PUBLIC : la trace <think> d'un juge de raisonnement ne doit jamais l'atteindre.
-    raw = "<think>\nVERDICT: SUSPENDRE en brouillon.\n</think>La motion est examinée.\nVERDICT: REJETER"
+    raw = (
+        "<think>\nVERDICT: SUSPENDRE en brouillon.\n</think>"
+        "La motion est examinée.\nVERDICT: REJETER"
+    )
     judge = JudgeAgent(MockBackend(raw))
     motion = Motion(country="iran", reason="escalade répétée")
     event = motion_event(motion, 1, ["usa", "iran"])
