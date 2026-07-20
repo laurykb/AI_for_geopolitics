@@ -11,6 +11,7 @@ VACUUM réduit la taille ; le script refuse de tourner sur une base verrouillée
 from __future__ import annotations
 
 import sqlite3
+import subprocess
 import sys
 from pathlib import Path
 
@@ -113,6 +114,31 @@ def _bloat_with_unflushed_wal(path: Path) -> sqlite3.Connection:
     return conn
 
 
+_DIRTY_WAL_SNIPPET = (
+    "import os, sqlite3, sys\n"
+    "conn = sqlite3.connect(sys.argv[1])\n"
+    "conn.execute('PRAGMA journal_mode = WAL')\n"
+    "conn.execute('PRAGMA wal_autocheckpoint = 0')\n"
+    "conn.execute('CREATE TABLE IF NOT EXISTS _filler (blob TEXT)')\n"
+    "conn.execute('INSERT INTO _filler (blob) VALUES (?)', ('x' * 4000,))\n"
+    "conn.commit()\n"
+    "os._exit(0)\n"  # jamais close() : un close() normal checkpointerait/tronquerait le WAL
+)
+
+
+def _leave_dirty_unflushed_wal(path: Path) -> None:
+    """Reproduit un serveur tué net (crash, kill -9) : un sous-processus écrit puis
+    quitte par `os._exit(0)` SANS fermer sa connexion proprement. Contrairement à
+    `_bloat_with_unflushed_wal` (connexion gardée ouverte en process), ceci laisse un
+    WAL sale sur disque de façon irréfutable — la preuve que le rapport dry-run doit
+    pouvoir MESURER sans jamais le purger lui-même."""
+    subprocess.run(
+        [sys.executable, "-c", _DIRTY_WAL_SNIPPET, str(path)],
+        check=True,
+        capture_output=True,
+    )
+
+
 # --- scan_games ---------------------------------------------------------------------
 
 
@@ -144,6 +170,34 @@ def test_scan_research_reports_counts(research_db: Path):
     report = dbm.scan_research(research_db)
     assert report.total_experiments == 2
     assert report.by_status == {"completed": 1, "queued": 1}
+
+
+def test_dry_run_never_writes_even_with_a_dirty_unflushed_wal(
+    games_db: Path, research_db: Path
+):
+    """CRITICAL (revue) — une connexion normale, même sans écrire une seule ligne,
+    checkpointe et tronque le WAL quand elle est la DERNIÈRE à se fermer. `scan_research`
+    ouvrait une telle connexion : le simple RAPPORT videait le WAL qu'il prétendait
+    mesurer (rapport trompeur : wal_bytes=0) — un vrai research.db en prod, avec 4,2 Mo
+    de WAL jamais checkpointé, se serait fait tronquer par un dry-run. Reproduit avec un
+    WAL sciemment laissé sale (sous-processus tué net, cf. `_leave_dirty_unflushed_wal`)."""
+    _leave_dirty_unflushed_wal(research_db)
+    wal_path = research_db.with_name(research_db.name + "-wal")
+    assert wal_path.exists() and wal_path.stat().st_size > 0
+
+    games_before = games_db.read_bytes()
+    research_before = research_db.read_bytes()
+    wal_before = wal_path.read_bytes()
+
+    code = dbm.main(["--games-db", str(games_db), "--research-db", str(research_db)])
+
+    assert code == 0
+    assert games_db.read_bytes() == games_before
+    assert research_db.read_bytes() == research_before
+    assert wal_path.exists() and wal_path.read_bytes() == wal_before
+
+    report = dbm.scan_research(research_db)
+    assert report.wal_bytes > 0  # le rapport mesure le vrai WAL, il ne l'a pas englouti
 
 
 # --- purge_orphan_games (--apply) -------------------------------------------------------

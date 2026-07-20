@@ -1,9 +1,12 @@
 """Maintenance des bases SQLite du projet — `games.db` (parties/joueurs) et
 `research.db` (expériences du Laboratoire).
 
-Mode par défaut = RAPPORT (dry-run), aucune écriture : compte les parties par statut/âge,
-les joueurs, la taille des fichiers, et ce qui SERAIT purgé. `--apply` déclenche la purge
-PRUDENTE puis `PRAGMA wal_checkpoint(TRUNCATE)` + `VACUUM` sur les deux bases.
+Mode par défaut = RAPPORT (dry-run), aucune écriture (connexions `mode=ro` strictes — une
+connexion normale, même sans rien écrire, checkpointe et TRONQUE le WAL toute seule quand
+elle est la dernière à se fermer, ce qui viderait le WAL qu'on est en train de mesurer) :
+compte les parties par statut/âge, les joueurs, la taille des fichiers, et ce qui SERAIT
+purgé. `--apply` déclenche la purge PRUDENTE puis `PRAGMA wal_checkpoint(TRUNCATE)` +
+`VACUUM` sur les deux bases.
 
 La purge ne touche QUE les parties ORPHELINES : `owner_id` non NULL mais qui ne correspond
 plus à aucun joueur de la table `players` (comptes purgés/invités d'avant le correctif de
@@ -16,8 +19,9 @@ de compte) plutôt que supprimées. La cascade de suppression réutilise
 `research.db` n'est JAMAIS purgée (les expériences sont la matière du labo) : seuls le
 checkpoint WAL et le VACUUM s'appliquent.
 
-Garde-fou : si un serveur (API) tient déjà le fichier ouvert en écriture, le script refuse
-de tourner plutôt que de risquer une contention avec l'API en marche.
+Garde-fou (uniquement en `--apply`, le dry-run lit en `mode=ro` et n'en a pas besoin) : si
+un serveur (API) tient déjà le fichier ouvert en écriture, le script refuse de tourner
+plutôt que de risquer une contention avec l'API en marche.
 
 Usage :
     python scripts/db_maintenance.py [--games-db games.db] [--research-db research.db]
@@ -88,6 +92,18 @@ def _total_size(path: Path) -> int:
     return path.stat().st_size + _sidecar_size(path, "-wal") + _sidecar_size(path, "-shm")
 
 
+def _connect_ro(path: Path) -> sqlite3.Connection:
+    """Connexion en LECTURE SEULE (URI `mode=ro`) pour tout ce qui ne fait QUE lire
+    (`scan_games`, `scan_research`). CRITIQUE trouvé en revue : une connexion normale,
+    même sans écrire une seule ligne, checkpointe et TRONQUE le WAL toute seule quand
+    elle est la DERNIÈRE à se fermer — ce qui viderait silencieusement le `research.db`
+    qu'on est justement en train de mesurer (rapport dry-run trompeur, wal_bytes=0 alors
+    que le vrai WAL fait plusieurs Mo). Une connexion en lecture seule ne peut pas
+    checkpointer, donc rien ne se déclenche à sa fermeture (vérifié empiriquement)."""
+    uri = f"file:{path.resolve().as_posix()}?mode=ro"
+    return sqlite3.connect(uri, uri=True)
+
+
 def _estimated_vacuum_size(conn: sqlite3.Connection) -> int:
     """Estimation SANS écrire : (pages utilisées) x (taille de page). Lecture pure des
     pragmas de comptabilité SQLite — ce que VACUUM récupérerait réellement."""
@@ -125,9 +141,13 @@ def _age_bucket(created_at: str, now: datetime) -> str:
 
 
 def ensure_unlocked(path: Path) -> None:
-    """Sonde une transaction d'écriture immédiate puis l'annule (aucune donnée touchée,
-    y compris en dry-run). Si un autre processus tient déjà un verrou d'écriture (l'API en
-    marche, en train d'écrire), `BEGIN IMMEDIATE` échoue et on refuse de continuer."""
+    """Sonde une transaction d'écriture immédiate puis l'annule (aucune donnée touchée).
+    Si un autre processus tient déjà un verrou d'écriture (l'API en marche, en train
+    d'écrire), `BEGIN IMMEDIATE` échoue et on refuse de continuer.
+
+    N'est appelée qu'en `--apply` (voir `main`) : c'est une connexion d'écriture, donc
+    elle aussi checkpointerait/tronquerait le WAL si elle se retrouvait la dernière à se
+    fermer — inutile de l'ouvrir pour un dry-run qui ne lit qu'en `mode=ro`."""
     if not path.exists():
         return
     conn = sqlite3.connect(str(path), timeout=0.5)
@@ -151,7 +171,7 @@ def scan_games(path: Path, *, now: datetime | None = None) -> GamesReport:
     if not path.exists():
         return GamesReport()
     now = now or datetime.now(UTC)
-    conn = sqlite3.connect(str(path))
+    conn = _connect_ro(path)
     conn.row_factory = sqlite3.Row
     try:
         games = conn.execute(
@@ -167,7 +187,9 @@ def scan_games(path: Path, *, now: datetime | None = None) -> GamesReport:
             bucket = _age_bucket(row["created_at"], now)
             by_age[bucket] = by_age.get(bucket, 0) + 1
             owner_id = row["owner_id"]
-            if owner_id is not None and owner_id not in players:
+            # chaîne vide = jamais un owner_id valide (par construction) -> jamais
+            # purgeable, comme NULL. `if owner_id:` exclut None ET "" d'un coup.
+            if owner_id and owner_id not in players:
                 if row["published"]:
                     orphans_to_anonymize.append(row["id"])
                 else:
@@ -212,7 +234,7 @@ def scan_research(path: Path) -> ResearchReport:
     taille, WAL) sert à décider s'il vaut la peine de checkpointer/vacuumer."""
     if not path.exists():
         return ResearchReport()
-    conn = sqlite3.connect(str(path))
+    conn = _connect_ro(path)
     conn.row_factory = sqlite3.Row
     try:
         experiments = conn.execute("SELECT status FROM research_experiments").fetchall()
@@ -303,12 +325,15 @@ def main(argv: list[str] | None = None) -> int:
     games_path = Path(args.games_db)
     research_path = Path(args.research_db)
 
-    try:
-        ensure_unlocked(games_path)
-        ensure_unlocked(research_path)
-    except DatabaseLockedError as exc:
-        print(f"[db_maintenance] {exc}", file=sys.stderr)
-        return 1
+    if args.apply:
+        # Sonde seulement quand on va réellement écrire (purge + checkpoint/VACUUM) : le
+        # rapport dry-run lit en `mode=ro` et n'a besoin d'aucune garantie d'exclusivité.
+        try:
+            ensure_unlocked(games_path)
+            ensure_unlocked(research_path)
+        except DatabaseLockedError as exc:
+            print(f"[db_maintenance] {exc}", file=sys.stderr)
+            return 1
 
     print("=== games.db ===")
     games_report = scan_games(games_path)
