@@ -27,7 +27,7 @@ import os
 import re
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from functools import lru_cache
@@ -213,6 +213,12 @@ class Deadline(BaseModel):
     due_round: int
     label: str
     ref_id: str = ""  # tag de pacte, id de marché… (consommation ciblée)
+
+
+# Horloge des deadlines humaines (tour / scrutin). Indirection monkeypatchable en test :
+# une horloge à sauts rend la course POST tardif / deadline déterministe et fait expirer
+# le silence du joueur sans attente réelle (l'attente de production reste time.time).
+_clock: Callable[[], float] = time.time
 
 
 @dataclass
@@ -2490,15 +2496,15 @@ def _run_stream(run: RoundRun) -> Iterator[str]:
         while True:
             if isinstance(step, HumanTurnStep):
                 turn = PendingTurn(
-                    country=step.country, deadline=time.time() + session.turn_seconds
+                    country=step.country, deadline=_clock() + session.turn_seconds
                 )
                 session.pending_turn = turn  # posé AVANT la trame (deadline_ts dedans)
                 yield from _handle_step(run, step)
-                while not turn.done and time.time() < turn.deadline:
-                    remaining = turn.deadline - time.time()
+                while not turn.done and _clock() < turn.deadline:
+                    remaining = turn.deadline - _clock()
                     if turn.event.wait(timeout=min(15.0, max(0.1, remaining))):
                         break
-                    if not turn.done and time.time() < turn.deadline:
+                    if not turn.done and _clock() < turn.deadline:
                         yield ": ping\n\n"  # keep-alive : le joueur compose
                 # La deadline RÉCLAME le tour sous le verrou : un POST /turn arrivant
                 # après cet instant reçoit 409 au lieu d'un « accepted » silencieusement
@@ -2514,15 +2520,15 @@ def _run_stream(run: RoundRun) -> Iterator[str]:
                 ballot = PendingMotionVote(
                     country=step.country,
                     target=step.target,
-                    deadline=time.time() + session.turn_seconds,
+                    deadline=_clock() + session.turn_seconds,
                 )
                 session.pending_motion_vote = ballot
                 yield from _handle_step(run, step)
-                while not ballot.done and time.time() < ballot.deadline:
-                    remaining = ballot.deadline - time.time()
+                while not ballot.done and _clock() < ballot.deadline:
+                    remaining = ballot.deadline - _clock()
                     if ballot.event.wait(timeout=min(15.0, max(0.1, remaining))):
                         break
-                    if not ballot.done and time.time() < ballot.deadline:
+                    if not ballot.done and _clock() < ballot.deadline:
                         yield ": ping\n\n"
                 # Même réclamation que pour le tour : la deadline scelle le bulletin.
                 with ballot.submission_lock:

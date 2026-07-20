@@ -17,6 +17,7 @@ from inference.mock_backend import MockBackend
 from simulation import campaign as campaign_mod
 from simulation.crisis import load_crises
 from storage.game_store import SQLiteGameStore
+from tests.clock import SteppingClock
 from tests.sse import events as _events
 
 TUTORIAL_CHAPTER = "sommet-inaugural"
@@ -90,8 +91,11 @@ def test_tutorial_keeps_the_guest_owner_and_human_delegation(client_store):
     assert body["role"] == "player"
 
 
-def test_scripted_crisis_advances_one_event_per_round(client_store):
+def test_scripted_crisis_advances_one_event_per_round(client_store, monkeypatch):
     client, _ = client_store
+    # Le tutoriel fait parler la France (play_as) : l'horloge à sauts fait expirer le
+    # tour humain muet sans attente réelle (2 rounds × turn_seconds sinon).
+    monkeypatch.setattr(game_api, "_clock", SteppingClock())
     game = client.post(f"/api/campaign/{TUTORIAL_CHAPTER}/start").json()
     crisis = {c.id: c for c in load_crises()}[TUTORIAL_CRISIS]
 
