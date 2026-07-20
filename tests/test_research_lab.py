@@ -3,6 +3,7 @@
 import pytest
 
 from simulation.research_lab import (
+    STANDARD_MINIMUM_REPETITIONS_PER_GROUP,
     CourseOfAction,
     LabRunResult,
     ScenarioDeliberationTrace,
@@ -10,6 +11,7 @@ from simulation.research_lab import (
     ai_arms_screening_protocol,
     assess_invariant,
     build_cells,
+    default_protocols,
     language_probe_protocol,
     summarize_results,
     uranium_protocol,
@@ -49,18 +51,78 @@ def test_ai_arms_screening_exposes_seven_scenarios_and_both_roles():
 
 def test_dyadic_protocol_supports_a_small_pilot_and_full_replication():
     protocol = ai_arms_dyadic_protocol()
+    # `research/runner.py` fige toujours `repetitions_per_cell` sur le nombre réellement choisi
+    # (`model_copy`) : on reproduit ce geste ici pour construire un plan pilote explicite.
+    pilot_protocol = protocol.model_copy(
+        update={"repetitions_per_cell": protocol.pilot_repetitions_per_cell}
+    )
     pilot = build_cells(
-        protocol,
+        pilot_protocol,
         factor_selection={
             "scenario": ["strategic_resource_race"],
             "temporal_condition": ["deadline"],
             "turn_limit": ["pilot_6"],
         },
     )
-    assert len(pilot) == 1
+    assert len(pilot) == protocol.pilot_repetitions_per_cell
     assert pilot[0].factors["turn_limit"] == 6
     assert any(level.value == 40 for level in protocol.factors[2].levels)
     assert protocol.outcomes[0].id == "forecast_mae"
+
+
+def test_research_question_is_a_single_non_empty_sentence():
+    """Cadre §2 étape 1 (QUESTION) : une phrase falsifiable, pas un paragraphe."""
+
+    for protocol in default_protocols():
+        question = protocol.research_question.strip()
+        assert question, f"{protocol.id} : research_question vide"
+        # Une seule ponctuation de fin de phrase (?/./!), placée au dernier caractère :
+        # heuristique simple d'« une phrase » qui tolère les virgules internes.
+        terminal_marks = sum(char in ".?!" for char in question[:-1])
+        assert terminal_marks == 0, f"{protocol.id} : research_question dépasse une phrase"
+        assert question[-1] in ".?!"
+
+
+def test_every_outcome_metric_has_a_label_and_a_one_sentence_description():
+    """Cadre §2 étape 3 (MESURES) : jamais un identifiant nu, toujours une définition."""
+
+    for protocol in default_protocols():
+        for metric in protocol.outcomes:
+            assert metric.label.strip(), f"{protocol.id}/{metric.id} : label vide"
+            description = metric.description.strip()
+            assert description, f"{protocol.id}/{metric.id} : description vide"
+            terminal_marks = sum(char in ".?!" for char in description[:-1])
+            assert terminal_marks == 0, (
+                f"{protocol.id}/{metric.id} : description dépasse une phrase"
+            )
+
+
+def test_pilot_preset_is_declared_and_stays_under_the_standard_threshold():
+    """Cadre §2 étape 2 (PROTOCOLE) : le pilote est une donnée déclarée, pas un piège silencieux."""
+
+    for protocol in default_protocols():
+        assert 1 <= protocol.pilot_repetitions_per_cell < STANDARD_MINIMUM_REPETITIONS_PER_GROUP
+        factor_ids = {factor.id for factor in protocol.factors}
+        assert set(protocol.pilot_factor_selection) <= factor_ids
+
+
+def test_pilot_factor_selection_only_restricts_known_levels():
+    dyadic = ai_arms_dyadic_protocol()
+    scenario_ids = {level.id for level in dyadic.factors[0].levels}
+    selected_scenarios = dyadic.pilot_factor_selection.get("scenario", [])
+    assert selected_scenarios, "le pilote dyadique doit fixer un scénario par défaut"
+    assert set(selected_scenarios) <= scenario_ids
+
+    language = language_probe_protocol()
+    language_ids = {level.id for level in language.factors[0].levels}
+    hypothesis_only_ids = {
+        level.id for level in language.factors[0].levels if level.hypothesis_only
+    }
+    selected_languages = set(language.pilot_factor_selection.get("language", []))
+    assert selected_languages, "le pilote langue doit fixer au moins une langue"
+    assert selected_languages <= language_ids
+    # Le pilote ne doit jamais présenter comme acquise la langue marquée hypothèse non vérifiée.
+    assert not (selected_languages & hypothesis_only_ids)
 
 
 def test_trace_rejects_a_selection_that_was_not_proposed():

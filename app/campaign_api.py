@@ -423,11 +423,17 @@ def get_campaign(store: Annotated[GameStore, Depends(get_store)]) -> CampaignVie
 
 
 def _lab_view() -> CampaignLabView:
+    # Nom unique « Laboratoire » partout (spec refonte labo §1 et §3.0 : quatre noms
+    # coexistaient jusqu'ici — un seul modèle théorique de l'outil doit rester explicite).
     return CampaignLabView(
-        title="Laboratoire des invariants",
+        title="Laboratoire",
         purpose=(
-            "Transformer chaque hypothèse en scénario joué par le Game Master, répéter "
-            "ses cellules et répondre avec les traces de rounds et leurs mesures."
+            "Le laboratoire, c'est l'endroit où tu poses une question sur le comportement "
+            "des IA du jeu, où tu la fais jouer plusieurs fois dans des conditions "
+            "contrôlées, et où tu lis une réponse chiffrée avec sa marge d'erreur. "
+            "C'est ici qu'on vérifie que les IA candidates au rôle de traîtresse sont "
+            "crédibles (bluffent-elles ? escaladent-elles ? voient-elles venir "
+            "l'adversaire ?) — les mêmes tests que ceux des chercheurs, sur ta machine."
         ),
         protocols=default_protocols(),
         execution=ModelExecutionPlan(),
