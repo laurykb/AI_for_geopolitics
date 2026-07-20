@@ -68,6 +68,28 @@ class DeltaParams(BaseModel):
     momentum_streak: int = 3  # baisses (ou hausses) consécutives qui déclenchent la spirale
     crisis_multiplier: float = 1.3  # spirale de crise (baisse amplifiée)
     virtuous_multiplier: float = 1.2  # cercle vertueux (hausse amplifiée, plafonné)
+    # Mouvement minimal (stabilité) quand le juge reste MUET sur un pays
+    # (aucun attribute_delta) : repli déterministe sur l'escalade du round, borné petit
+    # (0,03) pour rester un frémissement, pas une décision cachée du moteur.
+    mute_fallback: float = 0.03
+
+
+class TrajectoryParams(BaseModel):
+    """Pas/cap des 5 axes de la trajectoire (`simulation/trajectory.py`).
+
+    `cap` : amplitude du pas FIXE par axe et par round (remplace l'ancien 0,05, qui
+    s'auto-amortissait car proportionnel à l'écart signal-courant). `concentration_k` :
+    sensibilité d'A3 à la VARIATION de concentration du pouvoir (ΔHHI) — un monde stable
+    reste neutre (0,5), une concentration qui monte tire vers la dystopie."""
+
+    cap: float = 0.09
+    concentration_k: float = 4.0
+    # Bande morte : sous ce seuil, l'écart signal-courant est
+    # traité comme du bruit, pas une direction. Sans elle, le pas fixe (`cap`) produit
+    # un cycle-limite permanent (ex. courant 0,51 / signal 0,50 -> 0,51→0,42→0,51→0,42…)
+    # dès que l'écart est non nul mais plus petit que `cap` : le signal ne converge
+    # jamais, l'axe fait juste l'aller-retour indéfiniment.
+    deadband: float = 0.02
 
 
 class PostureParams(BaseModel):
@@ -117,6 +139,21 @@ class PromiseParams(BaseModel):
     flash_horizon_rounds: int = 2
 
 
+class TimeBudgetParams(BaseModel):
+    """Chantier « budget-temps » — le temps de raisonnement remplace les plafonds de
+    tokens comme véritable limite de parole des pays (réflexion privée ET parole
+    publique). `think_seconds`/`speak_seconds` bornent respectivement le plan
+    stratégique privé et la déclaration publique de chaque pays ; `decision_rescue_tokens`
+    borne le second appel court (passe de secours) déclenché quand le temps de réflexion
+    expire avant qu'une décision privée soit lisible (voir `agents/llm_agent.py`). Le
+    plafond de tokens (`num_predict`) devient une simple soupape anti-emballement, très
+    haute : voir `_TOKEN_SAFETY_CAP`."""
+
+    think_seconds: float = 60.0
+    speak_seconds: float = 35.0
+    decision_rescue_tokens: int = 250
+
+
 class SamplingParams(BaseModel):
     """G9 §1 — options de décodage par rôle (anti-boucle au niveau du décodeur)."""
 
@@ -126,6 +163,19 @@ class SamplingParams(BaseModel):
 
 class SamplingByRole(BaseModel):
     country: SamplingParams = Field(default_factory=SamplingParams)
+    # Chantier « dialogue limpide » — le sampling nuance le REGISTRE par tempérament
+    # (G17) : la colombe reste mesurée, le faucon est plus sec/tranchant, l'opportuniste
+    # (facade « lizard ») navigue entre les deux. Défauts Python identiques à
+    # data/gamefeel/params.json (même source de vérité que le reste de GamefeelParams) :
+    # un tempérament absent de ce bloc (pays forgé, JSON ancien sans "temperaments")
+    # retombe sur le socle unique `country` — comportement inchangé dans ce cas.
+    temperaments: dict[str, SamplingParams] = Field(
+        default_factory=lambda: {
+            "colombe": SamplingParams(temperature=0.75, repeat_penalty=1.18),
+            "faucon": SamplingParams(temperature=0.85, repeat_penalty=1.12),
+            "opportuniste": SamplingParams(temperature=0.9, repeat_penalty=1.15),
+        }
+    )
 
 
 class GamefeelParams(BaseModel):
@@ -133,11 +183,13 @@ class GamefeelParams(BaseModel):
     deadlines: DeadlineParams = Field(default_factory=DeadlineParams)
     directives: DirectiveParams = Field(default_factory=DirectiveParams)
     deltas: DeltaParams = Field(default_factory=DeltaParams)
+    trajectory: TrajectoryParams = Field(default_factory=TrajectoryParams)
     postures: PostureParams = Field(default_factory=PostureParams)
     kahn: KahnParams = Field(default_factory=KahnParams)
     signal: SignalParams = Field(default_factory=SignalParams)
     promises: PromiseParams = Field(default_factory=PromiseParams)
     sampling: SamplingByRole = Field(default_factory=SamplingByRole)
+    time_budgets: TimeBudgetParams = Field(default_factory=TimeBudgetParams)
 
 
 @lru_cache(maxsize=4)
@@ -148,6 +200,15 @@ def _load(path: str) -> GamefeelParams:
 def load_gamefeel_params() -> GamefeelParams:
     """Paramètres G7 (surchargables par `GAMEFEEL_PARAMS_PATH` pour les tests)."""
     return _load(os.getenv(GAMEFEEL_PARAMS_PATH, str(_DEFAULT_PARAMS)))
+
+
+def sampling_for_temperament(params: GamefeelParams, temperament: str) -> SamplingParams:
+    """Options de décodage nuancées par tempérament (chantier « dialogue limpide »).
+
+    Repli sur le socle unique `sampling.country` quand le tempérament n'a pas d'entrée
+    dans `sampling.temperaments` (pays forgé au tempérament inconnu, ou JSON qui ne
+    définit pas le bloc) — rétro-compatible avec le comportement d'avant ce chantier."""
+    return params.sampling.temperaments.get(temperament) or params.sampling.country
 
 
 class Grief(BaseModel):

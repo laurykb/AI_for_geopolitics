@@ -255,6 +255,69 @@ en moins.
 
 ---
 
+## D9 — Dette du lot « briefs gameplay » (2026-07-19) — **S/M par item**
+
+> Consignée par la revue finale de branche `feat/briefs-gameplay-6pts` (3 lentilles +
+> vérification adversariale). Aucun item ne bloquait le merge ; les correctifs bloquants
+> (mode survie câblé, strip du verdict, cycle-limite, touched, reason façade, 409
+> directive/suspendu, pays inventé) ont été appliqués dans la branche elle-même.
+
+- **Facturation compute asymétrique (M6)** — la phase privée est débitée par fragment
+  brut (trace de pensée incluse) mais la parole publique par MOT du texte final déjà
+  strippé (`agents/llm_agent.py` re-streame le texte propre) : un pays casté reasoning
+  sous-paie sa parole publique ; un message de repli (backend mort) est facturé comme
+  généré. Borné (≤ 220 tokens publics) mais systématique. Piste : compter le brut côté
+  agent ou exposer `completion_tokens` du backend. **S**
+- **Unités mixtes `IntelParams`** — `covert_compute_cost` en TOKENS (÷100 via
+  `compute_cost`) vs `covert_sabotage_amount` en UNITÉS de compute, appliqué direct.
+  Commenté dans le JSON, mais une confusion ×100 au calibrage est vite arrivée. **S**
+- **Coûts intel en dur dans l'UI** — `intel.tsx` affiche « 25/15/30/60 » et « coûte 5 de
+  calcul » en littéraux : tout recalibrage de `data/intel/params.json` rend la copie
+  fausse en silence. Piste : servir les coûts depuis l'API. **S**
+- **Tension numérique des actions cachées** — `disinfo_expose_tension` défini mais lu
+  nulle part ; l'exposition (disinfo ET covert) n'a pas de delta chiffré, seulement
+  l'annonce publique du juge. À câbler pour les deux ensemble (chip de session créée). **S/M**
+- **Chemin « réflexion libre » des modèles reasoning** — mesuré live (deepseek-r1:7b,
+  52 tok/s, pic VRAM 5,8/8 Go) : 5/5 délibérations privées en repli car le modèle rédige
+  en markdown libre (`**FUTUR 1 : …**`), pas les lignes strictes — même sans troncature.
+  Option 4 du brief 2, reportée sciemment (chip de session créée). **M**
+- **i18n des raisons du juge** — `attribute_reasons` sort en FR du prompt FR ; même
+  famille que le reliquat `result.verdict` (D4). À traiter avec D4, pas isolément. —
+- **Biais A1 en monde muet parfaitement calme** — escalade strictement 0 → signal de
+  coordination max → U se stabilise ~0,6. Pré-existant (G9), rendu plus visible par le
+  pas rapide. Piste : centrer le repli sur l'escalade neutre Kahn (0,5). **S** (playtest d'abord)
+- **Convention `id == nom de fichier`** de `known_country_ids()` (détection du pays
+  inventé) vérifiée sur les 33 pays mais non verrouillée par un test. **S**
+- **Petites hygiènes** — frontière exacte `gap == deadband` sans test littéral ;
+  duplication `_last_message_from`/`format_transcript` ; duplication validation target
+  dans `buy_intel` (style existant) ; dérive des pays suspendus via le repli juge-muet
+  (choix assumé, à observer au playtest). **S**
+- **`VERDICT_MAX_TOKENS = 1300`** — pari raisonné, smoke mistral vert, mais la
+  troncature du JSON enrichi (reasons) n'est pas mesurée sous stress (6 pays, transcript
+  long). À surveiller au playtest. —
+- **`num_ctx` jamais posé** (`inference/ollama_backend.py`) — la fenêtre de contexte suit
+  le défaut du serveur Ollama ; avec la soupape de sortie à 4096 (budget-temps), le pire
+  cas théorique prompt+sortie peut déclencher la troncature silencieuse des tokens les
+  plus anciens (system prompt compris). Rendu acceptable par le budget-temps (~1200-3000
+  tok réels) et la discipline de prompts bornés, mais à poser explicitement
+  (`num_ctx` + `num_keep` protégeant le system) si le débit local monte. **S**
+- **Réglage par-partie du budget-temps** — think/speak_seconds sont globaux
+  (`data/gamefeel/params.json`) ; un bouton au lobby (patron expose_thinking) rendrait le
+  rythme réglable par partie. **S** — et `MeteredBackend.stream_generate` perd son
+  enregistrement de télémétrie si le flux est fermé avant épuisement (non câblé en prod). **S**
+
+---
+
+## D10 — Résumé observable (`feat/resume-observable`, 2026-07-19) — **S**
+
+- **Libellés du digest en dur en FR** — `simulation/observable_digest.py` (« Observation :
+  », « Piste retenue : », « Critère : ») recopie le vocabulaire du journal d'audit
+  (`private_deliberation.py`, lui-même non traduit — même famille que D4/i18n) sans lire
+  `WorldState.language`. Avant ce chantier, une partie masquée (Dérive/Joueur-pays) ne
+  montrait AUCUNE réflexion en direct — le défaut passait inaperçu ; désormais le digest
+  s'affiche pendant la partie, donc un joueur EN verra ces trois libellés en français.
+  À traiter avec D4 (lot i18n), pas isolément. —
+
 ## Top 5 si on n'a qu'une journée
 
 1. **Test de parité SQLite ↔ Supabase** (D3.1, S) — la classe de bugs

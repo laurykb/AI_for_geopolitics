@@ -11,6 +11,10 @@ from urllib.request import urlopen
 from pydantic import BaseModel, Field
 
 _PANEL_PATH = Path(__file__).resolve().parent.parent / "data" / "research" / "model_panel.json"
+
+# Rôle des modèles de raisonnement (deepseek-r1…) : un pays casté dessus active l'option
+# think du backend. Les entrées portant tout autre rôle gardent le comportement historique.
+REASONING_ROLE = "reasoning"
 _BENCHMARK_PATH = (
     Path(__file__).resolve().parent.parent / "data" / "research" / "hardware_benchmark.json"
 )

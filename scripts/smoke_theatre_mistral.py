@@ -25,9 +25,18 @@ Usage : python scripts/smoke_theatre_mistral.py
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from pathlib import Path
+
+# Casting = pensée native : sans `model_cast` explicite, une
+# partie classique/campagne caste désormais ses pays par défaut sur deepseek-r1:7b (voir
+# `app/game_api.py::_default_reasoning_cast`) — ce smoke teste le MOTEUR (ultimatum, Kahn,
+# signaux, promesses, Storyteller), pas la politique de casting, et doit rester rapide sur
+# mistral pour tous les rôles. Échappatoire réservée aux tests/smoke (lue à chaque requête
+# de création de partie, donc valable même posée ici en tête de script).
+os.environ["GAME_ALLOW_GENERALIST_CAST"] = "1"
 
 # Le dépôt du script d'abord (avant un éventuel install editable du venv partagé) :
 # le smoke doit tester CE worktree/clone, pas un autre.
@@ -68,7 +77,9 @@ def main() -> int:
     t0 = time.time()
 
     game = client.post(
-        "/api/games", json={"countries": COUNTRIES, "mode": "drift", "horizon": 2}
+        # Post-pivot RG : la Dérive est le cœur des DEUX modes ; "drift" n'est plus un
+        # mode d'API (Literal classic|campaign) — le smoke joue une partie Classique.
+        "/api/games", json={"countries": COUNTRIES, "mode": "classic", "horizon": 2}
     ).json()
     gid = game["id"]
     print(f"partie Derive {gid} (horizon 2, {len(COUNTRIES)} pays)")

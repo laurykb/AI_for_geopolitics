@@ -11,6 +11,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { deletePlayer } from "./api";
+
 export type Player = {
   id: string;
   pseudo: string;
@@ -164,7 +166,20 @@ function stripHash(account: StoredAccount): Player {
   };
 }
 
-class OfflineAuth implements AuthApi {
+/** Purge serveur best-effort d'un invité qui se déconnecte : ses parties privées,
+ * transcripts, prompts et XP ne doivent pas survivre à la session (promesse
+ * « progression locale temporaire » de l'accueil). Le backend peut être absent
+ * (offline pur) ou ne pas connaître l'invité (aucune partie jouée → 404) : dans
+ * les deux cas la déconnexion locale doit aboutir quand même. */
+async function purgeGuestServerData(playerId: string): Promise<void> {
+  try {
+    await deletePlayer(playerId);
+  } catch {
+    // Réseau/backend indisponible ou invité inconnu : rien à purger de plus.
+  }
+}
+
+export class OfflineAuth implements AuthApi {
   readonly offline = true;
   private listeners = new Set<(p: Player | null) => void>();
 
@@ -220,6 +235,9 @@ class OfflineAuth implements AuthApi {
   async signOut(): Promise<void> {
     const id = localStorage.getItem(LS_SESSION);
     if (id?.startsWith("guest_")) {
+      // Un invité qui part ne laisse RIEN : purge serveur (parties privées, XP,
+      // fiche) avant l'oubli local — sinon son historique traîne en base à jamais.
+      await purgeGuestServerData(id);
       const accounts = readAccounts();
       const key = Object.keys(accounts).find((candidate) => accounts[candidate].id === id);
       if (key) {
@@ -387,6 +405,14 @@ class SupabaseAuth implements AuthApi {
 
   async signOut(): Promise<void> {
     const sb = await this.client();
+    // Même promesse qu'en offline : un invité (utilisateur anonyme Supabase) qui se
+    // déconnecte ne laisse pas d'historique serveur. L'utilisateur auth GoTrue
+    // orphelin relève de l'API admin (cf. CC-3) — ce sont les DONNÉES qui comptent.
+    const { data } = await sb.auth.getUser();
+    const user = data.user as { id: string; is_anonymous?: boolean } | null;
+    if (user?.is_anonymous) {
+      await purgeGuestServerData(user.id);
+    }
     await sb.auth.signOut();
   }
 

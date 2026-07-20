@@ -117,6 +117,9 @@ export type GameView = {
   pending_motion: MotionView | null;
   suspended: string[];
   play_as: string | null; // pays joué par l'humain (Joueur-pays)
+  // Point 7 — pays inventé (Architecte), incarné ou non ; déduit côté API, jamais
+  // persisté. Sert à l'exclure des prévisions croisées (ScenarioForecastPanel).
+  invented_country?: string | null;
   awaiting_human: boolean; // un round est suspendu sur le tour du joueur
   turn_seconds: number; // G2 — délai du tour humain
   intel_budget: number | null; // G4 — crédits de renseignement restants
@@ -129,6 +132,7 @@ export type GameView = {
   drift_enabled: boolean; // G11 — la Dérive peut frapper une SI (transversal)
   result: GameResult | null; // G11-c — bilan de fin de partie (si finie)
   language?: "fr" | "en"; // G14 — langue des dialogues (une partie garde la sienne)
+  expose_thinking: boolean; // Pensée à découvert (réglage par partie, huis clos par défaut)
   model_cast?: ModelCastView | null; // casting figé ; null = modèle unique historique
 };
 
@@ -289,6 +293,9 @@ export type AttributeDelta = {
   label: string;
   before: number;
   after: number;
+  // Motif du juge pour CE delta (une phrase citant le transcript).
+  // Optionnel : absent des rounds persistés avant ce point (rétro-compat replay).
+  reason?: string;
 };
 
 /** G18 — une action marquante du round, classée par le juge sur le barème de Kahn. */
@@ -435,6 +442,9 @@ export type JudgeRecord = {
   escalation?: number;
   economic_disruption?: number;
   communique?: string;
+  // Délibéré prose du juge, accumulé depuis les `judge_token` du direct.
+  // Optionnel : absent des rounds persistés avant ce point (rétro-compat replay).
+  rationale?: string;
   suspension?: SuspensionVerdict & { filed_by?: string };
   suspended?: string[];
   perceptions?: Record<string, Perception>;
@@ -589,6 +599,7 @@ export type CreateGameBody = {
   owner_id?: string; // G11 — joueur propriétaire (id auth Supabase ou offline)
   difficulty?: Difficulty; // G11 — beginner | intermediate | expert (§4)
   drift_enabled?: boolean; // G11 — la Dérive peut frapper une SI (transversal)
+  expose_thinking?: boolean; // Pensée à découvert (réglage par partie, huis clos par défaut)
   free?: boolean; // G11-b — partie libre : non classée + consignes globales autorisées
   language?: "fr" | "en"; // G14 — langue des dialogues (lue par le backend dès CC-3)
   table?: "equilibree" | "colombes" | "faucons" | "aleatoire"; // G17 — partie libre
@@ -797,6 +808,8 @@ export type ExperimentalFactor = {
 export type OutcomeMetric = {
   id: string;
   label: string;
+  /** Définition en une phrase, affichée dans la bulle « ? » à côté du libellé. */
+  description: string;
   kind: "binary" | "rate" | "duration" | "score" | "category";
   primary: boolean;
   unit: string;
@@ -828,6 +841,10 @@ export type ExperimentProtocol = {
   title: string;
   research_question: string;
   repetitions_per_cell: number;
+  /** Préréglage pilote déclaré par le protocole (répétitions réduites). */
+  pilot_repetitions_per_cell: number;
+  /** Niveaux par défaut du pilote par facteur ; absent ou vide == tous les niveaux. */
+  pilot_factor_selection: Record<string, string[]>;
   execution_mode: "automated" | "human_interactive";
   scenario_premise: string;
   actors: string[];
@@ -953,6 +970,7 @@ export type ExperimentSummary = {
     | "replicated"
     | "qualified"
     | "not_replicated"
+    | "pilot"
     | "insufficient_data";
   verdict_label: string;
   explanation: string;
@@ -1145,7 +1163,7 @@ export type IntelAnalysis = {
 
 /** Résultat d'un achat de renseignement (POST /games/{id}/intel — G4). */
 export type IntelResult = {
-  action: "brief" | "verify" | "disinfo" | "analyze";
+  action: "brief" | "verify" | "disinfo" | "analyze" | "covert";
   cost: number;
   budget: number;
   brief: string | null;
@@ -1154,6 +1172,10 @@ export type IntelResult = {
   note: string | null;
   /** G23 — présent pour l'action « analyze » ; l'affichage DOIT porter le caveat. */
   analysis?: IntelAnalysis | null;
+  /** « covert » UNIQUEMENT : coût payé en COMPUTE du pays joué et solde
+   * après débit. Ressource distincte des crédits intel (cost/budget) — null sinon. */
+  compute_cost?: number | null;
+  compute_left?: number | null;
 };
 
 /** Une règle ratifiée (M7) — `clause` se traduit côté front (TREATY_LABELS). */

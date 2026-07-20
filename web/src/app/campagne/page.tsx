@@ -18,6 +18,7 @@ import { Banner, Panel, Pill, Spinner } from "@/components/ui";
 import { getCampaign, getLab, humanizeError, startChapter } from "@/lib/api";
 import { tiersOf } from "@/lib/campaign-tree";
 import { fmt } from "@/lib/format";
+import { defaultCountryCastModels, reasoningCountryModels } from "@/lib/flow";
 import type { CampaignView, ChapterView, ResearchModel } from "@/lib/types";
 
 const MEDAL_LABELS: Record<string, string> = { or: "🥇 or", argent: "🥈 argent", bronze: "🥉 bronze" };
@@ -40,12 +41,11 @@ export default function CampagnePage() {
       .catch((err) => setError(humanizeError(err)));
     getLab()
       .then((lab) => {
-        const eligible = lab.model_panel.models.filter(
-          (model) => model.installed && model.role !== "slow_robustness_only",
-        );
+        // Casting = pensée native : un PAYS n'est proposé
+        // que sur les modèles de raisonnement installés (voir web/src/lib/flow.ts).
+        const eligible = reasoningCountryModels(lab.model_panel.models);
         setResearchModels(eligible);
-        const core = eligible.filter((model) => model.role === "core_comparison");
-        setCastModels((core.length ? core : eligible).slice(0, 2).map((model) => model.tag));
+        setCastModels(defaultCountryCastModels(eligible));
       })
       .catch(() => undefined);
   }, []);

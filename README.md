@@ -162,6 +162,19 @@ npm test                     # vitest
 La CI (`.github/workflows/ci.yml`) rejoue exactement cela : lint + tests Python, puis lint +
 tests + build Next.js.
 
+### Maintenance des bases SQLite
+
+`games.db` et `research.db` grossissent avec les semaines de dev (parties de test, WAL de
+recherche jamais checkpointé). `scripts/db_maintenance.py` fait le ménage : rapport d'abord
+(dry-run par défaut), purge des seules parties **orphelines** (compte joueur disparu) avec
+`--apply`, puis `wal_checkpoint(TRUNCATE)` + `VACUUM`. **Éteins l'API avant de lancer** (le
+script refuse de tourner sur une base verrouillée).
+
+```bash
+python scripts/db_maintenance.py                 # rapport seul, aucune écriture
+python scripts/db_maintenance.py --apply          # purge + checkpoint + VACUUM réels
+```
+
 ## Contrainte matérielle
 
 Poste de référence : **NVIDIA RTX 2060 Super (8 Go VRAM)**, Ryzen 7 3700X, 32 Go RAM. Le cache

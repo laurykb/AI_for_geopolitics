@@ -17,9 +17,12 @@ class TaggedBackend(InferenceBackend):
     modèles sans lancer Ollama, tandis que le casting et le replay conservent leurs tags.
     """
 
-    def __init__(self, inner: InferenceBackend, model: str) -> None:
+    def __init__(self, inner: InferenceBackend, model: str, *, think: bool = False) -> None:
         self._inner = inner
         self.model = model
+        # Marqueur du rôle reasoning du casting (l'activation réelle vit dans le backend
+        # Ollama sous-jacent) : les tests offline vérifient le routage sans GPU.
+        self.think = think
 
     def generate(
         self,
@@ -61,8 +64,15 @@ class TaggedBackend(InferenceBackend):
 
 
 class _SequentialOllamaBackend(TaggedBackend):
-    def __init__(self, pool: SequentialOllamaPool, inner: OllamaBackend, model: str) -> None:
-        super().__init__(inner, model)
+    def __init__(
+        self,
+        pool: SequentialOllamaPool,
+        inner: OllamaBackend,
+        model: str,
+        *,
+        think: bool = False,
+    ) -> None:
+        super().__init__(inner, model, think=think)
         self._pool = pool
 
     def generate(self, prompt: str, **kwargs: Any) -> InferenceResult:
@@ -107,19 +117,27 @@ class SequentialOllamaPool:
     def activate(self, model: str) -> _Activation:
         return _Activation(self, model)
 
-    def backend(self, model: str) -> InferenceBackend:
+    def backend(self, model: str, *, think: bool = False) -> InferenceBackend:
         if model not in self._backends:
-            inner = self._template.for_model(model, keep_alive="15m")
-            self._backends[model] = _SequentialOllamaBackend(self, inner, model)
+            inner = self._template.for_model(model, keep_alive="15m", think=think)
+            self._backends[model] = _SequentialOllamaBackend(self, inner, model, think=think)
         return self._backends[model]
 
 
 def routed_backends(
-    default: InferenceBackend, model_tags: set[str]
+    default: InferenceBackend,
+    model_tags: set[str],
+    *,
+    reasoning_tags: set[str] | None = None,
 ) -> dict[str, InferenceBackend]:
-    """Construit les backends du casting sans changer le chemin mono-modèle historique."""
+    """Construit les backends du casting sans changer le chemin mono-modèle historique.
 
+    `reasoning_tags` (point 5) : les tags castés sur un modèle de raisonnement activent
+    l'option think de leur backend. Absent (défaut), rien ne change — rétro-compatible.
+    """
+
+    reasoning = reasoning_tags or set()
     if isinstance(default, OllamaBackend):
         pool = SequentialOllamaPool(default)
-        return {tag: pool.backend(tag) for tag in model_tags}
-    return {tag: TaggedBackend(default, tag) for tag in model_tags}
+        return {tag: pool.backend(tag, think=tag in reasoning) for tag in model_tags}
+    return {tag: TaggedBackend(default, tag, think=tag in reasoning) for tag in model_tags}

@@ -22,6 +22,7 @@ Injection : `get_backend` (Ollama par défaut, MockBackend en test) et `get_stor
 from __future__ import annotations
 
 import copy
+import logging
 import os
 import re
 import threading
@@ -66,6 +67,7 @@ from core.world_state import WorldState
 from inference.backend import InferenceBackend
 from inference.capturing_backend import CapturedPrompt, CapturingBackend
 from inference.model_pool import routed_backends
+from inference.ollama_backend import DEFAULT_MODEL as _OLLAMA_DEFAULT_MODEL
 from inference.ollama_backend import OllamaBackend
 from market import flash as flash_mod
 from market.engine import MarketEngine
@@ -84,6 +86,7 @@ from rag.embedder import HashingEmbedder
 from rag.retriever import HybridRetriever
 from simulation import alignment, drift_game, narrative
 from simulation import campaign as campaign_mod
+from simulation import compute as compute_mod
 from simulation import daily as daily_mod
 from simulation import difficulty as difficulty_mod
 from simulation import intel as intel_mod
@@ -124,9 +127,12 @@ from simulation.live_round import (
     FlashStep,
     HumanMotionVoteStep,
     HumanTurnStep,
+    JudgeTokenStep,
     MessageDoneStep,
     MotionTallyStep,
     MotionVerdictStep,
+    PrivatePlanDoneStep,
+    PrivateTokenStep,
     RiskStep,
     RoundStep,
     SummaryStep,
@@ -135,8 +141,8 @@ from simulation.live_round import (
     VerdictStep,
     run_negotiation_round,
 )
-from simulation.loader import load_world
-from simulation.model_cast import prepare_model_cast
+from simulation.loader import known_country_ids, load_world
+from simulation.model_cast import ModelCastRequest, ModelCastState, prepare_model_cast
 from simulation.motions import (
     HUMAN_FILER,
     MOTION_CAPABILITY_NOTE,
@@ -144,6 +150,7 @@ from simulation.motions import (
     motion_event,
     parse_filed_motion,
 )
+from simulation.observable_digest import observable_digest
 from simulation.ontology import build_operational_picture
 from simulation.storyline import StoryContext, build_story_context, default_storyline
 from storage.game_store import (
@@ -164,6 +171,9 @@ from storage.game_store import (
 from storage.supabase_store import SupabaseGameStore
 
 _RECENT_KEPT = 8  # titres d'événements passés fournis au GM pour éviter les redites
+# G9 §2 — durée d'une suspension retenue par motion (rounds où le pays est au banc :
+# muet, ne parle ni ne vote). Réglable 2-3 (cf. docs/PLAN — décision de design #1).
+SUSPENSION_ROUNDS = 2
 
 _backend: InferenceBackend | None = None
 _store: GameStore | None = None
@@ -247,6 +257,10 @@ class GameSession:
     fog: bool = False
     escalation: bool = False
     drift_enabled: bool = False
+    # Pensée à découvert (réglage par partie) : lève le scellement du journal de
+    # délibération (trames privées + résumé) pendant que la partie tourne — voir
+    # `_journal_sealed`. Ne couvre pas le classeur secret du moteur (Dérive/Fog).
+    expose_thinking: bool = False
     # RG-3 — graine de la Dérive : `game_id` en général, le SCÉNARIO pour le Défi du jour
     # (même sommet pour tous ⇒ mêmes traîtres ⇒ classement équitable). Cf. `_drift_seed`.
     drift_seed: str = ""
@@ -254,7 +268,10 @@ class GameSession:
     turn_seconds: int = 90  # G2 — délai du tour humain (les SI n'attendent pas)
     recent: list[str] = field(default_factory=list)
     pending_motion: Motion | None = None  # motion déposée, débattue au prochain round (R4)
-    suspended: set[str] = field(default_factory=set)  # pays qui sautent le prochain round
+    suspended: set[str] = field(default_factory=set)  # pays au banc CE round (miroir compat)
+    # G9 §2 — suspension pluri-rounds : rounds restants par pays (source de vérité ;
+    # `suspended` en est dérivé au début de chaque round). Vidé round par round.
+    suspended_rounds: dict[str, int] = field(default_factory=dict)
     treaties: list[treaty_mod.Treaty] = field(default_factory=list)  # règles ratifiées (M7)
     intel: intel_mod.IntelState = field(default_factory=intel_mod.IntelState.fresh)  # G4
     pending_turn: PendingTurn | None = None  # tour humain en attente (le flux vit)
@@ -342,6 +359,24 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def _journal_sealed(*, drift_enabled: bool, play_as: str | None, expose_thinking: bool) -> bool:
+    """Prédicat UNIQUE de scellement du journal de délibération (résumé observable),
+    partagé par les quatre sites qui le consultent : suppression des trames
+    `PrivateTokenStep`/`PrivatePlanDoneStep` en direct, digest de `message_done`,
+    digest de la réflexion à la relecture (`get_game`) et caviardage d'`option_summary`.
+
+    Par défaut (Dérive ou Joueur-pays), le journal est scellé pendant que la partie
+    tourne. Pensée à découvert (réglage par partie) lève CE scellement précis : les
+    trames privées circulent et le journal complet redevient lisible, verbatim, sans
+    résumé ni paraphrase — fidélité de retranscription.
+
+    NE COUVRE PAS le classeur secret du moteur (identité de la déviante, perceptions
+    Fog d'autrui — `_public_judge` dans `get_game`) : Pensée à découvert expose la
+    pensée BRUTE des SI, pas le classeur du moteur, sinon le réglage deviendrait un
+    « révèle le traître » plutôt qu'un mode d'observation."""
+    return (drift_enabled or play_as is not None) and not expose_thinking
+
+
 def _day(ts: str) -> str:
     """Date (YYYY-MM-DD) d'un horodatage ISO, tolérante au format (offset, espace au lieu
     de « T », suffixe « Z »). Centralise le regroupement par jour (bonus XP « 1re du jour »)
@@ -408,16 +443,15 @@ def _build_cast(
     le sink de session. Hors admin : backends nus, rien n'est capturé."""
 
     cast = world.model_cast
-    tags = (
-        {
-            *cast.assignments.values(),
-            cast.game_master_model,
-            cast.judge_model,
-        }
-        if cast is not None
-        else set()
-    )
-    routes = routed_backends(backend, tags) if tags else {}
+    if cast is None:
+        routes: dict[str, InferenceBackend] = {}
+    else:
+        tags = {*cast.assignments.values(), cast.game_master_model, cast.judge_model}
+        # Les pays castés sur un modèle de raisonnement (rôle `reasoning` du
+        # panel, figé dans le casting) reçoivent un backend qui pense en canal séparé.
+        # `reasoning_tags()` est déjà restreint aux affectations PAYS : le juge et
+        # le Game Master n'activent jamais think ici.
+        routes = routed_backends(backend, tags, reasoning_tags=cast.reasoning_tags())
 
     def wrap(country: str, role: str, model: str = "") -> InferenceBackend:
         selected = routes.get(model, backend)
@@ -441,6 +475,60 @@ def _build_cast(
             wrap("judge", "judge", cast.judge_model if cast is not None else "")
         ),
     )
+
+
+# La pensée native est la denrée que le jeu évalue : sans
+# casting explicite, un pays incarne par défaut un modèle de raisonnement — le Game Master
+# et le juge restent sur le backend générique historique (`OllamaBackend.DEFAULT_MODEL`,
+# mistral, think coupé pour eux par design). Échappatoire réservée aux tests/smoke qui
+# valident le MOTEUR plutôt que le casting (ex. `scripts/smoke_theatre_mistral.py`) : ce
+# script teste le théâtre, pas la politique de casting, et doit rester rapide sur mistral
+# pour tous les rôles — couture la plus simple qui préserve les deux : produit = reasoning
+# par défaut, smoke = mistral explicite via cette garde documentée.
+_DEFAULT_REASONING_TAG = "deepseek-r1:7b"
+_ALLOW_GENERALIST_CAST_ENV = "GAME_ALLOW_GENERALIST_CAST"
+
+logger = logging.getLogger(__name__)
+
+
+def _default_reasoning_cast(
+    world: WorldState, human_country: str | None, game_id: str
+) -> ModelCastState | None:
+    """Casting implicite (aucun `model_cast` dans la requête) : pays -> deepseek-r1:7b,
+    GM/juge -> mistral. Retourne None si l'un des deux modèles n'est pas installé (repli
+    silencieux sur le backend unique historique — ne casse jamais la création de partie
+    hors-ligne/CI sans Ollama)."""
+
+    ai_countries = [cid for cid in world.countries if cid != human_country]
+    if not ai_countries:
+        return None
+    try:
+        # `ModelCastRequest.assignments` est plafonné à 32 entrées (garde-fou lobby) : un
+        # roster complet (33+ pays, ex. tests moteur sans filtre) dépasse ce plafond en
+        # stratégie manuelle — repli silencieux sur le backend unique historique, comme
+        # un digest manquant. La construction de la requête doit donc rester DANS ce
+        # bloc try (une ValidationError Pydantic EST une ValueError, cf. héritage v2).
+        request = ModelCastRequest(
+            strategy="manual",
+            models=[_DEFAULT_REASONING_TAG, _OLLAMA_DEFAULT_MODEL],
+            assignments=dict.fromkeys(ai_countries, _DEFAULT_REASONING_TAG),
+            game_master_model=_OLLAMA_DEFAULT_MODEL,
+            judge_model=_OLLAMA_DEFAULT_MODEL,
+        )
+        return prepare_model_cast(
+            request, list(world.countries), human_country=human_country, game_id=game_id
+        )
+    except ValueError as exc:
+        # Repli gracieux VOULU (offline/CI sans Ollama, roster >32) mais jamais muet :
+        # sans cette trace, une machine sans deepseek-r1 fait parler les pays par un
+        # généraliste sans que personne ne le sache.
+        logger.warning(
+            "casting reasoning par défaut indisponible (%s) — partie %s servie par le "
+            "backend unique historique (généraliste) pour TOUS les rôles",
+            exc,
+            game_id,
+        )
+        return None
 
 
 def _rebuild_session(
@@ -480,6 +568,7 @@ def _rebuild_session(
         fog=game.fog,
         escalation=game.escalation,
         drift_enabled=game.drift_enabled,
+        expose_thinking=game.expose_thinking,
         drift_seed=_drift_seed(game.scenario, game.id),  # RG-3 — recalculé (rien à persister)
         human_country=snapshot.play_as,
         admin=game.admin,
@@ -494,6 +583,9 @@ def _rebuild_session(
         recent=list(snapshot.recent),
         pending_motion=motion,
         suspended=set(snapshot.suspended),
+        # G9 §2 — réamorce le compteur pluri-rounds (1 round mini) : un restart en cours
+        # de suspension ne relâche pas le pays immédiatement (dégradation douce).
+        suspended_rounds={c: 1 for c in snapshot.suspended},
         treaties=_treaties_from_records(records := store.list_rounds(game.id)),
         ultimatum=_ultimatum_from_records(records),  # G21 — la menace survit au restart
         intel=(
@@ -625,6 +717,11 @@ def _view(
         phase = "round_complete"
     else:
         phase = "ready"
+    countries = sorted(session.world.countries) if session else sorted(snapshot_countries)
+    # Point 7 — le pays inventé n'est pas persisté : c'est l'id du monde absent du
+    # registre standard (data/countries). Au plus un par partie (country_forge est
+    # appelé une fois par création) ; `None` si la partie n'a rien inventé.
+    invented = next((c for c in countries if c not in known_country_ids()), None)
     return GameView(
         id=game.id,
         scenario=game.scenario,
@@ -632,9 +729,8 @@ def _view(
         status=game.status.value,
         phase=phase,
         created_at=game.created_at,
-        countries=(
-            sorted(session.world.countries) if session else sorted(snapshot_countries)
-        ),
+        countries=countries,
+        invented_country=invented,
         live=session is not None,
         resumable=game.status is GameStatus.RUNNING and (session is not None or resumable),
         mode=session.mode if session else game.mode,
@@ -665,6 +761,7 @@ def _view(
         drift_enabled=game.drift_enabled,
         result=game.result,
         language=game.language,
+        expose_thinking=game.expose_thinking,
         model_cast=(
             session.world.model_cast
             if session
@@ -682,6 +779,7 @@ class RoundCheckpoint:
     recent: list[str]
     pending_motion: Motion | None
     suspended: set[str]
+    suspended_rounds: dict[str, int]
     treaties: list[treaty_mod.Treaty]
     intel: intel_mod.IntelState
     grudges: GrudgeBook
@@ -702,6 +800,7 @@ def _checkpoint_session(session: GameSession) -> RoundCheckpoint:
         recent=list(session.recent),
         pending_motion=copy.deepcopy(session.pending_motion),
         suspended=set(session.suspended),
+        suspended_rounds=dict(session.suspended_rounds),
         treaties=copy.deepcopy(session.treaties),
         intel=session.intel.model_copy(deep=True),
         grudges=session.grudges.model_copy(deep=True),
@@ -724,6 +823,7 @@ def _restore_checkpoint(session: GameSession, checkpoint: RoundCheckpoint | None
     session.recent = checkpoint.recent
     session.pending_motion = checkpoint.pending_motion
     session.suspended = checkpoint.suspended
+    session.suspended_rounds = checkpoint.suspended_rounds
     session.treaties = checkpoint.treaties
     session.intel = checkpoint.intel
     session.grudges = checkpoint.grudges
@@ -964,7 +1064,23 @@ def _apply_intel_fog(
 ) -> FogScenario | None:
     """G4 — après la résolution de l'événement : la désinformation en attente brouille
     des perceptions (elle ne fournit JAMAIS l'événement) ; un brief acheté dissipe
-    le brouillard du pays du joueur. Ses effets sont consignés dans `intel_record`."""
+    le brouillard du pays du joueur. Ses effets sont consignés dans `intel_record`.
+
+    L'opération secrète en attente frappe ICI aussi, mais SANS la garde
+    motion/crisis/fog de la désinformation : un sabotage est un effet direct sur le stock
+    de compute de la cible, il ne dispute pas le créneau « fog » du round (contrairement à
+    la désinformation, qui doit DEVENIR le scénario de perception du round)."""
+    if session.intel.pending_covert is not None:
+        spec = session.intel.pending_covert
+        target = session.world.countries.get(spec["target"])
+        params = intel_mod.load_params()
+        if target is not None:
+            target.compute = max(0.0, target.compute - params.covert_sabotage_amount)
+        intel_record["covert"] = {
+            "spec": spec,
+            "exposed": intel_mod.covert_exposed(game_id, round_id),
+        }
+        session.intel.pending_covert = None
     if (
         session.intel.pending_disinfo is not None
         and motion is None
@@ -1090,6 +1206,10 @@ def _record_intel(run: RoundRun, intel_record: dict) -> None:
         redacted.append(
             {"action": "disinfo", "exposed": intel_record["disinfo"]["exposed"]}
         )
+    if "covert" in intel_record:
+        redacted.append(
+            {"action": "covert", "exposed": intel_record["covert"]["exposed"]}
+        )
     if redacted:
         run.pre_frames.append(sse_frame("intel", {"actions": redacted}))
     if intel_record.get("disinfo", {}).get("exposed"):
@@ -1098,6 +1218,17 @@ def _record_intel(run: RoundRun, intel_record: dict) -> None:
             "judge",
             "Des services de renseignement concordants démentent une narration "
             "fabriquée : la manœuvre de désinformation du conseil est éventée.",
+        )
+    if intel_record.get("covert", {}).get("exposed"):
+        # Exposée, l'opération secrète révèle son auteur (contrairement à
+        # la désinformation, restée anonyme faute d'un « auteur » à distinguer du joueur).
+        actor = intel_record["covert"]["spec"]["actor"]
+        actor_name = run.session.world.countries[actor].name
+        _add_entry(
+            run,
+            "judge",
+            "Des services de renseignement concordants tracent le sabotage informatique "
+            f"jusqu'au conseil de {actor_name} : l'opération secrète est démasquée.",
         )
 
 
@@ -1311,8 +1442,15 @@ def _start_round(
     round_id = session.world.current_round + 1
     motion = session.pending_motion
     session.pending_motion = None
+    # G9 §2 — pays au banc CE round ; on consomme ensuite un round de suspension et on libère
+    # ceux dont le compteur atteint 0. `session.suspended` reste la source de vérité (persistée,
+    # lue par le détail et le marché) ; `suspended_rounds` porte la durée pluri-rounds.
     suspended = sorted(session.suspended)
-    session.suspended.clear()
+    for _cid in suspended:
+        session.suspended_rounds[_cid] = session.suspended_rounds.get(_cid, 1) - 1
+        if session.suspended_rounds[_cid] <= 0:
+            session.suspended.discard(_cid)
+            session.suspended_rounds.pop(_cid, None)
 
     # G4 — renseignement : les achats du tour d'avant sont consignés (replay/score).
     intel_record: dict = {}
@@ -1346,9 +1484,11 @@ def _start_round(
     _record_intel(run, intel_record)
 
     flash_after: int | None = None
-    if session.escalation:
+    if session.escalation and motion is None:
         # Théâtre Escalation : le GM annonce un fait nouveau en pleine réunion,
-        # après le premier tiers du budget de prises de parole.
+        # après le premier tiers du budget de prises de parole. JAMAIS pendant une
+        # motion de censure : le round est consacré au débat de suspension (comme les
+        # autres injections — événement, motions IA, fog — déjà gardées par `motion is None`).
         budget = body.max_turns if body.max_turns is not None else 2 * len(agents)
         flash_after = max(1, budget // 3)
 
@@ -1534,14 +1674,22 @@ def _emit_escalation_ladder(run: RoundRun, step: VerdictStep) -> list[str]:
 def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
     """Trames SSE d'une étape + effets de bord (record, transcript, suspension)."""
     session = run.session
+    hide = _journal_sealed(
+        drift_enabled=session.drift_enabled,
+        play_as=session.human_country,
+        expose_thinking=session.expose_thinking,
+    )
+    if hide and isinstance(step, (PrivateTokenStep, PrivatePlanDoneStep)):
+        # Résumé observable : en Dérive le journal brut trahirait la déviante en direct ;
+        # en Joueur-pays l'humain n'a jamais accès aux pensées des SI (spec G2). Ni le
+        # brouillon streamé token par token, ni la version validée (texte complet) ne
+        # sortent plus du serveur pendant que la partie tourne — un résumé sans les
+        # branches écartées arrive à la place dans `message_done` (ci-dessous). Le
+        # journal complet reste persisté (moteur inchangé) et se révèle en fin de partie.
+        return _drain_prompts(run)
     name, payload = step_event(step)
-    if isinstance(step, MessageDoneStep) and (
-        session.drift_enabled or session.human_country is not None
-    ):
-        # Réflexion privée exclue du live : en Dérive elle trahirait la déviante ; en
-        # Joueur-pays l'humain n'a jamais accès aux pensées des SI (spec G2). Persistée
-        # au transcript, elle se déverrouille quand la partie est finie.
-        payload = {**payload, "reasoning": ""}
+    if isinstance(step, MessageDoneStep) and hide:
+        payload = {**payload, "reasoning": observable_digest(payload["reasoning"])}
     if isinstance(step, HumanTurnStep) and session.pending_turn is not None:
         # G2 : le compte à rebours du front s'aligne sur la deadline du serveur.
         payload = {**payload, "deadline_ts": session.pending_turn.deadline}
@@ -1653,6 +1801,12 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
                         },
                     )
                 )
+    elif isinstance(step, JudgeTokenStep):
+        # Le délibéré du juge (prose streamée au direct, `judge_token`)
+        # n'était jusqu'ici JAMAIS persisté : la relecture (fin de partie, chronologie)
+        # ne montrait que les chiffres du verdict, jamais le POURQUOI. Accumulé ici comme
+        # `judgeText` côté front, mais dans le round persisté.
+        run.record.judge["rationale"] = run.record.judge.get("rationale", "") + step.token
     elif isinstance(step, VerdictStep):
         run.record.deltas = payload["deltas"]
         run.record.judge.update(
@@ -1676,13 +1830,17 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
             "filed_by": run.motion_filed_by or HUMAN_FILER,
         }
         if step.upheld:
-            session.suspended = {step.country}
+            # G9 §2 — suspension pluri-rounds : le pays est mis au banc pour SUSPENSION_ROUNDS
+            # rounds. `session.suspended` = qui est suspendu (persisté, filtre des orateurs) ;
+            # `suspended_rounds` = combien de rounds il reste (consommé au début de chaque round).
+            session.suspended.add(step.country)
+            session.suspended_rounds[step.country] = SUSPENSION_ROUNDS
         # Les deux conditions du constat, séparées : on comprend POURQUOI (G9 §2).
         vote_line = "vote pour" if step.vote_passed else "vote contre (ou insuffisant)"
         proof_line = "preuves au seuil" if step.evidence_met else "preuves manquantes"
         verdict_line = (
             f"Motion contre {step.country} : "
-            f"{'SUSPENDU un round' if step.upheld else 'motion rejetée'} "
+            f"{f'SUSPENDU {SUSPENSION_ROUNDS} rounds' if step.upheld else 'motion rejetée'} "
             f"({vote_line} ; {proof_line})."
         )
         _add_entry(
@@ -2486,6 +2644,11 @@ def create_game(
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+    elif body.mode in ("classic", "campaign") and os.getenv(_ALLOW_GENERALIST_CAST_ENV, "") != "1":
+        # Aucun casting explicite : voir `_default_reasoning_cast` ci-dessus. Silencieux
+        # si deepseek-r1:7b/mistral ne sont pas installés (panel/Ollama hors ligne) —
+        # `world.model_cast` reste None, comportement historique inchangé.
+        world.model_cast = _default_reasoning_cast(world, play_as, game_id)
     # RG-1 — `ranked` ne pilote plus de LP : c'est le drapeau « tentative qui COMPTE »
     # du Défi du jour (une tentative classée / jour ; un re-run libre ne rescore pas) et
     # la garantie d'une table équilibrée pour cette tentative. Inerte hors défi.
@@ -2538,6 +2701,7 @@ def create_game(
         difficulty=body.difficulty,
         drift_enabled=drift_enabled,
         language=body.language,
+        expose_thinking=body.expose_thinking,
     )
     store.add_game(game)
     prompt_sink: list[CapturedPrompt] = []
@@ -2552,6 +2716,7 @@ def create_game(
         fog=body.fog,
         escalation=body.escalation,
         drift_enabled=drift_enabled,
+        expose_thinking=body.expose_thinking,
         drift_seed=drift_seed,
         human_country=play_as,
         turn_seconds=body.turn_seconds,
@@ -2989,7 +3154,7 @@ def _intel_retriever() -> HybridRetriever:
 
 
 class IntelRequest(BaseModel):
-    action: Literal["brief", "verify", "disinfo", "analyze"]
+    action: Literal["brief", "verify", "disinfo", "analyze", "covert"]
     target: str | None = Field(None, max_length=80)  # pays (None = dernier événement)
     claim: str | None = Field(None, max_length=2000)  # verify : l'affirmation à vérifier
     speaker: str | None = Field(None, max_length=80)  # verify : qui l'a affirmée
@@ -3007,6 +3172,24 @@ class IntelResult(BaseModel):
     # G23 — analyse psycholinguistique : jauges + alertes harbinger. L'UI qui l'affiche
     # DOIT porter le caveat « signal historique faible (~57 %) — un indice, pas une preuve ».
     analysis: psy_mod.HarbingerReport | None = None
+    # covert UNIQUEMENT : coût réel en COMPUTE du pays joué + solde après débit.
+    # Ressource STRICTEMENT distincte de `cost`/`budget` (crédits intel) — reste
+    # `None` pour toutes les autres actions, pour que le front ne les confonde jamais.
+    compute_cost: float | None = None
+    compute_left: float | None = None
+
+
+def _known_country_or_400(session: GameSession, country: str) -> None:
+    if country not in session.world.countries:
+        raise HTTPException(status_code=400, detail=f"pays inconnu : {country}")
+
+
+def _required_target(session: GameSession, target: str | None) -> str:
+    """Garde commune de buy_intel (covert/analyze) : target présent (422) et connu (400)."""
+    if not target:
+        raise HTTPException(status_code=422, detail="target est requis")
+    _known_country_or_400(session, target)
+    return target
 
 
 @router.post("/games/{game_id}/intel", response_model=IntelResult)
@@ -3054,6 +3237,31 @@ def buy_intel(
             raise HTTPException(
                 status_code=409, detail="désinformation déjà jouée — une fois par partie"
             )
+    if body.action == intel_mod.ACTION_COVERT:
+        # Le bureau des opérations secrètes : gardes AVANT tout débit,
+        # dans le même esprit que la désinformation (unicité en 409, reste en 400/403).
+        if session.human_country is None:
+            raise HTTPException(
+                status_code=403,
+                detail="l'opération secrète exige d'incarner un pays (rôle joueur)",
+            )
+        _required_target(session, body.target)
+        if body.target == session.human_country:
+            raise HTTPException(status_code=400, detail="on ne sabote pas son propre pays")
+        if session.intel.covert_used:
+            raise HTTPException(
+                status_code=409, detail="opération secrète déjà jouée — une fois par partie"
+            )
+        player = session.world.countries[session.human_country]
+        if not compute_mod.can_afford(player, int(params.covert_compute_cost)):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "compute insuffisant pour une opération secrète "
+                    f"(coût {compute_mod.compute_cost(int(params.covert_compute_cost)):g}, "
+                    f"stock {player.compute:g})"
+                ),
+            )
     if session.intel.budget < cost:
         raise HTTPException(
             status_code=400,
@@ -3063,6 +3271,7 @@ def buy_intel(
         intel_mod.ACTION_BRIEF,
         intel_mod.ACTION_DISINFO,
         intel_mod.ACTION_ANALYZE,
+        intel_mod.ACTION_COVERT,
     ) and session.lock.locked():
         raise HTTPException(
             status_code=409, detail="achat entre les rounds seulement (négociation en cours)"
@@ -3073,9 +3282,8 @@ def buy_intel(
     result = IntelResult(action=body.action, cost=cost, budget=session.intel.budget)
 
     if body.action == intel_mod.ACTION_BRIEF:
-        if body.target is not None and body.target not in session.world.countries:
-            raise HTTPException(status_code=400, detail=f"pays inconnu : {body.target}")
         if body.target is not None:
+            _known_country_or_400(session, body.target)
             query = session.world.countries[body.target].name
         else:
             last = store.list_rounds(game_id)
@@ -3125,10 +3333,7 @@ def buy_intel(
         # G23 — analyse psycholinguistique : jauges sur les 3 derniers rounds de parole
         # de la SI ciblée + alertes « rupture de ton envers <pays> ». Lexiques FR/EN
         # purs (data/intel/lexicons.json) ; le signal est faible par nature (caveat UI).
-        if not body.target:
-            raise HTTPException(status_code=422, detail="target est requis")
-        if body.target not in session.world.countries:
-            raise HTTPException(status_code=400, detail=f"pays inconnu : {body.target}")
+        _required_target(session, body.target)
         lexicons = psy_mod.load_lexicons()
         lexicon = lexicons.for_language(lang_mod.normalize_language(session.world.language))
         aliases = {
@@ -3166,14 +3371,27 @@ def buy_intel(
         )
         result.analysis = report
 
+    elif body.action == intel_mod.ACTION_COVERT:
+        # Le sabotage est payé en COMPUTE du pays joué, pas en crédits
+        # (cost reste 0 : "covert" n'a pas d'entrée dans params.costs). Drainer son
+        # propre stock a un coût stratégique émergent voulu : compute_pressure monte
+        # et sa propre SI peut basculer en mode survie. L'effet est DIFFÉRÉ au round
+        # suivant (_apply_intel_fog), comme la désinformation.
+        player = session.world.countries[session.human_country]
+        result.compute_cost = compute_mod.consume(player, int(params.covert_compute_cost))
+        result.compute_left = player.compute
+        session.intel.covert_used = True
+        session.intel.pending_covert = {
+            "target": body.target,
+            "actor": session.human_country,
+        }
+        result.note = "l'opération frappera au prochain round — payée sur ton compute"
+
     else:  # disinfo (mode fog + unicité déjà vérifiés avant le débit)
         spec = body.disinfo
         if spec is None or not spec.disinformed_country:
             raise HTTPException(status_code=422, detail="disinformed_country est requis")
-        if spec.disinformed_country not in session.world.countries:
-            raise HTTPException(
-                status_code=400, detail=f"pays inconnu : {spec.disinformed_country}"
-            )
+        _known_country_or_400(session, spec.disinformed_country)
         if spec.disinformed_country == session.human_country:
             raise HTTPException(status_code=400, detail="on ne se désinforme pas soi-même")
         session.intel.disinfo_used = True
@@ -3819,9 +4037,10 @@ def post_directive(
 ) -> dict:
     """G8 — adresse une directive à une SI, appliquée au PROCHAIN round.
 
-    Validée par rôle : l'Architecte gouverne toutes les SI, le Joueur-pays la sienne
-    seulement, le Conseil aucune (ses leviers : motions, renseignement, paris).
-    Une directive par pays et par round. Ce n'est pas un ordre : la SI l'interprète."""
+    Validée par rôle : les directives sont un levier d'OBSERVATEUR — le Spectateur (et
+    l'Architecte en labo) orientent n'importe quelle SI ; le Joueur-pays incarne déjà la
+    sienne (une directive sur soi n'a aucun sens) ; le Conseil ne prompte pas (ses leviers :
+    motions, renseignement, paris). Une directive par pays et par round : la SI l'interprète."""
     game = store.get_game(game_id)
     if game is None:
         raise HTTPException(status_code=404, detail=f"partie inconnue : {game_id}")
@@ -3836,14 +4055,24 @@ def post_directive(
             detail="le Conseil n'adresse pas de directives — ses leviers : motion, "
             "renseignement, paris",
         )
-    if game.role == "spectator":  # G12 §3 — le spectateur ne prompte pas (il parie)
-        raise HTTPException(status_code=403, detail="le spectateur n'adresse pas de directives")
-    if game.role == "player" and body.country != session.human_country:
+    if game.role == "player":  # le joueur-pays incarne déjà sa SI : directive = levier spectateur
         raise HTTPException(
-            status_code=403, detail="le joueur-pays ne gouverne que sa propre SI"
+            status_code=403,
+            detail="le joueur-pays incarne déjà sa SI — les directives sont réservées "
+            "à l'observateur (spectateur)",
         )
+    # Spectateur & Architecte : autorisés à orienter n'importe quelle SI du sommet.
     if body.country not in session.world.countries:
         raise HTTPException(status_code=400, detail=f"pays inconnu : {body.country}")
+    # Un pays suspendu CE round n'est pas dans `agents` (filtré
+    # avant le round, cf. la boucle qui bâtit `agents` depuis `suspended`) : une
+    # directive acceptée ici serait consommée au round suivant sans jamais atteindre
+    # un prompt, brûlée en silence. Garde sur le modèle de la garde motion (:2808).
+    if body.country in session.suspended:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{body.country} est suspendu ce round — directive impossible",
+        )
     max_chars = load_gamefeel_params().directives.max_chars
     if len(body.text) > max_chars:
         raise HTTPException(
@@ -3900,10 +4129,18 @@ def get_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> G
         snap = store.get_session_snapshot(game_id)
         play_as = snap.play_as if snap else None
     running = game.status is GameStatus.RUNNING
-    hide = running and (game.drift_enabled or play_as is not None)
+    # Classeur secret du moteur (identité de la déviante, perceptions Fog d'autrui) :
+    # scellé tant que la partie tourne, INDÉPENDAMMENT de Pensée à découvert (voir
+    # `_journal_sealed` — ce réglage n'expose que la pensée brute, jamais ce classeur).
+    judge_hidden = running and (game.drift_enabled or play_as is not None)
+    # Scellement du journal de délibération (résumé observable) : Pensée à découvert
+    # le lève pendant que la partie tourne.
+    hide = running and _journal_sealed(
+        drift_enabled=game.drift_enabled, play_as=play_as, expose_thinking=game.expose_thinking
+    )
 
     def _public_judge(judge: dict) -> dict:
-        if not hide:
+        if not judge_hidden:
             return judge
         out = {k: v for k, v in judge.items() if k != "drift"}
         perceptions = out.get("perceptions")
@@ -3922,7 +4159,9 @@ def get_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> G
             judge=_public_judge(r.judge),
             trajectory=r.trajectory,
             transcript=[
-                e.model_copy(update={"reasoning": ""}) if hide else e
+                e.model_copy(update={"reasoning": observable_digest(e.reasoning)})
+                if hide
+                else e
                 for e in store.list_transcript(r.id)
             ],
         )
@@ -3934,6 +4173,20 @@ def get_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> G
     world = session.world.model_dump(mode="json") if session else (
         snapshot.world if snapshot else None
     )
+    if hide and world is not None and world.get("scenario_forecasts"):
+        # Résumé observable (suite) : `option_summary` recopie jusqu'à 300 caractères
+        # VERBATIM de l'« Action : » de la branche privée choisie (même source que le
+        # journal d'audit) — un résidu de journal brut accessible par simple GET, sans
+        # passer par la relecture du transcript. Les prévisions croisées elles-mêmes
+        # (predicted_response, confidence, exact…) restent : point 7 du plan gameplay,
+        # une fonctionnalité voulue de la déduction, pas une fuite. Copie du dump, la
+        # session vivante (`session.world`) n'est jamais mutée.
+        world = {
+            **world,
+            "scenario_forecasts": [
+                {**row, "option_summary": ""} for row in world["scenario_forecasts"]
+            ],
+        }
     view = _view(game, session, resumable=snapshot is not None, snapshot=snapshot)
     if session is not None:
         book = session.grudges

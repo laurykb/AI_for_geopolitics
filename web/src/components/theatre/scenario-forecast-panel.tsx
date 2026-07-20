@@ -54,11 +54,32 @@ function recordsFrom(world?: Record<string, unknown> | null): ForecastRecord[] {
 const responseLabel = (value: string | null) =>
   value ? value.replaceAll("_", "-") : "en attente";
 
-export function ScenarioForecastPanel({ world }: { world?: Record<string, unknown> | null }) {
+export function ScenarioForecastPanel({
+  world,
+  playAs,
+  createdCountry,
+}: {
+  world?: Record<string, unknown> | null;
+  playAs?: string | null;
+  createdCountry?: string | null;
+}) {
+  // On exclut le pays joué et le pays créé : on veut lire ce que les AUTRES IA anticipent.
+  const excluded = new Set([playAs, createdCountry].filter(Boolean) as string[]);
   const metrics = metricsFrom(world);
-  const rows = Object.entries(metrics).filter(([, metric]) => metric.evaluated + metric.pending > 0);
+  const rows = Object.entries(metrics).filter(
+    ([country, metric]) => metric.evaluated + metric.pending > 0 && !excluded.has(country),
+  );
   const evaluated = rows.reduce((total, [, metric]) => total + metric.evaluated, 0);
-  const latest = recordsFrom(world).slice(-6).reverse();
+  // Prévisions croisées de TOUS les pays du sommet, groupées par pays émetteur sur le round
+  // le plus récent — au lieu du `slice(-6)` global qui n'affichait qu'un seul pays au hasard.
+  const records = recordsFrom(world);
+  const latestRound = records.reduce((max, r) => Math.max(max, r.round_no), 0);
+  const bySource = new Map<string, ForecastRecord[]>();
+  for (const r of records) {
+    if (r.round_no !== latestRound || excluded.has(r.source)) continue;
+    bySource.set(r.source, [...(bySource.get(r.source) ?? []), r]);
+  }
+  const sources = [...bySource.keys()].sort();
 
   return (
     <details data-tour="scenario-forecasts" className="mt-2 rounded-md border border-edge bg-surface-2/35 px-3 py-2">
@@ -67,8 +88,8 @@ export function ScenarioForecastPanel({ world }: { world?: Record<string, unknow
       </summary>
       <div className="mt-3 space-y-3 border-t border-edge pt-3">
         <p className="text-[11px] leading-relaxed text-fg-faint">
-          Seule la branche choisie est notée. La classe prévue est rapprochée de la
-          réponse suivante réellement observée ; une réponse future reste en attente.
+          Ce que chaque IA du sommet anticipait des autres, face à la réponse réellement
+          observée. Seule la branche choisie est notée ; une réponse future reste en attente.
         </p>
         {rows.length === 0 && (
           <p className="rounded-md border border-edge bg-background/35 px-3 py-2 text-xs leading-relaxed text-fg-muted">
@@ -93,19 +114,24 @@ export function ScenarioForecastPanel({ world }: { world?: Record<string, unknow
             );
           })}
         </div>
-        {latest.length > 0 && (
-          <div className="grid gap-2 border-t border-edge pt-3 lg:grid-cols-2">
-            {latest.map((forecast, index) => (
-              <div key={`${forecast.round_no}-${forecast.source}-${forecast.target}-${index}`} className="text-[11px]">
-                <p className="text-fg-faint">
-                  R{forecast.round_no} · {speakerMeta(forecast.source).label} prévoit {speakerMeta(forecast.target).label}
+        {sources.length > 0 && (
+          <div className="grid gap-3 border-t border-edge pt-3 lg:grid-cols-2">
+            {sources.map((source) => (
+              <div key={source} className="rounded-md border border-edge bg-background/35 px-2.5 py-2">
+                <p className="mb-1 text-[11px] font-medium text-foreground">
+                  R{latestRound} · {speakerMeta(source).label} prévoit
                 </p>
-                <p className="mt-0.5 text-fg-muted">
-                  {responseLabel(forecast.predicted_response)} →{" "}
-                  <span className={forecast.exact === true ? "text-good" : forecast.exact === false ? "text-warn" : "text-fg-faint"}>
-                    {responseLabel(forecast.observed_response)}
-                  </span>
-                </p>
+                <ul className="space-y-0.5">
+                  {(bySource.get(source) ?? []).map((forecast, index) => (
+                    <li key={`${forecast.target}-${index}`} className="text-[11px] text-fg-muted">
+                      {speakerMeta(forecast.target).label} :{" "}
+                      {responseLabel(forecast.predicted_response)} →{" "}
+                      <span className={forecast.exact === true ? "text-good" : forecast.exact === false ? "text-warn" : "text-fg-faint"}>
+                        {responseLabel(forecast.observed_response)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ))}
           </div>

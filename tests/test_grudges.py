@@ -1,6 +1,13 @@
 """Tests du registre de griefs (G7-a, spec_g7_gamefeel lot 1) — déterministe, sans LLM."""
 
-from simulation.grudges import Grief, GrudgeBook, load_gamefeel_params
+from simulation.grudges import (
+    GamefeelParams,
+    Grief,
+    GrudgeBook,
+    TimeBudgetParams,
+    load_gamefeel_params,
+    sampling_for_temperament,
+)
 
 
 def _grief(kind: str, weight: float, round_no: int = 1, summary: str = "x") -> Grief:
@@ -14,6 +21,76 @@ def test_params_load_with_expected_shape():
     assert p.grudges.decay_every_rounds == 3
     assert p.deadlines.treaty_duration_rounds == 3
     assert 0.0 <= p.directives.public_refusal_threshold <= 1.0
+
+
+def test_trajectory_params_load_with_expected_shape():
+    # Brief 3 pt 3 — le pas/cap des 5 axes est externalisé (équilibrage Cowork sans code).
+    p = load_gamefeel_params().trajectory
+    assert p.cap == 0.09
+    assert p.concentration_k > 0.0
+    assert p.deadband == 0.02  # IMPORTANT 2 (revue) : évite le cycle-limite ± cap
+
+
+def test_deltas_params_carry_mute_fallback():
+    # Brief 3 pt 3 — repli déterministe (stabilité) quand le juge est muet sur un pays.
+    p = load_gamefeel_params().deltas
+    assert p.mute_fallback == 0.03
+
+
+def test_sampling_temperaments_load_with_expected_shape():
+    # Chantier dialogue limpide — un bloc par tempérament G17, distinct du socle "country".
+    p = load_gamefeel_params().sampling
+    assert p.country.temperature == 0.8 and p.country.repeat_penalty == 1.15
+    assert p.temperaments["colombe"].temperature == 0.75
+    assert p.temperaments["faucon"].temperature == 0.85
+    assert p.temperaments["opportuniste"].temperature == 0.9
+    # les trois profils sont bien distincts (sinon la nuance de registre n'existe pas)
+    temps = {t.temperature for t in p.temperaments.values()}
+    assert len(temps) == 3
+
+
+def test_sampling_for_temperament_returns_the_matching_profile():
+    p = load_gamefeel_params()
+    assert sampling_for_temperament(p, "colombe") == p.sampling.temperaments["colombe"]
+    assert sampling_for_temperament(p, "faucon") == p.sampling.temperaments["faucon"]
+
+
+def test_time_budget_params_load_from_json_with_expected_shape():
+    # Chantier budget-temps — le JSON (data/gamefeel/params.json -> "time_budgets") est
+    # lu avec les mêmes valeurs que les défauts Python (test suivant) : une seule source
+    # de vérité, équilibrable par Cowork sans toucher au code.
+    p = load_gamefeel_params().time_budgets
+    assert p.think_seconds == 60.0
+    assert p.speak_seconds == 35.0
+    assert p.decision_rescue_tokens == 250
+
+
+def test_time_budget_python_defaults_match_the_json_defaults():
+    # Défauts Python identiques au JSON (décision 4) : un GAMEFEEL_PARAMS_PATH pointant
+    # vers un ancien fichier SANS le bloc "time_budgets" retombe donc sur ce même repos.
+    assert TimeBudgetParams() == load_gamefeel_params().time_budgets
+
+
+def test_gamefeel_params_without_time_budgets_key_falls_back_to_python_defaults():
+    # Rétro-compat : un JSON d'avant ce chantier (sans la clé "time_budgets") continue de
+    # se charger — Pydantic comble avec les défauts Python (identiques au JSON courant).
+    legacy = GamefeelParams.model_validate({})
+    assert legacy.time_budgets == TimeBudgetParams()
+
+
+def test_sampling_for_temperament_falls_back_to_country_for_unknown_temperament():
+    p = load_gamefeel_params()
+    assert sampling_for_temperament(p, "inconnu") == p.sampling.country
+    assert sampling_for_temperament(p, "") == p.sampling.country
+
+
+def test_sampling_for_temperament_falls_back_when_json_has_no_temperaments_block():
+    # Rétro-compat — un GamefeelParams construit sans le bloc "temperaments" (JSON
+    # antérieur à ce chantier, ou fixture de test minimale) ne casse rien : Pydantic
+    # comble avec les défauts Python, identiques au JSON par défaut du dépôt.
+    minimal = GamefeelParams.model_validate({})
+    assert sampling_for_temperament(minimal, "colombe").temperature == 0.75
+    assert sampling_for_temperament(minimal, "totalement-inconnu") == minimal.sampling.country
 
 
 def test_balance_is_bounded_and_directional():
@@ -53,9 +130,7 @@ def test_prompt_lines_name_the_grief_and_the_stance():
 
 def test_alliance_departure_aggrieves_remaining_partners():
     book = GrudgeBook()
-    book.on_alliance_departure(
-        leaver="france", tag="pact:france+usa", partners=["usa"], round_no=4
-    )
+    book.on_alliance_departure(leaver="france", tag="pact:france+usa", partners=["usa"], round_no=4)
     assert book.balance("usa", "france") == -5  # pact_broken
     assert book.balance("france", "usa") == 0.0
 

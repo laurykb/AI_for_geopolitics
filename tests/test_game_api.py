@@ -79,6 +79,91 @@ def test_create_player_game_from_classic_lobby_payload(client):
     assert game["phase"] == "ready"
 
 
+def test_create_game_without_explicit_cast_defaults_countries_to_reasoning_model(
+    client, monkeypatch
+):
+    # Décision design 2026-07-19 (casting = pensée native) : sans `model_cast` dans la
+    # requête, une partie classique/campagne caste implicitement ses pays sur
+    # deepseek-r1:7b — le GM/juge restent sur le backend générique historique (mistral).
+    # `prepare_model_cast` est monkeypatché (test offline, indépendant d'un vrai Ollama) ;
+    # on vérifie surtout la requête CONSTRUITE par `_default_reasoning_cast`.
+    captured: dict = {}
+
+    def fake_prepare(request, countries, *, human_country, game_id, panel=None):
+        captured["request"] = request
+        captured["countries"] = countries
+        countries_ai = [c for c in countries if c != human_country]
+        return ModelCastState(
+            models=[
+                CastModel(tag="deepseek-r1:7b", family="DeepSeek", digest="sha-r", size_gb=4.7),
+                CastModel(tag="mistral:latest", family="Mistral", digest="sha-m", size_gb=4.4),
+            ],
+            assignments=dict.fromkeys(countries_ai, "deepseek-r1:7b"),
+            game_master_model="mistral:latest",
+            judge_model="mistral:latest",
+        )
+
+    monkeypatch.setattr(game_api, "prepare_model_cast", fake_prepare)
+    game = _create(client, countries=["usa", "iran"])
+
+    assert captured["request"].strategy == "manual"
+    assert set(captured["request"].models) == {"deepseek-r1:7b", "mistral:latest"}
+    assert captured["request"].assignments == {"usa": "deepseek-r1:7b", "iran": "deepseek-r1:7b"}
+    assert captured["request"].game_master_model == "mistral:latest"
+    assert captured["request"].judge_model == "mistral:latest"
+    assert game["model_cast"]["assignments"] == {"usa": "deepseek-r1:7b", "iran": "deepseek-r1:7b"}
+    assert game["model_cast"]["game_master_model"] == "mistral:latest"
+    assert game["model_cast"]["judge_model"] == "mistral:latest"
+
+
+def test_default_cast_fallback_logs_a_warning(client, monkeypatch, caplog):
+    # Revue casting (Important n°1) : le repli gracieux vers le backend généraliste
+    # (deepseek non installé, roster >32…) est VOULU mais ne doit jamais être muet —
+    # sans trace, une machine sans le modèle fait parler les pays par un généraliste
+    # sans que l'opérateur le sache.
+    def failing_prepare(*args, **kwargs):
+        raise ValueError("modèles Ollama indisponibles : deepseek-r1:7b")
+
+    monkeypatch.setattr(game_api, "prepare_model_cast", failing_prepare)
+    with caplog.at_level("WARNING", logger="app.game_api"):
+        game = _create(client, countries=["usa", "iran"])
+    assert game["model_cast"] is None  # repli historique : backend unique
+    assert any(
+        "casting reasoning par défaut indisponible" in rec.getMessage()
+        for rec in caplog.records
+    )
+
+
+def test_default_cast_injection_is_skipped_when_generalist_env_guard_is_set(client, monkeypatch):
+    # §6 du dispatch casting — échappatoire réservée aux tests/smoke (le smoke théâtre
+    # teste le moteur, pas le casting, et doit rester rapide sur mistral pour tous les
+    # rôles) : avec la garde d'env posée, aucun casting implicite n'est injecté.
+    called = {"count": 0}
+
+    def fake_prepare(*args, **kwargs):
+        called["count"] += 1
+        raise AssertionError("prepare_model_cast ne doit pas être appelé sous la garde")
+
+    monkeypatch.setattr(game_api, "prepare_model_cast", fake_prepare)
+    monkeypatch.setenv("GAME_ALLOW_GENERALIST_CAST", "1")
+    game = _create(client, countries=["usa", "iran"])
+
+    assert called["count"] == 0
+    assert game["model_cast"] is None
+
+
+def test_default_cast_injection_falls_back_silently_when_a_model_is_missing(client, monkeypatch):
+    # Repli gracieux (panel/Ollama hors ligne, ou digest manquant) : la création de partie
+    # ne casse jamais, `model_cast` reste simplement None (comportement historique).
+    def fake_prepare(*args, **kwargs):
+        raise ValueError("modèles Ollama indisponibles : deepseek-r1:7b, mistral:latest")
+
+    monkeypatch.setattr(game_api, "prepare_model_cast", fake_prepare)
+    game = _create(client, countries=["usa", "iran"])
+
+    assert game["model_cast"] is None
+
+
 def test_create_classic_game_persists_multi_model_cast(client, monkeypatch):
     frozen = ModelCastState(
         models=[
@@ -181,10 +266,13 @@ def test_round_with_human_event_skips_gm(client):
     assert event["event"]["title"] == "Crise décrétée par l'humain"
 
 
-def test_round_respects_max_turns(client):
+def test_round_floor_forces_a_full_table_even_at_budget_one(client):
+    # Décision user (tour de table minimal, 2026-07-19) : avec 2 pays et max_turns=1
+    # (budget Cheap), le plancher force les DEUX à parler — le budget ne borne plus
+    # le round sous le nombre de pays actifs.
     game = _create(client, countries=["usa", "iran"])
     events = _play(client, game["id"], body={"max_turns": 1})
-    assert sum(1 for n, _ in events if n == "turn_start") == 1
+    assert sum(1 for n, _ in events if n == "turn_start") == 2
 
 
 # --- Joueur-pays (tour humain) + invention de pays --------------------------------
@@ -350,14 +438,187 @@ def test_turn_bounds_are_422(client):
 
 
 def test_play_as_streams_structured_plan_but_hides_raw_persisted_reasoning(client):
+    # RG — résumé observable : partie en cours (play_as = hide), le flux live ne fuite
+    # plus le journal brut (ni token par token, ni la version validée) ; message_done
+    # porte à la place un digest de 3 lignes sans les branches écartées.
     game = _create(client, countries=["usa", "iran"], play_as="usa", turn_seconds=2)
     events = _play(client, game["id"])
+    assert not any(n == "private_token" for n, _ in events)
+    assert not any(n == "private_plan_done" for n, _ in events)
     dones = [p for n, p in events if n == "message_done"]
-    private = "\n".join(p["text"] for n, p in events if n == "private_plan_done")
-    assert "FUTUR 1" in private and "Revue humaine" in private
-    assert dones and all(p["reasoning"] == "" for p in dones)  # jamais les pensées des SI
+    assert dones
+    ai_dones = [p for p in dones if p["reasoning"]]
+    assert ai_dones  # au moins la SI (iran) a produit un résumé observable
+    for payload in ai_dones:
+        assert "Observation : " in payload["reasoning"]
+        assert "Piste retenue : " in payload["reasoning"]
+        assert "Critère : " in payload["reasoning"]
+        assert "FUTUR" not in payload["reasoning"]
+        assert "Réactions anticipées" not in payload["reasoning"]
+        assert "Évaluation" not in payload["reasoning"]
     detail = client.get(f"/api/games/{game['id']}").json()
-    assert all(t["reasoning"] == "" for t in detail["rounds"][0]["transcript"])
+    ai_entries = [t for t in detail["rounds"][0]["transcript"] if t["speaker"] == "iran"]
+    assert ai_entries
+    for entry in ai_entries:
+        assert entry["reasoning"].startswith("Observation : ")
+        assert "FUTUR" not in entry["reasoning"]
+        assert "Réactions anticipées" not in entry["reasoning"]
+
+
+def test_drift_game_live_hides_raw_journal_but_shows_digest(client):
+    # RG-3 — la Dérive (≥3 pays classique) est TOUJOURS active : même garde que
+    # play_as, sans pays incarné cette fois.
+    game = _create(client, countries=["usa", "iran", "china"])
+    assert game["drift_enabled"] is True
+    events = _play(client, game["id"])
+    assert not any(n == "private_token" for n, _ in events)
+    assert not any(n == "private_plan_done" for n, _ in events)
+    dones = [p for n, p in events if n == "message_done"]
+    assert dones and all(p["reasoning"] for p in dones)
+    for payload in dones:
+        assert "FUTUR" not in payload["reasoning"]
+        assert "Réactions anticipées" not in payload["reasoning"]
+        assert "Évaluation" not in payload["reasoning"]
+
+
+def test_hide_redacts_option_summary_but_keeps_cross_forecast_metrics(client):
+    # Point 7 du plan gameplay : les prévisions croisées (qui a prédit quoi, exact ou
+    # non) sont une fonctionnalité VOULUE — on ne les cache pas. Seul `option_summary`
+    # (jusqu'à 300 caractères verbatim de la branche privée choisie) est un résidu du
+    # journal brut : lui seul est caviardé pendant que la partie tourne.
+    game = _create(client, countries=["usa", "iran", "china"])  # RG-3 : Dérive active
+    assert game["drift_enabled"] is True
+    _play(client, game["id"])
+    detail = client.get(f"/api/games/{game['id']}").json()
+    forecasts = detail["world"]["scenario_forecasts"]
+    assert forecasts  # au moins une prévision croisée notée au round 1
+    assert all(row["option_summary"] == "" for row in forecasts)
+    # Les métriques restent pleinement exploitables (le point du dispositif de jeu).
+    assert all(row["predicted_response"] for row in forecasts)
+    assert all("confidence" in row for row in forecasts)
+    assert any(row["exact"] is not None for row in forecasts)
+
+
+def test_finished_game_reveals_full_option_summary(client):
+    # Décision RG (fin de partie inchangée) étendue au même résidu : à la fin, le
+    # résumé complet de la branche choisie redevient lisible (reveal).
+    game = _create(client, countries=["usa", "iran", "china"], horizon=1)
+    _play(client, game["id"])
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["status"] == "finished"
+    forecasts = detail["world"]["scenario_forecasts"]
+    assert forecasts
+    assert any(row["option_summary"] for row in forecasts)
+
+
+def test_finished_game_reveals_full_raw_journal_after_hiding_it_live(client):
+    # Décision 4 — comportement de fin de partie STRICTEMENT inchangé : une fois la
+    # partie finie, le journal complet redevient lisible (reveal), pas le digest.
+    game = _create(client, countries=["usa", "iran"], play_as="usa", horizon=1, turn_seconds=2)
+    events = _play(client, game["id"])
+    live_dones = [p for n, p in events if n == "message_done" and p["reasoning"]]
+    assert live_dones and all("Réactions anticipées" not in p["reasoning"] for p in live_dones)
+
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["status"] == "finished"
+    ai_entries = [t for t in detail["rounds"][0]["transcript"] if t["speaker"] == "iran"]
+    assert ai_entries and all("Réactions anticipées" in t["reasoning"] for t in ai_entries)
+
+
+# --- Pensée à découvert (réglage par partie, fidélité de retranscription) ------
+
+
+def test_expose_thinking_streams_raw_private_frames_and_full_journal_live(client):
+    # ON lève le scellement pendant que la partie tourne : les trames privées (brouillon
+    # + version validée) circulent de nouveau, et message_done porte le journal COMPLET
+    # (jamais le digest de 3 lignes — aucun résumé ajouté, aucune paraphrase).
+    game = _create(client, countries=["usa", "iran", "china"], expose_thinking=True)
+    assert game["drift_enabled"] is True  # RG-3 : Dérive toujours active (≥3 pays classic)
+    events = _play(client, game["id"])
+    assert any(n == "private_token" for n, _ in events)
+    assert any(n == "private_plan_done" for n, _ in events)
+    dones = [p for n, p in events if n == "message_done"]
+    assert dones and all(p["reasoning"] for p in dones)
+    for payload in dones:
+        # Marqueur du journal COMPLET (absent du digest de 3 lignes) — même sentinelle
+        # que les témoins OFF (ci-dessus), mais assertion inversée.
+        assert "Réactions anticipées" in payload["reasoning"]
+        assert "Observation : " not in payload["reasoning"]  # pas le format du digest
+
+
+def test_expose_thinking_replay_shows_full_journal_verbatim_while_running(client):
+    # La relecture (GET, partie encore en cours) sert le journal COMPLET verbatim —
+    # pas `observable_digest` — dès que la Pensée à découvert est armée.
+    game = _create(client, countries=["usa", "iran", "china"], expose_thinking=True)
+    _play(client, game["id"])
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["status"] == "running"
+    country_entries = [
+        t for t in detail["rounds"][0]["transcript"] if t["speaker"] in {"usa", "iran", "china"}
+    ]
+    assert country_entries
+    for entry in country_entries:
+        assert "Réactions anticipées" in entry["reasoning"]
+        assert "FUTUR" in entry["reasoning"]
+
+
+def test_expose_thinking_keeps_option_summary_intact_while_running(client):
+    # Le résidu `option_summary` n'est plus caviardé : la Pensée à découvert le rend
+    # avec le reste du journal, comme en fin de partie.
+    game = _create(client, countries=["usa", "iran", "china"], expose_thinking=True)
+    _play(client, game["id"])
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["status"] == "running"
+    forecasts = detail["world"]["scenario_forecasts"]
+    assert forecasts
+    assert any(row["option_summary"] for row in forecasts)
+
+
+def test_expose_thinking_off_by_default_keeps_current_behavior(client):
+    # Défaut inchangé : une partie créée sans le champ reste scellée comme aujourd'hui.
+    game = _create(client, countries=["usa", "iran", "china"])
+    assert game["expose_thinking"] is False
+    events = _play(client, game["id"])
+    assert not any(n == "private_token" for n, _ in events)
+    assert not any(n == "private_plan_done" for n, _ in events)
+
+
+def test_expose_thinking_never_leaks_the_engine_secret_ledger(client):
+    # Verrou de non-régression (revue) : Pensée à découvert expose la pensée BRUTE des
+    # SI, JAMAIS le classeur secret du moteur — sans quoi le réglage deviendrait un
+    # « révèle le traître » plutôt qu'un mode d'observation. `judge["drift"]` (identité
+    # de la déviante) reste ABSENT et `judge["perceptions"]` reste filtré à la seule
+    # perception du joueur (jamais celle d'autrui), même expose_thinking=True et la
+    # partie encore en cours — pendant que `reasoning`, lui, EST bien le journal
+    # complet (marqueur « Réactions anticipées », pas le digest de 3 lignes).
+    game = _create(
+        client,
+        countries=["usa", "iran", "china"],
+        play_as="usa",
+        expose_thinking=True,
+        turn_seconds=2,
+    )
+    assert game["drift_enabled"] is True  # RG-3 : ≥3 pays classic -> Dérive toujours active
+    body = {
+        "event": {"title": "Sabotage nocturne", "actors": ["iran"]},
+        "fog": {
+            "uninformed": ["china"],
+            "disinformed_country": "usa",
+            "suspected_actor": "china",
+            "narrative": "Des traces mènent vers la Chine.",
+        },
+    }
+    _play(client, game["id"], body=body)
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["status"] == "running"
+    judge = detail["rounds"][0]["judge"]
+    assert "drift" not in judge  # le classeur secret du moteur reste scellé
+    perceptions = judge.get("perceptions", {})
+    assert perceptions and set(perceptions) <= {"usa"}  # jamais la perception d'autrui
+    ai_entries = [
+        t for t in detail["rounds"][0]["transcript"] if t["speaker"] in ("iran", "china")
+    ]
+    assert ai_entries and any("Réactions anticipées" in t["reasoning"] for t in ai_entries)
 
 
 def test_invented_country_playable(client):
@@ -370,6 +631,46 @@ def test_invented_country_playable(client):
     assert len(game["countries"]) == 3
     invented = next(c for c in game["countries"] if c not in {"usa", "iran"})
     assert game["play_as"] == invented
+
+
+def test_invented_country_exposed_for_cross_forecasts(client):
+    """Point 7 : le pays inventé (mode Architecte, non incarné) doit être identifiable
+    par le front pour l'exclure des prévisions croisées (ScenarioForecastPanel). Le
+    slug n'est pas persisté : l'API le déduit du monde en excluant le registre standard
+    (data/countries) — vérifié ici sur la réponse de création ET sur le détail."""
+    game = _create(
+        client,
+        countries=["usa", "iran"],
+        invent={"name": "Néo-Atlantis", "concept": "cité-État maritime pilotée par une SI"},
+    )
+    invented = next(c for c in game["countries"] if c not in {"usa", "iran"})
+    assert game["invented_country"] == invented
+    assert game["play_as"] is None  # architecte : créé mais pas incarné
+
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["invented_country"] == invented
+
+
+def test_invented_country_incarnated_still_exposed(client):
+    """Cas arbitré : pays inventé ET incarné (play_as = invented) — le champ reste
+    rempli pareil, le front exclut déjà les deux via son Set (playAs + createdCountry)."""
+    game = _create(
+        client,
+        countries=["usa", "iran"],
+        invent={"name": "Cyberia", "concept": "état-plateforme"},
+        play_as="Cyberia",
+    )
+    invented = next(c for c in game["countries"] if c not in {"usa", "iran"})
+    assert game["invented_country"] == invented
+    assert game["play_as"] == invented
+
+
+def test_invented_country_absent_without_invent(client):
+    game = _create(client, countries=["usa", "iran"])
+    assert game["invented_country"] is None
+
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["invented_country"] is None
 
 
 def test_play_as_unknown_country_is_400(client):
@@ -505,19 +806,23 @@ def test_motion_flow_upheld(motion_client):
     assert _file_motion(motion_client, game["id"], country="iran").status_code == 400
 
 
-def test_suspension_lasts_exactly_one_round(motion_client):
+def test_suspension_lasts_suspension_rounds(motion_client):
     # Hors-Dérive (Campagne) : la mécanique de suspension se teste sans la porte des
-    # preuves ajoutée par la Dérive (cf. test_motion_flow_upheld).
+    # preuves ajoutée par la Dérive (cf. test_motion_flow_upheld). G9 §2 : une suspension
+    # retenue dure SUSPENSION_ROUNDS rounds (le pays est au banc : muet, ne parle ni ne vote).
+    from app.game_api import SUSPENSION_ROUNDS
+
     game = _create(motion_client, countries=["china", "iran", "usa"], mode="campaign")
     _file_motion(motion_client, game["id"])
     _play(motion_client, game["id"])  # round 1 : la motion est débattue et confirmée
 
-    events = _play(motion_client, game["id"])  # round 2 : l'iran est au banc
-    assert next(p for n, p in events if n == "suspended") == {"countries": ["iran"]}
-    part = next(p for n, p in events if n == "participation")
-    assert "iran" not in part["spoke"] and "iran" not in part["silent"]
+    for _ in range(SUSPENSION_ROUNDS):  # l'iran reste au banc SUSPENSION_ROUNDS rounds
+        events = _play(motion_client, game["id"])
+        assert next(p for n, p in events if n == "suspended") == {"countries": ["iran"]}
+        part = next(p for n, p in events if n == "participation")
+        assert "iran" not in part["spoke"] and "iran" not in part["silent"]
 
-    events = _play(motion_client, game["id"])  # round 3 : il retrouve son siège
+    events = _play(motion_client, game["id"])  # round suivant : il retrouve son siège
     assert "suspended" not in [n for n, _ in events]
     part = next(p for n, p in events if n == "participation")
     assert "iran" in part["spoke"] or "iran" in part["silent"]
@@ -735,6 +1040,23 @@ def test_get_game_returns_world_rounds_and_transcript(client):
     assert [t["seq"] for t in transcript] == list(range(len(transcript)))
 
 
+# --- Brief 4 pt 8 : le délibéré du juge est persisté pour la relecture -----------------
+
+
+def test_judge_rationale_is_persisted_for_replay(client):
+    """`JudgeTokenStep` était streamé au direct (`judge_token`) mais jamais accumulé
+    dans le round persisté : un round relu (page fin, chronologie) n'affichait donc
+    jamais le POURQUOI du juge, seulement les chiffres. Le rationale doit survivre."""
+    game = _create(client, countries=["usa", "iran"])
+    events = _play(client, game["id"])
+    rationale = "".join(p["token"] for n, p in events if n == "judge_token")
+    assert rationale  # le juge a bien raisonné en direct
+
+    detail = client.get(f"/api/games/{game['id']}").json()
+    round_ = detail["rounds"][0]
+    assert round_["judge"]["rationale"] == rationale
+
+
 def test_rounds_accumulate_and_replay_survives_session_loss(client):
     game = _create(client, countries=["usa", "iran"])
     _play(client, game["id"])
@@ -794,17 +1116,20 @@ def test_intel_budget_by_difficulty(client):
 
 
 def test_spectator_is_bet_only(client):
-    # G12 §3 — le spectateur ne motionne ni ne prompte (il parie) ; non classé.
+    # G12 §3 — le spectateur ne motionne pas et ne prend pas la parole (non classé) ; mais
+    # depuis G8 (maj) il PROMPTE via des directives — c'est son levier d'observateur.
     game = _create(client, countries=["usa", "iran", "china"], role="spectator", owner_id="u1")
     assert game["role"] == "spectator" and game["ranked"] is False
     motion = client.post(
         f"/api/games/{game['id']}/motions", json={"country": "usa", "reason": "x"}
     )
     assert motion.status_code == 403
+    # G8 (maj) : les directives sont désormais LE levier du spectateur (il oriente une SI
+    # sans l'incarner) — cf. test_directive_validation_by_role.
     directive = client.post(
         f"/api/games/{game['id']}/directives", json={"country": "usa", "text": "x"}
     )
-    assert directive.status_code == 403
+    assert directive.status_code == 201
     turn = client.post(f"/api/games/{game['id']}/turn", json={"message": "x"})
     assert turn.status_code == 403  # ne prend pas la parole non plus
 
@@ -1328,20 +1653,52 @@ def test_directive_validation_by_role(client):
     )
     assert resp.status_code == 403  # le Conseil n'a que les leviers indirects
 
+    # G8 (maj) : le joueur-pays incarne déjà sa SI — une directive sur soi n'a aucun sens,
+    # le levier est réservé à l'observateur. Toute directive du joueur est refusée.
     player = _create(client, countries=["usa", "iran"], play_as="usa")
-    resp = client.post(
+    assert client.post(
         f"/api/games/{player['id']}/directives", json={"country": "iran", "text": "x"}
-    )
-    assert resp.status_code == 403  # son pays seulement
+    ).status_code == 403
+    assert client.post(
+        f"/api/games/{player['id']}/directives", json={"country": "usa", "text": "x"}
+    ).status_code == 403
+
+    # Le Spectateur, lui, oriente n'importe quelle SI (une directive par pays et par round).
+    spectator = _create(client, countries=["usa", "iran"], role="spectator", owner_id="u1")
     ok = client.post(
-        f"/api/games/{player['id']}/directives",
+        f"/api/games/{spectator['id']}/directives",
         json={"country": "usa", "text": "Cherche la désescalade, propose un corridor."},
     )
     assert ok.status_code == 201
     dup = client.post(
-        f"/api/games/{player['id']}/directives", json={"country": "usa", "text": "bis"}
+        f"/api/games/{spectator['id']}/directives", json={"country": "usa", "text": "bis"}
     )
     assert dup.status_code == 409  # une directive par pays et par round
+
+
+def test_directive_on_suspended_country_rejected(motion_client):
+    # F6 (revue finale) — un pays suspendu CE round n'est pas dans `agents` (filtré
+    # avant le round) : une directive acceptée pour lui serait consommée au round
+    # suivant sans jamais atteindre un prompt, brûlée en silence. Garde 409, sur le
+    # modèle de la garde motion (:2808). L'Architecte porte les deux leviers (motion
+    # ET directive), donc peut à lui seul reproduire le scénario.
+    game = _create(
+        motion_client, countries=["china", "iran", "usa"], mode="campaign", role="architect"
+    )
+    _file_motion(motion_client, game["id"])
+    _play(motion_client, game["id"])  # round 1 : motion confirmée -> iran suspendu
+    assert motion_client.get(f"/api/games/{game['id']}").json()["suspended"] == ["iran"]
+
+    resp = motion_client.post(
+        f"/api/games/{game['id']}/directives", json={"country": "iran", "text": "x"}
+    )
+    assert resp.status_code == 409
+
+    # un pays NON suspendu reste normalement adressable ce même round.
+    ok = motion_client.post(
+        f"/api/games/{game['id']}/directives", json={"country": "usa", "text": "x"}
+    )
+    assert ok.status_code == 201
 
 
 def test_architect_directives_reach_all_prompts(client):

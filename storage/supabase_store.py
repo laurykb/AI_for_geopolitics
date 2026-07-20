@@ -71,7 +71,8 @@ class SupabaseGameStore:
         self._db.update("games", {"id": game_id}, {"owner_id": owner_id})
 
     def delete_game(self, game_id: str) -> None:
-        """G14 §3 — purge complète d'une partie (rounds, transcripts, prompts, snapshot)."""
+        """G14 §3 — purge complète d'une partie (rounds, transcripts, prompts, snapshot,
+        scores de campagne, score du défi du jour G16). Parité D3 avec le store SQLite."""
         rounds = self._db.select("rounds", {"game_id": game_id}, columns="id")
         for r in rounds:
             self._db.delete("transcripts", {"round_id": r["id"]})
@@ -79,6 +80,7 @@ class SupabaseGameStore:
         self._db.delete("rounds", {"game_id": game_id})
         self._db.delete("game_sessions", {"game_id": game_id})
         self._db.delete("campaign_scores", {"game_id": game_id})
+        self._db.delete("daily_scores", {"game_id": game_id})
         self._db.delete("games", {"id": game_id})
 
     # --- rounds ----------------------------------------------------------------
@@ -300,6 +302,7 @@ def _game_row(game: GameRecord) -> dict:
         "language": game.language,
         "fog": game.fog,
         "escalation": game.escalation,
+        "expose_thinking": game.expose_thinking,
     }
 
 
@@ -331,6 +334,7 @@ def _game(row: dict) -> GameRecord:
         drift_enabled=flags.drift,
         result=row.get("result_json"),
         language=row.get("language") or "fr",
+        expose_thinking=bool(row.get("expose_thinking", False)),
     )
 
 

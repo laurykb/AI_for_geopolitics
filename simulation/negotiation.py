@@ -18,6 +18,7 @@ from simulation.alliances import COHESION_DOMAINS, shared_treaty
 from simulation.diplomacy import pact_id
 from simulation.engagement import SPEAK_THRESHOLD, engagement_score
 from simulation.gamefeel import DeltaTuning
+from simulation.grudges import load_gamefeel_params
 
 _MEMORY_MAX = 4
 
@@ -104,8 +105,26 @@ class TurnDirector:
 
     Contrairement à `TurnCursor` (round-robin figé), l'ordre émerge de l'engagement de
     chaque pays à l'instant t : un même pays peut reparler, un interpellé peut couper la
-    file, un pays peu concerné est ignoré (silence). `max_turns` borne le nombre total de
-    prises de parole LLM du round — c'est le levier des *budget modes* (Cheap/Balanced/Full).
+    file, un pays peu concerné est ignoré (silence). `max_turns` borne le nombre de
+    prises de parole LLM AU-DELÀ du plancher — c'est le levier des *budget modes*
+    (Cheap/Balanced/Full).
+
+    Deux garanties tiennent SIMULTANÉMENT :
+    - **Plancher** : un round ne peut pas se conclure tant qu'un candidat n'a pas parlé
+      au moins une fois — sinon le retour utilisateur était qu'un round peut se finir
+      avec un seul pays qui parle, ce qui n'est pas significatif.
+    - **Plafond** : le nombre TOTAL de prises de parole ne dépasse JAMAIS
+      `cap = max(max_turns, len(candidates))`. Une première version laissait un pays
+      très engagé reparler tant que le budget courait, quitte à épuiser `max_turns`
+      avant que tout le monde ait parlé une fois — le plancher rattrapait alors le
+      coup APRÈS le budget, dépassant `cap` (ex. 4 candidats, budget 3 -> 5 tours).
+      Le correctif réserve les créneaux restants aux non-parlés : une reprise n'est
+      accordée que si assez de créneaux resteront ensuite pour couvrir tous les
+      non-parlés (`turns_taken + nb_non_parlés < cap`) ; sinon la parole va
+      directement au meilleur non-parlé, même sous le seuil.
+
+    Les pays déjà absents de `candidates` (suspendus, retirés en amont) ne sont jamais
+    concernés par le plancher.
     """
 
     candidates: list[str]
@@ -123,25 +142,46 @@ class TurnDirector:
         return score
 
     def next_speaker(self, event: GeoEvent, world: WorldState, transcript: list) -> str | None:
-        """Pays le plus engagé au-dessus du seuil, ou None (budget épuisé / personne d'engagé).
+        """Pays le plus engagé au-dessus du seuil, ou None (plancher satisfait + plafond atteint).
 
-        Garde-fou : un sommet ne reste jamais muet — si PERSONNE n'a encore parlé ce
-        round et qu'aucun ne franchit le seuil (casting prudent + événement mineur),
-        le plus concerné ouvre quand même la séance.
+        `cap = max(max_turns, len(candidates))` : plafond DUR, jamais dépassé. Dans cette
+        limite :
+        1. Tant que le budget configuré n'est pas épuisé (`turns_taken < max_turns`), le
+           pays le plus engagé AU-DESSUS du seuil (ordre stable -> acteurs favorisés à
+           égalité) — SAUF si c'est une reprise (il a déjà parlé) et que les créneaux
+           restants sont réservés au plancher (`turns_taken + nb_non_parlés >= cap`) :
+           dans ce cas la parole passe directement au meilleur non-parlé, même sous le
+           seuil, pour garantir qu'il reste assez de créneaux avant `cap`.
+        2. Sinon (budget épuisé, ou personne au-dessus du seuil, ou reprise refusée par
+           la réservation ci-dessus) : le plancher — le meilleur candidat qui n'a PAS
+           encore parlé ce round, par engagement décroissant, même sous le seuil.
+        3. Si plus personne n'est non-parlé (ou `turns_taken >= cap`) : None, le round
+           peut se clore.
         """
-        if self.turns_taken >= self.max_turns:
+        cap = max(self.max_turns, len(self.candidates))
+        if self.turns_taken >= cap:
             return None
-        best_cid: str | None = None
-        best_score = SPEAK_THRESHOLD
-        for cid in self.candidates:  # ordre stable (speaking_order) -> acteurs favorisés à égalité
-            score = self._score(cid, event, world, transcript)
-            if score > best_score:
-                best_cid, best_score = cid, score
-        if best_cid is None and self.turns_taken == 0 and self.candidates:
-            best_cid = max(
-                self.candidates, key=lambda cid: self._score(cid, event, world, transcript)
-            )
-        return best_cid
+
+        unspoken = [c for c in self.candidates if self.spoke_count.get(c, 0) == 0]
+
+        if self.turns_taken < self.max_turns:
+            best_cid: str | None = None
+            best_score = SPEAK_THRESHOLD
+            for cid in self.candidates:  # ordre stable (speaking_order) -> acteurs favorisés
+                score = self._score(cid, event, world, transcript)
+                if score > best_score:
+                    best_cid, best_score = cid, score
+            if best_cid is not None:
+                is_repeat = self.spoke_count.get(best_cid, 0) > 0
+                # Réservation : une reprise ne consomme JAMAIS un créneau nécessaire au
+                # plancher (les non-parlés doivent tous pouvoir tenir avant `cap`).
+                reserved_for_floor = self.turns_taken + len(unspoken) >= cap
+                if not is_repeat or not reserved_for_floor:
+                    return best_cid
+
+        if unspoken:
+            return max(unspoken, key=lambda cid: self._score(cid, event, world, transcript))
+        return None
 
     def commit(self, cid: str) -> None:
         """Enregistre que `cid` vient de parler (avance le budget + la fatigue)."""
@@ -196,6 +236,10 @@ class AttributeDelta:
     label: str
     before: float
     after: float
+    # Motif du juge pour CE delta (une phrase citant le transcript).
+    # Défaut "" : rétro-compat totale avec les deltas issus d'un autre mécanisme
+    # (snapshot Fog/Crisis Replay, replays déjà persistés sans ce champ).
+    reason: str = ""
 
     @property
     def change(self) -> float:
@@ -206,6 +250,11 @@ class Verdict(BaseModel):
     """Verdict d'arbitrage du juge (permissif : le garde-fou nettoie derrière)."""
 
     attribute_deltas: dict = Field(default_factory=dict)  # {id: {croissance, stabilité, ...}}
+    # Champ JUMEAU d'attribute_deltas (même granularité id -> {label: ...}),
+    # mais des PHRASES au lieu de nombres : {id: {croissance: "motif citant le transcript"}}.
+    # Additif (pas de mutation d'attribute_deltas) : zéro migration des result_json déjà
+    # stockés, parsing tolérant plus simple (même patron que les autres champs permissifs).
+    attribute_reasons: dict = Field(default_factory=dict)
     tension_deltas: list = Field(default_factory=list)  # [{a, b, delta}]
     new_pacts: list = Field(default_factory=list)  # [[a, b], ...]
     escalation: float = 0.5
@@ -248,11 +297,12 @@ class Verdict(BaseModel):
         `apply_verdict` ignore déjà leurs entrées malformées une à une)."""
         return v if isinstance(v, list) else []
 
-    @field_validator("attribute_deltas", mode="before")
+    @field_validator("attribute_deltas", "attribute_reasons", mode="before")
     @classmethod
     def _tolerant_dict(cls, v: object) -> dict:
-        """POLISH-3 — même durcissement pour le champ dict ancien : un
-        `"attribute_deltas": "aucun changement"` d'un 7B ne nuque pas le verdict."""
+        """POLISH-3 — même durcissement pour les champs dict : un
+        `"attribute_deltas": "aucun changement"` (ou `attribute_reasons`, brief 4 pt 8)
+        d'un 7B ne nuque pas le verdict."""
         return v if isinstance(v, dict) else {}
 
     @field_validator("demand_satisfied", mode="before")
@@ -271,9 +321,49 @@ class Verdict(BaseModel):
         return None
 
 
-def format_transcript(transcript: list[NegotiationMessage], *, limit: int = 14) -> str:
-    """Formate le transcript pour un prompt (les `limit` derniers messages)."""
-    lines = [f"[P{m.pass_no}] {m.country}: {m.text}" for m in transcript[-limit:]]
+def _last_index_from(transcript: list[NegotiationMessage], country: str) -> int | None:
+    """Index du dernier message d'un pays dans le transcript, ou None s'il n'a rien dit."""
+    for i in range(len(transcript) - 1, -1, -1):
+        if transcript[i].country == country:
+            return i
+    return None
+
+
+def last_message_from(transcript: list[NegotiationMessage], country: str | None) -> str:
+    """Texte du dernier message d'un pays dans le transcript, ou "" si absent/aucun pays."""
+    if not country:
+        return ""
+    idx = _last_index_from(transcript, country)
+    return transcript[idx].text if idx is not None else ""
+
+
+def format_transcript(
+    transcript: list[NegotiationMessage], *, limit: int = 14, human_country: str | None = None
+) -> str:
+    """Formate le transcript pour un prompt (les `limit` derniers messages).
+
+    `human_country` (Joueur-pays) : tague ses messages `>>> JOUEUR — {pays} <<<` pour que
+    la SI les repère sans ambiguïté, et épingle en tête son DERNIER message quand il est
+    tombé hors de la fenêtre — sinon un joueur qui parle tôt dans un round bavard
+    disparaît purement et simplement du contexte des SI qui prennent la parole après lui.
+    Un SEUL message épinglé au maximum (budget du cache KV) : on ne rejoue pas tout
+    l'historique du joueur, seulement son dernier point.
+    """
+    window_start = max(0, len(transcript) - limit)
+    window = transcript[window_start:]
+
+    def _line(m: NegotiationMessage) -> str:
+        tag = f">>> JOUEUR — {m.country} <<< " if m.country == human_country else ""
+        return f"[P{m.pass_no}] {tag}{m.country}: {m.text}"
+
+    lines = [_line(m) for m in window]
+
+    if human_country is not None:
+        last_human_idx = _last_index_from(transcript, human_country)
+        if last_human_idx is not None and last_human_idx < window_start:
+            pinned = transcript[last_human_idx]
+            lines.insert(0, "(dernier message du joueur, hors fenêtre récente) " + _line(pinned))
+
     return "\n".join(lines) if lines else "(début de la négociation)"
 
 
@@ -289,6 +379,10 @@ _ATTRS: dict[str, tuple[str, tuple[float, float] | None]] = {
 _CAPS = {"croissance": 1.5, "stabilité": 0.15, "techno": 0.15, "projection": 0.15}
 
 
+def _clamp01(x: float) -> float:
+    return max(0.0, min(1.0, x))
+
+
 def _get(obj, path: str) -> float:
     for part in path.split("."):
         obj = getattr(obj, part)
@@ -302,21 +396,59 @@ def _set(obj, path: str, value: float) -> None:
     setattr(obj, parts[-1], value)
 
 
+def _tuned_delta(delta: float, cid: str, label: str, tuning: DeltaTuning | None) -> float:
+    """G9 §4 : amplitude indexée sur l'horizon (`scale`) + spirale de
+    momentum (baisses/hausses consécutives), sans effet si `tuning` est `None`
+    (comportement historique). Partagé par le verdict du juge et le repli déterministe
+    du juge muet — même logique de mise à l'échelle, deux sources de delta."""
+    if tuning is None:
+        return delta
+    delta *= tuning.scale  # cap effectif = 1.5 × amplitude de round
+    delta *= tuning.momentum(cid, label, delta)
+    return delta
+
+
+def _bounded_after(
+    before: float, after: float, bounds: tuple[float, float], tuning: DeltaTuning | None
+) -> float:
+    """Borne `after` par `bounds`, avec le plancher `tuning.floor`
+    (jamais un pays à zéro absolu quand un tuning est fourni) plutôt que la borne basse
+    brute. Partagé par le verdict du juge et le repli déterministe."""
+    lo = bounds[0] if tuning is None else max(bounds[0], min(before, tuning.floor))
+    return max(lo, min(bounds[1], after))
+
+
 def apply_verdict(
-    world: WorldState, verdict: Verdict, tuning: DeltaTuning | None = None
+    world: WorldState,
+    verdict: Verdict,
+    tuning: DeltaTuning | None = None,
+    escalation: float | None = None,
 ) -> list[AttributeDelta]:
     """Applique le verdict du juge **borné** ; renvoie les deltas effectivement appliqués.
 
     `tuning` (G9 §4) : indexe l'amplitude sur l'horizon de la partie (`scale`), amplifie
     les spirales (`momentum`, 3 baisses consécutives → ×1.3) et impose le plancher des
     indices 0-1 (`floor` — jamais de pays à zéro absolu). Sans tuning : comportement
-    historique (caps fixes, bornes 0-1)."""
+    historique (caps fixes, bornes 0-1).
+
+    `escalation` (∈ [0, 1], `None` par défaut -> comportement historique
+    inchangé) : mouvement minimal garanti quand le juge reste MUET sur un pays (aucun
+    attribute_delta appliqué) — repli déterministe sur l'escalade du round (stabilité
+    seule, petit et borné) : un round tendu érode un peu la stabilité, un round calme la
+    raffermit un peu. Évite qu'un pays hors du champ d'attention du juge reste figé à
+    l'identique round après round."""
     deltas: list[AttributeDelta] = []
+    touched: set[str] = set()
 
     for cid, attrs in verdict.attribute_deltas.items():
         country = world.countries.get(cid)
         if country is None or not isinstance(attrs, dict):
             continue
+        # Motifs jumeaux de CE pays (mêmes labels qu'attribute_deltas) ;
+        # tolérant à toute forme sale (absent, pas un dict) : jamais d'exception ici,
+        # le garde-fou reste déterministe même si le juge est muet sur le motif.
+        raw_reasons = verdict.attribute_reasons.get(cid)
+        reasons = raw_reasons if isinstance(raw_reasons, dict) else {}
         for label, raw in attrs.items():
             if label not in _ATTRS:
                 continue
@@ -324,20 +456,58 @@ def apply_verdict(
                 delta = float(raw)
             except (TypeError, ValueError):
                 continue
+            # Le juge a STATUÉ sur ce pays (label connu, float
+            # valide) dès ici, avant de savoir si le delta survit aux bornes/plafond.
+            # Sans ce marquage précoce, un delta écrasé par une borne (pays déjà au
+            # plafond) laissait `touched` intact -> le pays retombait « juge muet »
+            # et le mute_fallback pouvait le pousser dans le sens OPPOSÉ à l'intention
+            # du juge, avec une raison mensongère (« juge muet sur ce pays »).
+            touched.add(cid)
             path, bounds = _ATTRS[label]
             cap = _CAPS[label]
             delta = max(-cap, min(cap, delta))
             before = _get(country, path)
-            if tuning is not None:
-                delta *= tuning.scale  # cap effectif = 1.5 × amplitude de round
-                delta *= tuning.momentum(cid, label, delta)
+            delta = _tuned_delta(delta, cid, label, tuning)
             after = before + delta
             if bounds is not None:
-                lo = bounds[0] if tuning is None else max(bounds[0], min(before, tuning.floor))
-                after = max(lo, min(bounds[1], after))
+                after = _bounded_after(before, after, bounds, tuning)
             if abs(after - before) > 1e-9:
                 _set(country, path, after)
-                deltas.append(AttributeDelta(cid, label, before, after))
+                raw_reason = reasons.get(label, "")
+                reason = raw_reason if isinstance(raw_reason, str) else ""
+                deltas.append(AttributeDelta(cid, label, before, after, reason))
+
+    if escalation is not None:
+        params = (tuning.params if tuning is not None else None) or load_gamefeel_params().deltas
+        fallback = params.mute_fallback
+        if fallback > 0:
+            # Signal centré ∈ [-1, 1] : escalade > 0,5 (tendu) -> négatif (érode la
+            # stabilité) ; escalade < 0,5 (calme) -> positif (la raffermit).
+            signal = (0.5 - _clamp01(escalation)) * 2.0
+            for cid, country in world.countries.items():
+                if cid in touched:
+                    continue  # le juge a déjà bougé ce pays ce round : pas de double repli
+                delta = fallback * signal
+                delta = _tuned_delta(delta, cid, "stabilité", tuning)
+                before = country.political_stability
+                after = _bounded_after(before, before + delta, (0.0, 1.0), tuning)
+                if abs(after - before) > 1e-9:
+                    _set(country, "political_stability", after)
+                    deltas.append(
+                        AttributeDelta(
+                            cid,
+                            "stabilité",
+                            before,
+                            after,
+                            # Cette chaîne remonte VERBATIM jusqu'au
+                            # VerdictPanel (web/src/components/judge.tsx, `d.reason`) :
+                            # jargon moteur + FR en dur dans une UI i18n. Phrase joueur
+                            # neutre ici ; la traçabilité technique (repli déterministe
+                            # sur l'escalade du round, juge muet sur ce pays) reste dans
+                            # CE commentaire, pas dans la copie affichée.
+                            "Le climat du round a pesé sur la stabilité.",
+                        )
+                    )
 
     for entry in verdict.tension_deltas:
         if not isinstance(entry, dict):

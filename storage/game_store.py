@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS games (
     owner_id TEXT, ranked INTEGER NOT NULL DEFAULT 0,
     difficulty TEXT NOT NULL DEFAULT 'intermediate', drift_enabled INTEGER NOT NULL DEFAULT 1,
     result_json TEXT, language TEXT NOT NULL DEFAULT 'fr',
-    fog INTEGER NOT NULL DEFAULT 0, escalation INTEGER NOT NULL DEFAULT 0
+    fog INTEGER NOT NULL DEFAULT 0, escalation INTEGER NOT NULL DEFAULT 0,
+    expose_thinking INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS players (
     id TEXT PRIMARY KEY, pseudo TEXT NOT NULL, is_admin INTEGER NOT NULL DEFAULT 0,
@@ -125,6 +126,11 @@ class GameRecord(BaseModel):
     drift_enabled: bool = True
     # G11-c — bilan de fin de partie (§1 S6) : courbe U, deltas des pays, LP, forfait.
     result: dict | None = None
+    # Pensée à découvert (réglage par partie, même patron que fog/escalation) : False
+    # (huis clos) par défaut — ON lève le scellement du journal de délibération pendant
+    # que la partie tourne (trames privées + journal complet verbatim, jamais un résumé).
+    # Ne couvre PAS le classeur secret du moteur (déviante, perceptions Fog d'autrui).
+    expose_thinking: bool = False
 
 
 class PlayerRecord(BaseModel):
@@ -388,6 +394,11 @@ class SQLiteGameStore:
                 self._conn.execute(
                     "ALTER TABLE games ADD COLUMN escalation INTEGER NOT NULL DEFAULT 0"
                 )
+        if "expose_thinking" not in cols:  # Pensée à découvert (réglage par partie)
+            with self._conn:
+                self._conn.execute(
+                    "ALTER TABLE games ADD COLUMN expose_thinking INTEGER NOT NULL DEFAULT 0"
+                )
         player_cols = {row[1] for row in self._conn.execute("PRAGMA table_info(players)")}
         if player_cols and "xp" not in player_cols:  # G12 — carrière (XP + solde marché)
             with self._conn:
@@ -406,8 +417,8 @@ class SQLiteGameStore:
             self._conn.execute(
                 "INSERT INTO games (id, scenario, horizon, mode, status, created_at, "
                 "epilogue_json, published, admin, role, owner_id, ranked, difficulty, "
-                "drift_enabled, result_json, language, fog, escalation) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "drift_enabled, result_json, language, fog, escalation, expose_thinking) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     game.id,
                     game.scenario,
@@ -427,6 +438,7 @@ class SQLiteGameStore:
                     game.language,
                     int(game.fog),
                     int(game.escalation),
+                    int(game.expose_thinking),
                 ),
             )
 
@@ -440,7 +452,7 @@ class SQLiteGameStore:
                 "UPDATE games SET scenario = ?, horizon = ?, mode = ?, status = ?, "
                 "epilogue_json = ?, published = ?, admin = ?, role = ?, owner_id = ?, "
                 "ranked = ?, difficulty = ?, drift_enabled = ?, result_json = ?, "
-                "language = ?, fog = ?, escalation = ? WHERE id = ?",
+                "language = ?, fog = ?, escalation = ?, expose_thinking = ? WHERE id = ?",
                 (
                     game.scenario,
                     game.horizon,
@@ -458,6 +470,7 @@ class SQLiteGameStore:
                     game.language,
                     int(game.fog),
                     int(game.escalation),
+                    int(game.expose_thinking),
                     game.id,
                 ),
             )
@@ -475,7 +488,8 @@ class SQLiteGameStore:
 
     def delete_game(self, game_id: str) -> None:
         """G14 §3 — purge complète d'une partie : rounds, transcripts, prompts capturés,
-        snapshot de session, puis la ligne games elle-même."""
+        snapshot de session, scores de campagne, score du défi du jour (G16), puis la
+        ligne games elle-même."""
         with self._conn:
             round_ids = [
                 r[0]
@@ -489,6 +503,7 @@ class SQLiteGameStore:
             self._conn.execute("DELETE FROM rounds WHERE game_id = ?", (game_id,))
             self._conn.execute("DELETE FROM game_sessions WHERE game_id = ?", (game_id,))
             self._conn.execute("DELETE FROM campaign_scores WHERE game_id = ?", (game_id,))
+            self._conn.execute("DELETE FROM daily_scores WHERE game_id = ?", (game_id,))
             self._conn.execute("DELETE FROM games WHERE id = ?", (game_id,))
 
     # --- rounds ----------------------------------------------------------------
@@ -818,6 +833,7 @@ def _game(row: sqlite3.Row) -> GameRecord:
         drift_enabled=flags.drift,
         result=json.loads(row["result_json"]) if row["result_json"] else None,
         language=row["language"] or "fr",
+        expose_thinking=bool(row["expose_thinking"]) if "expose_thinking" in keys else False,
     )
 
 

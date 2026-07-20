@@ -44,6 +44,7 @@ from simulation.research_lab import (
     StrategicMetrics,
     StrategicTurn,
     default_protocols,
+    featured_protocols,
     summarize_results,
 )
 from storage.game_store import GameStore
@@ -423,13 +424,24 @@ def get_campaign(store: Annotated[GameStore, Depends(get_store)]) -> CampaignVie
 
 
 def _lab_view() -> CampaignLabView:
+    # Nom unique « Laboratoire » partout (spec refonte labo §1 et §3.0 : quatre noms
+    # coexistaient jusqu'ici — un seul modèle théorique de l'outil doit rester explicite).
     return CampaignLabView(
-        title="Laboratoire des invariants",
+        title="Laboratoire",
         purpose=(
-            "Transformer chaque hypothèse en scénario joué par le Game Master, répéter "
-            "ses cellules et répondre avec les traces de rounds et leurs mesures."
+            "Le laboratoire, c'est l'endroit où tu poses une question sur le comportement "
+            "des IA du jeu, où tu la fais jouer plusieurs fois dans des conditions "
+            "contrôlées, et où tu lis une réponse chiffrée avec sa marge d'erreur. "
+            "C'est ici qu'on vérifie que les IA candidates au rôle de traîtresse sont "
+            "crédibles (bluffent-elles ? escaladent-elles ? voient-elles venir "
+            "l'adversaire ?) — les mêmes tests que ceux des chercheurs, sur ta machine."
         ),
-        protocols=default_protocols(),
+        # Catalogue resserré sur l'expérience du seuil nucléaire
+        # (`FEATURED_PROTOCOL_IDS`) — les autres protocoles restent définis et exécutables dans
+        # le moteur (`default_protocols()`), seule cette vue catalogue les cache. Une expérience
+        # passée sur un protocole non listé reste lisible via `_lab_experiment_view`, qui n'en
+        # dépend pas.
+        protocols=featured_protocols(),
         execution=ModelExecutionPlan(),
         guardrails=[
             "Pré-enregistrer hypothèses, facteurs, critères et règles d'arrêt.",

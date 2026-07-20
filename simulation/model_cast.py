@@ -12,7 +12,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints, model_validator
 
-from simulation.model_registry import ModelPanel, model_panel_view
+from simulation.model_registry import REASONING_ROLE, ModelPanel, model_panel_view
 
 ModelTag = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]
 
@@ -56,6 +56,9 @@ class CastModel(BaseModel):
     benchmark_status: str = "unmeasured"
     warm_run_s: float = 0.0
     load_time_s: float = 0.0
+    # Modèle de raisonnement (rôle `reasoning` du panel) : son backend active l'option
+    # think. Défaut False = les castings sérialisés avant le point 5 restent valides.
+    reasoning: bool = False
 
 
 class ModelCastState(BaseModel):
@@ -69,6 +72,17 @@ class ModelCastState(BaseModel):
     max_models_in_memory: int = 1
     execution_policy: str = "sequential_mono_gpu"
     ranked: bool = False
+
+    def reasoning_tags(self) -> set[str]:
+        """Tags PAYS dont le backend doit penser en canal séparé (routage think du round).
+
+        Restreint aux affectations pays : le juge et le Game Master n'activent JAMAIS
+        think — leur prose (rationale, communiqué, motions) part telle quelle vers des
+        steps publics, on ne leur fait pas produire de trace qu'il faudrait filtrer.
+        """
+
+        reasoning = {model.tag for model in self.models if model.reasoning}
+        return {tag for tag in self.assignments.values() if tag in reasoning}
 
 
 def prepare_model_cast(
@@ -123,6 +137,19 @@ def prepare_model_cast(
             country: selected[(index + offset) % len(selected)].tag
             for index, country in enumerate(ai_countries)
         }
+
+    # La pensée native est la denrée que le jeu évalue :
+    # un PAYS ne peut être incarné que par un modèle `reasoning` du panel — le juge et le
+    # Game Master ne sont pas concernés (ils n'activent jamais think, cf. `reasoning_tags`).
+    non_reasoning = sorted(
+        {tag for tag in assignments.values() if available[tag].role != REASONING_ROLE}
+    )
+    if non_reasoning:
+        raise ValueError(
+            "seul un modèle de raisonnement peut incarner un pays (rôle "
+            f"'{REASONING_ROLE}' du panel) : " + ", ".join(non_reasoning)
+        )
+
     game_master = request.game_master_model or selected[0].tag
     judge = request.judge_model or selected[-1].tag
     return ModelCastState(
@@ -136,6 +163,7 @@ def prepare_model_cast(
                 benchmark_status=model.benchmark_status,
                 warm_run_s=model.benchmark_warm_run_s,
                 load_time_s=model.benchmark_load_time_s,
+                reasoning=model.role == REASONING_ROLE,
             )
             for model in selected
         ],

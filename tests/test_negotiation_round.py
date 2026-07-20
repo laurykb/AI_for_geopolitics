@@ -25,6 +25,7 @@ from simulation.live_round import (
     VerdictStep,
     run_negotiation_round,
 )
+from simulation.trajectory import CAP
 
 
 def _world() -> WorldState:
@@ -87,6 +88,36 @@ def test_step_sequence_and_dynamic_turns():
     assert any(isinstance(s, VerdictStep) for s in steps)
 
 
+def test_reasoning_judge_think_trace_never_reaches_public_steps():
+    """Revue pt 5 (Critical) — preuve au niveau des steps : un juge dont le backend émet
+    des balises <think> inline (deepseek-r1 casté juge au lobby) ne laisse AUCUN fragment
+    de pensée atteindre le payload d'un JudgeTokenStep ou d'un CommuniqueStep publics."""
+    world = _world()
+    judge_backend = MockBackend(
+        [
+            "<think>\nBrouillon : l'Iran devrait perdre.\n</think>Les USA dominent.",
+            json.dumps({"escalation": 0.7}),
+            "<think>hésitation du juge</think>Communiqué : appel au dialogue.",
+        ]
+    )
+    steps = list(
+        run_negotiation_round(
+            world,
+            _agents(world),
+            _gm(),
+            JudgeAgent(judge_backend),
+            SimClock(current_date=date(2025, 1, 1)),
+            max_passes=1,
+        )
+    )
+    rationale = "".join(s.token for s in steps if isinstance(s, JudgeTokenStep))
+    assert rationale == "Les USA dominent."
+    assert "think" not in rationale and "Brouillon" not in rationale
+    communique = next(s for s in steps if isinstance(s, CommuniqueStep))
+    assert communique.text == "Communiqué : appel au dialogue."
+    assert "think" not in communique.text
+
+
 def test_ultimatum_demand_flows_to_verdict_step():
     """G21 — à l'échéance, le juge reçoit l'exigence et son constat sort sur le step."""
     world = _world()
@@ -136,6 +167,40 @@ def test_verdict_step_demand_none_without_ultimatum():
     )
     verdict = next(s for s in steps if isinstance(s, VerdictStep))
     assert verdict.demand_satisfied is None
+
+
+def test_verdict_step_deltas_carry_the_judge_reasons():
+    """Brief 4 pt 8 — bout en bout moteur : les motifs `attribute_reasons` du verdict
+    JSON remontent sur les deltas du `VerdictStep` (donc jusqu'au SSE et au replay)."""
+    world = _world()
+    judge_backend = MockBackend(
+        [
+            "L'Iran paie ses menaces.",
+            json.dumps(
+                {
+                    "attribute_deltas": {"iran": {"croissance": -0.5}},
+                    "attribute_reasons": {
+                        "iran": {"croissance": "L'Iran a menacé de fermer le détroit."}
+                    },
+                    "escalation": 0.7,
+                }
+            ),
+            "Communiqué.",
+        ]
+    )
+    steps = list(
+        run_negotiation_round(
+            world,
+            _agents(world),
+            _gm(),
+            JudgeAgent(judge_backend),
+            SimClock(current_date=date(2025, 1, 1)),
+            max_passes=1,
+        )
+    )
+    verdict = next(s for s in steps if isinstance(s, VerdictStep))
+    growth = next(d for d in verdict.deltas if d.label == "croissance")
+    assert growth.reason == "L'Iran a menacé de fermer le détroit."
 
 
 def test_ledger_captures_calls_when_provided():
@@ -192,15 +257,54 @@ def test_no_ledger_still_runs():
     assert any(isinstance(s, SummaryStep) for s in steps)  # rétro-compatible sans ledger
 
 
-def test_max_turns_caps_speaking():
+def test_floor_forces_a_full_table_even_under_a_tight_budget():
+    # Décision user (tour de table minimal, 2026-07-19) : le budget ne plafonne plus le
+    # nombre TOTAL de prises de parole sous le nombre de pays actifs. Avec budget=1 et 2
+    # pays, le plancher force les deux à parler malgré le budget serré (ex-« un round
+    # peut se finir avec un seul pays qui parle »).
     world = _world()
     world.adjust_tension("usa", "iran", 0.9)  # forte tension -> beaucoup d'envie de parler
     steps = list(
         run_negotiation_round(world, _agents(world), _gm(), _judge(), SimClock(), max_turns=1)
     )
-    assert sum(isinstance(s, TurnStartStep) for s in steps) == 1  # budget respecté
+    assert sum(isinstance(s, TurnStartStep) for s in steps) == 2  # plancher : tour de table complet
     part = next(s for s in steps if isinstance(s, ParticipationStep))
-    assert sum(part.spoke.values()) == 1
+    assert sum(part.spoke.values()) == 2
+    assert part.silent == []  # personne oublié malgré le budget de 1
+
+
+def test_floor_never_overshoots_the_cap_with_three_candidates():
+    # Correctif réservation (revue 2026-07-19) : avec seulement 2 candidats, le plafond
+    # (max(max_turns, n)) coïncide toujours avec n dès le 1er tour et le dépassement
+    # n'est pas détectable. Avec 3 pays — usa/iran très engagés (tension 0.9), france
+    # neutre — et un budget ÉGAL à n (3), l'ancien code laissait usa/iran se repasser
+    # la parole tant qu'ils restaient les plus engagés, épuisant le budget AVANT que
+    # france n'ait jamais parlé : le plancher rattrapait le coup APRÈS coup et
+    # dépassait le plafond (4 tours au lieu de 3, france cinquième roue). Le correctif
+    # réserve les créneaux restants aux non-parlés : le total ne dépasse jamais
+    # cap = max(max_turns, len(candidates)).
+    def c(cid, name):
+        return CountryState(
+            id=cid,
+            name=name,
+            economy=Economy(gdp=1e12, growth=2.0),
+            military=Military(defense_budget=1e10),
+            resources=Resources(),
+            political_stability=0.5,
+        )
+
+    world = WorldState.from_countries([c("usa", "USA"), c("iran", "Iran"), c("france", "France")])
+    world.adjust_tension("usa", "iran", 0.9)  # usa/iran resteraient devant france sans réservation
+    agents = {cid: LLMAgent(cid, MockBackend(f"Message de {cid}.")) for cid in world.countries}
+    cap = max(3, len(world.countries))  # budget == n ici, cap == 3
+
+    steps = list(run_negotiation_round(world, agents, _gm(), _judge(), SimClock(), max_turns=3))
+
+    n_turns = sum(isinstance(s, TurnStartStep) for s in steps)
+    assert n_turns <= cap  # plafond dur jamais dépassé (ex-bug détecté ici : 4 > 3)
+    part = next(s for s in steps if isinstance(s, ParticipationStep))
+    assert set(part.spoke) == set(world.countries)  # plancher : les 3 ont parlé
+    assert part.silent == []
 
 
 def test_provided_event_skips_game_master():
@@ -326,6 +430,29 @@ def test_trajectory_updated_after_judge():
     assert world.trajectory_history == [traj]
 
 
+def test_a4_transparency_uses_signal_action_divergence_when_round_is_mute():
+    # Brief 3 pt 3 — le round négocié n'a pas de decisions/diplomacy « à l'ancienne »
+    # (summary construit avec decisions=[]) : A4 retombait donc TOUJOURS sur le neutre
+    # 0,5. Désormais, une divergence signal-action réelle (M8, déjà calculée pour le
+    # verdict) nourrit A4 : une SI qui annonce une désescalade et frappe quand même
+    # EST l'antithèse de la transparence.
+    verdict = json.dumps(
+        {
+            "actions": [{"country": "usa", "classe": "violente", "resume": "Frappe."}],
+            "signals": [
+                {"country": "usa", "classe": "deescalade", "resume": "Annonce un retrait."}
+            ],
+            "escalation": 0.5,
+            "economic_disruption": 0.2,
+        }
+    )
+    judge = JudgeAgent(MockBackend(["Délibéré.", verdict, "Communiqué."]))
+    world = _world()
+    steps = list(run_negotiation_round(world, _agents(world), _gm(), judge, SimClock()))
+    traj = next(s for s in steps if isinstance(s, TrajectoryStep)).state
+    assert traj.axes["A4"] < 0.5  # duplicité détectée -> l'axe penche vers l'opacité
+
+
 def test_trajectory_accumulates_over_rounds():
     world = _world()
     clock = SimClock(current_date=date(2025, 1, 1))
@@ -333,10 +460,10 @@ def test_trajectory_accumulates_over_rounds():
         list(run_negotiation_round(world, _agents(world), _gm(), _judge(), clock))
     assert len(world.trajectory_history) == 2
     assert [t.round_id for t in world.trajectory_history] == [1, 2]
-    # chaque MAJ part de la précédente : deltas bornés à ±0,05 par axe
+    # chaque MAJ part de la précédente : deltas bornés à ±CAP par axe (Brief 3 pt 3)
     a1_first = world.trajectory_history[0].axes["A1"]
     a1_second = world.trajectory_history[1].axes["A1"]
-    assert abs(a1_second - a1_first) <= 0.05 + 1e-9
+    assert abs(a1_second - a1_first) <= CAP + 1e-9
 
 
 def test_judge_verdict_applied_and_bounded():

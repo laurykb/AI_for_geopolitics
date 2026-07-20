@@ -98,6 +98,30 @@ def test_negotiation_prompt_stays_clean_in_french():
     assert "ENGLISH" not in prompt
 
 
+def test_negotiation_system_prescribes_strict_french():
+    # Correctif dialogue limpide — la longueur libre du system de négociation a fait
+    # dériver mistral vers l'anglais sur des messages longs (constaté par une sonde
+    # réelle) alors que `language_directive` reste volontairement muet en français
+    # (langue source, "aucune consigne ajoutée"). Le system de négociation porte donc
+    # sa propre consigne stricte, sans dépendre de ce mécanisme silencieux — et sans
+    # casser le chemin anglais existant, qui prime déjà explicitement ("even if earlier
+    # instructions mentioned French").
+    from agents.prompts import NEGOTIATION_SYSTEM
+
+    assert "STRICTEMENT en français" in NEGOTIATION_SYSTEM
+
+
+def test_negotiation_system_french_directive_yields_to_the_english_override():
+    # Bout en bout : une partie EN garde son override, la ferme consigne FR du system
+    # de négociation ne le contredit pas (le prompt utilisateur porte l'override en
+    # position de récence, qui prime sur le system selon sa propre formulation).
+    world = _world("en")
+    prompt = build_negotiation_prompt(
+        world.countries["usa"], _event(), world, "transcript", _perceived()
+    )
+    assert "even if earlier instructions mentioned French" in prompt
+
+
 def test_gm_prompt_demands_english_for_english_games():
     gm = GameMasterAgent(MockBackend("{}"))
     prompt_fr = gm._prompt(_world("fr"), "2026-01-01", [])
@@ -146,9 +170,7 @@ def client_store():
 
 def test_game_is_created_in_english_and_keeps_it(client_store):
     client, store = client_store
-    game = client.post(
-        "/api/games", json={"countries": ["usa", "iran"], "language": "en"}
-    ).json()
+    game = client.post("/api/games", json={"countries": ["usa", "iran"], "language": "en"}).json()
     assert game["language"] == "en"
     assert store.get_game(game["id"]).language == "en"
     # Le monde vivant porte la langue (les prompts la lisent au fil des rounds)…
@@ -169,7 +191,5 @@ def test_language_defaults_to_french(client_store):
 
 def test_unknown_language_is_rejected(client_store):
     client, _ = client_store
-    resp = client.post(
-        "/api/games", json={"countries": ["usa", "iran"], "language": "de"}
-    )
+    resp = client.post("/api/games", json={"countries": ["usa", "iran"], "language": "de"})
     assert resp.status_code == 422

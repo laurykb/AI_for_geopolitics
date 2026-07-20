@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from storage.game_store import (
     CustomCrisisRecord,
+    DailyScore,
     GameRecord,
     GameStatus,
     PlayerRecord,
@@ -84,6 +85,22 @@ def test_ownership_fields_roundtrip():
     assert store.get_game("g5").owner_id == "u_other"
 
 
+def test_delete_game_purges_daily_score_row():
+    # Trou pré-existant trouvé en revue de db_maintenance : delete_game oubliait
+    # daily_scores (G16, le défi du jour) — une ligne pendante référençant une partie
+    # supprimée survivait à la purge (touche aussi DELETE /api/players, purge invités).
+    store = SQLiteGameStore(":memory:")
+    store.add_game(_game("g10"))
+    store.add_daily_score(
+        DailyScore(date="2026-07-20", player_id="p1", game_id="g10", score=0.8, created_at="t")
+    )
+    assert len(store.list_daily_scores()) == 1
+
+    store.delete_game("g10")
+
+    assert store.list_daily_scores() == []
+
+
 def test_ownership_defaults():
     store = SQLiteGameStore(":memory:")
     store.add_game(_game("g6"))
@@ -92,6 +109,23 @@ def test_ownership_defaults():
     assert got.ranked is False
     assert got.difficulty == "intermediate"
     assert got.drift_enabled is True
+
+
+def test_expose_thinking_roundtrip():
+    # Pensée à découvert (réglage par partie, même patron que fog/escalation) :
+    # False par défaut, survit à l'écriture/lecture et à une mise à jour.
+    store = SQLiteGameStore(":memory:")
+    game = _game("g8")
+    assert game.expose_thinking is False
+    game.expose_thinking = True
+    store.add_game(game)
+
+    got = store.get_game("g8")
+    assert got is not None and got.expose_thinking is True
+
+    got.expose_thinking = False
+    store.save_game(got)
+    assert store.get_game("g8").expose_thinking is False
 
 
 def test_result_json_roundtrip():
@@ -201,6 +235,31 @@ def test_migration_adds_ownership_columns(tmp_path):
     assert got.ranked is False
     assert got.difficulty == "intermediate"
     assert got.drift_enabled is True
+    store.close()
+
+
+def test_migration_adds_expose_thinking_column(tmp_path):
+    """Une base d'avant la Pensée à découvert (games sans expose_thinking) s'ouvre,
+    se migre, et les vieilles lignes se lisent False (huis clos par défaut, inchangé)."""
+    path = str(tmp_path / "pre_expose_thinking.db")
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        "CREATE TABLE games (id TEXT PRIMARY KEY, scenario TEXT NOT NULL, "
+        "horizon INTEGER NOT NULL, mode TEXT NOT NULL DEFAULT 'classic', "
+        "status TEXT NOT NULL, created_at TEXT NOT NULL, role TEXT NOT NULL "
+        "DEFAULT 'council');"
+    )
+    conn.execute(
+        "INSERT INTO games (id, scenario, horizon, status, created_at) "
+        "VALUES ('old', 'red_sea', 5, 'running', '2026-01-01T00:00:00')"
+    )
+    conn.commit()
+    conn.close()
+
+    store = SQLiteGameStore(path)
+    got = store.get_game("old")
+    assert got is not None
+    assert got.expose_thinking is False
     store.close()
 
 

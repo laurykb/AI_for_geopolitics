@@ -6,14 +6,18 @@ import {
   backendRole,
   buildCreateBody,
   canLaunch,
+  defaultCountryCastModels,
+  DEFAULT_COUNTRY_MODEL_TAG,
   mapCapacity,
   mapComplete,
   nextStep,
   prevStep,
+  reasoningCountryModels,
   SUMMIT_EXACT,
   toggleCountry,
   trimForRole,
 } from "./flow";
+import type { ResearchModel } from "./types";
 
 describe("navigation", () => {
   it("avance et recule sans perte", () => {
@@ -109,6 +113,7 @@ describe("buildCreateBody", () => {
     rounds: 8,
     difficulty: "expert" as const,
     free: false,
+    expose_thinking: false,
   };
   const seven = ["china", "usa", "iran", "france", "egypt", "saudi_arabia", "uk"];
 
@@ -132,6 +137,18 @@ describe("buildCreateBody", () => {
     expect(body.free).toBe(false);
     expect(body.owner_id).toBe("offline_laury");
     expect(body.countries).toEqual(seven);
+    expect(body.expose_thinking).toBe(false);
+  });
+
+  it("Pensée à découvert : le réglage part tel quel dans le corps de la requête", () => {
+    const body = buildCreateBody({
+      scenario: "red_sea",
+      baseMode: "classic",
+      settings: { ...settings, expose_thinking: true },
+      role: "gm",
+      selected: seven,
+    });
+    expect(body.expose_thinking).toBe(true);
   });
 
   it("réglages Brouillard + Crise qui monte : drapeaux composables transmis", () => {
@@ -190,5 +207,51 @@ describe("buildCreateBody", () => {
     });
     expect(body.model_cast?.models).toEqual(["model-a:4b", "model-b:7b"]);
     expect(body.model_cast?.judge_model).toBe("model-b:7b");
+  });
+});
+
+describe("casting des pays (décision design pensée native, 2026-07-19)", () => {
+  const model = (tag: string, role: string, installed = true): ResearchModel => ({
+    tag,
+    family: tag,
+    parameter_tier: "test",
+    expected_size_gb: 1,
+    role,
+    source: "test",
+    known_digest: "",
+    installed,
+    local_digest: installed ? `sha-${tag}` : "",
+    local_size_bytes: 0,
+    modified_at: "",
+    benchmark_status: "unmeasured",
+    benchmark_wall_time_s: 0,
+    benchmark_load_time_s: 0,
+    benchmark_warm_run_s: 0,
+    benchmark_tokens_per_second: 0,
+    benchmark_prompt_version: "",
+  });
+
+  it("ne propose pour un pays que les modèles reasoning installés", () => {
+    const models = [
+      model("deepseek-r1:7b", "reasoning"),
+      model("qwen3:4b", "reasoning", false), // pas installé, exclu
+      model("mistral:latest", "capacity_comparison"),
+      model("llama3.2:3b", "retired"),
+    ];
+    expect(reasoningCountryModels(models).map((m) => m.tag)).toEqual(["deepseek-r1:7b"]);
+  });
+
+  it("préfère deepseek-r1:7b comme casting pays par défaut quand il est installé", () => {
+    const eligible = [model("qwen3:4b", "reasoning"), model("deepseek-r1:7b", "reasoning")];
+    expect(defaultCountryCastModels(eligible)).toEqual([DEFAULT_COUNTRY_MODEL_TAG]);
+  });
+
+  it("retombe sur le premier modèle reasoning disponible si deepseek-r1:7b est absent", () => {
+    const eligible = [model("qwen3:4b", "reasoning")];
+    expect(defaultCountryCastModels(eligible)).toEqual(["qwen3:4b"]);
+  });
+
+  it("rend un casting vide si aucun modèle reasoning n'est disponible", () => {
+    expect(defaultCountryCastModels([])).toEqual([]);
   });
 });

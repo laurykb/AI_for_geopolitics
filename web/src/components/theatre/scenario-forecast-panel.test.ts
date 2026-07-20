@@ -38,4 +38,31 @@ describe("ScenarioForecastPanel", () => {
     expect(html).toContain('data-tour="scenario-forecasts"');
     expect(html).toContain("leurs prévisions apparaîtront ici");
   });
+
+  it("exclut le pays inventé (créé, non incarné) des prévisions croisées", () => {
+    // Point 7 : un pays inventé n'a jamais anticipé personne (neuf, sans historique) —
+    // ni sa ligne de calibration, ni ses prévisions comme émetteur ne doivent apparaître.
+    const world = {
+      scenario_forecast_metrics: {
+        usa: { evaluated: 2, exact: 1, pending: 0, exact_rate: 0.5 },
+        atlantis: { evaluated: 3, exact: 3, pending: 0, exact_rate: 1 },
+      },
+      scenario_forecasts: [
+        {
+          round_no: 1,
+          source: "atlantis",
+          target: "usa",
+          predicted_response: "resiste",
+          observed_response: null,
+          exact: null,
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(
+      createElement(ScenarioForecastPanel, { world, createdCountry: "atlantis" }),
+    );
+    expect(html).not.toContain("Atlantis");
+    // Seul usa reste : 2 réponses observées (les 3 d'atlantis, exclu, ne comptent plus).
+    expect(html).toContain("2 réponses observées");
+  });
 });

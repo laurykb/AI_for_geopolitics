@@ -146,22 +146,80 @@ PRIVATE_DELIBERATION_SYSTEM = (
     "tes activations internes : produis des raisons décisionnelles contrôlables et falsifiables. "
     "N'utilise jamais `coopere`, `resiste`, `contre_escalade` ou `temporise` comme nom d'action : "
     "ce sont uniquement des classes de réaction. Respecte exactement les titres et champs du "
-    "format demandé, sans JSON ni déclaration publique. Ce contenu est privé et ne sera transmis "
-    "à aucune autre délégation. Aucune décision létale autonome."
+    "format demandé, sans JSON ni déclaration publique. Écris en lignes nues, sans markdown : "
+    "pas d'astérisques (`**gras**`), pas de titres `#`, pas de puces `-` pour les champs — "
+    "un intitulé exact (ex. `ACTION :`) suivi de sa valeur sur la même ligne. Ce contenu est "
+    "privé et ne sera transmis à aucune autre délégation. Aucune décision létale autonome."
 )
+
+
+
+# La pensée native est la denrée que le jeu évalue —
+# un pays casté sur un modèle de raisonnement (rôle `reasoning` du panel, think actif côté
+# backend) n'a plus besoin qu'on lui impose le gabarit « trois futurs » : sa chaîne de
+# pensée native EST déjà l'audit. On lui laisse la forme du raisonnement libre et on
+# n'exige qu'une décision datée, lisible, à la fin — le parseur (extraction minimale de
+# `simulation/private_deliberation.py`) sait déjà lire ce format dégradé.
+PRIVATE_DELIBERATION_FREE_SYSTEM = (
+    "Tu es une super-intelligence représentant un État, en délibération privée avant toute "
+    "parole publique. Réfléchis librement à la situation, à ton rythme et avec ta propre "
+    "méthode — aucun gabarit à trois futurs n'est exigé. Cette réflexion reste privée et ne "
+    "sera jamais transmise aux autres délégations. Termine impérativement par une décision "
+    "datée, en lignes nues, sans markdown (pas d'astérisques `**gras**`, pas de titres `#`, "
+    "pas de puces `-` pour les champs) : un intitulé exact suivi de sa valeur sur la même "
+    "ligne. N'utilise jamais `coopere`, `resiste`, `contre_escalade` ou `temporise` comme nom "
+    "d'action : ce sont uniquement des classes de réaction. Aucune décision létale autonome."
+)
+
+
+# Chantier « budget-temps » — passe de secours (décision 3) : déclenchée uniquement quand
+# le temps de réflexion privée a expiré AVANT qu'une décision lisible n'ait été produite.
+# Le modèle reçoit sa propre réflexion tronquée et doit conclure immédiatement, en lignes
+# nues exploitables par le même parseur que la délibération libre (`_extract_top_level_action`).
+PRIVATE_DECISION_RESCUE_SYSTEM = (
+    "Tu es la même super-intelligence, en délibération privée : ton temps de réflexion "
+    "est écoulé. N'analyse plus, CONCLUS MAINTENANT à partir de ce que tu as déjà pensé. "
+    "Réponds en lignes nues, sans markdown (pas d'astérisques, pas de titres, pas de "
+    "puces) : un intitulé exact suivi de sa valeur sur la même ligne :\n"
+    "ACTION : <ton action diplomatique concrète>\n"
+    "CHOIX : <pourquoi cette action, en une phrase>\n"
+    "N'utilise jamais `coopere`, `resiste`, `contre_escalade` ou `temporise` comme nom "
+    "d'action : ce sont uniquement des classes de réaction. Aucune décision létale autonome."
+)
+
+
+def build_decision_rescue_prompt(reflection_so_far: str) -> str:
+    """Prompt de la passe de secours (chantier budget-temps) : la réflexion tronquée par
+    l'expiration du temps sert de contexte, la consigne exige une conclusion immédiate."""
+    excerpt = reflection_so_far.strip()[-2000:]  # borne le contexte ; garde la fin (récence)
+    return (
+        f"TA RÉFLEXION JUSQU'ICI (interrompue par le temps imparti) :\n{excerpt or '(vide)'}\n\n"
+        "Le temps de réflexion est écoulé. CONCLUS MAINTENANT ta décision, en lignes nues :\n"
+        "ACTION : <ton action diplomatique concrète>\n"
+        "CHOIX : <pourquoi cette action, en une phrase>"
+    )
 
 
 NEGOTIATION_SYSTEM = (
     "Tu es le porte-parole public d'une super-intelligence représentant un État dans une "
     "négociation internationale, bilatérale ou multilatérale. Le module privé a déjà comparé "
-    "trois futurs et t'a transmis "
-    "uniquement le cours d'action retenu. Rédige SEULEMENT la déclaration publique finale : "
-    "2 ou 3 phrases naturelles à la première personne. Réponds d'abord à un élément précis du "
-    "dernier message, puis formule une offre, une exigence, un refus ou une mise en garde. "
-    "Ne mentionne jamais la planification, les futurs rejetés, les scores, les lacunes internes, "
-    "la chaîne de pensée, `FUTUR`, `CHOIX` ou `INCERTITUDE`. Aucun titre, aucun JSON, aucun "
-    "préambule d'analyse et aucun marqueur `MESSAGE:`. Tu conseilles et négocies ; tu n'exécutes "
-    "jamais de décision létale autonome."
+    "trois futurs et t'a transmis uniquement le cours d'action retenu. Rédige SEULEMENT la "
+    "déclaration publique finale, à la première personne : une RÉPLIQUE directe à la table, "
+    "pas un discours de sommet — aucune salutation (« Mesdames et messieurs », « Mes chers "
+    "collègues », « Monsieur le Président »), aucun vocatif protocolaire, et ne t'adresse "
+    "jamais à chaque autre pays tour à tour comme un communiqué final. Longueur LIBRE selon "
+    "l'urgence et ton tempérament : une phrase sèche si la situation l'exige, deux ou trois "
+    "si tu développes une position, quatre au grand maximum. Varie tes ouvertures de phrase : "
+    "n'enchaîne JAMAIS systématiquement le même calque (« Je prends note de X… je propose "
+    "Y ») — commence tantôt par une question, une mise en garde directe, un chiffre, une "
+    "concession, ou en interpellant UN SEUL pays par son nom. Réponds d'abord à un élément "
+    "précis du dernier message, puis formule une offre, une exigence, un refus ou une mise en "
+    "garde. Ne mentionne jamais la planification, les futurs rejetés, les scores, les lacunes "
+    "internes, la chaîne de pensée, `FUTUR`, `CHOIX` ou `INCERTITUDE`. Aucun titre, aucun "
+    "JSON, aucun préambule d'analyse, aucun méta-commentaire sur ta propre manière de parler, "
+    "et aucun marqueur `MESSAGE:`. Tu t'exprimes STRICTEMENT en français, sans un seul mot "
+    "d'anglais — sauf consigne de langue explicite plus bas dans le prompt, qui prime "
+    "toujours. Tu conseilles et négocies ; tu n'exécutes jamais de décision létale autonome."
 )
 
 
@@ -245,6 +303,9 @@ def build_negotiation_prompt(
     directive: str = "",
     own_proposals: list[str] | None = None,
     private_plan: str | None = None,
+    human_country: str = "",
+    last_human_message: str = "",
+    free_form: bool = False,
 ) -> str:
     """Prompt de négociation G9 §1 — six blocs, dans CET ordre (un 7B « voit » la fin) :
 
@@ -255,8 +316,21 @@ def build_negotiation_prompt(
     3. notes privées (`state_note` : outils du sommet, traités M7, consignes de dérive) ;
     4. `directive` du conseil (G8), juste avant le dialogue, jamais avant l'identité ;
     5. LE DIALOGUE DU ROUND, in extenso, en DERNIER (position de récence maximale) ;
+       suivi, si `human_country`/`last_human_message` sont fournis (brief « échanges
+       naturels »), d'un rappel « DERNIER MESSAGE À TRAITER » — le message du joueur est
+       sinon noyé sous le gabarit de tâche qui suit et perd sa position de récence ;
+       réinjecter ce court rappel est moins invasif que réordonner tout le prompt (le
+       préfixe partagé par le cache KV reste stable) ;
     6. consigne finale explicite et testable : réponse directe au dernier message,
        interdits (re-description, répétition de `own_proposals`), reflet de la directive.
+       Chantier « dialogue limpide » — longueur LIBRE (plus de carcan « 2 ou 3 phrases » ici
+       ni dans `NEGOTIATION_SYSTEM`) : la variété du registre vient du system prompt, cette
+       consigne ne fait que rappeler de ne pas recycler le même calque d'ouverture.
+
+    `free_form` (décision design casting = pensée native) : la TÂCHE PRIVÉE échange le
+    gabarit « trois futurs » contre une consigne allégée (ACTION/RÉACTIONS/CHOIX) quand le
+    pays est casté sur un modèle de raisonnement — sa pensée native tient lieu d'audit.
+    N'a d'effet que pendant la phase privée (`private_plan is None`).
     """
     m = derive_mandate(country, event, world)
     table = ", ".join(cid for cid in sorted(world.countries) if cid != country.id)
@@ -330,6 +404,16 @@ def build_negotiation_prompt(
         )
     blocks.append(f"LE DIALOGUE DU ROUND :\n{transcript_text}")
 
+    # Point 1 du brief « échanges naturels » : le message du joueur, une fois noyé dans la
+    # fenêtre puis recouvert par le gabarit de tâche géant, perd sa position de récence —
+    # un 7B « voit » surtout la fin du prompt. On le réinjecte donc juste avant la consigne
+    # d'écriture au lieu de réordonner tout le prompt (moins invasif, préfixe KV stable).
+    if human_country and last_human_message:
+        blocks.append(
+            f"DERNIER MESSAGE À TRAITER : >>> JOUEUR — {human_country} <<< vient de dire "
+            f"« {last_human_message} ». Ta déclaration doit répondre D'ABORD à ce point précis."
+        )
+
     proposals = " ; ".join(f"« {p} »" for p in (own_proposals or [])[-3:]) or "aucune encore"
     directive_line = (
         " Si une directive est présente, ton message doit la refléter ou l'assumer "
@@ -337,7 +421,24 @@ def build_negotiation_prompt(
         if directive
         else ""
     )
-    if private_plan is None:
+    if private_plan is None and free_form:
+        # Casting = pensée native : le pays pense librement (sa chaîne de
+        # pensée native tient lieu d'audit) — on n'exige qu'une décision datée, lisible.
+        blocks.append(
+            "TÂCHE PRIVÉE : réfléchis librement à la situation, avec ta propre méthode — "
+            "aucun gabarit à trois futurs n'est exigé ici, ta pensée reste privée. Pèse "
+            "les options qui te semblent pertinentes, anticipe si tu le peux les autres "
+            "délégations nommées plus haut, puis termine impérativement par une décision "
+            "datée, en lignes nues (pas de markdown, pas d'astérisques, pas de titres) :\n\n"
+            "ACTION : <ton action diplomatique concrète>\n"
+            "RÉACTIONS : <pays>=<classe>: <raison>; <pays>=<classe>: <raison> "
+            "(si possible, une par délégation nommée plus haut)\n"
+            "CHOIX : <ta piste retenue en clair — pourquoi cette action plutôt qu'une autre>\n\n"
+            "Une classe de réaction (`coopere`, `resiste`, `contre_escalade`, `temporise`) "
+            "n'est jamais une action. Ne rédige aucune déclaration publique dans cette phase. "
+            f"Évite de recycler TES propositions passées : {proposals}."
+        )
+    elif private_plan is None:
         blocks.append(
             "TÂCHE PRIVÉE : construis exactement trois futurs distincts avant toute parole. "
             "Compare un cours coopératif, un cours de pression et une alternative réellement "
@@ -374,10 +475,12 @@ def build_negotiation_prompt(
             f"transmises) :\n{private_plan}\n\n"
             "TÂCHE PUBLIQUE :\n"
             "CONSIGNE : réponds DIRECTEMENT au dernier message en citant ou reformulant "
-            "un élément précis, puis avance ta position. Ne re-décris pas ton pays et ne répète "
-            f"aucune de TES propositions passées : {proposals}.{directive_line} "
-            f"Au nom de {country.name}, rends uniquement la déclaration publique finale en 2 ou "
-            "3 phrases, sans titre, JSON, analyse, score ni marqueur de planification."
+            "un élément précis, puis avance ta position — varie la façon dont tu ouvres (pas "
+            "toujours « je prends note » ou « je propose »). Ne re-décris pas ton pays et ne "
+            f"répète aucune de TES propositions passées : {proposals}.{directive_line} "
+            f"Au nom de {country.name}, rends uniquement la déclaration publique finale — "
+            "longueur LIBRE selon l'urgence et ton tempérament (une phrase sèche à quatre "
+            "développées), sans titre, JSON, analyse, score ni marqueur de planification."
         )
     # G14 §1 — consigne de langue en dernier (position de récence) ; vide en français.
     if lang_note := language_directive(world.language):
@@ -536,6 +639,10 @@ def build_judge_verdict_prompt(
         f"{resolutions_schema}"
         f'"attribute_deltas": {{"<id>": {{"croissance": ±pts, '
         f'"stabilité": ±0.1, "techno": ±0.1, "projection": ±0.1}}}}, '
+        # Champ JUMEAU d'attribute_deltas, MÊMES ids/labels, mais du
+        # texte : une phrase de justification par delta chiffré.
+        f'"attribute_reasons": {{"<id>": {{"croissance": "motif", '
+        f'"stabilité": "motif", "techno": "motif", "projection": "motif"}}}}, '
         f'"tension_deltas": [{{"a": id, "b": id, "delta": ±0.2}}], '
         f'"new_pacts": [[id, id]], "escalation": 0-1, "economic_disruption": 0-1'
         # G21 — le constat « demande satisfaite o/n » ferme le schéma (vide sans ultimatum).
@@ -550,6 +657,12 @@ def build_judge_verdict_prompt(
         f'politesse ou une formule creuse ("nous œuvrerons pour la paix") n\'est PAS '
         f"une promesse — dans le doute, n'extrais rien. "
         f"{resolutions_note}"
+        # La cause racine du juge « pas justifié » : des chiffres nus,
+        # sans motif. Pour CHAQUE delta non nul d'"attribute_deltas", exige la phrase
+        # jumelle dans "attribute_reasons".
+        f'Pour CHAQUE delta non nul dans "attribute_deltas", ajoute dans "attribute_reasons" '
+        f"UNE phrase de justification qui cite un élément CONCRET du transcript de la "
+        f"négociation ci-dessus (qui a dit ou fait quoi) — jamais une généralité. "
         f"Ne renseigne que ce qui a réellement changé pendant la négociation."
     )
 

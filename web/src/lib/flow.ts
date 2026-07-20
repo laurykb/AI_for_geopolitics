@@ -8,7 +8,31 @@
  * L'architecte est fondu dans le Game Master. */
 
 import type { TableSetting } from "./temperament";
-import type { CreateGameBody, Difficulty, GameMode, GameRole } from "./types";
+import type { CreateGameBody, Difficulty, GameMode, GameRole, ResearchModel } from "./types";
+
+// --- casting des pays (la pensée native est la denrée que
+// le jeu évalue) -----------------------------------------------------------------
+
+/** Tag de référence proposé par défaut pour les pays quand le casting est désactivé
+ * (un seul modèle) — voir `simulation/model_registry.REASONING_ROLE` côté backend, qui
+ * REFUSE tout modèle non-reasoning affecté à un pays quel que soit le choix ici fait. */
+export const DEFAULT_COUNTRY_MODEL_TAG = "deepseek-r1:7b";
+
+/** Modèles installés proposables pour incarner un PAYS : uniquement le rôle
+ * `reasoning` du panel — les généralistes (`retired`) et la voie lente du laboratoire
+ * (`slow_robustness_only`) en sont exclus (le Game Master/juge restent sur un pool plus
+ * large, non filtré ici — cf. réserve du rapport de casting). */
+export function reasoningCountryModels(models: ResearchModel[]): ResearchModel[] {
+  return models.filter((model) => model.installed && model.role === "reasoning");
+}
+
+/** Sélection par défaut du casting pays : deepseek-r1:7b s'il est installé, sinon le
+ * premier modèle de raisonnement disponible, sinon aucun (multi-modèle indisponible). */
+export function defaultCountryCastModels(eligible: ResearchModel[]): string[] {
+  const preferred = eligible.find((model) => model.tag === DEFAULT_COUNTRY_MODEL_TAG);
+  const fallback = preferred ? [preferred] : eligible.slice(0, 1);
+  return fallback.map((model) => model.tag);
+}
 
 // --- écrans ---------------------------------------------------------------------
 
@@ -70,6 +94,9 @@ export type FlowSettings = {
   difficulty: Difficulty;
   free: boolean; // partie libre : off par défaut (on = consignes globales + composition de table)
   table?: TableSetting; // G17 — composition de la table (partie LIBRE uniquement)
+  // Pensée à découvert : off par défaut (huis clos actuel) — on = pensée native
+  // streamée en direct + journaux complets relisibles pendant la partie.
+  expose_thinking: boolean;
 };
 
 export const ROUNDS_MIN = 3;
@@ -81,6 +108,7 @@ export const DEFAULT_SETTINGS: FlowSettings = {
   rounds: 5,
   difficulty: "intermediate",
   free: false,
+  expose_thinking: false,
 };
 
 // --- sélection des pays (S4) ----------------------------------------------------
@@ -165,6 +193,7 @@ export function buildCreateBody(args: {
     role: backendRole(role),
     difficulty: settings.difficulty,
     free: settings.free,
+    expose_thinking: settings.expose_thinking,
     language,
     // G17 — la composition de table ne part qu'en partie libre (sinon table équilibrée).
     table: settings.free ? (settings.table ?? "equilibree") : undefined,

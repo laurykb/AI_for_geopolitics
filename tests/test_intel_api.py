@@ -191,6 +191,143 @@ def test_disinfo_once_fog_only_and_lands_next_round(client_store):
     assert record.judge["intel"]["disinfo"]["exposed"] in (True, False)  # tirage seedé
 
 
+# --- opération secrète (Brief 6 pt13) : le bureau des renseignements payé en compute ----
+
+
+def test_covert_requires_a_player_role(client_store):
+    client, _ = client_store
+    game = _create(client)  # pas de play_as -> rôle "council", aucun pays incarné
+    resp = _intel(client, game["id"], action="covert", target="iran")
+    assert resp.status_code == 403
+
+
+def test_covert_target_cannot_be_self(client_store):
+    client, _ = client_store
+    game = _create(client, play_as="usa")
+    resp = _intel(client, game["id"], action="covert", target="usa")
+    assert resp.status_code == 400
+
+
+def test_covert_target_must_be_a_known_country(client_store):
+    client, _ = client_store
+    game = _create(client, play_as="usa")
+    resp = _intel(client, game["id"], action="covert", target="atlantis")
+    assert resp.status_code == 400
+
+
+def test_covert_insufficient_compute_is_400(client_store):
+    client, _ = client_store
+    game = _create(client, play_as="usa")
+    gid = game["id"]
+    # Draine le compute du joueur SOUS le coût (covert_compute_cost = 5.0 unités).
+    game_api._sessions[gid].world.countries["usa"].compute = 1.0
+    resp = _intel(client, gid, action="covert", target="iran")
+    assert resp.status_code == 400
+    assert "compute" in resp.json()["detail"]
+
+
+def test_covert_blocked_during_round(client_store):
+    client, _ = client_store
+    game = _create(client, play_as="usa")
+    gid = game["id"]
+    session = game_api._sessions[gid]
+    session.lock.acquire()  # simule une négociation en cours
+    try:
+        resp = _intel(client, gid, action="covert", target="iran")
+        assert resp.status_code == 409
+    finally:
+        session.lock.release()
+
+
+def test_covert_debits_compute_not_credits(client_store):
+    client, _ = client_store
+    game = _create(client, play_as="usa")
+    gid = game["id"]
+    assert game["intel_budget"] == 100
+
+    resp = _intel(client, gid, action="covert", target="iran")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["cost"] == 0 and body["budget"] == 100  # AUCUN crédit débité
+    assert body["compute_cost"] == pytest.approx(5.0)  # covert_compute_cost=500 tokens/100
+    assert body["compute_left"] == pytest.approx(95.0)  # usa : 100 - 5.0
+    assert game_api._sessions[gid].world.countries["usa"].compute == pytest.approx(95.0)
+
+
+def test_other_actions_report_no_compute_cost(client_store):
+    # Les deux ressources ne se confondent jamais : hors covert, compute_cost est absent.
+    client, _ = client_store
+    game = _create(client)
+    body = _intel(client, game["id"], action="brief").json()
+    assert body.get("compute_cost") is None
+    assert body.get("compute_left") is None
+
+
+def test_covert_once_per_game(client_store):
+    client, _ = client_store
+    game = _create(client, play_as="usa")
+    gid = game["id"]
+    assert _intel(client, gid, action="covert", target="iran").status_code == 200
+    dup = _intel(client, gid, action="covert", target="france")
+    assert dup.status_code == 409
+
+
+def test_covert_effect_deferred_to_next_round(client_store):
+    client, store = client_store
+    game = _create(client, play_as="usa", turn_seconds=2)
+    gid = game["id"]
+    before = game_api._sessions[gid].world.countries["iran"].compute
+    assert _intel(client, gid, action="covert", target="iran").status_code == 200
+    # Pas encore appliqué : le sabotage attend le round suivant.
+    assert game_api._sessions[gid].world.countries["iran"].compute == before
+
+    _play(client, gid)  # round suivant : le sabotage frappe
+    after = game_api._sessions[gid].world.countries["iran"].compute
+    assert after == pytest.approx(before - 4.0)  # covert_sabotage_amount
+
+    record = store.list_rounds(gid)[0]
+    assert record.judge["intel"]["covert"]["exposed"] in (True, False)  # tirage seedé
+    assert game_api._sessions[gid].intel.pending_covert is None  # consommé, pas rejoué
+
+
+def test_covert_purchase_and_resolution_are_redacted_in_sse(client_store):
+    client, _ = client_store
+    game = _create(client, play_as="usa", turn_seconds=2)
+    gid = game["id"]
+    assert _intel(client, gid, action="covert", target="iran").status_code == 200
+
+    events = _play(client, gid)
+    frames = [p for n, p in events if n == "intel"]
+    assert frames
+    actions = frames[0]["actions"]
+    assert {"action": "covert"} in actions  # l'achat, rédigé (sans cible)
+    assert any(a.get("action") == "covert" and "exposed" in a for a in actions)  # la résolution
+
+
+def test_covert_exposure_is_seeded_and_replayable():
+    from simulation import intel as intel_mod
+
+    a = intel_mod.covert_exposed("game-x", 3)
+    b = intel_mod.covert_exposed("game-x", 3)
+    assert a == b  # même (game_id, round) -> même issue, rejouable au replay
+
+
+def test_covert_exposure_reveals_the_author_when_caught(client_store, monkeypatch):
+    client, store = client_store
+    game = _create(client, play_as="usa", turn_seconds=2)
+    gid = game["id"]
+    assert _intel(client, gid, action="covert", target="iran").status_code == 200
+    actor_name = game_api._sessions[gid].world.countries["usa"].name
+
+    monkeypatch.setattr(game_api.intel_mod, "covert_exposed", lambda *a, **k: True)
+    _play(client, gid)
+
+    record = store.list_rounds(gid)[0]
+    judge_lines = [e.content for e in store.list_transcript(record.id) if e.speaker == "judge"]
+    assert any("sabotage" in line.lower() for line in judge_lines)
+    assert any(actor_name in line for line in judge_lines)  # l'auteur est nommé
+
+
 # --- analyse psycholinguistique (G23) --------------------------------------------------
 
 WARM_FR = (

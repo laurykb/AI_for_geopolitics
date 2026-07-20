@@ -4,6 +4,7 @@ import pytest
 
 from storage.game_store import (
     CustomCrisisRecord,
+    DailyScore,
     GameRecord,
     GameStatus,
     PlayerRecord,
@@ -73,6 +74,32 @@ def test_ownership_fields_roundtrip(store):
         "beginner",
         False,
     )
+
+
+def test_delete_game_purges_daily_score_row(store):
+    # Parité D3 avec le store SQLite (même trou pré-existant, même correctif).
+    store.add_game(_game("g10"))
+    store.add_daily_score(
+        DailyScore(date="2026-07-20", player_id="p1", game_id="g10", score=0.8, created_at="t")
+    )
+    assert len(store.list_daily_scores()) == 1
+
+    store.delete_game("g10")
+
+    assert store.list_daily_scores() == []
+
+
+def test_expose_thinking_roundtrip(store):
+    # Pensée à découvert — même patron que fog/escalation/drift_enabled : survit au
+    # store Supabase (PostgREST simulé), défaut False sur une ligne qui l'omet.
+    game = _game("g8")
+    game.expose_thinking = True
+    store.add_game(game)
+    assert store.get_game("g8").expose_thinking is True
+    assert store.get_game("g1") is None  # id différent : pas de fuite entre lignes
+
+    store.add_game(_game("g9"))  # omis -> défaut du modèle
+    assert store.get_game("g9").expose_thinking is False
 
 
 def test_player_and_xp_history_roundtrip(store):

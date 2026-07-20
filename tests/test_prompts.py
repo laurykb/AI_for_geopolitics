@@ -148,6 +148,71 @@ def test_negotiation_prompt_block_order_ends_with_dialogue_then_consigne():
     assert "refléter" in prompt or "refuser" in prompt
 
 
+def test_negotiation_prompt_reinjects_last_human_message_before_task():
+    # Brief 1 pt 1 — le message du joueur ne doit pas se perdre derrière le gabarit de
+    # tâche : un bloc de rappel est réinjecté juste avant la consigne d'écriture (position
+    # de récence), sans réordonner tout le prompt (préserve le préfixe du cache KV).
+    from agents.prompts import build_negotiation_prompt
+    from simulation.perception import perceive
+
+    world, event = _world(), _event()
+    perceived = perceive(event, world.countries["usa"])
+    prompt = build_negotiation_prompt(
+        world.countries["usa"],
+        event,
+        world,
+        "[P0] france: Point A.\n[P1] iran: Point B.",
+        perceived,
+        human_country="france",
+        last_human_message="Point A, précisément.",
+        private_plan="Cours d'action retenu : proposer des garanties vérifiables.",
+    )
+    assert "DERNIER MESSAGE À TRAITER" in prompt
+    assert "Point A, précisément." in prompt
+    order = [
+        prompt.index("LE DIALOGUE DU ROUND"),
+        prompt.index("DERNIER MESSAGE À TRAITER"),
+        prompt.index("TÂCHE PUBLIQUE :"),
+    ]
+    assert order == sorted(order)
+
+
+def test_negotiation_prompt_reinjection_also_precedes_private_task():
+    # Le même bloc doit précéder la TÂCHE PRIVÉE (phase de délibération), pas seulement
+    # la déclaration publique : les deux appels passent par le même builder.
+    from agents.prompts import build_negotiation_prompt
+    from simulation.perception import perceive
+
+    world, event = _world(), _event()
+    perceived = perceive(event, world.countries["usa"])
+    prompt = build_negotiation_prompt(
+        world.countries["usa"],
+        event,
+        world,
+        "[P0] france: Point A.",
+        perceived,
+        human_country="france",
+        last_human_message="Point A, précisément.",
+    )
+    order = [
+        prompt.index("LE DIALOGUE DU ROUND"),
+        prompt.index("DERNIER MESSAGE À TRAITER"),
+        prompt.index("TÂCHE PRIVÉE"),
+    ]
+    assert order == sorted(order)
+
+
+def test_negotiation_prompt_omits_reinjection_block_without_human_country():
+    # Défaut inchangé : sans joueur (ou en dehors de son round), pas de bloc superflu.
+    from agents.prompts import build_negotiation_prompt
+    from simulation.perception import perceive
+
+    world, event = _world(), _event()
+    perceived = perceive(event, world.countries["usa"])
+    prompt = build_negotiation_prompt(world.countries["usa"], event, world, "(début)", perceived)
+    assert "DERNIER MESSAGE À TRAITER" not in prompt
+
+
 def test_negotiation_prompt_without_directive_has_no_directive_block():
     from agents.prompts import build_negotiation_prompt
     from simulation.perception import perceive
@@ -163,6 +228,47 @@ def test_negotiation_system_mentions_bilateral():
     from agents.prompts import NEGOTIATION_SYSTEM
 
     assert "bilatéral" in NEGOTIATION_SYSTEM.lower()
+
+
+def test_negotiation_system_prescribes_free_length_and_varied_openings():
+    # Chantier dialogue limpide — le registre doit être vivant : longueur libre (pas de
+    # "2 ou 3 phrases" figé), interdiction du calque systématique, interpellation permise,
+    # pas de méta-commentaire — tout en gardant les interdits existants (fuite des
+    # marqueurs privés, 1re personne, réponse au dernier message).
+    from agents.prompts import NEGOTIATION_SYSTEM
+
+    low = NEGOTIATION_SYSTEM.lower()
+    assert "libre" in low  # longueur non figée
+    assert "jamais" in low and (
+        "je prends note de x" in low or "calque" in low
+    )  # interdiction du calque systématique
+    assert "interpellant" in low or "nom" in low  # interpellation directe permise
+    assert "première personne" in low
+    assert "réponds d'abord" in low
+    assert "méta-commentaire" in low  # pas de commentaire sur sa propre façon de parler
+    assert "2 ou 3 phrases" not in low  # l'ancien carcan de longueur fixe a disparu
+
+
+def test_negotiation_prompt_public_task_no_longer_hardcodes_fixed_sentence_count():
+    # La consigne finale de build_negotiation_prompt (TÂCHE PUBLIQUE) ne doit plus
+    # contredire NEGOTIATION_SYSTEM en imposant "2 ou 3 phrases" à la toute dernière
+    # position lue par le modèle (position de plus forte récence pour un 7B).
+    from agents.prompts import build_negotiation_prompt
+    from simulation.perception import perceive
+
+    world, event = _world(), _event()
+    perceived = perceive(event, world.countries["usa"])
+    prompt = build_negotiation_prompt(
+        world.countries["usa"],
+        event,
+        world,
+        "(début)",
+        perceived,
+        private_plan="Cours d'action retenu : proposer des garanties vérifiables.",
+    )
+    task = prompt.split("TÂCHE PUBLIQUE :")[1]
+    assert "2 ou 3 phrases" not in task
+    assert "libre" in task.lower()
 
 
 def test_communique_system_frames_political_declaration():
@@ -240,3 +346,47 @@ def test_negotiation_prompt_models_counterparties_and_requires_scenario_forecast
     assert "exactement trois futurs" in prompt
     assert "trois cours d'action" in PRIVATE_DELIBERATION_SYSTEM
     assert "réponse des autres délégations" in PRIVATE_DELIBERATION_SYSTEM
+
+
+def test_negotiation_prompt_free_form_swaps_the_three_futures_template():
+    # Décision design casting = pensée native (§8) : un pays casté reasoning n'a plus le
+    # gabarit "trois futurs" imposé — juste une décision datée ACTION/RÉACTIONS/CHOIX.
+    from agents.prompts import build_negotiation_prompt
+    from simulation.perception import perceive
+
+    world, event = _world(), _event()
+    prompt = build_negotiation_prompt(
+        world.countries["usa"],
+        event,
+        world,
+        "iran: Nous refusons.",
+        perceive(event, world.countries["usa"]),
+        free_form=True,
+    )
+    assert "exactement trois futurs" not in prompt
+    assert "FUTUR 1" not in prompt
+    assert "ACTION :" in prompt
+    assert "RÉACTIONS :" in prompt
+    assert "CHOIX :" in prompt
+    # La tâche publique (private_plan fourni) reste inchangée par free_form — seule la
+    # phase privée (private_plan=None) est concernée.
+    public_prompt = build_negotiation_prompt(
+        world.countries["usa"],
+        event,
+        world,
+        "iran: Nous refusons.",
+        perceive(event, world.countries["usa"]),
+        private_plan="Cours d'action retenu : temporiser.",
+        free_form=True,
+    )
+    assert "TÂCHE PUBLIQUE" in public_prompt
+    assert "ACTION :" not in public_prompt
+
+
+def test_private_deliberation_free_system_drops_the_three_futures_requirement():
+    from agents.prompts import PRIVATE_DELIBERATION_FREE_SYSTEM
+
+    lowered = PRIVATE_DELIBERATION_FREE_SYSTEM.lower()
+    assert "exactement trois" not in lowered  # gabarit imposé au system strict, pas ici
+    assert "librement" in lowered
+    assert "markdown" in lowered or "gras" in lowered

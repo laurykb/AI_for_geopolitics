@@ -206,6 +206,11 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
         s.status === "awaiting_human" ? { ...s, status: "streaming" } : s;
       const updated = withLastTurn(state, e.country, {
         text: e.text,
+        // RG — résumé observable : en Dérive/Joueur-pays, le serveur ne streame plus le
+        // journal privé (plus de private_token/private_plan_done) et pose ici un digest
+        // de 3 lignes qui REMPLACE tout brouillon éventuel. Hors hide, `e.reasoning` porte
+        // déjà le journal complet persisté : le repli sur l'accumulé ne sert que si le
+        // champ est vide (silence, tour humain).
         reasoning:
           e.reasoning ||
           [...state.turns]
@@ -417,7 +422,12 @@ export function reducer(state: LiveRound, action: Action): LiveRound {
       // plein tour humain est une vraie coupure (le serveur est parti).
       return state.status === "done" ? state : { ...state, status: "interrupted" };
     case "error":
-      return { ...state, status: "error", error: action.message };
+      // Symétrie avec `interrupted` : une erreur survenue APRÈS `done` (coupure TCP en fin
+      // de flux, AbortError du démontage) ne doit pas effacer une manche terminée — sinon la
+      // RoundConclusion disparaît et « Continuer » se bloque (bug intermittent observé).
+      return state.status === "done"
+        ? state
+        : { ...state, status: "error", error: action.message };
   }
 }
 

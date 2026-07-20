@@ -70,6 +70,21 @@ def test_action_variants_are_normalized():
     assert a2.last_decision.target == "iran"
 
 
+def test_stream_deliberation_strips_think_trace_from_live_flux():
+    # Revue pt 5 (Important) — le flux de délibération est affiché en live : la trace
+    # <think> d'un modèle de raisonnement (avec sa ligne DECISION en brouillon) ne doit
+    # ni fuiter dans le flux ni voler la vraie décision terminale.
+    text = (
+        "<think>\nBrouillon : DECISION: deploy_forces iran 1.0\n</think>"
+        "Prudence requise.\nDECISION: remain_neutral"
+    )
+    agent = LLMAgent("usa", MockBackend(text))
+    streamed = "".join(agent.stream_deliberation(_event(), _world()))
+    assert "think" not in streamed and "Brouillon" not in streamed
+    assert "Prudence requise." in streamed
+    assert agent.last_decision.action == ActionType.REMAIN_NEUTRAL
+
+
 def test_missing_decision_line_falls_back():
     agent = LLMAgent("usa", MockBackend("je réfléchis mais je ne conclus pas"))
     list(agent.stream_deliberation(_event(), _world()))

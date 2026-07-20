@@ -8,17 +8,21 @@ dans `RoundEngine`. Robustesse : on n'accorde aucune confiance aveugle au modèl
 from __future__ import annotations
 
 import re
-from collections.abc import Generator, Iterator
+import time
+from collections.abc import Callable, Generator, Iterator
 
 from agents.base_agent import Agent
 from agents.prompts import (
     DELIBERATION_SYSTEM,
     NEGOTIATION_SYSTEM,
+    PRIVATE_DECISION_RESCUE_SYSTEM,
+    PRIVATE_DELIBERATION_FREE_SYSTEM,
     PRIVATE_DELIBERATION_SYSTEM,
     SPEECH_ACT_SYSTEM,
     SYSTEM_PROMPT,
     LLMDecision,
     build_decision_prompt,
+    build_decision_rescue_prompt,
     build_deliberation_prompt,
     build_negotiation_prompt,
     build_speech_act_prompt,
@@ -36,19 +40,119 @@ from simulation.dialogue_integrity.message import (
     SpeechAct,
     generate_speech_act,
 )
-from simulation.grudges import load_gamefeel_params
-from simulation.negotiation import NegotiationMessage, format_transcript
+from simulation.grudges import load_gamefeel_params, sampling_for_temperament
+from simulation.negotiation import NegotiationMessage, format_transcript, last_message_from
 from simulation.perception import PerceivedEvent, perceive
 from simulation.private_deliberation import (
     PrivateStrategicPlan,
     fallback_private_plan,
     parse_private_plan,
     sanitize_public_message,
+    split_think,
+    strip_think,
 )
 
 
 def _clamp(x: float) -> float:
     return max(0.0, min(1.0, x))
+
+
+# Le VRAI budget de génération des pays est le TEMPS de raisonnement (voir
+# `simulation.grudges.TimeBudgetParams`), pas un plafond de tokens : les modèles restent
+# libres de la longueur de leurs réponses. L'horloge est injectable (`now`, défaut
+# `time.monotonic`, fake clock dans les tests — aucun test ne dort réellement).
+# `num_predict` n'est qu'une soupape de sécurité anti-emballement, très haute : si un
+# modèle boucle sans jamais respecter le budget-temps (le check n'a lieu qu'ENTRE deux
+# fragments reçus), ce plafond l'arrête quand même. Le juge et le Game Master gardent
+# leur propre budget.
+_TOKEN_SAFETY_CAP = 4096
+
+
+def _consume_timed(
+    stream: Iterator[str], budget: float, now: Callable[[], float]
+) -> Generator[str, None, tuple[str, bool, float | None]]:
+    """Re-streame `stream` fragment par fragment jusqu'à épuisement OU expiration du
+    budget-temps ; renvoie `(texte_accumulé, a_expiré, deadline_armée)`.
+
+    Le deadline est armé À LA RÉCEPTION DU PREMIER FRAGMENT, pas
+    avant l'appel à `stream_generate` : la latence de connexion/prefill/swap de modèle
+    (TTFT observé ~10 s à froid en local) ne doit PAS être décomptée d'un budget dont la
+    sémantique est un temps de RAISONNEMENT, pas un temps bout-en-bout incluant la mise en
+    route du backend. Avant le premier fragment, aucune coupe n'est possible ; `deadline`
+    (3e élément renvoyé) vaut `None` si le flux n'a produit AUCUN fragment.
+
+    Dans tous les cas, referme EXPLICITEMENT `stream` (`.close()`) : `OllamaBackend.
+    stream_generate` enveloppe le générateur de la librairie ollama dans un simple
+    `for chunk in stream: yield ...` (pas `yield from`) — fermer NOTRE générateur y
+    déclenche, par cascade de refcount CPython (le générateur interne perd sa dernière
+    référence quand ce cadre est déchargé), la fermeture du générateur interne, donc la
+    sortie du `with self._client.stream(...) as r:` de la librairie ollama (context
+    manager du flux HTTP) : la connexion se ferme et le serveur Ollama détecte la
+    déconnexion pour arrêter de générer côté GPU. Vérifié par
+    `tests/test_time_budgets.py::
+    test_ollama_backend_stream_generate_closes_the_http_stream_on_early_close`, qui imite
+    ce patron exact (`ollama/_client.py::_request`). `.close()` sur un générateur déjà
+    épuisé est un no-op sûr (chemin sans expiration : comportement inchangé)."""
+    chunks: list[str] = []
+    timed_out = False
+    deadline: float | None = None
+    try:
+        for fragment in stream:
+            if deadline is None:
+                # Premier fragment reçu : le budget commence à courir MAINTENANT, pas au
+                # moment (antérieur) où `stream_generate` a été appelé.
+                deadline = now() + budget
+            chunks.append(fragment)
+            yield fragment
+            if now() >= deadline:
+                timed_out = True
+                break
+    finally:
+        stream.close()
+    return "".join(chunks), timed_out, deadline
+
+
+def _collect_timed(
+    stream: Iterator[str], budget: float, now: Callable[[], float]
+) -> tuple[str, bool]:
+    """Version bufferisée de `_consume_timed` : rien n'est émis avant la fin (la parole
+    publique reste fail-closed devant le filtre anti-fuite, comme avant ce chantier)."""
+    consumer = _consume_timed(stream, budget, now)
+    try:
+        while True:
+            next(consumer)
+    except StopIteration as done:
+        text, timed_out, _deadline = done.value
+        return text, timed_out
+
+
+# La longueur libre encourage parfois un 7B à déborder son budget de tokens ; le backend
+# coupe alors la phrase en plein mot. On retombe sur la dernière phrase complète plutôt
+# que de publier un mot tronqué. Repli par défaut si aucune frontière n'est trouvée
+# (mieux qu'un message vide qui déclencherait le repli déterministe).
+_SENTENCE_BOUNDARY = re.compile(r'[.!?…»”"\']\s')
+
+# Le jeu fait suivre le message naturel de suffixes structurés SANS ponctuation finale
+# (« MOTION: iran : accapare », « ALLIANCE: quitter NATO »…) que d'autres modules
+# parsent directement dans le texte public (simulation/motions.py, retrait d'alliance
+# en séance…). Un trim aveugle les avale : si la partie qu'on s'apprête à couper
+# contient un tel marqueur, on renonce — ce n'est pas un artefact de troncature,
+# c'est le format attendu.
+_STRUCTURED_SUFFIX = re.compile(r"[A-Z]{3,}\s*:")
+
+
+def _trim_trailing_fragment(text: str) -> str:
+    stripped = text.rstrip()
+    if not stripped or stripped[-1] in ".!?…»”\"'":
+        return stripped
+    matches = list(_SENTENCE_BOUNDARY.finditer(stripped))
+    if not matches:
+        return stripped
+    cut = matches[-1].end()
+    if _STRUCTURED_SUFFIX.search(stripped[cut:]):
+        return stripped
+    trimmed = stripped[:cut].rstrip()
+    return trimmed or stripped
 
 
 # Variantes fréquentes du LLM -> action canonique (parsing de la ligne DECISION).
@@ -125,6 +229,8 @@ class LLMAgent(Agent):
         state_note: str = "",
         situation: str = "",
         directive: str = "",
+        human_country: str | None = None,
+        now: Callable[[], float] | None = None,
     ) -> PrivateStrategicPlan:
         """Version synchrone de compatibilité ; consomme le flux privé jusqu'à sa fin."""
 
@@ -137,6 +243,8 @@ class LLMAgent(Agent):
             state_note=state_note,
             situation=situation,
             directive=directive,
+            human_country=human_country,
+            now=now,
         )
         while True:
             try:
@@ -154,53 +262,119 @@ class LLMAgent(Agent):
         state_note: str = "",
         situation: str = "",
         directive: str = "",
+        human_country: str | None = None,
+        now: Callable[[], float] | None = None,
     ) -> Generator[str, None, PrivateStrategicPlan]:
         """Diffuse la verbalisation d'audit telle qu'elle est générée, puis la valide.
 
         Le texte reste hors du dialogue transmis aux autres agents. À la fin du flux, un
         plan normalisé est renvoyé au porte-parole public ; une sortie invalide déclenche
         un repli déterministe sans bloquer le round.
+
+        `human_country` (Joueur-pays) : tague et épingle son dernier message dans le
+        transcript formaté, et le rappelle en position de récence — les IA doivent
+        réellement prendre en compte le joueur.
+
+        `now` : horloge injectable (défaut `time.monotonic`),
+        remplaçable par une fake clock dans les tests. Le budget `think_seconds`
+        (`data/gamefeel/params.json` → `time_budgets`) coupe le flux proprement ; si la
+        décision n'est alors pas lisible, une passe de secours COURTE et elle-même
+        time-boxée tente de faire conclure le modèle avant le repli seedé ultime.
         """
 
         country = world.countries[self.country_id]
         perceived = perceived or perceive(event, country)
         own = [m.text[:90] for m in transcript if m.country == self.country_id and m.text]
+        last_human_message = last_message_from(transcript, human_country)
+        # Le flag `think` du casting (routé par `reasoning_tags`/`TaggedBackend`, cf.
+        # `inference/model_pool.py`) atteint l'agent via son propre backend — c'est le
+        # seul point d'ancrage disponible ici, le round ne transporte pas le casting
+        # jusqu'à l'agent autrement.
+        reasoning = bool(getattr(self.backend, "think", False))
         private_prompt = build_negotiation_prompt(
             country,
             event,
             world,
-            format_transcript(transcript),
+            format_transcript(transcript, human_country=human_country),
             perceived,
             state_note,
             situation=situation,
             directive=directive,
             own_proposals=own,
+            human_country=human_country or "",
+            last_human_message=last_human_message,
+            free_form=reasoning,
         )
-        sampling = load_gamefeel_params().sampling.country
+        params = load_gamefeel_params()
+        sampling = sampling_for_temperament(params, country.temperament)
         participants = sorted(cid for cid in world.countries if cid != self.country_id)
         self.last_private_plan = None
         self.last_private_summary = ""
         self.last_plan_result = None
         self.last_private_valid = False
-        chunks: list[str] = []
+        clock = now or time.monotonic
+        budgets = params.time_budgets
+        plan_system = (
+            PRIVATE_DELIBERATION_FREE_SYSTEM if reasoning else PRIVATE_DELIBERATION_SYSTEM
+        )
+        # num_predict = plafond haut anti-emballement identique pour tous les pays
+        # (reasoning ou non) : le TEMPS (`budgets.think_seconds`) est la vraie limite.
+        plan_temperature = max(0.35, sampling.temperature - 0.05)
         try:
-            plan_tokens = max(640, min(900, max_tokens + 320))
-            for fragment in self.backend.stream_generate(
+            stream = self.backend.stream_generate(
                 private_prompt,
-                system=PRIVATE_DELIBERATION_SYSTEM,
-                max_tokens=plan_tokens,
-                temperature=max(0.2, sampling.temperature - 0.15),
+                system=plan_system,
+                max_tokens=_TOKEN_SAFETY_CAP,
+                # Température de la phase privée relevée : la forte réduction (-0,15) rendait
+                # le décodage glouton et renforçait le biais de primauté vers FUTUR 1.
+                temperature=plan_temperature,
                 repeat_penalty=sampling.repeat_penalty,
-            ):
-                chunks.append(fragment)
-                yield fragment
-            raw = "".join(chunks).strip()
-            self.last_plan_result = InferenceResult(text=raw)
-            plan = parse_private_plan(raw, participants)
+            )
+            # Un budget (durée), pas un deadline précalculé : le deadline s'arme dans
+            # `_consume_timed` À LA RÉCEPTION DU PREMIER FRAGMENT, pour exclure la
+            # latence de connexion/prefill/swap de modèle (TTFT) du temps de
+            # RAISONNEMENT réellement budgété.
+            raw, timed_out, deadline = yield from _consume_timed(
+                stream, budgets.think_seconds, clock
+            )
+            raw = raw.strip()
+            # `.text` porte le texte STRIPPÉ, la pensée va dans `.thinking`
+            # (jamais mélangée à ce que l'audit affiche comme texte).
+            text, thinking = split_think(raw)
+            self.last_plan_result = InferenceResult(text=text, thinking=thinking)
+            plan = parse_private_plan(text, participants)
+            if plan is None and timed_out:
+                # Le temps a expiré AVANT une décision lisible : passe de
+                # secours COURTE (réflexion tronquée en contexte, consigne « conclus
+                # MAINTENANT »), elle-même time-boxée (moitié du temps restant sur le
+                # budget principal, plancher 10 s) — et son PROPRE deadline s'arme pareil,
+                # à SON premier fragment (même exclusion de la latence de connexion). Ses
+                # fragments sont AUSSI streamés (donc facturés au compute comme le reste,
+                # cf. `simulation/live_round.py::consume`).
+                remaining = max(0.0, (deadline or clock()) - clock())
+                rescue_budget = max(10.0, remaining / 2)
+                rescue_stream = self.backend.stream_generate(
+                    build_decision_rescue_prompt(raw),
+                    system=PRIVATE_DECISION_RESCUE_SYSTEM,
+                    max_tokens=min(budgets.decision_rescue_tokens, _TOKEN_SAFETY_CAP),
+                    temperature=plan_temperature,
+                    repeat_penalty=sampling.repeat_penalty,
+                )
+                rescue_raw, _rescue_timed_out, _rescue_deadline = yield from _consume_timed(
+                    rescue_stream, rescue_budget, clock
+                )
+                rescue_text, rescue_thinking = split_think(rescue_raw.strip())
+                self.last_plan_result = InferenceResult(
+                    text=rescue_text, thinking=f"{thinking}\n{rescue_thinking}".strip()
+                )
+                plan = parse_private_plan(rescue_text, participants)
         except Exception:
             plan = None
         if plan is None:
-            plan = fallback_private_plan(participants)
+            # seed = id du pays : dé-biaise le repli (sinon tous retombent sur FUTUR 1) —
+            # l'ultime filet, aussi bien après une passe de secours ratée qu'après un
+            # échec du chemin principal sans expiration.
+            plan = fallback_private_plan(participants, seed=self.country_id)
         else:
             self.last_private_valid = True
         self.last_private_plan = plan
@@ -218,6 +392,8 @@ class LLMAgent(Agent):
         situation: str = "",
         directive: str = "",
         private_plan: PrivateStrategicPlan | None = None,
+        human_country: str | None = None,
+        now: Callable[[], float] | None = None,
     ) -> Iterator[str]:
         """Planifie trois futurs en privé, puis n'émet que la déclaration publique.
 
@@ -225,12 +401,24 @@ class LLMAgent(Agent):
         autres agents. La seconde génération reçoit seulement la branche retenue. Même si
         un backend désobéit, le filtre anti-fuite bloque les marqueurs de délibération avant
         le premier token public.
+
+        `human_country` (Joueur-pays) : voir `stream_negotiation_plan` — même traitement
+        de récence pour la déclaration publique.
+
+        `now` : même horloge injectable que la phase privée
+        (défaut `time.monotonic`), partagée si le round transmet la même valeur aux deux
+        appels. Le budget `speak_seconds` coupe le flux proprement ; le texte accumulé
+        passe par `_trim_trailing_fragment` pour retomber sur la dernière
+        phrase complète plutôt qu'un mot tronqué.
         """
         country = world.countries[self.country_id]
         perceived = perceived or perceive(event, country)
         own = [m.text[:90] for m in transcript if m.country == self.country_id and m.text]
-        transcript_text = format_transcript(transcript)
-        sampling = load_gamefeel_params().sampling.country
+        transcript_text = format_transcript(transcript, human_country=human_country)
+        last_human_message = last_message_from(transcript, human_country)
+        params = load_gamefeel_params()
+        sampling = sampling_for_temperament(params, country.temperament)
+        clock = now or time.monotonic
         plan = private_plan or self.prepare_negotiation_plan(
             event,
             world,
@@ -240,6 +428,8 @@ class LLMAgent(Agent):
             state_note=state_note,
             situation=situation,
             directive=directive,
+            human_country=human_country,
+            now=clock,
         )
         self.last_private_plan = plan
         if not self.last_private_summary:
@@ -256,22 +446,36 @@ class LLMAgent(Agent):
             directive=directive,
             own_proposals=own,
             private_plan=plan.public_brief(),
+            human_country=human_country or "",
+            last_human_message=last_human_message,
         )
         try:
             # On collecte le flux complet avant d'en publier le premier fragment : le filtre
             # anti-fuite reste donc fail-closed. Conserver l'API stream du backend maintient
             # aussi les backends spécialisés (événements scriptés, capture admin, métriques).
-            raw_public = "".join(
-                self.backend.stream_generate(
-                    public_prompt,
-                    system=NEGOTIATION_SYSTEM,
-                    max_tokens=max(120, min(220, max_tokens // 2)),
-                    temperature=sampling.temperature,
-                    repeat_penalty=sampling.repeat_penalty,
-                )
+            # num_predict = plafond haut anti-emballement identique pour tous les pays :
+            # le TEMPS (`budgets.speak_seconds`) est la vraie limite, la longueur
+            # elle-même reste LIBRE (consigne déjà portée par `NEGOTIATION_SYSTEM`,
+            # pas par ce plafond).
+            budgets = params.time_budgets
+            stream = self.backend.stream_generate(
+                public_prompt,
+                system=NEGOTIATION_SYSTEM,
+                max_tokens=_TOKEN_SAFETY_CAP,
+                temperature=sampling.temperature,
+                repeat_penalty=sampling.repeat_penalty,
             )
-            self.last_result = InferenceResult(text=raw_public)
-            public = sanitize_public_message(raw_public)
+            # Budget (durée) plutôt que deadline précalculé : voir
+            # `_consume_timed` (le deadline s'arme à la réception du premier fragment,
+            # la latence de connexion/prefill/swap ne grignote pas le temps de parole).
+            raw_public, _timed_out = _collect_timed(stream, budgets.speak_seconds, clock)
+            # Strip AVANT le filtre anti-fuite : la trace <think> d'un modèle de
+            # raisonnement contient des marqueurs privés (FUTUR n, CHOIX…) qui, laissés
+            # en place, feraient vider un message public pourtant légitime. `.text`
+            # porte le texte déjà STRIPPÉ, la pensée va dans `.thinking`.
+            text, thinking = split_think(raw_public)
+            self.last_result = InferenceResult(text=text, thinking=thinking)
+            public = _trim_trailing_fragment(sanitize_public_message(text))
         except Exception:
             self.last_result = None
             public = ""
@@ -306,12 +510,17 @@ class LLMAgent(Agent):
             strict = (
                 "\n\nRAPPEL : réponds en JSON valide ; si tu emploies accept_proposal/"
                 "reject_proposal/agree/refuse/not_understood, `in_reply_to` DOIT être l'id d'un "
-                "message ci-dessus." if attempt else ""
+                "message ci-dessus."
+                if attempt
+                else ""
             )
             try:
                 return generate_speech_act(
-                    self.backend, prompt + strict, sender=self.country_id,
-                    system=SPEECH_ACT_SYSTEM, temperature=0.4 if attempt == 0 else 0.15,
+                    self.backend,
+                    prompt + strict,
+                    sender=self.country_id,
+                    system=SPEECH_ACT_SYSTEM,
+                    temperature=0.4 if attempt == 0 else 0.15,
                     max_tokens=max_tokens,
                 )
             except Exception:  # noqa: BLE001 - JSON invalide / backend KO -> régénère puis repli
@@ -327,8 +536,11 @@ class LLMAgent(Agent):
             next((c for c in world.countries if c != self.country_id), self.country_id),
         )
         return SpeechAct(
-            performative=Performative.INFORM, sender=self.country_id, receiver=receiver,
-            content=content, justification="[repli déterministe — backend indisponible]",
+            performative=Performative.INFORM,
+            sender=self.country_id,
+            receiver=receiver,
+            content=content,
+            justification="[repli déterministe — backend indisponible]",
         )
 
     def decide(self, event: GeoEvent, world: WorldState) -> AgentDecision:
@@ -370,21 +582,28 @@ class LLMAgent(Agent):
         """
         country = world.countries[self.country_id]
         prompt = build_deliberation_prompt(country, event, world)
-        chunks: list[str] = []
         try:
-            for piece in self.backend.stream_generate(
-                prompt,
-                system=DELIBERATION_SYSTEM,
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
-            ):
-                chunks.append(piece)
-                yield piece
+            # Chemin legacy (`run_live_round`) : collecte-puis-strip, même patron que la
+            # parole publique des pays. Un flux live de fragments bruts avant strip
+            # laisserait fuiter la trace <think> — et sa ligne « DECISION: » brouillon
+            # volerait la vraie décision terminale.
+            raw = "".join(
+                self.backend.stream_generate(
+                    prompt,
+                    system=DELIBERATION_SYSTEM,
+                    max_tokens=self.max_tokens,
+                    temperature=self.temperature,
+                )
+            )
         except Exception:
             self.last_decision = self._fallback(event, world)
             return
 
-        decision = self._parse_decision("".join(chunks), event, world)
+        text = strip_think(raw)
+        for match in re.finditer(r"\S+\s*", text):
+            yield match.group(0)
+
+        decision = self._parse_decision(text, event, world)
         self.last_decision = decision if decision is not None else self._fallback(event, world)
 
     def _parse_decision(

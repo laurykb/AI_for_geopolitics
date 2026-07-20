@@ -80,6 +80,42 @@ def test_secret_note_never_leaks_into_transcript_or_steps():
     assert SECRET not in dumped  # aucune trame observable ne porte le secret
 
 
+# --- F1 (revue finale) : la pression de compute (M6) atteint le prompt ------------
+
+
+def test_compute_pressure_note_reaches_the_prompt_of_the_depleted_country():
+    # M6 définissait compute_pressure()/pressure_note() sans qu'aucun chemin du round
+    # ne les appelle (l'ancien théâtre Streamlit qui les branchait a disparu) : le
+    # mécanisme promis par l'UI/game_api restait mort. usa est asséché (compute quasi
+    # nul) -> pression au-dessus du seuil -> la note de survie doit apparaître dans
+    # SON prompt (plan privé ET message public).
+    world = _world()
+    world.countries["usa"].compute = 0.0
+    backends = {cid: MockBackend("Réflexion. MESSAGE: Position.") for cid in world.countries}
+    agents = {cid: LLMAgent(cid, backends[cid]) for cid in world.countries}
+    judge = _judge("Verdict. ESCALADE: 0.3")
+
+    _run(world, agents, judge)
+
+    usa_prompts = " ".join(c["prompt"] for c in backends["usa"].calls)
+    assert "COMPUTE CRITIQUE" in usa_prompts
+
+
+def test_compute_pressure_note_absent_for_a_comfortable_country():
+    # Sous le seuil (stock confortable, défaut de CountryState) : rien ne change,
+    # aucune note de pression n'apparaît dans le prompt.
+    world = _world()
+    backends = {cid: MockBackend("Réflexion. MESSAGE: Position.") for cid in world.countries}
+    agents = {cid: LLMAgent(cid, backends[cid]) for cid in world.countries}
+    judge = _judge("Verdict. ESCALADE: 0.3")
+
+    _run(world, agents, judge)
+
+    for cid in world.countries:
+        prompts = " ".join(c["prompt"] for c in backends[cid].calls)
+        assert "COMPUTE CRITIQUE" not in prompts
+
+
 def test_missing_evidence_blocks_the_motion_despite_votes_and_judge():
     # G9 §2 — le juge ne décide plus : `retenue = vote ET preuves`. Preuves absentes →
     # rejet, même si le sommet vote pour et que le texte du juge « suspendrait ».

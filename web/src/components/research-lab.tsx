@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { Hint } from "@/components/hint";
 import {
   completeCountryAssignments,
   CountryModelAssignments,
@@ -22,8 +23,10 @@ import {
   startLabExperiment,
   submitHumanTrial,
 } from "@/lib/api";
+import { fmt } from "@/lib/format";
 import type {
   CampaignLabView,
+  ExperimentProgress,
   ExperimentProtocol,
   ExperimentRecord,
   ExperimentView,
@@ -33,30 +36,82 @@ import type {
   ScenarioCountryEligibility,
 } from "@/lib/types";
 
-const STATUS_LABELS: Record<string, string> = {
-  queued: "pré-enregistrée",
+// "protocole figé" fait écho au CTA "Figer le protocole" (spec §3.2) : plus de "pré-enregistrée",
+// jargon d'un CTA qui n'existe plus dans l'interface.
+export const STATUS_LABELS: Record<string, string> = {
+  queued: "protocole figé",
   running: "en cours",
   completed: "terminée",
   failed: "terminée avec erreurs",
   cancelled: "annulée",
 };
 
-const ROLE_LABELS: Record<string, string> = {
+// Libellés sans jargon (spec refonte labo §3.3) : chacun dit CE QUE le modèle représente
+// dans le protocole, pas seulement sa taille ou son statut technique.
+export const ROLE_LABELS: Record<string, string> = {
   core_comparison: "panel principal",
-  capacity_comparison: "palier 7–8B",
-  reasoning_robustness: "raisonnement",
-  slow_robustness_only: "lent / déport CPU",
+  capacity_comparison: "palier 7-8B (comparaison historique)",
+  reasoning: "raisonnement natif (candidat frontière)",
+  slow_robustness_only: "grand modèle, voie lente (contre-vérification)",
+  retired: "retiré du panel (runs historiques lisibles)",
 };
 
+// La pensée native est la denrée que le jeu évalue —
+// la sélection d'une NOUVELLE expérience ne propose que les candidats plausibles au rôle
+// d'« IA frontière » : raisonnement natif, ou la voie lente existante (gpt-oss/magistral).
+// Les généralistes retraités (`retired`) et les paliers de capacité (`capacity_comparison`,
+// ex. mistral) en sont exclus — mais un run HISTORIQUE reste lisible quel que soit le
+// modèle : ce filtre ne touche que la proposition de candidats, jamais l'affichage d'un
+// résultat déjà enregistré (résolu via la liste `installed`, non filtrée, ailleurs ici).
+const FRONTIER_CANDIDATE_ROLES = new Set(["reasoning", "slow_robustness_only"]);
+
+export function frontierCandidateModels(models: ResearchModel[]): ResearchModel[] {
+  return models.filter((model) => FRONTIER_CANDIDATE_ROLES.has(model.role));
+}
+
 const FEATURED_PROTOCOL_ID = "ai-arms-dyadic-tournament-v1";
+// Le stepper EST le cycle d'une expérience (spec refonte labo §2 et §3.0) : chaque étape porte
+// le nom du temps du cycle qu'elle incarne, pas un intitulé d'écran indépendant.
 export const LAB_STEPS = [
   { id: "intro", label: "Comprendre", detail: "La question en une minute", tour: "lab-loop" },
-  { id: "hypothesis", label: "Hypothèse", detail: "Scénario et variables", tour: "lab-protocol" },
-  { id: "casting", label: "Casting", detail: "Pays et modèles", tour: "lab-casting" },
-  { id: "theatre", label: "Théâtre", detail: "Boîte de verre", tour: "lab-stage" },
-  { id: "results", label: "Résultats", detail: "Réponse et preuves", tour: "lab-results" },
+  {
+    id: "hypothesis",
+    label: "Question & protocole",
+    detail: "Hypothèse, facteurs, pilote ou complet",
+    tour: "lab-protocol",
+  },
+  {
+    id: "casting",
+    label: "Casting",
+    detail: "qui joue, contre qui — le reste est gelé",
+    tour: "lab-casting",
+  },
+  { id: "theatre", label: "Théâtre", detail: "boîte de verre", tour: "lab-stage" },
+  {
+    id: "results",
+    label: "Résultat & limites",
+    detail: "Verdict, preuves et limites",
+    tour: "lab-results",
+  },
 ] as const;
 type LabStep = (typeof LAB_STEPS)[number]["id"];
+
+// Glossaire au point d'usage (spec refonte labo §3.0) : une bulle « ? » par terme, jamais un
+// bloc <details> séparé du contexte où le mot apparaît. Une définition en une phrase chacun.
+const GLOSSARY = {
+  cellule: "Une combinaison précise des variables testées.",
+  repetition: "La même cellule rejouée pour mesurer sa variabilité.",
+  seed: "Le numéro qui permet de rejouer exactement les mêmes tirages aléatoires.",
+  digest: "L'empreinte exacte de la version locale d'un modèle.",
+  manifeste: "Le plan et les seeds figés avant le lancement, pour ne pas tricher ensuite.",
+  icWilson: "Un intervalle qui encadre un taux avec 95 % de confiance, fiable même à petit n.",
+  pilote: "Un essai à effectif réduit : une direction possible, pas encore une preuve.",
+  paireOrdonnee: "Un même duo de modèles joué dans les deux sens : qui commence Alpha, qui Bêta.",
+  selfPlay: "Un modèle joué contre lui-même, pour mesurer sa tendance propre sans effet adverse.",
+  echangeDeCamps: "Chaque modèle joue tour à tour Alpha et Bêta, pour séparer l'effet du modèle de celui du rôle.",
+  adversaireGele: "Les profils pays, les forces et les seeds restent identiques ; seul le casting testé varie.",
+  verdict: "La lecture prudente du résultat : ce qu'on peut et ne peut pas en conclure à ce stade.",
+} as const;
 
 export function preferredLabProtocol(protocols: ExperimentProtocol[]): ExperimentProtocol | undefined {
   return (
@@ -70,14 +125,54 @@ function isDyadic(protocol: ExperimentProtocol): boolean {
   return protocol.id === "ai-arms-dyadic-tournament-v1";
 }
 
-function defaultFactorSelection(protocol: ExperimentProtocol | undefined): Record<string, string[]> {
+// Libellé du critère principal par id de métrique — un doublon volontaire des libellés
+// `_outcome(...)` du backend (`simulation/research_lab.py`), utile UNIQUEMENT en repli (voir
+// `resolvePrimaryMetricLabel`). Le catalogue exposé (`lab.protocols`) ne liste plus que les
+// protocoles mis en avant (resserrement labo sur le seuil nucléaire) :
+// un run HISTORIQUE d'un protocole non exposé (ex. un ancien tournoi dyadique) peut donc ne
+// plus s'y retrouver, alors que `summary.primary_metric` reste, lui, toujours calculé côté
+// serveur pour CE run précis (`summarize_results`, indépendant du catalogue exposé).
+const PRIMARY_METRIC_LABELS: Record<string, string> = {
+  nuclear_use: "Emploi nucléaire",
+  appropriate_override: "Refus humain approprié",
+  forecast_mae: "Erreur moyenne de prévision",
+};
+
+/** Libellé du critère principal affiché en tête de l'écran Résultats, y compris pour un run
+ * HISTORIQUE dont le protocole n'est plus dans le catalogue exposé (spec refonte labo §3.5,
+ * « historique intact »). `matchedProtocol` est le protocole
+ * retrouvé dans `lab.protocols` (`undefined` si le run vient d'un protocole non mis en avant) ;
+ * `primaryMetric` est `summary.primary_metric`, toujours correct pour ce run précis. */
+export function resolvePrimaryMetricLabel(
+  matchedProtocol: ExperimentProtocol | undefined,
+  primaryMetric: string | undefined,
+): string {
+  return (
+    matchedProtocol?.outcomes.find((outcome) => outcome.primary)?.label ??
+    PRIMARY_METRIC_LABELS[primaryMetric ?? ""] ??
+    "Emploi nucléaire"
+  );
+}
+
+export type LabPlanMode = "pilot" | "complete";
+
+/** Choix explicite Pilote/Plan complet (spec refonte labo §3.2 « fin du piège du pilote »).
+ * Remplace l'ancienne présélection silencieuse au premier niveau : le pilote applique
+ * désormais le préréglage DÉCLARÉ par le protocole (`pilot_factor_selection`, données pures
+ * côté backend) et le plan complet coche systématiquement tous les niveaux. Un facteur absent
+ * du préréglage pilote garde tous ses niveaux — jamais une réduction inventée côté front. */
+export function planSelection(
+  protocol: ExperimentProtocol | undefined,
+  mode: LabPlanMode,
+): Record<string, string[]> {
   if (!protocol) return {};
-  const pilot = isDyadic(protocol);
   return Object.fromEntries(
-    protocol.factors.map((factor) => [
-      factor.id,
-      pilot ? factor.levels.slice(0, 1).map((level) => level.id) : factor.levels.map((level) => level.id),
-    ]),
+    protocol.factors.map((factor) => {
+      const allLevels = factor.levels.map((level) => level.id);
+      if (mode === "complete") return [factor.id, allLevels];
+      const preset = protocol.pilot_factor_selection?.[factor.id];
+      return [factor.id, preset && preset.length > 0 ? preset : allLevels];
+    }),
   );
 }
 
@@ -144,30 +239,32 @@ function formatDuration(seconds: number): string {
   return `${(seconds / 3_600).toFixed(seconds < 36_000 ? 1 : 0)} h`;
 }
 
+/** Phase du cycle affichée explicitement sur l'écran Exécution (spec refonte labo §3.4) :
+ * Protocole figé → En cours (x/N runs) → Terminé : lire le résultat. Renvoie les 3 étapes,
+ * chacune avec un indicateur "active" pour mettre en évidence la phase courante. */
+export function executionCyclePhases(progress: ExperimentProgress): [string, boolean][] {
+  const attempted = progress.completed + progress.failed;
+  const terminal = ["completed", "failed", "cancelled"].includes(progress.experiment.status);
+  const running = !terminal && (progress.experiment.status === "running" || attempted > 0);
+  return [
+    ["Protocole figé", !terminal && !running],
+    [`En cours (${fmt(attempted)}/${fmt(progress.total)} runs)`, running],
+    ["Terminé : lire le résultat", terminal],
+  ];
+}
+
 function ExperimentLoop({ protocol }: { protocol: ExperimentProtocol }) {
   const dyadic = isDyadic(protocol);
-  const steps = dyadic
-    ? [
-        ["Observer", "Même situation publique pour Alpha et Bêta"],
-        ["Anticiper", "Chaque IA prédit la réponse adverse"],
-        ["Décider", "Les deux choix restent scellés"],
-        ["Résoudre", "Le Game Master révèle les actions ensemble"],
-        ["Comparer", "Erreur de prévision, escalade et résultat"],
-      ]
-    : [
-        ["Scénario", "Le Game Master injecte une situation contrôlée"],
-        ["Délibération", "Le modèle analyse ses options"],
-        ["Action", "Le pays choisit et justifie son comportement"],
-        ["Observation", "Le jeu enregistre les effets mesurables"],
-        ["Réplication", "Les mêmes conditions sont rejouées"],
-      ];
+  // Les intitulés sont EXACTEMENT ceux du stepper (spec refonte labo §3.1) : la boucle
+  // affichée ici et la navigation à 5 écrans ne doivent plus jamais diverger.
+  const steps = LAB_STEPS.map((step) => [step.label, step.detail] as const);
 
   return (
     <div data-tour="lab-loop">
     <Panel className="overflow-hidden border-accent/35 bg-[linear-gradient(110deg,rgba(99,102,241,0.10),transparent_55%)]">
       <PanelTitle
-        kicker="Vue immédiate"
-        title={dyadic ? "Deux IA se prédisent avant d’agir" : "Du scénario à la conclusion"}
+        kicker="1 · Comprendre"
+        title="Le cycle en 5 temps, identique pour toutes les expériences"
         right={<Pill tone="accent">{dyadic ? "6 appels IA / tour" : `${protocol.scenario_beats?.length ?? 0} rounds`}</Pill>}
       />
       <p className="mb-4 max-w-4xl text-sm leading-relaxed text-fg-muted">
@@ -221,7 +318,7 @@ function LabJourney({
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-accent-bright">
-            Parcours guidé par Laury
+            Cycle de l&apos;expérience
           </p>
           <p className="mt-0.5 text-xs text-fg-muted">Une décision par écran, vos choix restent mémorisés.</p>
         </div>
@@ -309,15 +406,25 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
   const featured = preferredLabProtocol(lab.protocols);
   const [protocolId, setProtocolId] = useState(featured?.id ?? "");
   const protocol = lab.protocols.find((item) => item.id === protocolId) ?? lab.protocols[0];
+  // Resserrement du catalogue : un seul protocole exposé retire le
+  // sélecteur de l'écran 2, la carte s'affiche directement (spec refonte labo §3.2 amendée).
+  const hasProtocolChoice = lab.protocols.length > 1;
+  // `installed` reste NON filtré par rôle : le badge « Modèles disponibles » et la
+  // résolution des tags d'une expérience HISTORIQUE (clone, estimation de durée) doivent
+  // continuer de reconnaître n'importe quel modèle du panel, retraité ou non.
   const installed = lab.model_panel.models.filter((model) => model.installed);
-  const recommendedModels = lab.model_panel.models.filter(
-    (model) => model.installed && model.role === "core_comparison",
+  const candidateModels = frontierCandidateModels(lab.model_panel.models);
+  const recommendedModels = candidateModels.filter(
+    (model) => model.installed && model.role === "reasoning",
   );
-  const advancedModels = lab.model_panel.models.filter(
+  const advancedModels = candidateModels.filter(
     (model) => !recommendedModels.some((recommended) => recommended.tag === model.tag),
   );
-  const coreModels = installed.filter((model) => model.role === "core_comparison");
-  const defaultModels = (coreModels.length ? coreModels : installed)
+  const defaultModels = (
+    recommendedModels.length
+      ? recommendedModels
+      : candidateModels.filter((model) => model.installed)
+  )
     .slice(0, 4)
     .map((model) => model.tag);
   const [models, setModels] = useState<string[]>(defaultModels);
@@ -325,9 +432,12 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
   const [castingRole, setCastingRole] = useState<"alpha" | "beta">("alpha");
   const [countryAssignments, setCountryAssignments] = useState<Record<string, string>>({});
   const [castingMode, setCastingMode] = useState<"fixed" | "matrix">("fixed");
-  const [repetitions, setRepetitions] = useState(protocol?.repetitions_per_cell ?? 30);
+  // Pilote par défaut, mais toujours affiché et modifiable explicitement (spec §3.2) : la
+  // trappe corrigée est l'ABSENCE d'indication, pas le choix pilote lui-même.
+  const [planMode, setPlanMode] = useState<LabPlanMode>("pilot");
+  const [repetitions, setRepetitions] = useState(protocol?.pilot_repetitions_per_cell ?? 5);
   const [factorSelection, setFactorSelection] = useState<Record<string, string[]>>(() =>
-    defaultFactorSelection(protocol),
+    planSelection(protocol, "pilot"),
   );
   const [includeSelfPlay, setIncludeSelfPlay] = useState(false);
   const [active, setActive] = useState<ExperimentView | null>(null);
@@ -584,16 +694,34 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
     }
   };
 
+  // Partagé entre le lien « Reprendre une expérience passée » de l'écran 1 et l'historique
+  // de l'écran 5 : ouvrir une expérience déjà pré-enregistrée saute directement au résultat.
+  const openExperiment = (experimentId: string) => {
+    setHumanTrial(null);
+    setHumanDebrief(null);
+    getLabExperiment(experimentId)
+      .then((view) => {
+        setActive(view);
+        goLabStep("results");
+      })
+      .catch((err) => setError(humanizeError(err)));
+  };
+
   if (!protocol) return null;
   const progress = active?.progress;
   const summary = active?.summary;
-  const resultProtocol =
-    lab.protocols.find((item) => item.id === progress?.experiment.protocol_id) ?? protocol;
-  const primaryMetricLabel =
-    resultProtocol.outcomes.find((outcome) => outcome.primary)?.label ??
-    (summary?.primary_metric === "appropriate_override"
-      ? "Décision humaine appropriée"
-      : "Emploi nucléaire");
+  // Le catalogue exposé (`lab.protocols`) peut ne plus contenir le protocole d'un run
+  // HISTORIQUE : `matchedResultProtocol` reste `undefined` dans ce
+  // cas plutôt que de retomber silencieusement sur le protocole de la nouvelle expérience —
+  // `resolvePrimaryMetricLabel` sait lire `summary.primary_metric` pour rester correct.
+  const matchedResultProtocol = lab.protocols.find(
+    (item) => item.id === progress?.experiment.protocol_id,
+  );
+  const resultProtocol = matchedResultProtocol ?? protocol;
+  const primaryMetricLabel = resolvePrimaryMetricLabel(
+    matchedResultProtocol,
+    summary?.primary_metric,
+  );
   const stageSample =
     active?.progress.experiment.protocol_id === protocol.id ? active.samples?.[0] : null;
   const fixedAssignments = completeCountryAssignments(
@@ -622,7 +750,7 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
       <section hidden={labStep !== "intro"} className="space-y-4">
       <Panel className="overflow-hidden border-indigo-soft/40 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.16),transparent_42%)]">
         <PanelTitle
-          kicker="Laboratoire scientifique"
+          kicker="1 · Comprendre"
           title={lab.title}
           right={<Pill tone="accent">mono-GPU · reprenable</Pill>}
         />
@@ -642,6 +770,16 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
                 detail={lab.model_panel.hardware_profile.gpu.replace("NVIDIA GeForce ", "")}
               />
             </div>
+            {history.length > 0 && (
+              <button
+                type="button"
+                onClick={() => openExperiment(history[0]!.id)}
+                className="mt-4 rounded-md border border-edge px-3 py-2 text-xs font-medium text-fg-muted hover:border-edge-strong hover:text-foreground"
+              >
+                ↺ Reprendre une expérience passée ({history.length} pré-enregistrée
+                {history.length > 1 ? "s" : ""})
+              </button>
+            )}
           </div>
           <div className="rounded-lg border border-edge bg-background/30 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-fg-faint">
@@ -659,97 +797,189 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
       </Panel>
 
       <ExperimentLoop protocol={protocol} />
-
-      <details className="rounded-lg border border-edge bg-surface-2/25 px-4 py-3">
-        <summary className="cursor-pointer text-sm font-medium text-foreground">
-          Les quatre mots à connaître avant de commencer
-        </summary>
-        <dl className="mt-3 grid gap-3 text-xs text-fg-muted sm:grid-cols-2 xl:grid-cols-4">
-          <GlossaryTerm term="Cellule" definition="Une combinaison précise des variables testées." />
-          <GlossaryTerm term="Répétition" definition="La même cellule rejouée pour mesurer sa variabilité." />
-          <GlossaryTerm term="Seed" definition="Le numéro qui permet de rejouer les mêmes tirages aléatoires." />
-          <GlossaryTerm term="Digest" definition="L'empreinte exacte de la version locale d'un modèle." />
-        </dl>
-      </details>
       </section>
 
       <div className="space-y-4">
         <div data-tour="lab-protocol" hidden={labStep !== "hypothesis"}>
         <Panel>
           <PanelTitle
-            kicker="1 · Hypothèse"
-            title="Choisir un protocole"
+            kicker="2 · Question & protocole"
+            // Resserrement du catalogue : avec une seule carte
+            // exposée, il n'y a plus de choix à faire — la carte s'affiche directement, sans
+            // vocabulaire de sélection (spec refonte labo §3.2 amendée).
+            title={hasProtocolChoice ? "Choisir une carte d'expérience" : protocol.title}
             right={
               isDyadic(protocol) ? <Pill tone="accent">expérience phare</Pill> : undefined
             }
           />
-          <div className="grid gap-2 lg:grid-cols-2">
-            {lab.protocols.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  setProtocolId(item.id);
-                  setRepetitions(item.repetitions_per_cell);
-                  setFactorSelection(defaultFactorSelection(item));
-                  setIncludeSelfPlay(false);
-                  setActive(null);
-                  setHumanTrial(null);
-                  setHumanDebrief(null);
-                }}
-                className={`w-full rounded-lg border p-3 text-left transition-colors ${
-                  item.id === protocol.id
-                    ? "border-accent bg-accent/10"
-                    : "border-edge bg-surface-2/40 hover:border-edge-strong"
-                }`}
-              >
-                <span className="flex items-start justify-between gap-2">
-                  <span>
-                    {isDyadic(item) && (
-                      <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-accent-bright">
-                        Nouveau · tournoi multi-rounds
-                      </span>
-                    )}
-                    <span className="block text-sm font-semibold">{item.title}</span>
+          {hasProtocolChoice ? (
+            <div className="grid gap-2 lg:grid-cols-2">
+              {lab.protocols.map((item) => {
+                const primary = item.outcomes.find((outcome) => outcome.primary) ?? item.outcomes[0];
+                return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    setProtocolId(item.id);
+                    setPlanMode("pilot");
+                    setRepetitions(item.pilot_repetitions_per_cell);
+                    setFactorSelection(planSelection(item, "pilot"));
+                    setIncludeSelfPlay(false);
+                    setActive(null);
+                    setHumanTrial(null);
+                    setHumanDebrief(null);
+                  }}
+                  className={`w-full rounded-lg border p-3 text-left transition-colors ${
+                    item.id === protocol.id
+                      ? "border-accent bg-accent/10"
+                      : "border-edge bg-surface-2/40 hover:border-edge-strong"
+                  }`}
+                >
+                  <span className="flex items-start justify-between gap-2">
+                    <span>
+                      {isDyadic(item) && (
+                        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-accent-bright">
+                          Nouveau · tournoi multi-rounds
+                        </span>
+                      )}
+                      <span className="block text-sm font-semibold">{item.title}</span>
+                    </span>
+                    <Pill tone={item.execution_mode === "automated" ? "good" : "warn"}>
+                      {item.execution_mode === "automated" ? "automatisé" : "humain requis"}
+                    </Pill>
                   </span>
-                  <Pill tone={item.execution_mode === "automated" ? "good" : "warn"}>
-                    {item.execution_mode === "automated" ? "automatisé" : "humain requis"}
-                  </Pill>
-                </span>
-                <span className="mt-1 block text-xs leading-relaxed text-fg-muted">
-                  {item.research_question}
-                </span>
-              </button>
-            ))}
+                  <span className="mt-1 block text-xs leading-relaxed text-fg-muted">
+                    {item.research_question}
+                  </span>
+                  {primary && (
+                    <span className="mt-1.5 flex items-center gap-1 text-[11px] text-fg-faint">
+                      Mesure : {primary.label}
+                      <Hint text={primary.description} />
+                    </span>
+                  )}
+                </button>
+                );
+              })}
+            </div>
+          ) : (
+            // Une seule carte exposée : elle s'affiche directement (hypothèse/protocole/
+            // mesures/limites suivent juste en dessous), sans bouton de sélection factice.
+            <div className="w-full rounded-lg border border-accent bg-accent/10 p-3 text-left">
+              <span className="flex items-start justify-between gap-2">
+                <span className="block text-sm font-semibold">{protocol.title}</span>
+                <Pill tone={protocol.execution_mode === "automated" ? "good" : "warn"}>
+                  {protocol.execution_mode === "automated" ? "automatisé" : "humain requis"}
+                </Pill>
+              </span>
+              <span className="mt-1 block text-xs leading-relaxed text-fg-muted">
+                {protocol.research_question}
+              </span>
+              {(() => {
+                const primary =
+                  protocol.outcomes.find((outcome) => outcome.primary) ?? protocol.outcomes[0];
+                return (
+                  primary && (
+                    <span className="mt-1.5 flex items-center gap-1 text-[11px] text-fg-faint">
+                      Mesure : {primary.label}
+                      <Hint text={primary.description} />
+                    </span>
+                  )
+                );
+              })()}
+            </div>
+          )}
+
+          {/* La fiche d'expérience standardisée (CETaS) : hypothèse, protocole, mesures,
+              lecture attendue et limites du protocole actuellement sélectionné. */}
+          <div className="mt-4 grid gap-3 rounded-lg border border-edge bg-surface-2/30 p-3 md:grid-cols-2">
+            <div>
+              <p className="text-xs font-semibold text-foreground">Hypothèse</p>
+              <p className="mt-1 text-xs leading-relaxed text-fg-muted">
+                {protocol.hypotheses[0] ?? protocol.research_question}
+              </p>
+            </div>
+            <div>
+              <p className="flex items-center gap-1 text-xs font-semibold text-foreground">
+                Mesures <Hint text={GLOSSARY.icWilson} />
+              </p>
+              <ul className="mt-1 space-y-0.5 text-xs leading-relaxed text-fg-muted">
+                {protocol.outcomes.map((outcome) => (
+                  <li key={outcome.id} className="flex items-center gap-1">
+                    {outcome.label}
+                    <Hint text={outcome.description} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-foreground">Lecture attendue</p>
+              <p className="mt-1 text-xs leading-relaxed text-fg-muted">{protocol.conclusion_rule}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-foreground">Limites</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs leading-relaxed text-fg-faint">
+                {protocol.caveats.map((caveat) => (
+                  <li key={caveat}>{caveat}</li>
+                ))}
+              </ul>
+            </div>
           </div>
 
           <div className="mt-4 rounded-lg border border-edge bg-surface-2/30 p-3">
-            <p className="text-xs font-semibold text-foreground">Périmètre pré-enregistré</p>
-            <p className="mt-1 text-xs leading-relaxed text-fg-faint">
-              Les niveaux cochés seront réellement exécutés. Commencez par une cellule
-              pilote, puis élargissez sans modifier le manifeste déjà créé.
+            <p className="flex items-center gap-1 text-xs font-semibold text-foreground">
+              Protocole <Hint text={GLOSSARY.cellule} />
             </p>
+            <p className="mt-1 flex flex-wrap items-center gap-1 text-xs leading-relaxed text-fg-faint">
+              Figer → Lancer → Attendre → Lire. Choisis d&apos;abord un nombre de
+              répétitions <Hint text={GLOSSARY.repetition} /> : les cases à cocher plus bas
+              restent disponibles pour un choix libre de niveaux.
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {(
+                [
+                  [
+                    "pilot",
+                    "Pilote",
+                    `${protocol.pilot_repetitions_per_cell} répétitions · réponse indicative, minutes`,
+                  ],
+                  [
+                    "complete",
+                    "Plan complet",
+                    `${protocol.repetitions_per_cell} répétitions · réponse avec IC, heures`,
+                  ],
+                ] as const
+              ).map(([mode, label, detail]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={planMode === mode}
+                  onClick={() => {
+                    setPlanMode(mode);
+                    setRepetitions(
+                      mode === "pilot" ? protocol.pilot_repetitions_per_cell : protocol.repetitions_per_cell,
+                    );
+                    setFactorSelection(planSelection(protocol, mode));
+                    setActive(null);
+                  }}
+                  className={`rounded-lg border p-3 text-left transition-colors ${
+                    planMode === mode
+                      ? "border-accent bg-accent/10"
+                      : "border-edge bg-surface-2/40 hover:border-edge-strong"
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                    {label}
+                    {mode === "pilot" && <Hint text={GLOSSARY.pilote} />}
+                  </span>
+                  <span className="mt-1 block text-[11px] leading-relaxed text-fg-faint">{detail}</span>
+                </button>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-fg-faint">Choix libre par niveau :</p>
             {protocol.factors.map((factor) => (
               <div key={factor.id} className="mt-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-xs text-fg-muted">{factor.label}</p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const all = factor.levels.map((level) => level.id);
-                      setFactorSelection((current) => ({
-                        ...current,
-                        [factor.id]: current[factor.id]?.length === all.length ? [all[0]!] : all,
-                      }));
-                      setActive(null);
-                    }}
-                    className="text-[11px] text-accent-bright hover:underline"
-                  >
-                    {factorSelection[factor.id]?.length === factor.levels.length
-                      ? "Réduire au pilote"
-                      : "Tout sélectionner"}
-                  </button>
-                </div>
+                <p className="text-xs text-fg-muted">{factor.label}</p>
                 <div className="mt-1 flex flex-wrap gap-1.5">
                   {factor.levels.map((level) => {
                     const selected = factorSelection[factor.id]?.includes(level.id) ?? true;
@@ -790,7 +1020,63 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
 
         <div data-tour="lab-casting" hidden={labStep !== "casting"}>
         <Panel>
-          <PanelTitle kicker="2 · Distribution" title="Choisir les pays et leurs modèles" />
+          <PanelTitle kicker="3 · Casting" title="Choisir les pays et leurs modèles" />
+          {/* Budget figé (NPS) en tête de panneau (spec refonte labo §3.3) : le compteur
+              runs/appels/durée matérialise « toute conclusion vaut à ce budget » avant même
+              de composer le casting — pas relégué en bas de page comme une case à cocher. */}
+          <div className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-edge bg-surface-2/30 p-3">
+            <label className="text-xs text-fg-muted">
+              <span className="flex items-center gap-1">
+                Répétitions par cellule <Hint text={GLOSSARY.repetition} />
+              </span>
+              <TextInput
+                type="number"
+                min={1}
+                max={300}
+                value={repetitions}
+                onChange={(event) => setRepetitions(Math.max(1, Math.min(300, Number(event.target.value))))}
+                className="mt-1 block w-28 font-mono"
+              />
+            </label>
+            <div className="pb-2 text-xs text-fg-muted">
+              {cellsOf(protocol, factorSelection)} cellules <Hint text={GLOSSARY.cellule} /> ×{" "}
+              {repetitions}
+              {protocol.execution_mode === "automated" ? (
+                isDyadic(protocol) ? (
+                  <>
+                    {" × "}
+                    {castingMode === "fixed"
+                      ? 1
+                      : models.length === 1
+                        ? 1
+                        : models.length * (models.length - (includeSelfPlay ? 0 : 1))}
+                    {" paires ordonnées "}
+                    <Hint text={GLOSSARY.paireOrdonnee} />
+                  </>
+                ) : (
+                  ` × ${models.length} modèles`
+                )
+              ) : (
+                " × 1 participant"
+              )}
+              {" = "}
+              <strong className="font-mono text-foreground">{fmt(planned)} runs</strong>
+              {isDyadic(protocol) && (
+                <span className="ml-2 font-mono text-fg-faint">
+                  · {fmt(plannedModelCalls)} appels modèle maximum
+                </span>
+              )}
+              {estimatedDurationS > 0 && (
+                <span className={estimatedDurationS > 28_800 ? "ml-2 text-warn" : "ml-2 text-good"}>
+                  · durée locale estimée {formatDuration(estimatedDurationS)}
+                </span>
+              )}
+            </div>
+          </div>
+          <p className="mb-4 flex items-center gap-1 rounded-md border border-edge bg-surface-2/30 px-3 py-2 text-xs text-fg-muted">
+            Profils pays, forces et seeds sont gelés : seul le casting varie.
+            <Hint text={GLOSSARY.adversaireGele} />
+          </p>
           {isDyadic(protocol) && (
             <div className="mb-5 space-y-3">
               <div>
@@ -846,9 +1132,14 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
               />
               <div className="grid gap-2 sm:grid-cols-2">
                 {([
-                  ["fixed", "Théâtre assigné", "Un modèle précis par pays, comme en Classique."],
-                  ["matrix", "Matrice comparative", "Toutes les paires ordonnées tournent sur les mêmes pays."],
-                ] as const).map(([value, label, detail]) => (
+                  ["fixed", "Théâtre assigné", "Un modèle précis par pays, comme en Classique.", null],
+                  [
+                    "matrix",
+                    "Matrice comparative",
+                    "Chaque modèle joue les deux camps, pour séparer l'effet du modèle de l'effet du rôle.",
+                    GLOSSARY.echangeDeCamps,
+                  ],
+                ] as const).map(([value, label, detail, hint]) => (
                   <button
                     key={value}
                     type="button"
@@ -864,7 +1155,10 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
                         : "border-edge bg-surface-2/30 hover:border-edge-strong"
                     }`}
                   >
-                    <span className="block text-xs font-semibold">{label}</span>
+                    <span className="flex items-center gap-1 text-xs font-semibold">
+                      {label}
+                      {hint && <Hint text={hint} />}
+                    </span>
                     <span className="mt-1 block text-[11px] leading-relaxed text-fg-faint">
                       {detail}
                     </span>
@@ -873,8 +1167,9 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
               </div>
             </div>
           )}
-          <p className="mb-2 text-xs text-fg-muted">
-            Panel recommandé pour commencer — modèles installés, comparables et adaptés à la machine.
+          <p className="mb-2 flex items-center gap-1 text-xs text-fg-muted">
+            Panel recommandé pour commencer — modèles installés, comparables et adaptés à la
+            machine. Chaque modèle affiche son digest <Hint text={GLOSSARY.digest} />.
           </p>
           <div className="grid gap-2 sm:grid-cols-2">
             {recommendedModels.map((model) => (
@@ -933,71 +1228,43 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
                 className="mt-0.5 accent-[var(--color-accent)]"
               />
               <span>
-                <strong className="block text-foreground">Inclure l&apos;auto-jeu</strong>
+                <strong className="flex items-center gap-1 text-foreground">
+                  Baseline : le modèle contre lui-même
+                  <Hint text={GLOSSARY.selfPlay} />
+                </strong>
                 Joue aussi chaque modèle contre lui-même. Utile pour mesurer une spirale
                 intrinsèque, mais augmente fortement le nombre d&apos;appels sur mono-GPU.
               </span>
             </label>
           )}
 
-          <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-edge pt-4">
-            <label className="text-xs text-fg-muted">
-              Répétitions par cellule
-              <TextInput
-                type="number"
-                min={1}
-                max={300}
-                value={repetitions}
-                onChange={(event) => setRepetitions(Math.max(1, Math.min(300, Number(event.target.value))))}
-                className="mt-1 block w-28 font-mono"
-              />
-            </label>
-            <div className="pb-2 text-xs text-fg-muted">
-              {cellsOf(protocol, factorSelection)} cellules × {repetitions}
-              {protocol.execution_mode === "automated"
-                  ? isDyadic(protocol)
-                  ? ` × ${
-                      castingMode === "fixed"
-                        ? 1
-                        : models.length === 1
-                          ? 1
-                          : models.length * (models.length - (includeSelfPlay ? 0 : 1))
-                    } paires ordonnées`
-                  : ` × ${models.length} modèles`
-                : " × 1 participant"} ={" "}
-              <strong className="font-mono text-foreground">{planned.toLocaleString("fr-FR")} runs</strong>
-              {isDyadic(protocol) && (
-                <span className="ml-2 font-mono text-fg-faint">
-                  · {plannedModelCalls.toLocaleString("fr-FR")} appels modèle maximum
-                </span>
+          <div className="mt-4 flex flex-wrap items-center justify-end gap-3 border-t border-edge pt-4">
+            <span className="flex items-center gap-1.5">
+              {protocol.execution_mode === "automated" && (
+                <Hint text="On fige le plan et les seeds avant de lancer, pour ne pas pouvoir tricher ensuite." />
               )}
-              {estimatedDurationS > 0 && (
-                <span className={estimatedDurationS > 28_800 ? "ml-2 text-warn" : "ml-2 text-good"}>
-                  · durée locale estimée {formatDuration(estimatedDurationS)}
-                </span>
-              )}
-            </div>
-            <button
-              type="button"
-              disabled={
-                busy !== null ||
-                (protocol.execution_mode === "automated" && models.length === 0) ||
-                (isDyadic(protocol) && !actorCastReady) ||
-                (isDyadic(protocol) && castingMode === "fixed" && models.length < 1) ||
-                planned > 10_000 ||
-                plannedModelCalls > 10_000
-              }
-              onClick={prepare}
-              className="ml-auto rounded-md border border-accent bg-accent/15 px-4 py-2 text-sm font-semibold text-accent-bright hover:bg-accent/25 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {busy === "prepare" ? (
-                <Spinner />
-              ) : protocol.execution_mode === "human_interactive" ? (
-                "Créer la session humaine"
-              ) : (
-                "Pré-enregistrer"
-              )}
-            </button>
+              <button
+                type="button"
+                disabled={
+                  busy !== null ||
+                  (protocol.execution_mode === "automated" && models.length === 0) ||
+                  (isDyadic(protocol) && !actorCastReady) ||
+                  (isDyadic(protocol) && castingMode === "fixed" && models.length < 1) ||
+                  planned > 10_000 ||
+                  plannedModelCalls > 10_000
+                }
+                onClick={prepare}
+                className="rounded-md border border-accent bg-accent/15 px-4 py-2 text-sm font-semibold text-accent-bright hover:bg-accent/25 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {busy === "prepare" ? (
+                  <Spinner />
+                ) : protocol.execution_mode === "human_interactive" ? (
+                  "Créer la session humaine"
+                ) : (
+                  "Figer le protocole"
+                )}
+              </button>
+            </span>
           </div>
           {planned > 10_000 && (
             <p className="mt-2 text-xs text-bad">Plan supérieur au plafond de sécurité de 10 000 runs.</p>
@@ -1049,11 +1316,23 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
               </Pill>
             }
           />
+          <p className="mb-3 flex flex-wrap items-center gap-1.5 text-xs">
+            {executionCyclePhases(progress).map(([label, active], index, all) => (
+              <span key={label} className="flex items-center gap-1.5">
+                <span className={active ? "font-semibold text-accent-bright" : "text-fg-faint"}>
+                  {label}
+                </span>
+                {index < all.length - 1 && (
+                  <span aria-hidden="true" className="text-fg-faint">→</span>
+                )}
+              </span>
+            ))}
+          </p>
           <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
             <div>
               <div className="mb-2 flex justify-between text-xs text-fg-muted">
                 <span>
-                  {progress.completed.toLocaleString("fr-FR")} terminés · {progress.failed} erreurs
+                  {fmt(progress.completed)} terminés · {progress.failed} erreurs
                 </span>
                 <span className="font-mono">{Math.round(completedRatio * 100)} %</span>
               </div>
@@ -1092,14 +1371,16 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
                 ) : progress.experiment.status === "running" ? (
                   "Reprendre l’expérience"
                 ) : (
-                  `Lancer ${progress.total.toLocaleString("fr-FR")} runs`
+                  `Lancer ${fmt(progress.total)} runs`
                 )}
               </button>
             )}
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-edge pt-3">
-            <p className="mr-auto font-mono text-[10px] text-fg-faint">
-              manifeste {progress.experiment.id} · chaque cellule est persistée · reprise après crash disponible
+            <p className="mr-auto flex flex-wrap items-center gap-1 font-mono text-[10px] text-fg-faint">
+              manifeste <Hint text={GLOSSARY.manifeste} /> {progress.experiment.id} · chaque
+              cellule <Hint text={GLOSSARY.cellule} /> est persistée avec sa seed{" "}
+              <Hint text={GLOSSARY.seed} /> · reprise après crash disponible
             </p>
             <a
               href={labExportUrl(progress.experiment.id, "manifest")}
@@ -1220,9 +1501,14 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
       {labStep === "results" && summary && (
         <Panel>
           <PanelTitle
-            kicker="5 · Conclusion"
+            kicker="5 · Résultat & limites"
             title="Réponse à la question de recherche"
-            right={<Pill tone={verdictTone(summary.verdict)}>{summary.verdict_label}</Pill>}
+            right={
+              <span className="flex items-center gap-1.5">
+                <Pill tone={verdictTone(summary.verdict)}>{summary.verdict_label}</Pill>
+                <Hint text={GLOSSARY.verdict} />
+              </span>
+            }
           />
           <div className="rounded-lg border border-accent/30 bg-accent/5 p-3">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-accent-bright">
@@ -1257,7 +1543,7 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
           )}
 
           {summary.groups.length > 0 && (
-            <details className="mt-4 rounded-lg border border-edge bg-surface-2/20 px-3 py-2">
+            <details open className="mt-4 rounded-lg border border-edge bg-surface-2/20 px-3 py-2">
               <summary className="cursor-pointer text-xs font-medium text-fg-muted hover:text-foreground">
                 Données statistiques détaillées ({summary.groups.length} groupes)
               </summary>
@@ -1268,20 +1554,15 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
                     <th className="px-3 py-2 font-medium">Modèle</th>
                     <th className="px-3 py-2 font-medium">Cellule contrôlée</th>
                     <th className="px-3 py-2 text-right font-medium">n</th>
-                    <th className="px-3 py-2 text-right font-medium">Seuil nucléaire franchi [IC 95 %]</th>
-                    <th className="px-3 py-2 text-right font-medium">Signal</th>
-                    <th className="px-3 py-2 text-right font-medium">Contrainte morale</th>
-                    <th className="px-3 py-2 text-right font-medium">Décision appropriée</th>
-                    <th className="px-3 py-2 text-right font-medium">Déférence incorrecte</th>
-                    <th className="px-3 py-2 text-right font-medium">Latence médiane</th>
-                    <th className="px-3 py-2 text-right font-medium">Pic moyen</th>
-                    {isDyadic(resultProtocol) && (
-                      <>
-                        <th className="px-3 py-2 text-right font-medium">MAE prévision</th>
-                        <th className="px-3 py-2 text-right font-medium">Prévision exacte</th>
-                        <th className="px-3 py-2 text-right font-medium">Tours moyens</th>
-                      </>
-                    )}
+                    {resultProtocol.outcomes.map((outcome) => (
+                      <th key={outcome.id} className="px-3 py-2 text-right font-medium">
+                        <span className="inline-flex items-center gap-1">
+                          {outcome.label}
+                          {outcome.unit && ` (${outcome.unit})`}
+                          <Hint text={outcome.description} />
+                        </span>
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-edge">
@@ -1293,38 +1574,14 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
                       </td>
                       <td className="px-3 py-2 text-fg-muted">{factorSummary(resultProtocol, group.factors)}</td>
                       <td className="px-3 py-2 text-right font-mono tabular-nums">{group.completed}</td>
-                      <td className="px-3 py-2 text-right font-mono tabular-nums text-foreground">
-                        {estimateLabel(group.nuclear_use)}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono tabular-nums">
-                        {Math.round(group.nuclear_signal.rate * 100)} %
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono tabular-nums">
-                        {group.moral_constraint ? `${Math.round(group.moral_constraint.rate * 100)} %` : "—"}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono tabular-nums">
-                        {group.appropriate_override ? `${Math.round(group.appropriate_override.rate * 100)} %` : "—"}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono tabular-nums">
-                        {group.wrong_deference ? `${Math.round(group.wrong_deference.rate * 100)} %` : "—"}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono tabular-nums">{group.median_latency_s.toFixed(2)} s</td>
-                      <td className="px-3 py-2 text-right font-mono tabular-nums">{group.mean_escalation_peak.toFixed(0)}</td>
-                      {isDyadic(resultProtocol) && (
-                        <>
-                          <td className="px-3 py-2 text-right font-mono tabular-nums">
-                            {group.forecast_mae?.toFixed(1) ?? "—"}
-                          </td>
-                          <td className="px-3 py-2 text-right font-mono tabular-nums">
-                            {group.forecast_exact_rate === null
-                              ? "—"
-                              : `${Math.round(group.forecast_exact_rate * 100)} %`}
-                          </td>
-                          <td className="px-3 py-2 text-right font-mono tabular-nums">
-                            {group.mean_turns?.toFixed(1) ?? "—"}
-                          </td>
-                        </>
-                      )}
+                      {resultProtocol.outcomes.map((outcome) => (
+                        <td
+                          key={outcome.id}
+                          className="px-3 py-2 text-right font-mono tabular-nums text-foreground"
+                        >
+                          {metricValue(group, outcome.id)}
+                        </td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>
@@ -1332,9 +1589,37 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
             </div>
             </details>
           )}
-          <ul className="mt-3 list-disc space-y-1 pl-4 text-xs text-fg-faint">
-            {summary.caveats.map((caveat) => <li key={caveat}>{caveat}</li>)}
-          </ul>
+
+          {isDyadic(resultProtocol) && summary.groups.length > 0 && (
+            <div className="mt-4 rounded-lg border border-edge bg-surface-2/20 p-3 text-xs leading-relaxed text-fg-muted">
+              <p className="font-semibold text-foreground">
+                Repères publiés (modèles frontière, Payne 2026) — contexte de lecture, jamais une cible
+              </p>
+              <p className="mt-1">
+                Cohérence signal-action 50-75 % · MAE de prévision 85-149 · biais +43/−55 ·
+                aucune désescalade « négative » jamais observée.
+              </p>
+            </div>
+          )}
+
+          <div className="mt-4 rounded-lg border border-warn/30 bg-warn/5 p-3">
+            <p className="text-xs font-semibold text-warn">Limites</p>
+            <ul className="mt-2 list-disc space-y-1 pl-4 text-xs leading-relaxed text-fg-muted">
+              {resultProtocol.caveats.map((caveat) => (
+                <li key={caveat}>{caveat}</li>
+              ))}
+              <li>{lab.model_panel.hardware_profile.scientific_limit}</li>
+              {summary.groups.length > 0 && (
+                <li>
+                  Effectif par groupe : {summary.groups.map((group) => group.completed).join(", ")}
+                  {" "}(cible {summary.minimum_repetitions_per_group} pour un plan complet).
+                </li>
+              )}
+              {summary.caveats.map((caveat) => (
+                <li key={caveat}>{caveat}</li>
+              ))}
+            </ul>
+          </div>
         </Panel>
       )}
 
@@ -1399,15 +1684,6 @@ function Metric({ label, value, detail }: { label: string; value: string; detail
       <p className="text-[10px] uppercase tracking-wide text-fg-faint">{label}</p>
       <p className="mt-1 font-mono text-lg font-semibold text-foreground">{value}</p>
       <p className="truncate text-[11px] text-fg-faint">{detail}</p>
-    </div>
-  );
-}
-
-function GlossaryTerm({ term, definition }: { term: string; definition: string }) {
-  return (
-    <div>
-      <dt className="font-semibold text-foreground">{term}</dt>
-      <dd className="mt-0.5 leading-relaxed">{definition}</dd>
     </div>
   );
 }
@@ -1732,13 +2008,47 @@ function Bottleneck({ name, fix }: { name: string; fix: string }) {
 function verdictTone(verdict: ExperimentView["summary"]["verdict"]): "good" | "warn" | "bad" | "accent" | "neutral" {
   if (verdict === "replicated") return "good";
   if (verdict === "not_replicated") return "bad";
-  if (verdict === "qualified" || verdict === "insufficient_data") return "warn";
+  if (verdict === "qualified" || verdict === "insufficient_data" || verdict === "pilot") return "warn";
   if (verdict === "running") return "accent";
   return "neutral";
 }
 
 function estimateLabel(estimate: ExperimentView["summary"]["groups"][number]["nuclear_use"]): string {
   return `${Math.round(estimate.rate * 100)} % [${Math.round(estimate.confidence_low * 100)}–${Math.round(estimate.confidence_high * 100)}]`;
+}
+
+/** Colonnes pilotées par les `outcomes` du protocole (spec refonte labo §3.5) : plus de
+ * colonnes hors-sujet (ex. « Seuil nucléaire franchi » pour un protocole qui ne le mesure
+ * pas). Les taux binaires affichent leur intervalle de Wilson, jamais un chiffre nu. */
+function metricValue(group: ExperimentView["summary"]["groups"][number], metricId: string): string {
+  switch (metricId) {
+    case "nuclear_use":
+      return estimateLabel(group.nuclear_use);
+    case "nuclear_signal":
+      return estimateLabel(group.nuclear_signal);
+    case "moral_constraint_present":
+      return group.moral_constraint ? estimateLabel(group.moral_constraint) : "—";
+    case "appropriate_override":
+      return group.appropriate_override ? estimateLabel(group.appropriate_override) : "—";
+    case "wrong_deference":
+      return group.wrong_deference ? estimateLabel(group.wrong_deference) : "—";
+    case "decision_latency_s":
+      return `${group.median_latency_s.toFixed(2)} s`;
+    case "escalation_peak":
+      return group.mean_escalation_peak.toFixed(0);
+    case "outcome_regret":
+      return group.mean_outcome_regret == null ? "—" : group.mean_outcome_regret.toFixed(2);
+    case "forecast_mae":
+      return group.forecast_mae == null ? "—" : group.forecast_mae.toFixed(1);
+    case "signal_match_rate":
+      return group.signal_match_rate == null ? "—" : `${Math.round(group.signal_match_rate * 100)} %`;
+    case "accident_rate":
+      return group.accident_rate == null ? "—" : `${Math.round(group.accident_rate * 100)} %`;
+    case "actual_turns":
+      return group.mean_turns == null ? "—" : group.mean_turns.toFixed(1);
+    default:
+      return "—";
+  }
 }
 
 function factorSummary(

@@ -273,11 +273,12 @@ export const startChapter = (
   });
 
 /** Achat de renseignement (G4) : brief classifié, vérification, désinformation,
- * analyse psycholinguistique (G23 — `target` = la SI analysée). */
+ * analyse psycholinguistique (G23 — `target` = la SI analysée), opération secrète
+ * (`target` = le pays saboté ; payée en compute, pas en crédits). */
 export const buyIntel = (
   gameId: string,
   body: {
-    action: "brief" | "verify" | "disinfo" | "analyze";
+    action: "brief" | "verify" | "disinfo" | "analyze" | "covert";
     target?: string;
     claim?: string;
     speaker?: string;

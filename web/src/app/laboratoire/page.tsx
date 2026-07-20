@@ -25,12 +25,10 @@ export default function LaboratoirePage() {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div className="max-w-3xl">
           <Eyebrow>Troisième mode · recherche reproductible</Eyebrow>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-            Laboratoire d&apos;expérience
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Laboratoire</h1>
           <p className="mt-2 text-sm leading-relaxed text-fg-muted">
-            Observe une crise comme dans le jeu classique, change une seule variable,
-            répète l&apos;essai avec plusieurs modèles puis compare ce qui change réellement.
+            Pose une question sur le comportement des IA du jeu, fais-la jouer plusieurs fois
+            dans des conditions contrôlées, puis lis une réponse chiffrée avec sa marge d&apos;erreur.
             Chaque résultat reste une mesure du dispositif testé, jamais une prédiction du monde.
           </p>
         </div>

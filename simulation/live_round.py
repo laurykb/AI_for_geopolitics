@@ -32,13 +32,16 @@ from simulation.alignment import (
     update_gaps,
 )
 from simulation.clock import SimClock
+from simulation.compute import compute_pressure, consume, pressure_note
 from simulation.fog import FogScenario, resolve_perception
 from simulation.gamefeel import DeltaTuning
 from simulation.kahn import (
     ClassifiedAction,
     classify_actions,
     deescalation_bonus,
+    escalation_penalty,
     reciprocal_deescalation,
+    reciprocal_escalation,
     round_score,
     score_to_escalation,
 )
@@ -66,6 +69,7 @@ from simulation.negotiation import (
     update_memories,
 )
 from simulation.power_seeking import PowerSeekingScore, power_seeking_score, score_transcript
+from simulation.private_deliberation import restream_without_think
 from simulation.promises import (
     STATUS_BROKEN,
     Promise,
@@ -95,6 +99,14 @@ def _read(country, path: str) -> float:
     for part in path.split("."):
         obj = getattr(obj, part)
     return float(obj)
+
+
+# M6 — chaque acte de raisonnement coûte du compute. `COMPUTE_TURN_SCALE` atténue le coût
+# réel des tokens (réflexion privée + parole publique) pour tenir un horizon de plusieurs
+# rounds sans épuisement immédiat ; la parole du joueur est débitée au forfait (pas de
+# réflexion LLM). Barème à régler au playtest (cf. docs/PLAN — décision de design #2).
+COMPUTE_TURN_SCALE: float = 0.05
+_HUMAN_TURN_TOKENS: int = 240
 
 
 # --- Étapes émises pendant le round -------------------------------------------
@@ -331,12 +343,27 @@ def _advance_trajectory(
     summary: RoundSummary,
     engine: TrajectoryEngine | None,
     power_seeking: float = 0.0,
+    opacity: float | None = None,
 ) -> TrajectoryState:
-    """Fait avancer la trajectoire du monde d'un round et l'écrit dans `world`."""
-    state = (engine or TrajectoryEngine()).update(world, summary, power_seeking=power_seeking)
+    """Fait avancer la trajectoire du monde d'un round et l'écrit dans `world`.
+
+    `opacity` (mode négocié) : repli d'A4 quand le round n'a ni décisions
+    ni messages diplomatiques classiques — voir `TrajectoryEngine.signals`."""
+    state = (engine or TrajectoryEngine()).update(
+        world, summary, power_seeking=power_seeking, opacity=opacity
+    )
     world.trajectory = state
     world.trajectory_history.append(state)
     return state
+
+
+def _opacity_from_divergences(divergences: dict[str, float]) -> float | None:
+    """A4 (transparence) en mode négocié : fraction moyenne de duplicité
+    signal-action (M8) parmi les SI dont le juge a classé intention ET action. `None`
+    si le juge n'a rien classé (aucune donnée -> l'ancien repli neutre 0,5 fait foi)."""
+    if not divergences:
+        return None
+    return sum(abs(v) for v in divergences.values()) / len(divergences)
 
 
 def _mean_power_seeking(scores: dict[str, PowerSeekingScore]) -> float:
@@ -438,11 +465,16 @@ def _motivate_verdict(
     """Le juge motive le verdict CONSTATÉ (vote + preuves) — il ne le décide pas."""
     prompt = build_vote_motivation_prompt(motion, tally, evidence_met, upheld)
     try:
-        yield from judge.backend.stream_generate(
-            prompt,
-            system=VOTE_MOTIVATION_SYSTEM,
-            max_tokens=judge.max_tokens,
-            temperature=judge.temperature,
+        # Collecte-puis-strip (même garde que JudgeAgent.stream_rationale) : chaque
+        # token part en MotionTokenStep PUBLIC — la trace <think> d'un juge de
+        # raisonnement ne doit jamais l'atteindre.
+        yield from restream_without_think(
+            judge.backend.stream_generate(
+                prompt,
+                system=VOTE_MOTIVATION_SYSTEM,
+                max_tokens=judge.max_tokens,
+                temperature=judge.temperature,
+            )
         )
     except Exception:  # noqa: BLE001 — le verdict est déjà arrêté, seul le texte manque
         yield "[constat indisponible — backend hors service]"
@@ -569,6 +601,8 @@ def run_negotiation_round(
                 )
             )
             yield MessageDoneStep(country=cid, seconds=0.0, text=text, reasoning="")
+            # M6 — la parole du joueur coûte aussi du compute (forfait, pas de réflexion LLM).
+            consume(world.countries[cid], int(_HUMAN_TURN_TOKENS * COMPUTE_TURN_SCALE))
             director.commit(cid)
             continue
 
@@ -577,22 +611,32 @@ def run_negotiation_round(
         started = time.perf_counter()
         chunks: list[str] = []
         perceived = resolve_perception(event, world.countries[cid], fog)  # Fog ou déterministe
+        # M6 : sous le seuil de pression, note vide (rien ne change) ;
+        # au-dessus, la SI bascule en survie. Même couture que `secret_notes` (Dérive) :
+        # les deux partagent le bloc « notes privées » du prompt, aucun nouveau paramètre.
+        note = (secret_notes or {}).get(cid, "")
+        pressure = pressure_note(compute_pressure(world.countries[cid]))
+        if pressure:
+            note = f"{note}\n{pressure}".strip() if note else pressure
         with _ledger_ctx(ledger, "agent", cid) as scope:
             private_stream = agent.stream_negotiation_plan(
                 event,
                 world,
                 transcript,
                 perceived,
-                state_note=(secret_notes or {}).get(cid, ""),
+                state_note=note,
                 situation=(situations or {}).get(cid, ""),
                 directive=(directives or {}).get(cid, ""),
+                human_country=human_country,
             )
+            private_tokens = 0  # M6 — mesure de la réflexion privée (débit compute)
             while True:
                 try:
                     fragment = next(private_stream)
                 except StopIteration as completed:
                     private_plan = completed.value
                     break
+                private_tokens += 1
                 yield PrivateTokenStep(country=cid, token=fragment)
             # Le brouillon a été vu au rythme réel du backend. Cette version validée
             # devient la trace persistée et évite qu'un JSON partiel ou une hallucination
@@ -608,10 +652,11 @@ def run_negotiation_round(
                 world,
                 transcript,
                 perceived,
-                state_note=(secret_notes or {}).get(cid, ""),
+                state_note=note,
                 situation=(situations or {}).get(cid, ""),
                 directive=(directives or {}).get(cid, ""),
                 private_plan=private_plan,
+                human_country=human_country,
             ):
                 chunks.append(token)
                 yield TokenStep(country=cid, token=token)
@@ -625,6 +670,8 @@ def run_negotiation_round(
                     fallback="backend indisponible" in text,
                 )
         seconds = time.perf_counter() - started
+        # M6 — la réflexion privée puis la parole publique de cette SI débitent son compute.
+        consume(world.countries[cid], int((private_tokens + len(chunks)) * COMPUTE_TURN_SCALE))
         transcript.append(
             NegotiationMessage(
                 country=cid,
@@ -663,6 +710,9 @@ def run_negotiation_round(
     kahn_score = round_score(actions) if actions else 0.0
     escalation = score_to_escalation(kahn_score) if actions else _clamp(verdict.escalation)
     reciprocal = reciprocal_deescalation(actions)
+    # Miroir symétrique : ≥ 2 SI qui escaladent violemment ensemble
+    # encaissent la même sur-pondération ×1,5 que la désescalade réciproque, sur la perte.
+    reciprocal_up = reciprocal_escalation(actions)
     # G20/M8 — signal vs action : divergence signée par SI signalée (annonce vs acte le
     # plus sévère du round) ; le profil de sincérité (moyenne mobile) rejoint M1-M7 sur
     # le WorldState — il survit au restart via le snapshot. Rien sans `signals` (rétro-compat).
@@ -684,7 +734,9 @@ def run_negotiation_round(
         divergences = merge_rupture_divergences(divergences, broken)
     if divergences:
         world.signal_gap = update_gaps(world.signal_gap, divergences)
-    deltas = apply_verdict(world, verdict, tuning)  # G9 §4 — amplitude indexée sur l'horizon
+    # Mouvement minimal quand le juge est muet sur un pays (repli sur
+    # l'escalade du round) + G9 §4 amplitude indexée sur l'horizon.
+    deltas = apply_verdict(world, verdict, tuning, escalation=escalation)
     yield VerdictStep(
         deltas=deltas,
         escalation=escalation,
@@ -797,13 +849,24 @@ def run_negotiation_round(
         headline=f"{date} — {event.title}",
     )
     prev_utopia = (world.trajectory or TrajectoryState.neutral()).utopia
-    trajectory = _advance_trajectory(world, summary, trajectory_engine, _mean_power_seeking(power))
-    if reciprocal:
-        # G18 — désescalade réciproque : ×1,5 sur le gain d'indice U du round (borné).
-        boosted = deescalation_bonus(prev_utopia, trajectory)
-        if boosted is not trajectory:
-            trajectory = boosted.model_copy(
-                update={"explanation": f"{trajectory.explanation} {boosted.explanation}".strip()}
+    # A4 nourri par la duplicité signal-action réelle (M8, hiérarchie détaillée :
+    # `trajectory.transparency_signal`) ; `summary` (round négocié) n'a de
+    # toute façon ni decisions ni diplomacy, donc le repli neutre 0,5 ne reste possible
+    # que si le juge n'a classé AUCUN signal ce round (`opacity` alors `None`).
+    opacity = _opacity_from_divergences(divergences)
+    trajectory = _advance_trajectory(
+        world, summary, trajectory_engine, _mean_power_seeking(power), opacity=opacity
+    )
+    # G18 — réciprocité : ×1,5 sur le gain d'indice U du round quand la désescalade est
+    # réciproque, et miroir symétrique ×1,5 sur la PERTE quand la ré-escalade est
+    # réciproque (le malus ne retire pas le bonus, il l'équilibre). Bornés.
+    for active, adjust in ((reciprocal, deescalation_bonus), (reciprocal_up, escalation_penalty)):
+        if not active:
+            continue
+        adjusted = adjust(prev_utopia, trajectory)
+        if adjusted is not trajectory:
+            trajectory = adjusted.model_copy(
+                update={"explanation": f"{trajectory.explanation} {adjusted.explanation}".strip()}
             )
             world.trajectory = trajectory
             world.trajectory_history[-1] = trajectory

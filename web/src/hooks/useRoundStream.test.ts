@@ -109,6 +109,48 @@ describe("réducteur de round", () => {
     expect(state.turns[0]?.done).toBe(true);
   });
 
+  it("message_done avec un résumé observable remplace tout brouillon accumulé (RG — Dérive/Joueur-pays)", () => {
+    // En Dérive ou Joueur-pays, le serveur ne streame plus le journal privé BRUT (plus de
+    // private_token ni private_plan_done pendant la partie) : `message_done` porte à la
+    // place un résumé de 3 lignes qui doit remplacer tout ce qui aurait pu s'accumuler,
+    // jamais s'y ajouter ni rester masqué derrière lui.
+    const digest =
+      "Observation : le signal change.\nPiste retenue : proposer un accord.\nCritère : coût minimal.";
+    const state = play([
+      TURN_START,
+      // Fragment défensif : même si un token privé arrivait malgré tout, il ne doit
+      // jamais survivre à message_done.
+      { type: "private_token", country: "usa", token: "FUTUR 1 — fragment qui ne doit pas fuiter" },
+      {
+        type: "message_done",
+        country: "usa",
+        text: "Notre position.",
+        reasoning: digest,
+        seconds: 1,
+      },
+    ]);
+
+    expect(state.turns[0]?.reasoning).toBe(digest);
+    expect(state.turns[0]?.reasoning).not.toContain("FUTUR 1");
+    expect(state.turns[0]?.reasoning).not.toContain("fragment qui ne doit pas fuiter");
+  });
+
+  it("message_done sans reasoning garde l'accumulé (hors hide, comportement inchangé)", () => {
+    const state = play([
+      TURN_START,
+      { type: "private_token", country: "usa", token: "OBSERVATION\nLe signal change.\n" },
+      {
+        type: "message_done",
+        country: "usa",
+        text: "Notre position.",
+        reasoning: "",
+        seconds: 1,
+      },
+    ]);
+
+    expect(state.turns[0]?.reasoning).toBe("OBSERVATION\nLe signal change.\n");
+  });
+
   it("attend le bulletin humain puis reprend quand son vote est révélé", () => {
     const waiting = play([
       { type: "human_motion_vote", country: "france", target: "iran", deadline_ts: 1234.5 },
@@ -140,6 +182,15 @@ describe("réducteur de round", () => {
   it("une fin de flux en plein round est interrupted", () => {
     const state = reducer(play([TURN_START]), { kind: "interrupted" });
     expect(state.status).toBe("interrupted");
+  });
+
+  it("une erreur APRÈS done ne perd pas la manche terminée (bouton Continuer)", () => {
+    // Coupure TCP de fin de flux / AbortError du démontage : l'action error ne doit pas
+    // écraser un round déjà `done`, sinon la RoundConclusion disparaît et Continuer se bloque.
+    const done: LiveRound = { ...INITIAL, status: "done", roundNo: 4 };
+    const state = reducer(done, { kind: "error", message: "coupure de fin de flux" });
+    expect(state.status).toBe("done");
+    expect(state.roundNo).toBe(4);
   });
 
   it("done fixe le statut et le numéro de round", () => {
@@ -226,6 +277,29 @@ describe("réducteur de round", () => {
     ]);
     expect(state.verdict?.actions).toEqual([]);
     expect(state.verdict?.reciprocal).toBe(false);
+  });
+
+  it("les deltas du verdict portent le motif du juge (brief 4 pt 8)", () => {
+    const state = play([
+      {
+        type: "verdict",
+        deltas: [
+          {
+            country: "iran",
+            label: "croissance",
+            before: 2.0,
+            after: 1.5,
+            reason: "L'Iran a menacé de fermer le détroit.",
+          },
+          // Rétro-compat : un delta d'avant ce point n'a pas de motif — il passe tel quel.
+          { country: "usa", label: "stabilité", before: 0.5, after: 0.55 },
+        ],
+        escalation: 0.6,
+        economic_disruption: 0.3,
+      },
+    ]);
+    expect(state.verdict?.deltas[0].reason).toBe("L'Iran a menacé de fermer le détroit.");
+    expect(state.verdict?.deltas[1].reason).toBeUndefined();
   });
 
   it("le verdict porte le signal vs action (G20/M8)", () => {

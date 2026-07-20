@@ -42,6 +42,57 @@ def test_format_transcript():
     assert format_transcript([]) == "(début de la négociation)"
 
 
+def test_format_transcript_tags_human_country_messages():
+    # Brief 1 pt 1 — les messages du joueur sont repérables par la SI sans ambiguïté.
+    msgs = [
+        NegotiationMessage(country="usa", text="Position A", pass_no=0),
+        NegotiationMessage(country="france", text="Je propose un accord.", pass_no=0),
+    ]
+    text = format_transcript(msgs, human_country="france")
+    assert ">>> JOUEUR — france <<< france: Je propose un accord." in text
+    usa_line = text.splitlines()[0]
+    assert ">>> JOUEUR" not in usa_line  # seul le pays humain est tagué
+
+
+def test_format_transcript_without_human_country_is_unchanged():
+    # Défaut inchangé pour tous les autres appelants (juge, motions, communiqué...).
+    msgs = [NegotiationMessage(country="usa", text="Position A", pass_no=0)]
+    assert format_transcript(msgs) == format_transcript(msgs, human_country=None)
+
+
+def test_format_transcript_pins_last_human_message_beyond_window():
+    # Le SEUL message du joueur est le tout premier, donc hors de la fenêtre de 14 : sans
+    # correctif, un joueur qui parle tôt dans un round bavard disparaît du contexte des SI
+    # qui prennent la parole après lui — c'est la cause racine du brief.
+    msgs = [NegotiationMessage(country="france", text="Point initial du joueur.", pass_no=0)]
+    msgs += [NegotiationMessage(country="usa", text=f"Tour {i}", pass_no=i) for i in range(1, 20)]
+    text = format_transcript(msgs, human_country="france")
+    assert "Point initial du joueur." in text
+    assert ">>> JOUEUR — france <<<" in text
+    window_texts = [m.text for m in msgs[-14:]]
+    assert "Point initial du joueur." not in window_texts  # confirme : bien hors fenêtre
+
+
+def test_format_transcript_pins_only_the_last_human_message():
+    # Deux messages du joueur hors fenêtre : AU PLUS UN épinglé (budget du cache KV).
+    msgs = [
+        NegotiationMessage(country="france", text="Premier message joueur.", pass_no=0),
+        NegotiationMessage(country="france", text="Deuxième message joueur.", pass_no=1),
+    ]
+    msgs += [NegotiationMessage(country="usa", text=f"Tour {i}", pass_no=i) for i in range(2, 20)]
+    text = format_transcript(msgs, human_country="france")
+    assert "Deuxième message joueur." in text
+    assert "Premier message joueur." not in text
+    assert text.count("JOUEUR") == 1  # un seul épinglage, pas de doublon
+
+
+def test_format_transcript_no_duplicate_pin_when_human_message_in_window():
+    msgs = [NegotiationMessage(country="usa", text=f"Tour {i}", pass_no=i) for i in range(10)]
+    msgs.append(NegotiationMessage(country="france", text="Dans la fenêtre.", pass_no=10))
+    text = format_transcript(msgs, human_country="france")
+    assert text.count("Dans la fenêtre.") == 1  # déjà visible : pas d'épinglage redondant
+
+
 def test_stream_negotiation_message():
     agent = LLMAgent("usa", MockBackend("La France propose un accord maritime."))
     from core.events import GeoEvent
@@ -52,9 +103,116 @@ def test_stream_negotiation_message():
     assert agent.model_tag  # badge modèle non vide
 
 
+def test_stream_negotiation_message_trims_a_fragment_cut_by_the_token_cap():
+    # Chantier dialogue limpide — la longueur libre encourage parfois un 7B à déborder son
+    # budget de tokens ; le backend coupe alors en plein mot. On retombe sur la dernière
+    # phrase complète plutôt que de publier un mot tronqué (plus moche que l'ancienne
+    # brièveté mécanique).
+    raw = (
+        "Iran, nous exigeons des garanties vérifiables sous 24 heures. Toute provocation "
+        "supplémentaire sera considérée comme un acte hostile et nous nous réservons le "
+        "droit de rép"
+    )
+    agent = LLMAgent("usa", MockBackend(raw))
+    from core.events import GeoEvent
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    out = "".join(agent.stream_negotiation_message(event, _world(), []))
+    assert out == (
+        "Iran, nous exigeons des garanties vérifiables sous 24 heures. Toute provocation "
+        "supplémentaire sera considérée comme un acte hostile et nous nous réservons le "
+        "droit de rép".rsplit(".", 1)[0]
+        + "."
+    )
+    assert not out.endswith("rép")
+
+
+def test_stream_negotiation_message_never_trims_a_structured_suffix():
+    # Régression réelle (suite complète) — le jeu fait suivre le message naturel de
+    # suffixes structurés SANS ponctuation finale (MOTION:, ALLIANCE:...) que d'autres
+    # modules parsent directement dans le texte public (simulation/motions.py, retrait
+    # d'alliance en séance). Un trim aveugle les avalait entièrement.
+    raw = "Analyse privée. MESSAGE: Le sommet est menacé.\nMOTION: iran : accapare"
+    agent = LLMAgent("usa", MockBackend(raw))
+    from core.events import GeoEvent
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    out = "".join(agent.stream_negotiation_message(event, _world(), []))
+    assert "MOTION: iran : accapare" in out
+
+    raw2 = "Analyse. MESSAGE: Nous reprenons notre liberté stratégique. ALLIANCE: quitter NATO"
+    agent2 = LLMAgent("usa", MockBackend(raw2))
+    out2 = "".join(agent2.stream_negotiation_message(event, _world(), []))
+    assert "ALLIANCE: quitter NATO" in out2
+
+
+def test_stream_negotiation_message_leaves_complete_sentences_untouched():
+    agent = LLMAgent("usa", MockBackend("Nous acceptons votre proposition."))
+    from core.events import GeoEvent
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    out = "".join(agent.stream_negotiation_message(event, _world(), []))
+    assert out == "Nous acceptons votre proposition."
+
+
+def test_stream_negotiation_message_keeps_a_fragment_with_no_sentence_boundary():
+    # Aucune ponctuation de fin repérable : on garde tel quel (mieux qu'un message vide,
+    # qui déclencherait le repli déterministe pour un simple défaut de ponctuation).
+    agent = LLMAgent("usa", MockBackend("un message sans aucune ponctuation terminale"))
+    from core.events import GeoEvent
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    out = "".join(agent.stream_negotiation_message(event, _world(), []))
+    assert out == "un message sans aucune ponctuation terminale"
+
+
+def test_stream_negotiation_message_strips_think_trace_before_sanitize():
+    # Point 5 — un modèle de raisonnement émet sa trace <think> inline AVANT la
+    # déclaration : sans strip, le filtre anti-fuite (fail-closed sur « FUTUR n » en
+    # début de ligne) viderait le message et forcerait le repli déterministe.
+    raw = (
+        "<think>\nComparons les brouillons.\nFUTUR 1 — option risquée\n"
+        "CHOIX : FUTUR 1\n</think>\nNous proposons un accord vérifiable."
+    )
+    backend = MockBackend(raw)
+    agent = LLMAgent("usa", backend)
+    from core.events import GeoEvent
+    from simulation.private_deliberation import fallback_private_plan
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    plan = fallback_private_plan(["iran"], seed="usa")
+    out = "".join(agent.stream_negotiation_message(event, _world(), [], private_plan=plan))
+    assert out == "Nous proposons un accord vérifiable."
+    assert "<think>" not in out and "FUTUR" not in out
+
+
+def test_telemetry_channels_store_stripped_text_and_thinking():
+    # Revue pt 5 (Minor) — last_result / last_plan_result : .text porte le texte
+    # STRIPPÉ et .thinking la trace, comme InferenceResult définit les deux canaux.
+    from core.events import GeoEvent
+    from simulation.private_deliberation import fallback_private_plan
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    agent = LLMAgent(
+        "usa", MockBackend("<think>hésitation privée</think>MESSAGE: Accord possible.")
+    )
+    plan = fallback_private_plan(["iran"], seed="usa")
+    "".join(agent.stream_negotiation_message(event, _world(), [], private_plan=plan))
+    assert agent.last_result.text == "MESSAGE: Accord possible."
+    assert agent.last_result.thinking == "hésitation privée"
+
+    agent2 = LLMAgent(
+        "usa", MockBackend("<think>trace du plan</think>OBSERVATION incomplète sans futurs")
+    )
+    agent2.prepare_negotiation_plan(event, _world(), [])
+    assert agent2.last_plan_result.text == "OBSERVATION incomplète sans futurs"
+    assert agent2.last_plan_result.thinking == "trace du plan"
+
+
 def test_stream_negotiation_message_uses_role_sampling():
-    # G9 §1 — anti-boucle au décodeur : repeat_penalty et température du rôle « country »
-    # (data/gamefeel/params.json) sont transmis au backend.
+    # G9 §1 — anti-boucle au décodeur : repeat_penalty et température transmis au backend.
+    # Chantier dialogue limpide — usa n'a pas de tempérament explicite ici, donc retombe
+    # sur l'entrée "opportuniste" de sampling.temperaments (data/gamefeel/params.json).
     backend = MockBackend("ok")
     agent = LLMAgent("usa", backend)
     from core.events import GeoEvent
@@ -62,22 +220,164 @@ def test_stream_negotiation_message_uses_role_sampling():
     event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
     list(agent.stream_negotiation_message(event, _world(), []))
     assert backend.calls[-1]["repeat_penalty"] == 1.15
+    assert backend.calls[-1]["temperature"] == 0.9
+
+
+def test_stream_negotiation_message_varies_sampling_by_temperament():
+    # Chantier dialogue limpide — le sampling nuance le registre par tempérament (G17) :
+    # colombe plus mesurée, faucon plus tranchant. Deux pays, un seul appel chacun.
+    backend = MockBackend("ok")
+    world = _world()
+    world.countries["usa"].temperament = "colombe"
+    world.countries["iran"].temperament = "faucon"
+    from core.events import GeoEvent
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    list(LLMAgent("usa", backend).stream_negotiation_message(event, world, []))
+    dove_call = backend.calls[-1]
+    list(LLMAgent("iran", backend).stream_negotiation_message(event, world, []))
+    hawk_call = backend.calls[-1]
+    assert dove_call["temperature"] == 0.75 and dove_call["repeat_penalty"] == 1.18
+    assert hawk_call["temperature"] == 0.85 and hawk_call["repeat_penalty"] == 1.12
+    assert dove_call["temperature"] != hawk_call["temperature"]  # les registres divergent
+
+
+def test_stream_negotiation_message_unknown_temperament_falls_back_to_country_sampling():
+    # Rétro-compat explicite — un tempérament qui n'est pas dans le bloc "temperaments"
+    # (pays forgé, valeur inattendue) retombe sur le socle unique `sampling.country`.
+    backend = MockBackend("ok")
+    world = _world()
+    world.countries["usa"].temperament = "inconnu"
+    from core.events import GeoEvent
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    list(LLMAgent("usa", backend).stream_negotiation_message(event, world, []))
+    assert backend.calls[-1]["repeat_penalty"] == 1.15
     assert backend.calls[-1]["temperature"] == 0.8
 
 
-def test_stream_negotiation_message_respects_think_depth():
-    # La profondeur pilote le plan privé, tandis que la parole publique reste courte.
+def test_stream_negotiation_message_ignores_think_depth_for_the_token_ceiling():
+    # Chantier budget-temps (2026-07-20) — RÉGRESSION du comportement ci-dessus, signalée
+    # à dessein : le slider de profondeur (max_tokens) ne pilote plus AUCUN plafond de
+    # tokens pour un pays, privé ou public. Le vrai budget est désormais le TEMPS
+    # (`time_budgets` dans data/gamefeel/params.json) ; num_predict devient une soupape
+    # anti-emballement identique quelle que soit la profondeur demandée.
+    from agents.llm_agent import _TOKEN_SAFETY_CAP
+
     backend = MockBackend("ok")
     agent = LLMAgent("usa", backend)
     from core.events import GeoEvent
 
     event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
     list(agent.stream_negotiation_message(event, _world(), [], max_tokens=900))
-    assert backend.calls[-2]["max_tokens"] == 900
-    assert backend.calls[-1]["max_tokens"] == 220
+    assert backend.calls[-2]["max_tokens"] == _TOKEN_SAFETY_CAP
+    assert backend.calls[-1]["max_tokens"] == _TOKEN_SAFETY_CAP
     list(agent.stream_negotiation_message(event, _world(), []))  # défaut
-    assert backend.calls[-2]["max_tokens"] == 800
-    assert backend.calls[-1]["max_tokens"] == 220
+    assert backend.calls[-2]["max_tokens"] == _TOKEN_SAFETY_CAP
+    assert backend.calls[-1]["max_tokens"] == _TOKEN_SAFETY_CAP
+
+
+def test_reasoning_cast_no_longer_doubles_the_private_token_ceiling():
+    # Chantier budget-temps — RÉGRESSION signalée : le doublement de budget d'un pays
+    # reasoning (ex-§5, Profond 600 -> 1200, Intense 900 -> 1800) disparaît avec les
+    # plafonds différenciés. Reasoning et non-reasoning partagent désormais la même
+    # soupape haute ; seul le SYSTEM PROMPT continue de varier (voir le test suivant).
+    from agents.llm_agent import _TOKEN_SAFETY_CAP
+    from inference.model_pool import TaggedBackend
+
+    mock = MockBackend("ok")
+    backend = TaggedBackend(mock, "model-r:7b", think=True)
+    agent = LLMAgent("usa", backend)
+    from core.events import GeoEvent
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    list(agent.stream_negotiation_message(event, _world(), [], max_tokens=900))
+    assert mock.calls[-2]["max_tokens"] == _TOKEN_SAFETY_CAP
+    list(agent.stream_negotiation_message(event, _world(), [], max_tokens=600))
+    assert mock.calls[-2]["max_tokens"] == _TOKEN_SAFETY_CAP
+
+
+def test_non_reasoning_cast_also_uses_the_flat_token_ceiling():
+    # Chantier budget-temps — RÉGRESSION signalée : la formule d'origine (max_tokens+320,
+    # bornée [640,900]) disparaît elle aussi ; reasoning ou non, même soupape haute.
+    from agents.llm_agent import _TOKEN_SAFETY_CAP
+    from inference.model_pool import TaggedBackend
+
+    mock = MockBackend("ok")
+    backend = TaggedBackend(mock, "model-a:4b", think=False)
+    agent = LLMAgent("usa", backend)
+    from core.events import GeoEvent
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    list(agent.stream_negotiation_message(event, _world(), [], max_tokens=900))
+    assert mock.calls[-2]["max_tokens"] == _TOKEN_SAFETY_CAP
+
+
+def test_reasoning_cast_uses_the_free_form_private_system_prompt():
+    # Décision design casting = pensée native (§8) : le pays reasoning reçoit le system
+    # prompt allégé (pas de gabarit "trois futurs") ; un pays non-reasoning garde le strict.
+    from agents.prompts import PRIVATE_DELIBERATION_FREE_SYSTEM, PRIVATE_DELIBERATION_SYSTEM
+    from core.events import GeoEvent
+    from inference.model_pool import TaggedBackend
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+
+    mock_reasoning = MockBackend("ok")
+    reasoning_agent = LLMAgent("usa", TaggedBackend(mock_reasoning, "model-r:7b", think=True))
+    list(reasoning_agent.stream_negotiation_message(event, _world(), []))
+    assert mock_reasoning.calls[-2]["system"] == PRIVATE_DELIBERATION_FREE_SYSTEM
+
+    mock_strict = MockBackend("ok")
+    strict_agent = LLMAgent("usa", TaggedBackend(mock_strict, "model-a:4b", think=False))
+    list(strict_agent.stream_negotiation_message(event, _world(), []))
+    assert mock_strict.calls[-2]["system"] == PRIVATE_DELIBERATION_SYSTEM
+
+
+def test_stream_negotiation_message_public_budget_no_longer_varies_by_temperament():
+    # Chantier budget-temps — RÉGRESSION signalée : le delta de tokens par tempérament
+    # (±40, chantier « dialogue limpide ») disparaît avec le plafond différencié. La
+    # variété de longueur reste portée par le PROMPT (NEGOTIATION_SYSTEM : « Longueur
+    # LIBRE selon l'urgence et ton tempérament »), plus par un chiffre de num_predict.
+    from agents.llm_agent import _TOKEN_SAFETY_CAP
+
+    backend = MockBackend("ok")
+    world = _world()
+    world.countries["usa"].temperament = "faucon"
+    from core.events import GeoEvent
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    list(LLMAgent("usa", backend).stream_negotiation_message(event, world, []))
+    hawk_budget = backend.calls[-1]["max_tokens"]
+
+    world2 = _world()
+    world2.countries["usa"].temperament = "colombe"
+    list(LLMAgent("usa", backend).stream_negotiation_message(event, world2, []))
+    dove_budget = backend.calls[-1]["max_tokens"]
+
+    assert hawk_budget == _TOKEN_SAFETY_CAP
+    assert dove_budget == _TOKEN_SAFETY_CAP
+
+
+def test_stream_negotiation_message_threads_human_country_into_prompts():
+    # Brief 1 pt 1 — bout en bout : `human_country` doit atteindre le prompt réellement
+    # envoyé au backend (plan privé ET déclaration publique), pas juste `format_transcript`.
+    backend = MockBackend("ok")
+    agent = LLMAgent("usa", backend)
+    from core.events import GeoEvent
+
+    event = GeoEvent(id="e", round_id=1, event_type="x", title="Crise", actors=["usa"])
+    transcript = [
+        NegotiationMessage(
+            country="france", text="Nous proposons un corridor humanitaire.", pass_no=0
+        ),
+    ]
+    list(agent.stream_negotiation_message(event, _world(), transcript, human_country="france"))
+    private_prompt = backend.calls[-2]["prompt"]
+    public_prompt = backend.calls[-1]["prompt"]
+    for prompt in (private_prompt, public_prompt):
+        assert ">>> JOUEUR — france <<<" in prompt
+        assert "DERNIER MESSAGE À TRAITER" in prompt
+        assert "Nous proposons un corridor humanitaire." in prompt
 
 
 def test_split_reasoning_with_marker():
@@ -181,6 +481,157 @@ def test_apply_verdict_ignores_unknown_ids_and_labels():
         attribute_deltas={"atlantis": {"croissance": 1.0}, "usa": {"bogus": 5.0}},
     )
     assert apply_verdict(world, verdict) == []  # rien d'applicable
+
+
+# --- Brief 4 pt 8 : justification par delta (`attribute_reasons`) ----------------------
+
+
+def test_apply_verdict_carries_reason_into_attribute_delta():
+    world = _world()
+    verdict = Verdict(
+        attribute_deltas={"usa": {"croissance": 0.5}},
+        attribute_reasons={
+            "usa": {"croissance": "Les USA ont fermé un accord commercial avec l'Iran."}
+        },
+    )
+    deltas = apply_verdict(world, verdict)
+    delta = next(d for d in deltas if d.label == "croissance")
+    assert delta.reason == "Les USA ont fermé un accord commercial avec l'Iran."
+
+
+def test_apply_verdict_reason_defaults_to_empty_when_absent():
+    # Un verdict à l'ancienne (avant ce point) ou un juge muet sur le motif : la raison
+    # reste une chaîne vide, jamais une exception.
+    world = _world()
+    verdict = Verdict(attribute_deltas={"usa": {"croissance": 0.5}})
+    deltas = apply_verdict(world, verdict)
+    assert deltas[0].reason == ""
+
+
+def test_apply_verdict_reason_is_partial_per_label():
+    # Le juge motive croissance mais oublie stabilité : chaque delta garde SA raison,
+    # pas de recopie ni de vide généralisé.
+    world = _world()
+    verdict = Verdict(
+        attribute_deltas={"usa": {"croissance": 0.5, "stabilité": 0.05}},
+        attribute_reasons={"usa": {"croissance": "motif croissance"}},
+    )
+    deltas = apply_verdict(world, verdict)
+    by_label = {d.label: d.reason for d in deltas}
+    assert by_label["croissance"] == "motif croissance"
+    assert by_label["stabilité"] == ""
+
+
+def test_apply_verdict_reason_ignores_non_string_entries():
+    # Un 7B glisse parfois un type sale (nombre, liste) à la place du texte — la raison
+    # se vide au lieu de faire planter le round.
+    world = _world()
+    verdict = Verdict(
+        attribute_deltas={"usa": {"croissance": 0.5}},
+        attribute_reasons={"usa": {"croissance": 42}},
+    )
+    deltas = apply_verdict(world, verdict)
+    assert deltas[0].reason == ""
+
+
+def test_apply_verdict_reason_ignored_for_country_without_delta():
+    world = _world()
+    verdict = Verdict(attribute_reasons={"usa": {"croissance": "motif orphelin"}})
+    assert apply_verdict(world, verdict) == []
+
+
+def test_attribute_reasons_tolerant_to_malformed_payload():
+    # POLISH-1/3 — patron étendu : un `"attribute_reasons": "rien à signaler"` d'un 7B
+    # se vide au lieu de nuquer TOUT le verdict (attribute_deltas doit survivre).
+    verdict = Verdict.model_validate(
+        {
+            "attribute_deltas": {"usa": {"croissance": 0.5}},
+            "attribute_reasons": "rien à signaler",
+        }
+    )
+    assert verdict.attribute_reasons == {}
+    assert verdict.attribute_deltas["usa"]["croissance"] == 0.5
+
+
+# --- Brief 3 pt 3 : mouvement minimal quand le juge est muet sur les attributs -----
+
+
+def test_apply_verdict_mute_country_gets_no_fallback_without_escalation():
+    # Rétro-compat stricte : sans `escalation` (défaut None), comportement historique
+    # inchangé — un pays absent du verdict ne bouge pas.
+    world = _world()
+    s0 = world.countries["usa"].political_stability
+    assert apply_verdict(world, Verdict()) == []
+    assert world.countries["usa"].political_stability == s0
+
+
+def test_apply_verdict_mute_country_falls_back_to_escalation_when_tense():
+    # Round tendu (escalade > 0,5) et juge muet sur "usa" -> repli déterministe :
+    # la stabilité s'érode un peu (le monde bouge, il ne se fige pas à 0,5).
+    world = _world()
+    s0 = world.countries["usa"].political_stability
+    apply_verdict(world, Verdict(), escalation=0.9)
+    assert world.countries["usa"].political_stability < s0
+
+
+def test_apply_verdict_mute_country_falls_back_to_escalation_when_calm():
+    # Round calme (escalade < 0,5) -> repli déterministe symétrique : la stabilité
+    # se raffermit un peu.
+    world = _world()
+    s0 = world.countries["usa"].political_stability
+    apply_verdict(world, Verdict(), escalation=0.1)
+    assert world.countries["usa"].political_stability > s0
+
+
+def test_apply_verdict_mute_fallback_neutral_escalation_is_a_no_op():
+    world = _world()
+    s0 = world.countries["usa"].political_stability
+    deltas = apply_verdict(world, Verdict(), escalation=0.5)
+    assert deltas == []
+    assert world.countries["usa"].political_stability == s0
+
+
+def test_apply_verdict_fallback_skips_countries_the_judge_already_touched():
+    # Le juge a bougé "usa" (croissance) -> pas de double repli sur sa stabilité,
+    # seul "iran" (muet) encaisse le repli.
+    world = _world()
+    verdict = Verdict(attribute_deltas={"usa": {"croissance": 0.2}})
+    deltas = apply_verdict(world, verdict, escalation=0.9)
+    labels_by_country = {(d.country, d.label) for d in deltas}
+    assert ("usa", "stabilité") not in labels_by_country
+    assert ("iran", "stabilité") in labels_by_country
+
+
+def test_apply_verdict_touched_even_when_delta_clamped_to_a_no_op():
+    # F4 (revue finale) — le juge a statué (label connu, delta valide) mais le
+    # pays est déjà au plafond : le delta s'écrase à un no-op (before == after).
+    # Ce pays ne doit PAS être traité comme « muet » par le mute_fallback, sinon
+    # le repli peut le pousser dans le sens OPPOSÉ à l'intention du juge (ici :
+    # le juge veut monter la stabilité, un round tendu la ferait au contraire
+    # éroder) avec une raison mensongère (« juge muet sur ce pays »).
+    world = _world()
+    world.countries["usa"].political_stability = 1.0  # déjà au plafond
+    verdict = Verdict(attribute_deltas={"usa": {"stabilité": 0.15}})  # le juge veut monter
+    deltas = apply_verdict(world, verdict, escalation=0.9)  # round tendu -> fallback érode
+    assert world.countries["usa"].political_stability == 1.0  # pas de repli opposé
+    assert not any(d.country == "usa" for d in deltas)
+
+
+def test_apply_verdict_fallback_reason_is_traceable():
+    world = _world()
+    deltas = apply_verdict(world, Verdict(), escalation=0.9)
+    assert deltas and deltas[0].reason  # motif non vide (pas une exception silencieuse)
+
+
+def test_apply_verdict_fallback_reason_is_player_facing_not_engine_jargon():
+    # F5 (revue finale) — cette chaîne est rendue VERBATIM par le VerdictPanel
+    # (web/src/components/judge.tsx) : le jargon moteur ("Repli déterministe",
+    # "juge muet") ne doit jamais atteindre le joueur.
+    world = _world()
+    deltas = apply_verdict(world, Verdict(), escalation=0.9)
+    reason = deltas[0].reason
+    assert "Repli déterministe" not in reason
+    assert "juge muet" not in reason
 
 
 def test_support_levels_bounded_and_reflects_tension():
