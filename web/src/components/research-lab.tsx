@@ -23,6 +23,7 @@ import {
   startLabExperiment,
   submitHumanTrial,
 } from "@/lib/api";
+import { fmt } from "@/lib/format";
 import type {
   CampaignLabView,
   ExperimentProgress,
@@ -55,7 +56,7 @@ export const ROLE_LABELS: Record<string, string> = {
   retired: "retiré du panel (runs historiques lisibles)",
 };
 
-// Décision design 2026-07-19 (« la pensée native est la denrée que le jeu évalue ») —
+// La pensée native est la denrée que le jeu évalue —
 // la sélection d'une NOUVELLE expérience ne propose que les candidats plausibles au rôle
 // d'« IA frontière » : raisonnement natif, ou la voie lente existante (gpt-oss/magistral).
 // Les généralistes retraités (`retired`) et les paliers de capacité (`capacity_comparison`,
@@ -127,7 +128,7 @@ function isDyadic(protocol: ExperimentProtocol): boolean {
 // Libellé du critère principal par id de métrique — un doublon volontaire des libellés
 // `_outcome(...)` du backend (`simulation/research_lab.py`), utile UNIQUEMENT en repli (voir
 // `resolvePrimaryMetricLabel`). Le catalogue exposé (`lab.protocols`) ne liste plus que les
-// protocoles mis en avant (décision user 2026-07-20, resserrement labo sur le seuil nucléaire) :
+// protocoles mis en avant (resserrement labo sur le seuil nucléaire) :
 // un run HISTORIQUE d'un protocole non exposé (ex. un ancien tournoi dyadique) peut donc ne
 // plus s'y retrouver, alors que `summary.primary_metric` reste, lui, toujours calculé côté
 // serveur pour CE run précis (`summarize_results`, indépendant du catalogue exposé).
@@ -139,7 +140,7 @@ const PRIMARY_METRIC_LABELS: Record<string, string> = {
 
 /** Libellé du critère principal affiché en tête de l'écran Résultats, y compris pour un run
  * HISTORIQUE dont le protocole n'est plus dans le catalogue exposé (spec refonte labo §3.5,
- * décision user 2026-07-20 : « historique intact »). `matchedProtocol` est le protocole
+ * « historique intact »). `matchedProtocol` est le protocole
  * retrouvé dans `lab.protocols` (`undefined` si le run vient d'un protocole non mis en avant) ;
  * `primaryMetric` est `summary.primary_metric`, toujours correct pour ce run précis. */
 export function resolvePrimaryMetricLabel(
@@ -247,7 +248,7 @@ export function executionCyclePhases(progress: ExperimentProgress): [string, boo
   const running = !terminal && (progress.experiment.status === "running" || attempted > 0);
   return [
     ["Protocole figé", !terminal && !running],
-    [`En cours (${attempted.toLocaleString("fr-FR")}/${progress.total.toLocaleString("fr-FR")} runs)`, running],
+    [`En cours (${fmt(attempted)}/${fmt(progress.total)} runs)`, running],
     ["Terminé : lire le résultat", terminal],
   ];
 }
@@ -405,7 +406,7 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
   const featured = preferredLabProtocol(lab.protocols);
   const [protocolId, setProtocolId] = useState(featured?.id ?? "");
   const protocol = lab.protocols.find((item) => item.id === protocolId) ?? lab.protocols[0];
-  // Resserrement du catalogue (décision user 2026-07-20) : un seul protocole exposé retire le
+  // Resserrement du catalogue : un seul protocole exposé retire le
   // sélecteur de l'écran 2, la carte s'affiche directement (spec refonte labo §3.2 amendée).
   const hasProtocolChoice = lab.protocols.length > 1;
   // `installed` reste NON filtré par rôle : le badge « Modèles disponibles » et la
@@ -710,7 +711,7 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
   const progress = active?.progress;
   const summary = active?.summary;
   // Le catalogue exposé (`lab.protocols`) peut ne plus contenir le protocole d'un run
-  // HISTORIQUE (décision user 2026-07-20) : `matchedResultProtocol` reste `undefined` dans ce
+  // HISTORIQUE : `matchedResultProtocol` reste `undefined` dans ce
   // cas plutôt que de retomber silencieusement sur le protocole de la nouvelle expérience —
   // `resolvePrimaryMetricLabel` sait lire `summary.primary_metric` pour rester correct.
   const matchedResultProtocol = lab.protocols.find(
@@ -803,7 +804,7 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
         <Panel>
           <PanelTitle
             kicker="2 · Question & protocole"
-            // Resserrement du catalogue (décision user 2026-07-20) : avec une seule carte
+            // Resserrement du catalogue : avec une seule carte
             // exposée, il n'y a plus de choix à faire — la carte s'affiche directement, sans
             // vocabulaire de sélection (spec refonte labo §3.2 amendée).
             title={hasProtocolChoice ? "Choisir une carte d'expérience" : protocol.title}
@@ -1059,10 +1060,10 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
                 " × 1 participant"
               )}
               {" = "}
-              <strong className="font-mono text-foreground">{planned.toLocaleString("fr-FR")} runs</strong>
+              <strong className="font-mono text-foreground">{fmt(planned)} runs</strong>
               {isDyadic(protocol) && (
                 <span className="ml-2 font-mono text-fg-faint">
-                  · {plannedModelCalls.toLocaleString("fr-FR")} appels modèle maximum
+                  · {fmt(plannedModelCalls)} appels modèle maximum
                 </span>
               )}
               {estimatedDurationS > 0 && (
@@ -1331,7 +1332,7 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
             <div>
               <div className="mb-2 flex justify-between text-xs text-fg-muted">
                 <span>
-                  {progress.completed.toLocaleString("fr-FR")} terminés · {progress.failed} erreurs
+                  {fmt(progress.completed)} terminés · {progress.failed} erreurs
                 </span>
                 <span className="font-mono">{Math.round(completedRatio * 100)} %</span>
               </div>
@@ -1370,7 +1371,7 @@ export function ResearchLab({ lab }: { lab: CampaignLabView }) {
                 ) : progress.experiment.status === "running" ? (
                   "Reprendre l’expérience"
                 ) : (
-                  `Lancer ${progress.total.toLocaleString("fr-FR")} runs`
+                  `Lancer ${fmt(progress.total)} runs`
                 )}
               </button>
             )}

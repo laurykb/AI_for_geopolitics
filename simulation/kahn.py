@@ -176,14 +176,14 @@ def reciprocal_deescalation(actions: list[ClassifiedAction]) -> bool:
     return len(countries) >= 2
 
 
-# Brief 3 pt 3 — miroir de la désescalade réciproque : classes qui comptent comme une
+# Miroir de la désescalade réciproque : classes qui comptent comme une
 # ESCALADE marquante (au moins « violente »). La posture/non-violente reste sous le seuil
 # — pas assez grave pour justifier une sur-pondération de la perte d'indice.
 _ESCALATING_CLASSES = frozenset({CLASS_VIOLENTE, CLASS_NUCLEAIRE})
 
 
 def reciprocal_escalation(actions: list[ClassifiedAction]) -> bool:
-    """Vrai si ≥ 2 SI distinctes ont escaladé violemment le même round (Brief 3 pt 3).
+    """Vrai si ≥ 2 SI distinctes ont escaladé violemment le même round.
 
     Miroir de `reciprocal_deescalation` : une escalade qui s'entraîne à deux (ou plus)
     est une coordination vers le HAUT du conflit, symétrique de la coordination vers
@@ -219,7 +219,7 @@ def escalation_penalty(
 ) -> TrajectoryState:
     """×1,5 sur la PERTE d'indice U du round quand la ré-escalade est réciproque — pur, borné.
 
-    Pénalité MIROIR de `deescalation_bonus` (Brief 3 pt 3, décision 4 : rendre le bonus
+    Pénalité MIROIR de `deescalation_bonus` (rendre le bonus
     symétrique plutôt que de le retirer) : un couple de SI qui s'entraîne vers le HAUT du
     conflit encaisse la même sur-pondération qu'un couple qui désescalade ensemble, mais
     sur la perte. Passe par le même levier (A1, `nudge_axis`) pour préserver l'invariant

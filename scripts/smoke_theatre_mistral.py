@@ -30,7 +30,7 @@ import sys
 import time
 from pathlib import Path
 
-# Décision design 2026-07-19 (casting = pensée native) : sans `model_cast` explicite, une
+# Casting = pensée native : sans `model_cast` explicite, une
 # partie classique/campagne caste désormais ses pays par défaut sur deepseek-r1:7b (voir
 # `app/game_api.py::_default_reasoning_cast`) — ce smoke teste le MOTEUR (ultimatum, Kahn,
 # signaux, promesses, Storyteller), pas la politique de casting, et doit rester rapide sur

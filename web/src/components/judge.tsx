@@ -132,7 +132,7 @@ export function VerdictPanel({
                     {fmt(d.after)}
                   </span>
                 </span>
-                {/* Brief 4 pt 8 — le POURQUOI du juge sous chaque mouvement chiffré
+                {/* Le POURQUOI du juge sous chaque mouvement chiffré
                     (absent des rounds d'avant ce point : la ligne disparaît, rien ne casse). */}
                 {d.reason && (
                   <span className="mt-1 block pl-[34px] text-xs leading-relaxed text-fg-faint">

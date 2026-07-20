@@ -10,7 +10,7 @@
 import type { TableSetting } from "./temperament";
 import type { CreateGameBody, Difficulty, GameMode, GameRole, ResearchModel } from "./types";
 
-// --- casting des pays (décision design 2026-07-19 : la pensée native est la denrée que
+// --- casting des pays (la pensée native est la denrée que
 // le jeu évalue) -----------------------------------------------------------------
 
 /** Tag de référence proposé par défaut pour les pays quand le casting est désactivé

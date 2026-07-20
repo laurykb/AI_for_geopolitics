@@ -50,9 +50,9 @@ class PrivateStrategicPlan(BaseModel):
     comparison_summary: str = Field("", max_length=800)
     contingency_plan: str = Field("", max_length=500)
     fallback_used: bool = False
-    # Traçabilité de l'extraction minimale (décision 2 du reliquat « réflexion libre ») :
-    # au moins une branche vient d'une lecture de secours du texte libre du modèle (pas du
-    # gabarit strict/tolérant), distincte du repli seedé générique (`fallback_used`).
+    # Traçabilité de l'extraction minimale : au moins une branche vient d'une lecture de
+    # secours du texte libre du modèle (pas du gabarit strict/tolérant), distincte du
+    # repli seedé générique (`fallback_used`).
     minimal_extraction: bool = False
 
     @model_validator(mode="after")
@@ -78,10 +78,10 @@ class PrivateStrategicPlan(BaseModel):
             f"Risque d'escalade estimé : {chosen.escalation_risk}/100. "
             f"Limite de revue humaine : {_compact(self.human_review_trigger) or 'aucune précisée'}."
         )
-        # Brief 1 pt 3 — rappelle au porte-parole public ce que la phase privée a retenu
-        # du dialogue (champ OBSERVATION) : sans lui, une fois noyé dans le gabarit de
-        # tâche, il ne sait plus À QUOI il répond. Extrait de la phase privée existante,
-        # aucun appel LLM supplémentaire ; absent si l'observation n'a rien produit.
+        # Rappelle au porte-parole public ce que la phase privée a retenu du dialogue
+        # (champ OBSERVATION) : sans lui, une fois noyé dans le gabarit de tâche, il ne
+        # sait plus À QUOI il répond. Extrait de la phase privée existante, aucun appel
+        # LLM supplémentaire ; absent si l'observation n'a rien produit.
         observation = _compact(self.situation_observation)
         if observation:
             if len(observation) > 200:
@@ -371,8 +371,8 @@ def _normalize_markdown(raw: str) -> str:
     d'origine sur un texte qui n'a jamais utilisé de markdown.
 
     Seules les PAIRES `**texte**` / `__texte__` / `*texte*` tenant sur une même ligne sont
-    retirées — JAMAIS un astérisque ISOLÉ (revue : un `raw.replace("*", "")` inconditionnel
-    mangeait un astérisque légitime du chemin strict, ex. « ratio de 2*3 » → « ratio de 23 »).
+    retirées — JAMAIS un astérisque ISOLÉ : un `raw.replace("*", "")` inconditionnel
+    mangerait un astérisque légitime du chemin strict, ex. « ratio de 2*3 » → « ratio de 23 ».
     Sans partenaire sur la même ligne, l'astérisque survit intact.
     """
 
@@ -430,17 +430,17 @@ def _resolve_choice(text: str, branches: list[PrivateFuture], real_ids: set[int]
     return max(pool, key=lambda b: (b.mandate_utility - b.escalation_risk, b.confidence)).id
 
 
-def _extract_partial_branch(
-    match: re.Match[str], participants: list[str]
+def _branch_from_labeled_fields(
+    body: str, participants: list[str], *, branch_id: int, confidence_default: int
 ) -> PrivateFuture | None:
-    """Reconstruit une branche même incomplète : une action exploitable suffit.
+    """Reconstruit une branche même incomplète depuis des champs étiquetés : une action
+    exploitable suffit.
 
     Contrairement au chemin structuré (qui exige une CHAÎNE CAUSALE), utilisé par
     l'extraction minimale : l'absence d'un champ secondaire ne doit plus faire perdre
     l'action réelle du modèle — on comble par un texte neutre plutôt que de la jeter.
     """
 
-    body = match.group(2)
     action = _journal_field(body, "ACTION", "ACTIONS")[:300]
     if not action or _forbidden_bare_action(action):
         return None
@@ -449,7 +449,7 @@ def _extract_partial_branch(
         "issue non détaillée par le modèle"
     )
     return PrivateFuture(
-        id=int(match.group(1)),
+        id=branch_id,
         course_of_action=action,
         forecasts=_parse_forecasts(reactions, participants),
         expected_outcome=outcome,
@@ -459,7 +459,18 @@ def _extract_partial_branch(
         )[:200],
         mandate_utility=_score(_journal_field(body, "UTILITÉ", "UTILITE"), 50),
         escalation_risk=_score(_journal_field(body, "RISQUE", "RISQUE D'ESCALADE"), 50),
-        confidence=_score(_journal_field(body, "CONFIANCE"), 50),
+        confidence=_score(_journal_field(body, "CONFIANCE"), confidence_default),
+    )
+
+
+def _extract_partial_branch(
+    match: re.Match[str], participants: list[str]
+) -> PrivateFuture | None:
+    """Branche (même incomplète) lue dans une section FUTUR n — voir
+    `_branch_from_labeled_fields`."""
+
+    return _branch_from_labeled_fields(
+        match.group(2), participants, branch_id=int(match.group(1)), confidence_default=50
     )
 
 
@@ -492,11 +503,11 @@ def _strip_structured_lines(text: str) -> str:
     """Ne garde que les lignes de texte libre : retire toute ligne structurée (label
     reconnu, avec ou sans puce/gras/valeur) AVANT l'extraction heuristique.
 
-    Revue (CRITICAL) : le tiers « item de liste » de `_extract_free_action` scannait tout
-    le texte SANS ce filtre — une puce `RÉACTIONS : usa=coopere: …` (la posture prêtée à un
-    AUTRE pays) pouvait devenir l'« action » du pays en délibération. On filtre donc UNE
-    FOIS en amont, avec le même garde (`_STRUCTURED_LINE`) que `_first_meaningful_line`,
-    pour que les trois tiers ci-dessous ne voient jamais le contenu d'un champ de gabarit.
+    Sans ce filtre, le tiers « item de liste » de `_extract_free_action` scannerait tout
+    le texte — une puce `RÉACTIONS : usa=coopere: …` (la posture prêtée à un AUTRE pays)
+    pourrait devenir l'« action » du pays en délibération. On filtre donc UNE FOIS en
+    amont, avec le même garde (`_STRUCTURED_LINE`) que `_first_meaningful_line`, pour que
+    les trois tiers ci-dessous ne voient jamais le contenu d'un champ de gabarit.
     """
 
     return "\n".join(
@@ -553,38 +564,19 @@ _PADDING_ACTIONS = (
 def _extract_top_level_action(text: str, participants: list[str]) -> PrivateFuture | None:
     """Lit un champ ACTION au premier niveau (hors section FUTUR n).
 
-    Décision design 2026-07-19/20 (casting = pensée native) : un pays reasoning en
-    délibération libre (`PRIVATE_DELIBERATION_FREE_SYSTEM`) n'écrit jamais de section
-    FUTUR — juste une décision datée (ACTION/RÉACTIONS/CHOIX). Réutilise exactement les
-    mêmes lecteurs de champ que le gabarit strict, appliqués au texte entier plutôt qu'à
-    un bloc FUTUR isolé. Priorité sur `_extract_free_action` (ci-dessous) : un champ
-    explicitement étiqueté prime sur une phrase devinée dans la prose libre.
+    Un pays reasoning en délibération libre (`PRIVATE_DELIBERATION_FREE_SYSTEM`) n'écrit
+    jamais de section FUTUR — juste une décision datée (ACTION/RÉACTIONS/CHOIX).
+    Réutilise exactement les mêmes lecteurs de champ que le gabarit strict, appliqués au
+    texte entier plutôt qu'à un bloc FUTUR isolé. Priorité sur `_extract_free_action`
+    (ci-dessous) : un champ explicitement étiqueté prime sur une phrase devinée dans la
+    prose libre.
     """
 
-    action = _journal_field(text, "ACTION", "ACTIONS")[:300]
-    if not action or _forbidden_bare_action(action):
-        return None
-    reactions = _journal_field(text, "RÉACTIONS", "REACTIONS", "RÉACTIONS ANTICIPÉES")
-    outcome = _journal_field(text, "CHAÎNE CAUSALE", "CHAINE CAUSALE", "ISSUE")[:300] or (
-        "issue non détaillée par le modèle"
-    )
-    return PrivateFuture(
-        id=1,
-        course_of_action=action,
-        forecasts=_parse_forecasts(reactions, participants),
-        expected_outcome=outcome,
-        second_order_effect=_journal_field(text, "SECOND ORDRE")[:300],
-        disconfirming_indicator=_journal_field(
-            text, "INDICATEUR CONTRAIRE", "SIGNAL CONTRAIRE"
-        )[:200],
-        mandate_utility=_score(_journal_field(text, "UTILITÉ", "UTILITE"), 50),
-        escalation_risk=_score(_journal_field(text, "RISQUE", "RISQUE D'ESCALADE"), 50),
-        confidence=_score(_journal_field(text, "CONFIANCE"), 40),
-    )
+    return _branch_from_labeled_fields(text, participants, branch_id=1, confidence_default=40)
 
 
-def _extract_minimal_plan(raw: str, participants: list[str]) -> PrivateStrategicPlan | None:
-    """Dernier filet AVANT le repli seedé générique (décision 2).
+def _extract_minimal_plan(text: str, participants: list[str]) -> PrivateStrategicPlan | None:
+    """Dernier filet AVANT le repli seedé générique (`text` : markdown déjà aplati).
 
     Ne s'active que si `_parse_observable_journal` n'a trouvé aucun bloc FUTUR exploitable.
     Réutilise les blocs FUTUR partiellement valides s'il y en a (1 à 3), sinon extrait une
@@ -593,7 +585,6 @@ def _extract_minimal_plan(raw: str, participants: list[str]) -> PrivateStrategic
     l'ultime filet si même cette lecture minimale ne trouve rien.
     """
 
-    text = _normalize_markdown(raw)
     if not text:
         return None
 
@@ -607,8 +598,8 @@ def _extract_minimal_plan(raw: str, participants: list[str]) -> PrivateStrategic
             real[declared_id] = branch
 
     if not real:
-        # Décision design casting = pensée native : un champ ACTION explicite au premier
-        # niveau (délibération libre reasoning) prime sur la phrase devinée dans la prose.
+        # Un champ ACTION explicite au premier niveau (délibération libre reasoning)
+        # prime sur la phrase devinée dans la prose.
         top_level = _extract_top_level_action(text, participants)
         if top_level is not None:
             real[1] = top_level
@@ -645,9 +636,9 @@ def _extract_minimal_plan(raw: str, participants: list[str]) -> PrivateStrategic
         )
 
     selected_branch = _resolve_choice(text, branches, set(real))
-    # Décision design casting = pensée native : la délibération libre demande un CHOIX en
-    # clair (« ta piste retenue »), pas de CRITÈRE séparé — sa prose sert de critère
-    # d'arbitrage plutôt que le texte générique, quand aucun CRITÈRE n'est présent.
+    # La délibération libre demande un CHOIX en clair (« ta piste retenue »), pas de
+    # CRITÈRE séparé — sa prose sert de critère d'arbitrage plutôt que le texte
+    # générique, quand aucun CRITÈRE n'est présent.
     criterion = (
         _journal_field(text, "CRITÈRE", "CRITERE")
         or _journal_field(text, "CHOIX")
@@ -679,8 +670,8 @@ def _extract_minimal_plan(raw: str, participants: list[str]) -> PrivateStrategic
     )
 
 
-def _parse_observable_journal(raw: str, participants: list[str]) -> PrivateStrategicPlan | None:
-    text = _normalize_markdown(raw)
+def _parse_observable_journal(text: str, participants: list[str]) -> PrivateStrategicPlan | None:
+    """Journal structuré complet (3 FUTUR + ACTIONS) — `text` : markdown déjà aplati."""
     sections = list(_FUTUR_SECTION.finditer(text))
     if {int(match.group(1)) for match in sections} != {1, 2, 3}:
         return None
@@ -754,14 +745,16 @@ def parse_private_plan(
             return PrivateStrategicPlan.model_validate(payload)
         except (TypeError, ValueError):
             pass
-    plan = _parse_observable_journal(raw, participants)
+    # Markdown aplati UNE fois pour les deux lectures (4 passes regex sur tout le texte).
+    text = _normalize_markdown(raw)
+    plan = _parse_observable_journal(text, participants)
     if plan is not None:
         return plan
-    # Extraction minimale (décision 2) : AVANT le repli seedé générique, on tente de
+    # Extraction minimale : AVANT le repli seedé générique, on tente de
     # préserver ce que le modèle a vraiment écrit — voir `_extract_minimal_plan`. Le repli
     # seedé (`fallback_private_plan`, appelé par l'agent si `parse_private_plan` rend None)
     # reste l'ultime filet.
-    return _extract_minimal_plan(raw, participants)
+    return _extract_minimal_plan(text, participants)
 
 
 def fallback_private_plan(participants: list[str], *, seed: str = "") -> PrivateStrategicPlan:

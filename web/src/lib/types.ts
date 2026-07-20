@@ -293,7 +293,7 @@ export type AttributeDelta = {
   label: string;
   before: number;
   after: number;
-  // Brief 4 pt 8 — motif du juge pour CE delta (une phrase citant le transcript).
+  // Motif du juge pour CE delta (une phrase citant le transcript).
   // Optionnel : absent des rounds persistés avant ce point (rétro-compat replay).
   reason?: string;
 };
@@ -442,7 +442,7 @@ export type JudgeRecord = {
   escalation?: number;
   economic_disruption?: number;
   communique?: string;
-  // Brief 4 pt 8 — délibéré prose du juge, accumulé depuis les `judge_token` du direct.
+  // Délibéré prose du juge, accumulé depuis les `judge_token` du direct.
   // Optionnel : absent des rounds persistés avant ce point (rétro-compat replay).
   rationale?: string;
   suspension?: SuspensionVerdict & { filed_by?: string };
@@ -1172,7 +1172,7 @@ export type IntelResult = {
   note: string | null;
   /** G23 — présent pour l'action « analyze » ; l'affichage DOIT porter le caveat. */
   analysis?: IntelAnalysis | null;
-  /** Brief 6 pt13 — « covert » UNIQUEMENT : coût payé en COMPUTE du pays joué et solde
+  /** « covert » UNIQUEMENT : coût payé en COMPUTE du pays joué et solde
    * après débit. Ressource distincte des crédits intel (cost/budget) — null sinon. */
   compute_cost?: number | null;
   compute_left?: number | null;

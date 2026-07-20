@@ -68,14 +68,14 @@ class DeltaParams(BaseModel):
     momentum_streak: int = 3  # baisses (ou hausses) consécutives qui déclenchent la spirale
     crisis_multiplier: float = 1.3  # spirale de crise (baisse amplifiée)
     virtuous_multiplier: float = 1.2  # cercle vertueux (hausse amplifiée, plafonné)
-    # Brief 3 pt 3 — mouvement minimal (stabilité) quand le juge reste MUET sur un pays
+    # Mouvement minimal (stabilité) quand le juge reste MUET sur un pays
     # (aucun attribute_delta) : repli déterministe sur l'escalade du round, borné petit
     # (0,03) pour rester un frémissement, pas une décision cachée du moteur.
     mute_fallback: float = 0.03
 
 
 class TrajectoryParams(BaseModel):
-    """Brief 3 pt 3 — pas/cap des 5 axes de la trajectoire (`simulation/trajectory.py`).
+    """Pas/cap des 5 axes de la trajectoire (`simulation/trajectory.py`).
 
     `cap` : amplitude du pas FIXE par axe et par round (remplace l'ancien 0,05, qui
     s'auto-amortissait car proportionnel à l'écart signal-courant). `concentration_k` :
@@ -84,7 +84,7 @@ class TrajectoryParams(BaseModel):
 
     cap: float = 0.09
     concentration_k: float = 4.0
-    # IMPORTANT 2 (revue) — bande morte : sous ce seuil, l'écart signal-courant est
+    # Bande morte : sous ce seuil, l'écart signal-courant est
     # traité comme du bruit, pas une direction. Sans elle, le pas fixe (`cap`) produit
     # un cycle-limite permanent (ex. courant 0,51 / signal 0,50 -> 0,51→0,42→0,51→0,42…)
     # dès que l'écart est non nul mais plus petit que `cap` : le signal ne converge
