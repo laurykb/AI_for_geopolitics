@@ -321,17 +321,33 @@ class Verdict(BaseModel):
         return None
 
 
+def _last_index_from(transcript: list[NegotiationMessage], country: str) -> int | None:
+    """Index du dernier message d'un pays dans le transcript, ou None s'il n'a rien dit."""
+    for i in range(len(transcript) - 1, -1, -1):
+        if transcript[i].country == country:
+            return i
+    return None
+
+
+def last_message_from(transcript: list[NegotiationMessage], country: str | None) -> str:
+    """Texte du dernier message d'un pays dans le transcript, ou "" si absent/aucun pays."""
+    if not country:
+        return ""
+    idx = _last_index_from(transcript, country)
+    return transcript[idx].text if idx is not None else ""
+
+
 def format_transcript(
     transcript: list[NegotiationMessage], *, limit: int = 14, human_country: str | None = None
 ) -> str:
     """Formate le transcript pour un prompt (les `limit` derniers messages).
 
-    `human_country` (Joueur-pays, brief « échanges naturels ») : tague ses messages
-    `>>> JOUEUR — {pays} <<<` pour que la SI les repère sans ambiguïté, et épingle en tête
-    son DERNIER message quand il est tombé hors de la fenêtre — sinon un joueur qui parle
-    tôt dans un round bavard disparaît purement et simplement du contexte des SI qui
-    prennent la parole après lui. Un SEUL message épinglé au maximum (budget du cache KV) :
-    on ne rejoue pas tout l'historique du joueur, seulement son dernier point.
+    `human_country` (Joueur-pays) : tague ses messages `>>> JOUEUR — {pays} <<<` pour que
+    la SI les repère sans ambiguïté, et épingle en tête son DERNIER message quand il est
+    tombé hors de la fenêtre — sinon un joueur qui parle tôt dans un round bavard
+    disparaît purement et simplement du contexte des SI qui prennent la parole après lui.
+    Un SEUL message épinglé au maximum (budget du cache KV) : on ne rejoue pas tout
+    l'historique du joueur, seulement son dernier point.
     """
     window_start = max(0, len(transcript) - limit)
     window = transcript[window_start:]
@@ -343,11 +359,7 @@ def format_transcript(
     lines = [_line(m) for m in window]
 
     if human_country is not None:
-        last_human_idx = None
-        for i in range(len(transcript) - 1, -1, -1):  # dernier d'abord : on s'arrête au 1er trouvé
-            if transcript[i].country == human_country:
-                last_human_idx = i
-                break
+        last_human_idx = _last_index_from(transcript, human_country)
         if last_human_idx is not None and last_human_idx < window_start:
             pinned = transcript[last_human_idx]
             lines.insert(0, "(dernier message du joueur, hors fenêtre récente) " + _line(pinned))
