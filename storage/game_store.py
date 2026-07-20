@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS rounds (
 CREATE TABLE IF NOT EXISTS transcripts (
     id TEXT PRIMARY KEY, round_id TEXT NOT NULL, seq INTEGER NOT NULL,
     speaker TEXT NOT NULL, model TEXT NOT NULL, content TEXT NOT NULL,
-    reasoning TEXT NOT NULL, ts TEXT NOT NULL
+    reasoning TEXT NOT NULL, thinking TEXT NOT NULL DEFAULT '', ts TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS campaign_scores (
     game_id TEXT PRIMARY KEY, chapter_id TEXT NOT NULL, score REAL NOT NULL,
@@ -189,6 +189,7 @@ class TranscriptEntry(BaseModel):
     model: str = ""
     content: str = ""
     reasoning: str = ""
+    thinking: str = ""  # pensée native brute, scellée en partie courante
     ts: str = ""
 
 
@@ -416,6 +417,12 @@ class SQLiteGameStore:
                 self._conn.execute(
                     "ALTER TABLE players ADD COLUMN market_balance REAL NOT NULL DEFAULT 0"
                 )
+        tcols = {row[1] for row in self._conn.execute("PRAGMA table_info(transcripts)")}
+        if "thinking" not in tcols:  # pensée native brute (relue au reveal)
+            with self._conn:
+                self._conn.execute(
+                    "ALTER TABLE transcripts ADD COLUMN thinking TEXT NOT NULL DEFAULT ''"
+                )
 
     def close(self) -> None:
         self._conn.close()
@@ -547,9 +554,19 @@ class SQLiteGameStore:
         with self._conn:
             self._conn.executemany(
                 "INSERT INTO transcripts (id, round_id, seq, speaker, model, content, "
-                "reasoning, ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "reasoning, thinking, ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
-                    (e.id, e.round_id, e.seq, e.speaker, e.model, e.content, e.reasoning, e.ts)
+                    (
+                        e.id,
+                        e.round_id,
+                        e.seq,
+                        e.speaker,
+                        e.model,
+                        e.content,
+                        e.reasoning,
+                        e.thinking,
+                        e.ts,
+                    )
                     for e in entries
                 ],
             )
@@ -884,5 +901,6 @@ def _entry(row: sqlite3.Row) -> TranscriptEntry:
         model=row["model"],
         content=row["content"],
         reasoning=row["reasoning"],
+        thinking=row["thinking"],
         ts=row["ts"],
     )

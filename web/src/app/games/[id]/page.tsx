@@ -522,11 +522,23 @@ export default function TheatrePage() {
 
   // Le transcript suit le stream — seulement si le lecteur est déjà en bas. S'il est
   // remonté lire, on ne le ramène pas de force (bouton « revenir au direct » à la place).
+  // La croissance intra-tour (pensée ET tokens publics d'un même tour, sans nouveau tour
+  // ni changement de longueur de liste) doit aussi redéclencher le suivi.
+  const lastTurn = round.turns[round.turns.length - 1];
+  const liveGrowth = (lastTurn?.raw.length ?? 0) + (lastTurn?.reasoning.length ?? 0);
   useEffect(() => {
     if (selected !== "live" || !stickToLive) return;
     const el = transcriptRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [selected, stickToLive, round.turns.length, round.judgeText, round.motionText, round.status]);
+  }, [
+    selected,
+    stickToLive,
+    round.turns.length,
+    liveGrowth,
+    round.judgeText,
+    round.motionText,
+    round.status,
+  ]);
   const onTranscriptScroll = () => {
     const el = transcriptRef.current;
     if (!el) return;
@@ -1339,6 +1351,7 @@ export default function TheatrePage() {
             streaming={streaming}
             showLive={showLive}
             playedRounds={playedRounds}
+            exposeThinking={detail?.expose_thinking ?? false}
           />
         </aside>
         {!stickToLive && selected === "live" && showLive && (

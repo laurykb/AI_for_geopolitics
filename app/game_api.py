@@ -891,7 +891,12 @@ class RoundRun:
 
 
 def _add_entry(
-    run: RoundRun, speaker: str, content: str, model: str = "", reasoning: str = ""
+    run: RoundRun,
+    speaker: str,
+    content: str,
+    model: str = "",
+    reasoning: str = "",
+    thinking: str = "",
 ) -> None:
     run.entries.append(
         TranscriptEntry(
@@ -902,6 +907,7 @@ def _add_entry(
             model=model,
             content=content,
             reasoning=reasoning,
+            thinking=thinking,
             ts=_now(),
         )
     )
@@ -1715,8 +1721,12 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
         # journal complet reste persisté (moteur inchangé) et se révèle en fin de partie.
         return _drain_prompts(run)
     name, payload = step_event(step)
-    if isinstance(step, MessageDoneStep) and hide:
-        payload = {**payload, "reasoning": observable_digest(payload["reasoning"])}
+    if isinstance(step, MessageDoneStep):
+        # La pensée brute est une donnée de STORE : le direct a son canal (private_token),
+        # la trame message_done ne doit jamais la doubler (fuite en partie scellée sinon).
+        payload = {k: v for k, v in payload.items() if k != "thinking"}
+        if hide:
+            payload = {**payload, "reasoning": observable_digest(payload["reasoning"])}
     if isinstance(step, HumanTurnStep) and session.pending_turn is not None:
         # G2 : le compte à rebours du front s'aligne sur la deadline du serveur.
         payload = {**payload, "deadline_ts": session.pending_turn.deadline}
@@ -1764,7 +1774,7 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
         model = run.models.get(step.country) or (
             "humain" if step.country == session.human_country else ""
         )
-        _add_entry(run, step.country, step.text, model, step.reasoning)
+        _add_entry(run, step.country, step.text, model, step.reasoning, step.thinking)
         # Une SI peut déposer elle-même une motion en pleine séance (« MOTION: … ») :
         # la première valide gagne, la délibération aura lieu au prochain round.
         if run.ai_motions_enabled and session.pending_motion is None:
@@ -4220,7 +4230,9 @@ def get_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> G
             judge=_public_judge(r.judge),
             trajectory=r.trajectory,
             transcript=[
-                e.model_copy(update={"reasoning": observable_digest(e.reasoning)})
+                e.model_copy(
+                    update={"reasoning": observable_digest(e.reasoning), "thinking": ""}
+                )
                 if hide
                 else e
                 for e in store.list_transcript(r.id)

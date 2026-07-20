@@ -37,6 +37,7 @@ export function RoundTranscript({
   streaming,
   showLive,
   playedRounds,
+  exposeThinking = false,
 }: {
   detail: GameDetail | null;
   round: LiveRound;
@@ -46,6 +47,7 @@ export function RoundTranscript({
   streaming: boolean;
   showLive: boolean;
   playedRounds: number;
+  exposeThinking?: boolean;
 }) {
   const t = useT();
   return viewed ? (
@@ -169,6 +171,7 @@ export function RoundTranscript({
                       }
                     : undefined
                 }
+                exposeThinking={exposeThinking}
               />
               {round.flashes
                 .filter((f) => f.afterTurn === i + 1)

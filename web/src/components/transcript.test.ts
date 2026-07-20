@@ -17,9 +17,12 @@ function renderEntry(entry: TranscriptEntry): string {
   );
 }
 
-function renderTurn(turn: LiveTurn): string {
+function renderTurn(
+  turn: LiveTurn,
+  props: { exposeThinking?: boolean; thinkingOpen?: boolean } = {},
+): string {
   return renderToStaticMarkup(
-    createElement(SettingsProvider, null, createElement(TurnBubble, { turn })),
+    createElement(SettingsProvider, null, createElement(TurnBubble, { turn, ...props })),
   );
 }
 
@@ -31,6 +34,7 @@ const baseEntry: TranscriptEntry = {
   model: "deepseek-r1:7b",
   content: "Nous proposons un compromis.",
   reasoning: "",
+  thinking: "",
   ts: "",
 };
 
@@ -89,5 +93,74 @@ describe("TurnBubble — même habillage en direct (brouillon en cours)", () => 
     expect(html).not.toContain("<think>");
     expect(html).not.toContain("&lt;think&gt;");
     expect(html).toContain("brouillon en cours");
+  });
+});
+
+describe("TurnBubble — fenêtre de pensée en direct (Pensée à découvert)", () => {
+  const liveThinking = {
+    country: "usa", model: "deepseek-r1:7b", passNo: 1,
+    raw: "", text: "", reasoning: "<think>je soupçonne Téhéran</think>", done: false,
+  } as LiveTurn;
+
+  it("live avec reasoning rempli et raw vide → la pensée s'affiche, balises retirées", () => {
+    const html = renderTurn(liveThinking, { exposeThinking: true, thinkingOpen: true });
+    expect(html).toContain("je soupçonne Téhéran");
+    expect(html).not.toContain("&lt;think&gt;");
+  });
+
+  it("fermée par défaut : le corps n'est pas rendu", () => {
+    const html = renderTurn(liveThinking, { exposeThinking: true });
+    expect(html).not.toContain("je soupçonne Téhéran"); // résumé seul, corps absent
+    expect(html).toContain("Pensée de");
+  });
+
+  it("queue de fenêtre : seule la fin d'une longue pensée est rendue", () => {
+    const long = { ...liveThinking, reasoning: "x".repeat(5000) + "FIN VISIBLE" };
+    const html = renderTurn(long, { exposeThinking: true, thinkingOpen: true });
+    expect(html).toContain("FIN VISIBLE");
+    expect(html).not.toContain("x".repeat(4500));
+  });
+
+  it("scellée (pas de reasoning livé) : placeholder huis clos inchangé", () => {
+    const sealed = { ...liveThinking, reasoning: "" };
+    const html = renderTurn(sealed, {});
+    expect(html).toContain("huis clos");
+  });
+
+  it("expose : le placeholder devient « pense en direct »", () => {
+    const waiting = {
+      country: "usa",
+      model: "m",
+      passNo: 1,
+      raw: "",
+      text: "",
+      reasoning: "",
+      done: false,
+    } as LiveTurn;
+    const html = renderTurn(waiting, { exposeThinking: true });
+    expect(html).toContain("pense en direct");
+    expect(html).not.toContain("huis clos");
+  });
+
+  // Le libellé suit la donnée — une pensée qui streame ne peut pas prétendre au
+  // huis clos, même sans le réglage `exposeThinking` (labo ouvert : pas de dérive,
+  // pas de play_as, pas d'exposition — mais la fenêtre de pensée streame déjà).
+  it("labo ouvert (sans exposeThinking) : un reasoning livé change aussi le placeholder", () => {
+    const html = renderTurn(liveThinking, {});
+    expect(html).toContain("pense en direct");
+    expect(html).not.toContain("huis clos");
+  });
+});
+
+describe("EntryBubble — pensée brute au journal de relecture", () => {
+  it("relecture finie : la pensée brute apparaît dans le journal, balises retirées", () => {
+    const entry = { ...baseEntry, thinking: "<think>plan caché du traître</think>" };
+    const html = renderEntry(entry);
+    expect(html).toContain("plan caché du traître");
+    expect(html).not.toContain("&lt;think&gt;");
+  });
+
+  it("sans thinking, le journal reste identique (aucune section pensée brute)", () => {
+    expect(renderEntry({ ...baseEntry, thinking: "" })).not.toContain("Pensée brute");
   });
 });

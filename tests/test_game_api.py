@@ -29,6 +29,19 @@ def client():
     store.close()
 
 
+@pytest.fixture
+def thinking_client():
+    store = SQLiteGameStore(":memory:")
+    backend = MockBackend("<think>hypothèse secrète</think>Analyse. MESSAGE: Position commune.")
+    app.dependency_overrides[get_store] = lambda: store
+    app.dependency_overrides[get_backend] = lambda: backend
+    game_api._sessions.clear()
+    yield TestClient(app), store
+    app.dependency_overrides.clear()
+    game_api._sessions.clear()
+    store.close()
+
+
 def _create(client, **kw):
     resp = client.post("/api/games", json=kw)
     assert resp.status_code == 201
@@ -580,6 +593,54 @@ def test_expose_thinking_streams_raw_private_frames_and_full_journal_live(client
         # que les témoins OFF (ci-dessus), mais assertion inversée.
         assert "Réactions anticipées" in payload["reasoning"]
         assert "Observation : " not in payload["reasoning"]  # pas le format du digest
+
+
+def test_native_thinking_is_persisted_but_never_in_sse(thinking_client):
+    # La pensée brute (<think>) est une denrée : elle survit dans transcripts.thinking
+    # pour la relecture de fin de partie — mais ne transite JAMAIS par message_done
+    # (le direct passe déjà par private_token, seul canal live autorisé).
+    client, store = thinking_client
+    game = _create(client, countries=["usa", "iran"], expose_thinking=True)
+    events = _play(client, game["id"])
+    dones = [p for n, p in events if n == "message_done"]
+    assert dones and all("thinking" not in p for p in dones)
+    rows = store.list_transcript(store.list_rounds(game["id"])[0].id)
+    thoughts = [r.thinking for r in rows if r.speaker in ("usa", "iran")]
+    assert any("hypothèse secrète" in th for th in thoughts)
+    # le journal d'audit (reasoning) reste distinct de la pensée brute
+    assert all("hypothèse secrète" not in r.reasoning for r in rows)
+
+
+def test_sealed_replay_hides_native_thinking(thinking_client):
+    # Partie courante scellée (Dérive, ≥3 pays classique — RG-3) : la pensée brute est
+    # retirée de la relecture, comme le journal — sinon la traque se lirait dans
+    # GET /api/games/{id}.
+    client, _ = thinking_client
+    game = _create(client, countries=["usa", "iran", "china"], drift_enabled=True)
+    _play(client, game["id"])
+    entries = client.get(f"/api/games/{game['id']}").json()["rounds"][0]["transcript"]
+    assert all(e["thinking"] == "" for e in entries)
+
+
+def test_finished_game_reveals_native_thinking(thinking_client):
+    # La denrée est pour la fin : partie finie → la pensée brute revient verbatim
+    # (le reveal peut montrer ce que le traître pensait vraiment).
+    client, _ = thinking_client
+    game = _create(client, countries=["usa", "iran", "china"], drift_enabled=True, horizon=1)
+    _play(client, game["id"])
+    detail = client.get(f"/api/games/{game['id']}").json()
+    assert detail["status"] == "finished"
+    entries = detail["rounds"][0]["transcript"]
+    assert any("hypothèse secrète" in e["thinking"] for e in entries)
+
+
+def test_expose_thinking_replay_shows_native_thinking_live(thinking_client):
+    # Pensée à découvert : la relecture en partie courante rend aussi la pensée brute.
+    client, _ = thinking_client
+    game = _create(client, countries=["usa", "iran"], expose_thinking=True)
+    _play(client, game["id"])
+    entries = client.get(f"/api/games/{game['id']}").json()["rounds"][0]["transcript"]
+    assert any("hypothèse secrète" in e["thinking"] for e in entries)
 
 
 def test_expose_thinking_replay_shows_full_journal_verbatim_while_running(client):

@@ -2,6 +2,8 @@
  * En live, la bulle affiche le flux token par token (pensée/message séparés dès que
  * le marqueur apparaît) ; `message_done` pose ensuite le découpage faisant foi. */
 
+import { memo, useEffect, useState } from "react";
+
 import { speakerMeta } from "@/lib/countries";
 import { unknownActor } from "@/lib/fog";
 import { fmt, splitStreaming, splitThinkSegments } from "@/lib/format";
@@ -162,11 +164,77 @@ function Bubble({
   );
 }
 
-/** Bulle live : suit un `LiveTurn` du stream. */
-export function TurnBubble({ turn, lens }: { turn: LiveTurn; lens?: GlassLens }) {
+const TAIL_WINDOW = 4000; // fenêtre de queue : une pensée de 5-10 k tokens ne doit pas peser sur le DOM
+
+/** Fenêtre de pensée en direct (Pensée à découvert) : la pensée native accumulée
+ * (`turn.reasoning`, alimentée par `private_token`) arrive dès que le serveur l'expose —
+ * ce repli `<details>` fermé par défaut évite d'imposer sa lecture, la queue borne le
+ * DOM sur les longues pensées, et le choix ouvert/fermé se retient d'une bulle à l'autre. */
+function LiveThinking({
+  country,
+  text,
+  forcedOpen,
+}: {
+  country: string;
+  text: string;
+  forcedOpen?: boolean;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(forcedOpen ?? false);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      if (forcedOpen === undefined) setOpen(localStorage.getItem("wosi.pensee.open") === "1");
+      setLoaded(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, [forcedOpen]);
+  useEffect(() => {
+    if (loaded && forcedOpen === undefined)
+      localStorage.setItem("wosi.pensee.open", open ? "1" : "0");
+  }, [open, loaded, forcedOpen]);
+  return (
+    <details
+      className="mb-2"
+      open={open}
+      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
+    >
+      <summary className="cursor-pointer text-xs text-fg-faint transition-colors hover:text-fg-muted">
+        {t("transcript.pensee-en-cours").replace("{n}", country)}
+      </summary>
+      {open && (
+        <div className="mt-1.5 whitespace-pre-wrap border-l border-accent/50 pl-3 text-[13px] italic leading-relaxed text-fg-muted">
+          <ThinkAwareText text={text.slice(-TAIL_WINDOW)} />
+        </div>
+      )}
+    </details>
+  );
+}
+
+/** Bulle live : suit un `LiveTurn` du stream. `exposeThinking` (Pensée à découvert)
+ * pilote le libellé du placeholder — la fenêtre de pensée en direct ci-dessous se
+ * déclenche elle sur la DONNÉE (`turn.reasoning` livé), seul le serveur décidant de
+ * ce qui est exposé. Mémoïsée : un token touche un seul tour, `withLastTurn` ne
+ * recrée que sa référence — les autres bulles ne re-rendent pas. */
+export const TurnBubble = memo(function TurnBubble({
+  turn,
+  lens,
+  exposeThinking = false,
+  thinkingOpen,
+}: {
+  turn: LiveTurn;
+  lens?: GlassLens;
+  exposeThinking?: boolean;
+  thinkingOpen?: boolean;
+}) {
   const t = useT();
   const live = !turn.done;
-  const { reasoning, message } = live
+  const countryLabel = speakerMeta(turn.country).label;
+  const { reasoning: draftReasoning, message } = live
     ? splitStreaming(turn.raw)
     : { reasoning: turn.reasoning, message: turn.text };
   const meta = [
@@ -184,30 +252,46 @@ export function TurnBubble({ turn, lens }: { turn: LiveTurn; lens?: GlassLens })
       glass={lens ? glassState(lens) : undefined}
     >
       {lens && <GlassAnnotation lens={lens} />}
+      {live && turn.reasoning ? (
+        <LiveThinking country={countryLabel} text={turn.reasoning} forcedOpen={thinkingOpen} />
+      ) : null}
       <p
         className={`whitespace-pre-wrap text-sm leading-relaxed text-foreground ${live ? "stream-caret" : ""}`}
       >
-        {live && !message && !reasoning
-          ? t("transcript.planification-privee")
+        {live && !message && !draftReasoning
+          ? // Le libellé suit la donnée : une pensée qui streame déjà (LiveThinking
+            // ci-dessus) ne peut pas prétendre au huis clos, même si `exposeThinking`
+            // est faux (labo ouvert sans réglage dédié).
+            t(exposeThinking || !!turn.reasoning ? "transcript.pense-en-direct" : "transcript.planification-privee")
           : live && !message
             ? ""
             : live
               ? message
               : tidy(message)}
       </p>
-      {live && !message && reasoning ? (
+      {live && !message && draftReasoning ? (
         <div className="mt-1.5 whitespace-pre-wrap border-l border-accent/50 pl-3 text-[13px] italic leading-relaxed text-fg-muted">
-          <ThinkAwareText text={reasoning} />
+          <ThinkAwareText text={draftReasoning} />
         </div>
       ) : (
-        <Reasoning text={reasoning} />
+        <Reasoning text={draftReasoning} />
       )}
     </Bubble>
   );
-}
+});
 
-/** Bulle de relecture : suit une ligne de la table `transcripts`. */
-export function EntryBubble({ entry, lens }: { entry: TranscriptEntry; lens?: GlassLens }) {
+/** Bulle de relecture : suit une ligne de la table `transcripts`. La pensée brute
+ * (`entry.thinking`) n'est jamais vide qu'une fois la partie scellée — le repli
+ * `<details>` ci-dessous se déclenche donc sur la DONNÉE, pas sur un réglage
+ * (qui régit le direct, pas l'archive une fois la partie terminée). */
+export function EntryBubble({
+  entry,
+  lens,
+}: {
+  entry: TranscriptEntry;
+  lens?: GlassLens;
+}) {
+  const t = useT();
   return (
     <Bubble
       speaker={entry.speaker}
@@ -219,6 +303,16 @@ export function EntryBubble({ entry, lens }: { entry: TranscriptEntry; lens?: Gl
         {tidy(entry.content)}
       </p>
       <Reasoning text={entry.reasoning} />
+      {entry.thinking ? (
+        <details className="mt-1">
+          <summary className="cursor-pointer text-xs text-fg-faint transition-colors hover:text-fg-muted">
+            {t("transcript.pensee-brute")}
+          </summary>
+          <div className="mt-2 border-l border-accent/50 pl-3 text-[13px] italic leading-relaxed text-fg-muted whitespace-pre-wrap">
+            <ThinkAwareText text={entry.thinking} />
+          </div>
+        </details>
+      ) : null}
     </Bubble>
   );
 }

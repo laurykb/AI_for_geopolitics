@@ -116,10 +116,13 @@ create table if not exists transcripts (
   model     text not null default '',
   content   text not null default '',
   reasoning text not null default '', -- réflexion privée : fait partie du théâtre (note R1)
+  thinking  text not null default '', -- pensée native brute (<think>), scellée en partie courante
   ts        timestamptz not null default now(),
   unique (round_id, seq)
 );
 create index if not exists transcripts_round_idx on transcripts (round_id, seq);
+-- Migration des bases existantes (idempotent) :
+alter table transcripts add column if not exists thinking text not null default '';
 
 -- G7-c : prompts complets capturés en mode admin (même patron que transcripts).
 -- JAMAIS de lecture anon : ils révèlent la consigne secrète de la Dérive — RLS activée
