@@ -18,10 +18,11 @@ import { StageBand, type StageSelection } from "@/components/stage-band";
 import { AlliancePills } from "@/components/alliance-pills";
 import { DeadlineStrip, RelationsPanel } from "@/components/gamefeel";
 import { DirectiveComposer } from "@/components/directive-composer";
-import { StageMap } from "@/components/stage-map";
+import { CountryFiche } from "@/components/theatre/country-fiche";
+import { GlobeTheatre } from "@/components/theatre/globe-theatre";
 import { useTour } from "@/components/tour";
 import { TurnComposer } from "@/components/turn-composer";
-import { useT } from "@/components/settings-provider";
+import { useSettings } from "@/components/settings-provider";
 import {
   Banner,
   ConfirmDialog,
@@ -71,6 +72,7 @@ import {
   type FlashMarket,
 } from "@/lib/market";
 import { FlashMarketsPopup } from "@/components/flash-markets";
+import { deriveGlobeView } from "@/lib/globe-view";
 import { deriveStageView } from "@/lib/stage-view";
 import type {
   AccountView,
@@ -116,7 +118,7 @@ export default function TheatrePage() {
   // G21 — décret d'ultimatum (2 champs) : l'exigence et la classe de conséquence.
   const [ultimatumDemand, setUltimatumDemand] = useState("");
   const [ultimatumClasse, setUltimatumClasse] = useState<string>("posture");
-  const t = useT();
+  const { settings, setStageView, t } = useSettings();
   const [library, setLibrary] = useState<LibraryView | null>(null);
   const [fogId, setFogId] = useState("");
   const [crisisId, setCrisisId] = useState("");
@@ -148,7 +150,8 @@ export default function TheatrePage() {
   // Scène (G1) : cran de la timeline (« live » ou un round passé) + gel du verdict.
   const [selected, setSelected] = useState<StageSelection>("live");
   const [frozen, setFrozen] = useState(false);
-  const [mapExpanded, setMapExpanded] = useState(false);
+  // Théâtre immersif (S4) : la fiche pays s'ouvre au clic sur un délégué.
+  const [ficheCountry, setFicheCountry] = useState<string | null>(null);
   const transcriptRef = useRef<HTMLElement | null>(null);
   // Campagne (G5) : le chapitre de la partie (scenario "campaign:<id>") impose la crise.
   const [chapter, setChapter] = useState<ChapterView | null>(null);
@@ -183,14 +186,6 @@ export default function TheatrePage() {
   // La Dérive (G3) : la révélation se charge quand la partie est finie.
   const [reveal, setReveal] = useState<DriftReveal | null>(null);
 
-  useEffect(() => {
-    if (!mapExpanded) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMapExpanded(false);
-    };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [mapExpanded]);
   useEffect(() => {
     if (detail?.drift_enabled && detail.status === "finished") {
       getDriftReveal(id).then(setReveal).catch(() => setReveal(null));
@@ -564,21 +559,7 @@ export default function TheatrePage() {
   // Modèle de vue de la scène (direct vs relecture d'un round passé) — dérivation
   // pure et testée (lib/stage-view). La page ne tranche plus « live vs viewed »
   // ligne à ligne : elle consomme le modèle.
-  const {
-    stageU,
-    uByCountry,
-    stageSpeaking,
-    stageMisled,
-    stageSuspended,
-    stageEventTitle,
-    breatheKey,
-    liveAnnouncement,
-    bandLiveU,
-    bandRisk,
-    bandLadder,
-    prevRung,
-    treatiesUpdate,
-  } = deriveStageView({
+  const stageInput = {
     round,
     detail: detail ?? null,
     viewed,
@@ -589,7 +570,25 @@ export default function TheatrePage() {
     persistedU,
     showLive,
     selected,
-  });
+  };
+  const {
+    stageU,
+    uByCountry,
+    stageSpeaking,
+    stageMisled,
+    stageSuspended,
+    breatheKey,
+    liveAnnouncement,
+    bandLiveU,
+    bandRisk,
+    bandLadder,
+    prevRung,
+    treatiesUpdate,
+  } = deriveStageView(stageInput);
+
+  // La vue du GLOBE (superset spec §2) : pense/parle distincts, événement
+  // géolocalisé (C1, repli barycentre), arc — même entrée que la 2D.
+  const globeView = deriveGlobeView(stageInput);
 
   // Les avis persistants (motion, suspensions, campagne, dérive) s'empilaient au-dessus
   // de la scène ; à partir de 2, ils se compactent en une ligne de pastilles dépliable
@@ -1158,77 +1157,77 @@ export default function TheatrePage() {
 
       {/* --- La scène (G1) : pleine largeur, la carte en grand --------------------- */}
       <div className="relative left-1/2 w-screen max-w-[1600px] -translate-x-1/2 space-y-4 px-4 sm:px-6">
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(300px,420px)_minmax(0,1fr)] xl:grid-cols-[minmax(340px,460px)_minmax(0,1fr)]">
-        <div
-          role={mapExpanded ? "dialog" : undefined}
-          aria-modal={mapExpanded ? true : undefined}
-          aria-label={mapExpanded ? "Carte du sommet agrandie" : undefined}
-          className={
-            mapExpanded
-              ? "fixed inset-3 z-50 overflow-y-auto rounded-xl border border-edge-strong bg-background p-4 shadow-2xl sm:inset-6 lg:inset-10"
-              : "relative rounded-lg border border-edge bg-surface p-3"
-          }
-          data-tour="scene"
-        >
-          <button
-            type="button"
-            data-tour="map-zoom"
-            onClick={() => setMapExpanded((expanded) => !expanded)}
-            aria-pressed={mapExpanded}
-            className="absolute right-2 top-2 z-40 rounded-md border border-edge-strong bg-background/90 px-3 py-1.5 text-xs font-semibold text-fg-muted shadow-lg backdrop-blur transition-colors hover:border-accent hover:text-accent-bright"
-          >
-            {mapExpanded ? "Réduire la carte" : "Agrandir la carte"}
-          </button>
-          {/* G12 §1 — les paris s'ouvrent en pop-up SUR la carte. Re-montée par round
-              (clé) pour ré-afficher à chaque vague ; non masquable pour le Spectateur. */}
+      {/* Théâtre immersif (S4, spec §4) : le globe est le plateau, la colonne à
+          onglets (Dialogues · Paris · Renseignement) vit dessus. */}
+      <GlobeTheatre
+        view={globeView}
+        utopia={stageU}
+        frozen={frozen}
+        stageView={settings.stageView}
+        onStageViewChange={setStageView}
+        lowPerf={settings.perf === "leger"}
+        onCountryClick={setFicheCountry}
+        onFicheClose={() => setFicheCountry(null)}
+        fiche={
+          ficheCountry ? (
+            <CountryFiche
+              slug={ficheCountry}
+              snapshot={worldCountries?.[ficheCountry] ?? null}
+              uLocal={uByCountry[ficheCountry] ?? stageU}
+              isYou={detail?.play_as === ficheCountry}
+              suspended={stageSuspended.includes(ficheCountry)}
+              misledBy={stageMisled[ficheCountry]}
+              promises={(promiseRegistry ?? []).filter(
+                (p) => p.author === ficheCountry || p.beneficiary === ficheCountry,
+              )}
+            />
+          ) : null
+        }
+        overlay={
+          /* G12 §1 — les paris s'ouvrent en pop-up SUR la scène. Re-montée par
+             round (clé) ; non masquable pour le Spectateur. */
           <FlashMarketsPopup
             key={round.roundNo ?? 0}
             markets={flashMarkets}
             onBet={onFlashBet}
             dismissible={!isSpectator}
           />
-          <StageMap
-            countries={summit}
-            uByCountry={uByCountry}
-            utopia={stageU}
-            speaking={stageSpeaking}
-            pulseActors={viewed ? [] : (round.event?.actors ?? [])}
-            pulseKey={round.event?.id ?? 0}
-            misled={stageMisled}
-            suspended={stageSuspended}
-            frozen={frozen}
-            breatheKey={breatheKey}
-            eventTitle={stageEventTitle}
-          />
-          <AlliancePills alliances={detail?.alliances_at_table ?? []} />
-          {/* Budget de surface (docs/PRINCIPE_SIMPLICITE.md) : casting des modèles = jargon moteur,
-              réservé au mode Expert. La façade garde carte + pastilles + échéances + intrigue. */}
-          {showEngine && <ModelCastPanel cast={detail?.model_cast} />}
-          <ScenarioForecastPanel
-            world={detail?.world}
-            playAs={detail?.play_as ?? null}
-            createdCountry={detail?.invented_country ?? null}
-          />
-          {(round.storyline || detail?.storyline) && (
-            <p className="mt-2 text-xs italic text-fg-faint">
-              Intrigue de la partie : {round.storyline ?? detail?.storyline}
+        }
+        fallback={{
+          pulseActors: viewed ? [] : (round.event?.actors ?? []),
+          pulseKey: round.event?.id ?? 0,
+          breatheKey,
+        }}
+        paris={
+          <div className="space-y-3 text-sm text-fg-muted">
+            {isSpectator && account && (
+              <p className="flex items-center justify-between border border-edge bg-surface-2/60 px-3 py-2 font-mono text-xs tabular-nums">
+                <span>Portefeuille</span>
+                <span>
+                  {Math.round(account.balance)}{" "}
+                  <span className={account.pnl >= 0 ? "text-utopia" : "text-dystopia"}>
+                    ({account.pnl >= 0 ? "+" : ""}
+                    {Math.round(account.pnl)})
+                  </span>
+                </span>
+              </p>
+            )}
+            <p className="text-xs text-fg-faint">
+              Les paris éclair s&apos;ouvrent sur la scène pendant le round ; le marché de la
+              partie (utopie ou dystopie ?) vit sur sa page dédiée.
             </p>
-          )}
-          <DeadlineStrip
-            items={
-              round.deadlines ??
-              (detail?.deadlines ?? []).map((d) => ({
-                ...d,
-                in_rounds: d.due_round - playedRounds,
-              }))
-            }
-          />
-          {/* CC-15c — visibles à toutes les difficultés (repli fermé = déjà discret). */}
-          <RelationsPanel relations={detail?.relations ?? {}} />
-          {/* Tableau opérationnel = lecture moteur (jargon), réservé au mode Expert. */}
-          {showEngine && <OperationalPicturePanel picture={detail?.operational_picture} />}
-        </div>
-        <div className="relative min-w-0 space-y-4">
+            <Link href={`/games/${id}/marche`} className="thk-ghost inline-block">
+              💹 Ouvrir le marché de la partie
+            </Link>
+          </div>
+        }
+        renseignement={
+          <p className="text-xs text-fg-faint">
+            Le bureau de renseignement vit dans la salle des observables, sous le théâtre —
+            ses rapports rejoindront cet onglet avec le satellite (v1.5).
+          </p>
+        }
+        dock={
         <ActionDock
           phase={phase}
           playedRounds={playedRounds}
@@ -1251,17 +1250,6 @@ export default function TheatrePage() {
               : play
           }
         >
-          {isSpectator && account && (
-            <p className="flex items-center justify-between rounded-lg border border-edge bg-surface-2/60 px-3 py-2 font-mono text-xs tabular-nums text-fg-muted">
-              <span>Portefeuille</span>
-              <span>
-                {Math.round(account.balance)} {" "}
-                <span className={account.pnl >= 0 ? "text-utopia" : "text-dystopia"}>
-                  ({account.pnl >= 0 ? "+" : ""}{Math.round(account.pnl)})
-                </span>
-              </span>
-            </p>
-          )}
           {detail?.play_as && detail.live && detail.status === "running" && (
             <>
               {round.humanMotionVote && (
@@ -1333,11 +1321,14 @@ export default function TheatrePage() {
             />
           )}
         </ActionDock>
+        }
+        dialogues={
+          <div className="relative h-full">
         <aside
           ref={transcriptRef}
           onScroll={onTranscriptScroll}
           aria-label="Transcript du round"
-          className="max-h-[600px] space-y-4 overflow-y-auto pr-1 lg:max-h-[calc(100vh-9rem)]"
+          className="h-full max-h-[420px] space-y-4 overflow-y-auto pr-1 md:max-h-none"
         >
           <p className="sr-only" role="status" aria-live="polite">
             {liveAnnouncement}
@@ -1357,11 +1348,45 @@ export default function TheatrePage() {
         {!stickToLive && selected === "live" && showLive && (
           <button
             onClick={backToLive}
-            className="absolute bottom-3 left-1/2 -translate-x-1/2 cursor-pointer rounded-full border border-accent-bright/60 bg-surface px-4 py-1.5 text-xs font-medium text-accent-bright shadow-lg transition-colors hover:bg-surface-2"
+            className="absolute bottom-2 left-1/2 z-10 -translate-x-1/2 cursor-pointer rounded-full border border-accent-bright/60 bg-surface px-4 py-1.5 text-xs font-medium text-accent-bright shadow-lg transition-colors hover:bg-surface-2"
           >
             ↓ Revenir au direct
           </button>
         )}
+          </div>
+        }
+      />
+
+      {/* Panneaux contextuels de la scène — sous le théâtre, comme avant (spec §4). */}
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        <div className="space-y-3">
+          <AlliancePills alliances={detail?.alliances_at_table ?? []} />
+          {(round.storyline || detail?.storyline) && (
+            <p className="text-xs italic text-fg-faint">
+              Intrigue de la partie : {round.storyline ?? detail?.storyline}
+            </p>
+          )}
+          <DeadlineStrip
+            items={
+              round.deadlines ??
+              (detail?.deadlines ?? []).map((d) => ({
+                ...d,
+                in_rounds: d.due_round - playedRounds,
+              }))
+            }
+          />
+          {/* CC-15c — visibles à toutes les difficultés (repli fermé = déjà discret). */}
+          <RelationsPanel relations={detail?.relations ?? {}} />
+        </div>
+        <div className="space-y-3">
+          <ScenarioForecastPanel
+            world={detail?.world}
+            playAs={detail?.play_as ?? null}
+            createdCountry={detail?.invented_country ?? null}
+          />
+          {/* Budget de surface (docs/PRINCIPE_SIMPLICITE.md) : jargon moteur en Expert. */}
+          {showEngine && <ModelCastPanel cast={detail?.model_cast} />}
+          {showEngine && <OperationalPicturePanel picture={detail?.operational_picture} />}
         </div>
       </div>
 

@@ -78,7 +78,7 @@ export function FlashMarketsPopup({
   };
 
   return (
-    <div data-tour="betting" className="absolute inset-x-3 top-3 z-20 max-h-[calc(100%-1.5rem)] overflow-y-auto overscroll-contain rounded-lg border border-accent-bright/50 bg-surface/95 p-3 shadow-[0_12px_32px_-12px_rgba(0,0,0,0.7)] backdrop-blur sm:left-auto sm:w-80">
+    <div data-tour="betting" className="pointer-events-auto absolute inset-x-3 top-3 z-20 max-h-[calc(100%-1.5rem)] overflow-y-auto overscroll-contain rounded-lg border border-accent-bright/50 bg-surface/95 p-3 shadow-[0_12px_32px_-12px_rgba(0,0,0,0.7)] backdrop-blur sm:left-auto sm:w-80">
       <div className="mb-2 flex items-center justify-between">
         <span className="flex items-center gap-1.5 text-xs font-semibold text-accent-bright">
           {t("flash.titre")}

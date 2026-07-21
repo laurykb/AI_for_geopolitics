@@ -46,12 +46,22 @@ describe("persistance des réglages (localStorage aujourd'hui, profil en CC-3)",
 
   it("relit ce qui a été sauvé", () => {
     const store = fakeStore();
-    saveSettings({ lang: "en", perf: "leger", noAnim: true }, store);
-    expect(loadSettings(store)).toEqual({ lang: "en", perf: "leger", noAnim: true });
+    saveSettings({ lang: "en", perf: "leger", noAnim: true, stageView: "2d" }, store);
+    expect(loadSettings(store)).toEqual({
+      lang: "en",
+      perf: "leger",
+      noAnim: true,
+      stageView: "2d",
+    });
   });
 
   it("une valeur corrompue retombe sur le défaut", () => {
-    const store = fakeStore({ "wosi.lang": "klingon", "wosi.perf": "turbo" });
+    const store = fakeStore({ "wosi.lang": "klingon", "wosi.perf": "turbo", "wosi.stage": "4d" });
     expect(loadSettings(store)).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it("la vue du théâtre : « 3d » par défaut, un choix persisté par appareil (spec §5)", () => {
+    expect(loadSettings(fakeStore()).stageView).toBe("3d");
+    expect(loadSettings(fakeStore({ "wosi.stage": "2d" })).stageView).toBe("2d");
   });
 });

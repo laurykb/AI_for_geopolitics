@@ -67,25 +67,26 @@
 ## Étapes Claude Code
 
 - [x] **S0** — Lire la spec, ouvrir le prototype dans un navigateur. `npm i three @types/three`
-  (web/). Commit `chore`. *(fait 2026-07-21, `0033b20` — three ^0.185)*
+  (web/). Commit `chore`. *(fait 2026-07-21, `0033b20`)*
 - [x] **S1** — `GlobeStage` client-only (`dynamic(() => …, {ssr:false})`) : globe + **texture
   canvas peinte** (palette planète futuriste, spec §1) + caméra orbitale (drag/molette/fly-to)
   + picking pays. Parité visuelle avec le prototype, **sans robots d'abord**.
-  *(fait 2026-07-21, `8e6df20` — modules purs texture/camera/picking testés vitest ;
-  atelier `/dev/globe` ; vérifié live)*
+  *(fait 2026-07-21, `8e6df20` — vérifié live, atelier `/dev/globe`)*
 - [x] **S2** — Délégués humanoïdes + drone GM + entité Juge + arcs + anneau d'événement :
   transposer le prototype dans les modules de la spec §2 (`texture.ts`, `robots.ts`,
-  `camera.ts`, `picking.ts`…). *(fait 2026-07-21, `e00caf1` — robots.ts testé en node ;
-  drapeaux C2 au torse ; vérifié live)*
+  `camera.ts`, `picking.ts`…). *(fait 2026-07-21, `e00caf1` — vérifié live)*
 - [x] **S3** — **Le dépliage 2D⇄3D** (full-three, spec §5) : morph sphère⇄plan transposé du
   prototype (shader `uFlat`, ancres lerp/slerp, caméra oblique tactique, plan de picking)
   derrière `stageView` + touche V, point de vue préservé ; StageMap SVG rendue interactive
   (`onCountryClick`, `eventGeo`) **uniquement en repli sans WebGL**.
-  *(fait 2026-07-22, `3fd6077` — morph.ts pur testé ; prop `view` + `onViewToggle`,
-  le réglage `stageView` persisté viendra avec l'hôte en S4 ; vérifié live)*
-- [ ] **S4** — Layout immersif (spec §4) dans `app/games/[id]/page.tsx` : globe plein théâtre,
+  *(fait 2026-07-22, `3fd6077` — vérifié live)*
+- [x] **S4** — Layout immersif (spec §4) dans `app/games/[id]/page.tsx` : globe plein théâtre,
   transcript overlay droite **à onglets** (Dialogues · Paris · Renseignement), bandeau
-  événement, contrôles bas-gauche, fiche gauche.
+  événement, contrôles bas-gauche, fiche gauche. *(fait 2026-07-22 — `GlobeTheatre`
+  (composition : la page garde la donnée, le composant le plateau) + `CountryFiche` ;
+  réglage `stageView` persisté (Réglages, clé wosi.stage) ; repli SVG si WebGL absent ou
+  palier léger ; colonne empilée sous la scène en mobile (même DOM, le transcript garde
+  sa ref) ; vérifié live sur une vraie partie)*
 - [ ] **S5** — Branchements réels : bulle de pensée sur `turn.reasoning`/digest selon
   `expose_thinking` ; fiche sur les données Informations + état de partie ; géoloc via
   `geo_lon`/`geo_lat` (C1) avec repli barycentre côté front en attendant.
@@ -101,17 +102,19 @@
   `web/src/styles/theatre-kit.css` (tokens en `@theme` Tailwind et/ou classes telles
   quelles) sur `/`, `/accueil`, `/lobby`, `/campagne`, `/laboratoire`, `/defi`,
   `/reglages`, `/profil`, `/leaderboard`, header, `auth-gate` — texte net, chanfreins,
-  néon discret, a11y intacte. *(fait 2026-07-22, `d9f2deb` — par le SYSTÈME : tokens
-  de globals.css rebasés sur le kit, Panel/champs/interrupteurs/dialogue chanfreinés
-  dans ui.tsx, scanlines au layout, CTA thk-cta, cartes thk-mode-card ;
-  `--foreground-faint` gardé au-dessus du kit pour l'AA ; nota : le CSS du kit est
-  non-layered → il prime sur les utilitaires Tailwind, états sélectionnés en style
-  inline ; vérifié live)*
+  néon discret, a11y intacte. *(fait 2026-07-22, `d9f2deb` — par le système : tokens
+  rebasés + ui.tsx chanfreiné ; nota : le CSS du kit, non-layered, prime sur les
+  utilitaires Tailwind → états sélectionnés en style inline ; vérifié live)*
 - [ ] **S11** — **Le hall** (spec §9, prototype comme référence : états
   `auth → menu → config → game`) : GlobeStage monté au **layout** (scène persistante entre
   routes), connexion/lobby/config convertis en **overlays** ; choix du pays incarné **au
   clic sur le globe** (halo cyan + badge VOUS) ; lancement = plongée caméra vers le round 1 ;
   repli sans WebGL : mêmes pages sur fond `--thk-bg`.
+  **Checklist anti-régression (spec §9 « rien ne se perd ») : chaque option du lobby
+  actuel — 4 rôles, sélection 7/33 sur le globe (+ tailles 5-12), forge complète, casting
+  multi-modèles avec répartition/assignations, scénarios, brouillard/escalade/pensée,
+  difficulté, rounds 3-20, délai du tour 30-300 s, table G17, langue, admin — DOIT exister
+  dans le hall avant de supprimer l'ancien lobby.**
 - [ ] **S12** — **Laury en 3D + tutoriel immersif** (spec §10, prototype comme référence) :
   `mascot.ts` (chibi fidèle au SVG maître, contour-coques, petit monde = texture du théâtre),
   compagnon caméra + présentation des cibles ; la visite guidée à portes rebranchée sur les
