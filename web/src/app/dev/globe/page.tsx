@@ -54,6 +54,11 @@ export default function GlobeDevPage() {
         utopia={0.52}
         speaking={speaking}
         thinking={thinking}
+        thinkingText={
+          thinking
+            ? "…le blocus menace 12 % du fret mondial. Si je hausse le ton sans coalition, Pékin comble le vide. Mieux vaut une escorte multilatérale que des frappes…"
+            : undefined
+        }
         misled={fogEgypt ? { egypt: "narratif brouillé (démo)" } : {}}
         suspended={suspendIran ? ["iran"] : []}
         eventTitle={eventOn ? "Incident naval dans le détroit d'Ormuz" : undefined}

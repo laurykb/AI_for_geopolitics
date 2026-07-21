@@ -590,6 +590,16 @@ export default function TheatrePage() {
   // géolocalisé (C1, repli barycentre), arc — même entrée que la 2D.
   const globeView = deriveGlobeView(stageInput);
 
+  // La bulle de pensée (S5, spec §2) : la pensée native streamée si la partie
+  // joue « Pensée à découvert », sinon le digest de huis clos. Queue courte :
+  // la bulle est un surtitre de scène, le transcript garde le texte complet.
+  const activeTurn = viewed ? undefined : [...round.turns].reverse().find((turn) => !turn.done);
+  const thinkingText = globeView.thinking
+    ? detail?.expose_thinking && activeTurn?.reasoning
+      ? `…${activeTurn.reasoning.replace(/<\/?think>/g, "").slice(-240)}`
+      : "réfléchit à huis clos…"
+    : undefined;
+
   // Les avis persistants (motion, suspensions, campagne, dérive) s'empilaient au-dessus
   // de la scène ; à partir de 2, ils se compactent en une ligne de pastilles dépliable
   // pour garder la carte au-dessus du pli (promesse G1).
@@ -1166,6 +1176,7 @@ export default function TheatrePage() {
         stageView={settings.stageView}
         onStageViewChange={setStageView}
         lowPerf={settings.perf === "leger"}
+        thinkingText={thinkingText}
         onCountryClick={setFicheCountry}
         onFicheClose={() => setFicheCountry(null)}
         fiche={

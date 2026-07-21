@@ -97,6 +97,9 @@ export type GlobeStageProps = {
   speaking?: string | null;
   /** Délégué en pleine pensée native (bulle holographique — S2). */
   thinking?: string | null;
+  /** Contenu de la bulle (S5) : pensée streamée si `expose_thinking`, sinon le
+   * digest « réfléchit à huis clos… ». L'hôte tranche — la scène affiche. */
+  thinkingText?: string;
   misled?: Record<string, string>;
   suspended?: string[];
   eventTitle?: string;
@@ -384,6 +387,13 @@ export function GlobeStage(props: GlobeStageProps) {
     const eventTag = makeTag("border-color:rgba(255,193,77,.55);color:#ffe0a3;");
     const speakerTag = makeTag("border-color:rgba(255,193,77,.55);color:#ffe9c2;font-weight:600;");
     const judgeTag = makeTag("border-color:rgba(129,140,248,.55);color:#c7d2fe;");
+    // La bulle de pensée holographique (S5) : plus large, multi-lignes, cyan.
+    const bubbleTag = makeTag(
+      "border-color:rgba(89,215,255,.5);color:#cfe8ff;max-width:260px;white-space:normal;" +
+        "text-align:left;font-size:11px;line-height:1.35;box-shadow:inset 0 0 18px -8px rgba(89,215,255,.5);",
+    );
+    let bubbleBelow = false;
+    let bubbleText = "";
 
     const PROJ = new THREE.Vector3();
     const CAMV = new THREE.Vector3();
@@ -877,6 +887,23 @@ export function GlobeStage(props: GlobeStageProps) {
       } else {
         speakerTag.style.opacity = "0";
       }
+      // La bulle de pensée : au-dessus du penseur, bascule dessous si elle
+      // frôle le bord haut (sémantique prototype `.below`).
+      const thkSlug = p.thinking ?? null;
+      const thkCap = thkSlug ? CAPITALS[thkSlug] : null;
+      if (thkSlug && thkCap && robots.has(thkSlug)) {
+        mixTop(thkCap, 1 + ROBOT_H * 1.12, ROBOT_H * 1.12, morphK, LOC);
+        bubbleTag.style.transform = bubbleBelow ? "translate(-50%,10%)" : "translate(-50%,-108%)";
+        projectAt(bubbleTag, LOC, true, bubbleBelow ? 22 : -6);
+        bubbleBelow = parseFloat(bubbleTag.style.top) < 110;
+        const txt = p.thinkingText ?? "";
+        if (txt !== bubbleText) {
+          bubbleText = txt;
+          bubbleTag.textContent = txt;
+        }
+      } else {
+        bubbleTag.style.opacity = "0";
+      }
       projectAt(judgeTag, judge.group.position, judgeMode.mode === "verdict", -10);
 
       renderer.render(scene, camera);
@@ -907,7 +934,7 @@ export function GlobeStage(props: GlobeStageProps) {
         }
       });
       renderer.dispose();
-      for (const el of [tooltip, eventTag, speakerTag, judgeTag]) el.remove();
+      for (const el of [tooltip, eventTag, speakerTag, judgeTag, bubbleTag]) el.remove();
       renderer.domElement.remove();
     };
     // Montage unique : les changements d'état passent par les effets ci-dessous.

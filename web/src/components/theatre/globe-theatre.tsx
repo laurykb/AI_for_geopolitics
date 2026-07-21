@@ -43,6 +43,8 @@ export type GlobeTheatreProps = {
   onStageViewChange: (v: StageView) => void;
   /** Palier « léger » : pas de WebGL, la StageMap SVG reprend le plateau. */
   lowPerf?: boolean;
+  /** Bulle de pensée (S5) : pensée streamée ou digest huis clos — l'hôte tranche. */
+  thinkingText?: string;
   onCountryClick: (slug: string) => void;
   /** Contenu de la fiche pays (tiroir gauche) ; null = fermée. */
   fiche?: ReactNode;
@@ -66,6 +68,7 @@ export function GlobeTheatre({
   stageView,
   onStageViewChange,
   lowPerf = false,
+  thinkingText,
   onCountryClick,
   fiche = null,
   onFicheClose,
@@ -104,6 +107,7 @@ export function GlobeTheatre({
             utopia={utopia}
             speaking={view.speaking}
             thinking={view.thinking}
+            thinkingText={thinkingText}
             misled={view.misled}
             suspended={view.suspended}
             eventTitle={view.eventTitle}
