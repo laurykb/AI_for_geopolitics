@@ -72,19 +72,25 @@ import {
   aimBeam,
   animateRobot,
   buildArc,
+  fillFundStack,
   makeEventGroup,
+  makeFundStack,
   makeGMDrone,
   makeJudge,
   makeRobot,
+  makeSatellite,
   makeVerdictWave,
   setRobotMood,
   stepDrone,
   stepEventRings,
+  stepSatellite,
   stepVerdictWaves,
   type ArcHandle,
   type DroneState,
+  type FundStack,
   type RobotHandle,
   type RobotMood,
+  type SatelliteState,
 } from "./robots";
 import { TEX_H, TEX_W, createGlobePainter } from "./texture";
 
@@ -112,6 +118,10 @@ export type GlobeStageProps = {
   frozen?: boolean;
   /** Arc diplomatique orateur → destinataire. */
   arc?: { from: string; to: string } | null;
+  /** Cagnottes du marché posées sur la carte (S8) : piles de billets + 💰. */
+  funds?: { key: string; lon: number; lat: number; total: number }[];
+  /** Balayage satellite (S8) : un `key` nouveau déclenche le vol + scan. */
+  scan?: { lon: number; lat: number; key: string | number } | null;
   /** La vue du joueur (spec §5) : globe, ou LE MÊME monde déplié en carte. */
   view?: "3d" | "2d";
   /** Touche V pressée : l'hôte (qui possède le réglage `stageView`) bascule. */
@@ -150,6 +160,8 @@ type GlobeHandle = {
   setArc: () => void;
   verdict: () => void;
   setView: (flat: boolean) => void;
+  syncFunds: () => void;
+  setScan: () => void;
 };
 
 function glowTexture(color: string): THREE.CanvasTexture {
@@ -375,6 +387,15 @@ export function GlobeStage(props: GlobeStageProps) {
     let arcHandle: ArcHandle | null = null;
     let arcLL: [[number, number], [number, number]] | null = null;
     let arcKCache = -1;
+    // Satellite de renseignement (S8) : orbite basse permanente, scan à la demande.
+    const { sat, beam: scanBeam, ring: scanRing } = makeSatellite();
+    scene.add(sat);
+    scene.add(scanBeam);
+    scene.add(scanRing);
+    const satPos = new THREE.Vector3(1.34, 0, 0);
+    let satState: SatelliteState = { mode: "orbit", a: 2.1, t: 0, target: null };
+    // Piles de billets (S8) : une par cagnotte, rejouées idempotentes.
+    const fundStacks = new Map<string, { stack: FundStack; ll: [number, number]; el: HTMLElement }>();
 
     // DOM projeté (tooltip, bandeau d'événement, étiquette d'orateur) —
     // stylé inline, piloté par la boucle : jamais de setState.
@@ -606,6 +627,50 @@ export function GlobeStage(props: GlobeStageProps) {
       }
     };
 
+    // Les cagnottes du marché (S8) : créer/remplir/retirer les piles + étiquettes.
+    const syncFunds = () => {
+      const wanted = new Map((propsRef.current.funds ?? []).map((f) => [f.key, f]));
+      for (const [key, entry] of fundStacks) {
+        if (wanted.has(key)) continue;
+        anchors.remove(entry.stack.group);
+        scene.remove(entry.stack.group);
+        entry.el.remove();
+        fundStacks.delete(key);
+      }
+      for (const [key, f] of wanted) {
+        let entry = fundStacks.get(key);
+        if (!entry) {
+          const stack = makeFundStack();
+          stack.group.scale.setScalar(1.7);
+          anchors.anchor(stack.group, f.lon, f.lat, { lift: 0.001 });
+          scene.add(stack.group);
+          entry = { stack, ll: [f.lon, f.lat], el: makeTag("color:#9fe3b4;") };
+          fundStacks.set(key, entry);
+        } else if (entry.ll[0] !== f.lon || entry.ll[1] !== f.lat) {
+          entry.ll = [f.lon, f.lat];
+          anchors.anchor(entry.stack.group, f.lon, f.lat, { lift: 0.001 });
+        }
+        fillFundStack(entry.stack, f.total);
+        entry.el.textContent = `💰 ${Math.round(f.total)} ₲`;
+      }
+    };
+
+    // Le balayage satellite (S8) : un `key` nouveau = un vol + un scan.
+    let lastScanKey: string | number | null = null;
+    const setScan = () => {
+      const s = propsRef.current.scan;
+      if (!s || s.key === lastScanKey) return;
+      lastScanKey = s.key;
+      if (satState.mode !== "orbit") return; // un seul vol à la fois
+      satState = {
+        mode: "goto",
+        a: satState.a,
+        t: 0,
+        target: new THREE.Vector3(...toXYZ(s.lon, s.lat, 1)),
+      };
+      anchors.anchor(scanRing, s.lon, s.lat, { lift: 0.004, flatQ: Q_ID });
+    };
+
     // La bascule (spec §5) : le point de vue est préservé dans les deux sens ;
     // `prefers-reduced-motion` saute le dépliage (morph instantané).
     const setView = (flat: boolean) => {
@@ -630,8 +695,19 @@ export function GlobeStage(props: GlobeStageProps) {
       refresh();
       setEvent();
       setArc();
+      syncFunds();
+      setScan();
       setView(propsRef.current.view === "2d");
-      handleRef.current = { refresh, flyToCountry, setEvent, setArc, verdict, setView };
+      handleRef.current = {
+        refresh,
+        flyToCountry,
+        setEvent,
+        setArc,
+        verdict,
+        setView,
+        syncFunds,
+        setScan,
+      };
     });
 
     // --- interactions --------------------------------------------------------
@@ -816,6 +892,14 @@ export function GlobeStage(props: GlobeStageProps) {
         morphK > 0.5 ? TMP.set(gmDrone.position.x, gmDrone.position.y, -10) : ORIGIN,
       );
 
+      // Satellite de renseignement (S8) : même principe que le drone.
+      satState = stepSatellite(satPos, scanBeam, scanRing, satState, dt, t, reduced);
+      mixPoint(satPos, morphK, sat.position);
+      if (satState.mode === "scan" && satState.target) {
+        aimBeam(scanBeam, sat.position, mixPoint(satState.target, morphK, TMP));
+      }
+      sat.lookAt(morphK > 0.5 ? TMP.set(sat.position.x, sat.position.y, -10) : ORIGIN);
+
       // Le Juge : au-dessus du monde… quel que soit l'état du monde.
       const verdictOn = judgeMode.mode === "verdict";
       judge.core.rotation.y += dt * (verdictOn ? 1.6 : 0.35);
@@ -911,6 +995,10 @@ export function GlobeStage(props: GlobeStageProps) {
         bubbleTag.style.opacity = "0";
       }
       projectAt(judgeTag, judge.group.position, judgeMode.mode === "verdict", -10);
+      for (const entry of fundStacks.values()) {
+        mixTop(entry.ll, 1.014, 0.032, morphK, LOC);
+        projectAt(entry.el, LOC, entry.stack.bills > 0, -4);
+      }
 
       renderer.render(scene, camera);
     };
@@ -941,6 +1029,7 @@ export function GlobeStage(props: GlobeStageProps) {
       });
       renderer.dispose();
       for (const el of [tooltip, eventTag, speakerTag, judgeTag, bubbleTag]) el.remove();
+      for (const entry of fundStacks.values()) entry.el.remove();
       renderer.domElement.remove();
     };
     // Montage unique : les changements d'état passent par les effets ci-dessous.
@@ -973,6 +1062,16 @@ export function GlobeStage(props: GlobeStageProps) {
   useEffect(() => {
     handleRef.current?.setView(view === "2d");
   }, [view]);
+
+  // Cagnottes et balayage satellite (S8) — clés stables, la scène rejoue.
+  const fundsKey = JSON.stringify(props.funds ?? []);
+  useEffect(() => {
+    handleRef.current?.syncFunds();
+  }, [fundsKey]);
+  const scanKey = props.scan?.key ?? null;
+  useEffect(() => {
+    handleRef.current?.setScan();
+  }, [scanKey]);
 
   return (
     <div

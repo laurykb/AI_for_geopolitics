@@ -416,6 +416,146 @@ export function stepVerdictWaves(
   return alive;
 }
 
+// --- satellite de renseignement (S8) -------------------------------------------
+
+export type SatelliteState = {
+  mode: "orbit" | "goto" | "scan";
+  a: number;
+  t: number;
+  target: THREE.Vector3 | null;
+};
+
+export const SCAN_DURATION = 4.6;
+
+export function makeSatellite(): {
+  sat: THREE.Group;
+  beam: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>;
+  ring: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
+} {
+  const sat = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(0.016, 0.009, 0.009),
+    new THREE.MeshStandardMaterial({ color: PANEL_COLOR, metalness: 0.2, roughness: 0.48 }),
+  );
+  sat.add(body);
+  const dish = new THREE.Mesh(
+    new THREE.SphereGeometry(0.0042, 8, 8),
+    new THREE.MeshStandardMaterial({ color: DARK_COLOR, metalness: 0.25, roughness: 0.55 }),
+  );
+  dish.position.y = -0.007;
+  sat.add(dish);
+  const panMat = new THREE.MeshStandardMaterial({
+    color: "#2c5aa8",
+    metalness: 0.35,
+    roughness: 0.35,
+    side: THREE.DoubleSide,
+  });
+  for (const s of [-1, 1]) {
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(0.024, 0.009), panMat);
+    p.position.x = s * 0.022;
+    sat.add(p);
+  }
+  sat.scale.setScalar(1.5);
+  const beam = new THREE.Mesh(
+    new THREE.ConeGeometry(0.045, 1, 18, 1, true),
+    new THREE.MeshBasicMaterial({
+      color: 0x59e0c8,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    }),
+  );
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.014, 0.019, 42),
+    new THREE.MeshBasicMaterial({
+      color: 0x59e0c8,
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    }),
+  );
+  return { sat, beam, ring };
+}
+
+/** Machine à états du satellite, en ESPACE SPHÈRE (comme le drone) : orbite
+ * basse continue → vol vers la cible (lerp indépendant du framerate, garde-fou
+ * 3 s) → balayage (anneau au sol qui bat, faisceau) → retour en orbite. */
+export function stepSatellite(
+  spherePos: THREE.Vector3,
+  beam: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>,
+  ring: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>,
+  state: SatelliteState,
+  dt: number,
+  t: number,
+  reduced = false,
+): SatelliteState {
+  if (state.mode === "orbit" || !state.target) {
+    const a = state.a + dt * 0.4;
+    spherePos.set(Math.cos(a) * 1.34, 0.4 * Math.sin(a * 0.8), Math.sin(a) * 1.34);
+    beam.material.opacity = Math.max(0, beam.material.opacity - dt * 1.5);
+    ring.material.opacity = Math.max(0, ring.material.opacity - dt * 1.5);
+    return { ...state, mode: "orbit", a };
+  }
+  if (state.mode === "goto") {
+    const nt = state.t + dt;
+    const hover = state.target.clone().normalize().multiplyScalar(1.26);
+    spherePos.lerp(hover, 1 - Math.exp(-2.4 * dt));
+    if (spherePos.distanceTo(hover) < 0.035 || nt > 3) return { ...state, mode: "scan", t: 0 };
+    return { ...state, t: nt };
+  }
+  const nt = state.t + dt;
+  spherePos.copy(state.target).normalize().multiplyScalar(1.26);
+  spherePos.x += Math.sin(t * 1.4) * 0.02;
+  spherePos.z += Math.cos(t * 1.1) * 0.02;
+  const ph = reduced ? 0.4 : (nt * 0.8) % 1;
+  ring.scale.setScalar(1 + ph * 8);
+  ring.material.opacity = (1 - ph) * 0.8;
+  beam.material.opacity = Math.min(0.28, beam.material.opacity + dt * 0.5);
+  if (nt > SCAN_DURATION) {
+    return { mode: "orbit", a: Math.atan2(spherePos.z, spherePos.x), t: 0, target: null };
+  }
+  return { ...state, t: nt };
+}
+
+// --- piles de billets (S8) — les cagnottes du marché s'entassent sur la carte ---
+
+const BILL_W = 0.0125;
+const BILL_H = 0.0017;
+const BILL_D = 0.0075;
+const BILL_MATS = [
+  new THREE.MeshStandardMaterial({ color: "#4ea86a", metalness: 0.05, roughness: 0.6 }),
+  new THREE.MeshStandardMaterial({ color: "#63c07e", metalness: 0.05, roughness: 0.6 }),
+];
+
+export type FundStack = { group: THREE.Group; bills: number };
+
+export function makeFundStack(): FundStack {
+  return { group: new THREE.Group(), bills: 0 };
+}
+
+/** Rejoue la hauteur de pile depuis la cagnotte — idempotent (1 billet / 10 ₲,
+ * 2ᵉ pile au-delà de 13, plafond 26 : la carte reste lisible). */
+export function fillFundStack(st: FundStack, total: number): void {
+  const want = Math.max(0, Math.min(26, Math.round(total / 10)));
+  while (st.bills < want) {
+    const i = st.bills;
+    const b = new THREE.Mesh(new THREE.BoxGeometry(BILL_W, BILL_H, BILL_D), BILL_MATS[i % 2]);
+    const pile = Math.floor(i / 13);
+    const pi = i % 13;
+    b.position.set(
+      Math.sin(i * 7.3) * 0.0012 + pile * 0.017,
+      0.0009 + pi * BILL_H,
+      Math.cos(i * 5.1) * 0.0012,
+    );
+    b.rotation.y = Math.sin(i * 3.7) * 0.3;
+    st.group.add(b);
+    st.bills++;
+  }
+}
+
 // --- anneau d'événement --------------------------------------------------------
 
 export type EventGroupHandle = {

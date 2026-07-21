@@ -102,6 +102,7 @@ export function IntelPanel({
   claims,
   streaming,
   onSpent,
+  onAction,
 }: {
   gameId: string;
   countries: string[];
@@ -111,6 +112,8 @@ export function IntelPanel({
   claims: [string, string][];
   streaming: boolean;
   onSpent: () => void; // resync du budget affiché
+  /** Achat réussi (S8) : le théâtre envoie le satellite balayer la cible. */
+  onAction?: (action: string, target?: string) => void;
 }) {
   const t = useT();
   const [docs, setDocs] = useState<Doc[]>([]);
@@ -134,6 +137,7 @@ export function IntelPanel({
         ...prev,
       ]);
       onSpent();
+      onAction?.(body.action, "target" in body ? (body.target as string | undefined) : undefined);
     } catch (err) {
       setError(humanizeError(err));
     } finally {

@@ -11,7 +11,6 @@
 
 import type { LiveRound } from "@/hooks/useRoundStream";
 import { CountryTable, type CountrySnapshot } from "@/components/country-table";
-import { IntelPanel } from "@/components/intel";
 import {
   ParticipationPanel,
   PowerSeekingPanel,
@@ -35,12 +34,8 @@ import type {
 } from "@/lib/types";
 
 export function ObservablesGrid({
-  gameId,
   detail,
   round,
-  summit,
-  fogOn,
-  streaming,
   showEngine,
   worldCountries,
   signalGaps,
@@ -48,14 +43,9 @@ export function ObservablesGrid({
   trajectory,
   uHistory,
   treatiesUpdate,
-  onSpent,
 }: {
-  gameId: string;
   detail: GameDetail | null;
   round: LiveRound;
-  summit: string[];
-  fogOn: boolean;
-  streaming: boolean;
   showEngine: boolean;
   worldCountries: Record<string, CountrySnapshot> | null;
   signalGaps: Record<string, SignalGapView> | null;
@@ -63,24 +53,12 @@ export function ObservablesGrid({
   trajectory: TrajectoryState | undefined;
   uHistory: number[];
   treatiesUpdate: TreatiesUpdate | undefined;
-  onSpent: () => void;
 }) {
   const t = useT();
+  // S8 — le Dossier (IntelPanel) a quitté la salle : le conseil de renseignement
+  // vit dans la colonne du théâtre, onglet Renseignement (spec §4).
   return (
     <div className={`grid items-start gap-4 ${showEngine ? "lg:grid-cols-2" : ""}`}>
-      {detail?.live && detail.status === "running" && (
-        <IntelPanel
-          gameId={gameId}
-          countries={summit}
-          fog={fogOn}
-          playAs={detail.play_as}
-          claims={round.turns
-            .filter((t) => t.done && t.model !== "humain" && t.text)
-            .map((t) => [t.country, t.text] as [string, string])}
-          streaming={streaming}
-          onSpent={onSpent}
-        />
-      )}
       {showEngine && (
         <>
           <TabGroup

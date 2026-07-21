@@ -42,6 +42,10 @@ export type GlobeTheatreProps = {
   lowPerf?: boolean;
   /** Bulle de pensée (S5) : pensée streamée ou digest huis clos — l'hôte tranche. */
   thinkingText?: string;
+  /** Cagnottes posées sur la carte (S8). */
+  funds?: { key: string; lon: number; lat: number; total: number }[];
+  /** Balayage satellite (S8). */
+  scan?: { lon: number; lat: number; key: string | number } | null;
   onCountryClick: (slug: string) => void;
   /** Contenu de la fiche pays (tiroir gauche) ; null = fermée. */
   fiche?: ReactNode;
@@ -66,6 +70,8 @@ export function GlobeTheatre({
   onStageViewChange,
   lowPerf = false,
   thinkingText,
+  funds,
+  scan = null,
   onCountryClick,
   fiche = null,
   onFicheClose,
@@ -113,6 +119,8 @@ export function GlobeTheatre({
             pulse={view.pulse}
             frozen={frozen}
             arc={view.arc}
+            funds={funds}
+            scan={scan}
             view={stageView}
             onViewToggle={toggleView}
             onCountryClick={onCountryClick}

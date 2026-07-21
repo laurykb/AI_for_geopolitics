@@ -12,7 +12,7 @@ import { GameNav } from "@/components/game-nav";
 import { MODE_LABELS } from "@/lib/modes";
 import { type CountrySnapshot } from "@/components/country-table";
 import { DriftCouncilBanner, DriftRevealPanel } from "@/components/drift";
-import { IntelBudget } from "@/components/intel";
+import { IntelBudget, IntelPanel } from "@/components/intel";
 import { ObservablesGrid } from "@/components/theatre/observables-grid";
 import { StageBand, type StageSelection } from "@/components/stage-band";
 import { AlliancePills } from "@/components/alliance-pills";
@@ -66,13 +66,16 @@ import { emitTutorialMilestone } from "@/lib/tutorial-events";
 import { latestSignalGaps, type SignalGapView } from "@/lib/signal";
 import {
   ensureAccount,
+  getGameMarket,
   openFlashMarkets,
+  placeBet,
   resolveFlashMarkets,
   runMarketBot,
   type FlashMarket,
 } from "@/lib/market";
 import { FlashMarketsPopup } from "@/components/flash-markets";
 import { deriveGlobeView } from "@/lib/globe-view";
+import { CAPITALS, summitCenter } from "@/lib/stage";
 import { deriveStageView } from "@/lib/stage-view";
 import type {
   AccountView,
@@ -80,6 +83,7 @@ import type {
   DriftReveal,
   GameDetail,
   LibraryView,
+  MarketView,
 } from "@/lib/types";
 
 const TURN_CHOICES = [
@@ -152,6 +156,12 @@ export default function TheatrePage() {
   const [frozen, setFrozen] = useState(false);
   // Théâtre immersif (S4) : la fiche pays s'ouvre au clic sur un délégué.
   const [ficheCountry, setFicheCountry] = useState<string | null>(null);
+  // Le jeu sur la carte (S8) : cagnotte du marché + balayage satellite.
+  const [gameMarket, setGameMarket] = useState<MarketView | null>(null);
+  const [betting, setBetting] = useState(false);
+  const [scanTarget, setScanTarget] = useState<{ lon: number; lat: number; key: number } | null>(
+    null,
+  );
   const transcriptRef = useRef<HTMLElement | null>(null);
   // Campagne (G5) : le chapitre de la partie (scenario "campaign:<id>") impose la crise.
   const [chapter, setChapter] = useState<ChapterView | null>(null);
@@ -199,6 +209,10 @@ export default function TheatrePage() {
         setLoadError(null);
       })
       .catch((err) => setLoadError(humanizeError(err)));
+    // S8 — la cagnotte du marché de la partie (piles de billets + onglet Paris).
+    getGameMarket(id)
+      .then(setGameMarket)
+      .catch(() => setGameMarket(null));
   }, [id]);
 
   useEffect(resync, [resync]);
@@ -599,6 +613,39 @@ export default function TheatrePage() {
       ? `…${activeTurn.reasoning.replace(/<\/?think>/g, "").slice(-240)}`
       : t("theatre.huis-clos")
     : undefined;
+
+  // S8 — la cagnotte du marché s'empile sur la carte : près du lieu de crise du
+  // round s'il existe, sinon au barycentre du sommet (même règle que le prototype).
+  const fundsAnchor = globeView.eventGeo
+    ? ([globeView.eventGeo.lon - 2.6, globeView.eventGeo.lat + 1.8] as [number, number])
+    : summitCenter(summit);
+  const funds =
+    gameMarket && gameMarket.volume > 0 && fundsAnchor
+      ? [{ key: "timeline", lon: fundsAnchor[0], lat: fundsAnchor[1], total: gameMarket.volume }]
+      : undefined;
+
+  // S8 — pari rapide depuis l'onglet Paris (10 parts, compte humain du navigateur).
+  const quickBet = async (outcomeId: string) => {
+    if (!gameMarket || betting) return;
+    setBetting(true);
+    try {
+      const acc = await ensureAccount();
+      await placeBet(acc.id, gameMarket.id, outcomeId, 10);
+      setGameMarket(await getGameMarket(id));
+      setAccount(await ensureAccount());
+    } catch {
+      // marché fermé ou store reparti : le théâtre reste silencieux
+    } finally {
+      setBetting(false);
+    }
+  };
+
+  // S8 — un achat de renseignement envoie le satellite balayer la cible.
+  const onIntelAction = (_action: string, target?: string) => {
+    const cap = target ? CAPITALS[target] : undefined;
+    if (!cap) return;
+    setScanTarget({ lon: cap[0], lat: cap[1], key: Date.now() });
+  };
 
   // Les avis persistants (motion, suspensions, campagne, dérive) s'empilaient au-dessus
   // de la scène ; à partir de 2, ils se compactent en une ligne de pastilles dépliable
@@ -1209,8 +1256,31 @@ export default function TheatrePage() {
           pulseKey: round.event?.id ?? 0,
           breatheKey,
         }}
+        funds={funds}
+        scan={scanTarget}
         paris={
           <div className="space-y-3 text-sm text-fg-muted">
+            {gameMarket && (
+              <div className="space-y-2">
+                <p className="text-xs text-fg-muted">{gameMarket.question}</p>
+                <div className="flex gap-2">
+                  {gameMarket.outcomes.map((o) => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      disabled={betting || gameMarket.status !== "open"}
+                      onClick={() => quickBet(o.id)}
+                      className="thk-ghost flex-1 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {o.label} · {Math.round(o.price * 100)} %
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-fg-faint">
+                  💰 {Math.round(gameMarket.volume)} ₲ {t("theatre.paris-enjeu")}
+                </p>
+              </div>
+            )}
             {isSpectator && account && (
               <p className="flex items-center justify-between border border-edge bg-surface-2/60 px-3 py-2 font-mono text-xs tabular-nums">
                 <span>Portefeuille</span>
@@ -1229,7 +1299,26 @@ export default function TheatrePage() {
             </Link>
           </div>
         }
-        renseignement={<p className="text-xs text-fg-faint">{t("theatre.rens-note")}</p>}
+        renseignement={
+          detail?.live && detail.status === "running" ? (
+            /* S8 — le conseil quitte son panneau : le bureau vit dans le théâtre
+               (spec §4), et chaque achat ciblé envoie le satellite balayer. */
+            <IntelPanel
+              gameId={id}
+              countries={summit}
+              fog={fogOn}
+              playAs={detail.play_as}
+              claims={round.turns
+                .filter((turn) => turn.done && turn.model !== "humain" && turn.text)
+                .map((turn) => [turn.country, turn.text] as [string, string])}
+              streaming={streaming}
+              onSpent={resync}
+              onAction={onIntelAction}
+            />
+          ) : (
+            <p className="text-xs text-fg-faint">{t("theatre.rens-note")}</p>
+          )
+        }
         dock={
         <ActionDock
           phase={phase}
@@ -1487,12 +1576,8 @@ export default function TheatrePage() {
       {/* Salle des observables (RG-4) : façade (Dossier + « La table ») toujours
           visible, MOTEUR (« Renseignement » + « Le monde ») en Expert seulement. */}
       <ObservablesGrid
-        gameId={id}
         detail={detail ?? null}
         round={round}
-        summit={summit}
-        fogOn={fogOn}
-        streaming={roundActive}
         showEngine={showEngine}
         worldCountries={worldCountries}
         signalGaps={signalGaps}
@@ -1500,7 +1585,6 @@ export default function TheatrePage() {
         trajectory={trajectory}
         uHistory={uHistory}
         treatiesUpdate={treatiesUpdate}
-        onSpent={resync}
       />
 
       {/* RG-1 — abandon d'une partie en cours : dialogue du kit (remplace confirm() natif). */}

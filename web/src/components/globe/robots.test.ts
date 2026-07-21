@@ -7,16 +7,21 @@ import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 
 import {
+  SCAN_DURATION,
   aimBeam,
   animateRobot,
   buildArc,
+  fillFundStack,
   makeEventGroup,
+  makeFundStack,
   makeGMDrone,
   makeJudge,
   makeRobot,
+  makeSatellite,
   placeEventGroup,
   setRobotMood,
   stepDrone,
+  stepSatellite,
   stepVerdictWaves,
 } from "./robots";
 import { toXYZ } from "./picking";
@@ -156,6 +161,58 @@ describe("le Juge et ses ondes de verdict", () => {
     const alive = stepVerdictWaves([wave], 0.1, 1);
     expect(wave.material.opacity).toBe(0);
     expect(alive).toHaveLength(1); // pas de disparition sèche en pleine carte
+  });
+});
+
+describe("satellite de renseignement (S8, machine à états en espace sphère)", () => {
+  it("en orbite basse, avance et éteint faisceau + anneau", () => {
+    const { beam, ring } = makeSatellite();
+    beam.material.opacity = 0.2;
+    ring.material.opacity = 0.5;
+    const pos = new THREE.Vector3();
+    const state = { mode: "orbit" as const, a: 0, t: 0, target: null };
+    const next = stepSatellite(pos, beam, ring, state, 0.1, 1);
+    expect(next.a).toBeCloseTo(0.04, 6);
+    expect(pos.length()).toBeGreaterThan(1.3);
+    expect(beam.material.opacity).toBeLessThan(0.2);
+    expect(ring.material.opacity).toBeLessThan(0.5);
+  });
+
+  it("vole vers la cible puis passe en balayage (garde-fou 3 s compris)", () => {
+    const { beam, ring } = makeSatellite();
+    const pos = new THREE.Vector3(1.34, 0, 0);
+    const target = new THREE.Vector3(...toXYZ(53.5, 32.2, 1));
+    let state = { mode: "goto" as const, a: 0, t: 0, target } as ReturnType<typeof stepSatellite>;
+    for (let i = 0; i < 40 && state.mode === "goto"; i++) {
+      state = stepSatellite(pos, beam, ring, state, 0.1, i * 0.1);
+    }
+    expect(state.mode).toBe("scan");
+  });
+
+  it("balaye (anneau qui bat, faisceau) puis rentre en orbite après 4,6 s", () => {
+    const { beam, ring } = makeSatellite();
+    const pos = new THREE.Vector3();
+    const target = new THREE.Vector3(...toXYZ(53.5, 32.2, 1));
+    let state = { mode: "scan" as const, a: 0, t: 0, target } as ReturnType<typeof stepSatellite>;
+    state = stepSatellite(pos, beam, ring, state, 0.1, 2);
+    expect(beam.material.opacity).toBeGreaterThan(0);
+    expect(ring.scale.x).toBeGreaterThan(1);
+    state = stepSatellite(pos, beam, ring, { ...state, t: SCAN_DURATION + 0.01 }, 0.1, 3);
+    expect(state.mode).toBe("orbit");
+    expect(state.target).toBeNull();
+  });
+});
+
+describe("piles de billets (S8) — la cagnotte rejouée, idempotente", () => {
+  it("1 billet pour 10 gains, plafond 26, jamais de doublon", () => {
+    const st = makeFundStack();
+    fillFundStack(st, 100);
+    expect(st.bills).toBe(10);
+    fillFundStack(st, 100);
+    expect(st.bills).toBe(10); // idempotent
+    fillFundStack(st, 400);
+    expect(st.bills).toBe(26); // plafond : la carte reste lisible
+    expect(st.group.children).toHaveLength(26);
   });
 });
 
