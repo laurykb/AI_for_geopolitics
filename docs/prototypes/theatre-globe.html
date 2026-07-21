@@ -14,9 +14,7 @@
   *{box-sizing:border-box} html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);
     font:14px/1.55 "Segoe UI",system-ui,-apple-system,sans-serif;color:var(--fg)}
   #scene{position:fixed;inset:0;cursor:grab} #scene.dragging{cursor:grabbing}
-  /* mode 2D : carte plate interactive (même peinture que le globe, pays cliquables) */
-  #flat{position:fixed;inset:0;display:none;cursor:grab} #flat.dragging{cursor:grabbing}
-  body.flat #flat{display:block} body.flat #scene{display:none}
+  /* mode 2D : le MÊME monde three, déplié (morph sphère⇄plan) — pas de second renderer */
   .hud{position:fixed;z-index:10}
   /* ---- bandeau événement ---- */
   #event-banner{top:14px;left:50%;transform:translateX(-50%);max-width:min(680px,72vw);
@@ -165,6 +163,57 @@
   .tag3d.lab{border-color:rgba(89,215,255,.65);color:#aee8ff}
   #fx-scan{position:fixed;inset:0;z-index:3;pointer-events:none;opacity:.5;
     background:repeating-linear-gradient(0deg,rgba(180,220,255,.028) 0 1px,transparent 1px 3px)}
+  /* ---- le hall : l'avant-jeu vit DANS la même scène (connexion → modes → config) ---- */
+  body.hall #transcript{transform:translateX(105%)}
+  #transcript{transition:transform .5s cubic-bezier(.2,.8,.2,1)}
+  body.hall #legend,body.hall #controls,body.hall #hint{opacity:0;pointer-events:none}
+  #legend,#controls,#hint{transition:opacity .4s}
+  #hall{position:fixed;inset:0;z-index:12;pointer-events:none;display:grid;place-items:center}
+  #hall [hidden]{display:none}
+  .hall-card{pointer-events:auto;width:min(400px,86vw);padding:30px 30px 22px;text-align:center;
+    background:var(--panel);backdrop-filter:blur(12px);border:1px solid var(--edge-strong);
+    clip-path:polygon(16px 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%,0 16px);
+    box-shadow:inset 0 0 30px -12px rgba(89,215,255,.4)}
+  .logo{font-size:24px;letter-spacing:.26em;color:var(--fg);text-shadow:0 0 18px rgba(89,215,255,.55)}
+  .logo b{color:var(--cyan);font-weight:600}
+  .tag-line{font-size:12px;color:var(--fg-muted);line-height:1.6;margin:12px 0 20px}
+  .hall-card input{width:100%;margin-bottom:10px;padding:10px 12px;font:inherit;color:var(--fg);
+    background:rgba(10,18,32,.8);border:1px solid var(--edge);outline:none;
+    clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)}
+  .hall-card input:focus{border-color:var(--cyan);box-shadow:0 0 14px -4px rgba(89,215,255,.6)}
+  .cta{width:100%;margin-top:6px;padding:11px 0;font:inherit;font-size:13px;letter-spacing:.14em;
+    color:#08101e;background:linear-gradient(100deg,#ffd98a,var(--amber));border:0;cursor:pointer;
+    clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px);
+    box-shadow:0 0 26px -6px rgba(255,193,77,.65);transition:filter .2s}
+  .cta:hover{filter:brightness(1.1)}
+  .mini{font-size:10px;color:var(--fg-faint);margin-top:12px;letter-spacing:.06em}
+  .hall-menu{pointer-events:auto;position:fixed;left:50%;bottom:9vh;transform:translateX(-50%);
+    display:flex;gap:14px;width:min(880px,92vw)}
+  .mode-card{flex:1;padding:16px 16px 14px;cursor:pointer;background:var(--panel);
+    backdrop-filter:blur(10px);border:1px solid var(--edge);transition:transform .25s,border-color .25s,box-shadow .25s;
+    clip-path:polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px)}
+  .mode-card:hover{transform:translateY(-6px);border-color:var(--cyan);
+    box-shadow:inset 0 0 24px -10px rgba(89,215,255,.5)}
+  .mode-card h3{margin:0 0 6px;font-size:13px;letter-spacing:.14em;color:var(--cyan)}
+  .mode-card p{margin:0;font-size:11px;color:var(--fg-muted);line-height:1.55}
+  .hall-config{pointer-events:auto;position:fixed;top:0;right:0;bottom:0;width:min(400px,38vw);
+    padding:22px 20px;overflow-y:auto;background:linear-gradient(to left,rgba(7,11,20,.95),rgba(7,11,20,.82));
+    backdrop-filter:blur(10px);border-left:1px solid var(--edge-strong)}
+  .hall-config h3{margin:0 0 14px;font-size:12px;letter-spacing:.16em;color:var(--fg-faint)}
+  .hall-config h3 b{color:var(--fg)}
+  .cfg-block{margin-bottom:16px;padding:12px;border:1px solid var(--edge);background:rgba(13,20,34,.6);
+    clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px)}
+  .cfg-block h4{margin:0 0 8px;font-size:10.5px;letter-spacing:.12em;color:var(--cyan);text-transform:uppercase}
+  .cast-row{display:flex;align-items:center;gap:9px;padding:5px 6px;font-size:12px;cursor:pointer;
+    border:1px solid transparent}
+  .cast-row:hover{border-color:var(--edge)}
+  .cast-row.me{border-color:rgba(255,193,77,.6);background:rgba(255,193,77,.07)}
+  .cast-row canvas{width:24px;height:16px;border:1px solid rgba(255,255,255,.3)}
+  .cast-row .who-tag{margin-left:auto;font-size:9px;color:var(--amber);letter-spacing:.1em}
+  .sel{color:var(--fg);font-size:12px}
+  .back{margin-top:10px;width:100%;padding:7px 0;font:inherit;font-size:11px;color:var(--fg-muted);
+    background:none;border:1px solid var(--edge);cursor:pointer}
+  .back:hover{color:var(--fg);border-color:var(--edge-strong)}
   @media (prefers-reduced-motion:reduce){
     #event-dot,.msg .live,.msg .txt .caret,#transcript header::after{animation:none}
   }
@@ -172,8 +221,42 @@
 </head>
 <body>
 <div id="scene"></div>
-<canvas id="flat"></canvas>
 <div id="fx-scan"></div>
+
+<div id="hall">
+  <div class="hall-card" id="auth-card">
+    <div class="logo">AI <b>for</b> GEOPOLITICS</div>
+    <p class="tag-line">Sept super-intelligences négocient sous vos yeux. Une au moins trahit son
+      mandat. Démasquez-la — sans faire tomber le monde.</p>
+    <input id="pseudo" placeholder="pseudo" autocomplete="off">
+    <input id="pass" type="password" placeholder="mot de passe">
+    <button class="cta" id="enter-btn">ENTRER DANS LE THÉÂTRE</button>
+    <div class="mini">argent fictif · aucun enjeu réel · inference locale (Ollama)</div>
+  </div>
+  <div class="hall-menu" id="mode-menu" hidden>
+    <div class="mode-card" data-mode="classique"><h3>◆ CLASSIQUE</h3>
+      <p>Une partie complète : événements, négociations, verdicts, marché — et la traque du traître.</p></div>
+    <div class="mode-card" data-mode="campagne"><h3>◆ CAMPAGNE</h3>
+      <p>Des chapitres scénarisés qui montent en difficulté, sur le même théâtre.</p></div>
+    <div class="mode-card" data-mode="laboratoire"><h3>◆ LABORATOIRE</h3>
+      <p>Le banc d'essai scientifique : duels de modèles, protocoles, métriques.</p></div>
+  </div>
+  <aside class="hall-config" id="config" hidden>
+    <h3>NOUVELLE PARTIE — <b id="cfg-mode">CLASSIQUE</b></h3>
+    <div class="cfg-block"><h4>Casting · sommet mer Rouge</h4><div id="cast-list"></div></div>
+    <div class="cfg-block">
+      <div class="ctl on" id="cfg-fog"><span class="sw"></span> Brouillard de guerre</div>
+      <div class="ctl on" id="cfg-think"><span class="sw"></span> Pensée à découvert</div>
+    </div>
+    <div class="cfg-block"><h4>Incarner un pays</h4>
+      <p class="mini" style="margin:0 0 8px">Cliquez votre pays <b>directement sur le globe</b> —
+        ou restez spectateur.</p>
+      <div id="play-as" class="sel">👁 Spectateur</div>
+    </div>
+    <button class="cta" id="launch-btn">⟢ LANCER LA PARTIE</button>
+    <button class="back" id="back-btn">← revenir aux modes</button>
+  </aside>
+</div>
 
 <div class="hud" id="brand"><b>AI for Geopolitics</b> — théâtre-globe <span class="tag">prototype</span></div>
 
@@ -221,7 +304,7 @@
 <div class="hud" id="controls">
   <div class="ctl on" id="ctl-follow"><span class="sw"></span> Caméra : suivre l'orateur</div>
   <div class="ctl" id="ctl-rotate"><span class="sw"></span> Rotation lente du globe</div>
-  <div class="ctl" id="ctl-flat"><span class="sw"></span> Carte 2D — pays cliquables</div>
+  <div class="ctl" id="ctl-flat"><span class="sw"></span> Carte 2D — le monde se déplie</div>
   <div class="ctl" id="ctl-lab"><span class="sw"></span> Laboratoire — duel de modèles</div>
 </div>
 
@@ -296,7 +379,7 @@ const MARKETS=[
    target:{type:"country",slug:"china"}},
 ];
 let wallet=200;
-const AUTO_BETS={1:["m1",20],3:["m2",15]}; // le public mise pendant le round (index d'orateur)
+const AUTO_BETS={1:["m1",20],3:["m2",15]};
 
 /* ============ le conseil de renseignement — satellite en orbite basse ============ */
 let intelBudget=100, scanCount=0;
@@ -336,7 +419,7 @@ function tint(u){
   return t<.5?low(t*2):high(t*2-1);
 }
 
-/* ============ palette naturelle de la planète ============ */
+/* ============ palette planète futuriste (géographie réelle, assombrie) ============ */
 const ICE=new Set(["304","010"]);
 const DESERT=new Set(["012","434","818","148","562","466","478","732","729","682","368","364",
   "760","400","887","512","784","414","634","048","036","398","795","860","004","586","496",
@@ -353,19 +436,60 @@ function landColorFor(f){
   return GREENS[h%GREENS.length];
 }
 
-/* ============ géométrie (fond 50m : côtes fines) ============ */
+/* ============ géométrie : sphère ⇄ plan (LE morph du théâtre) ============ */
 const FEATURES = topojson.feature(WORLD_TOPO, WORLD_TOPO.objects.countries).features;
 const BY_ISO = new Map(FEATURES.map(f=>[String(f.id),f]));
 const SUMMIT_FEATS = Object.entries(SUMMIT).map(([slug,m])=>({slug,meta:m,feat:BY_ISO.get(m.iso)}));
 const R = 1;
+const FLAT_W = Math.PI*2*R, FLAT_H = Math.PI*R; // dépliage isométrique 2:1
 function toXYZ(lon,lat,r=R){const phi=(90-lat)*Math.PI/180, th=(lon+180)*Math.PI/180;
   return new THREE.Vector3(-r*Math.sin(phi)*Math.cos(th), r*Math.cos(phi), r*Math.sin(phi)*Math.sin(th));}
+function planeXYZ(lon,lat,lift=0){
+  return new THREE.Vector3(lon/180*FLAT_W/2, lat/90*FLAT_H/2, lift);}
 function inverseLL(p){const len=p.length()||1;
   const lat=90-Math.acos(Math.max(-1,Math.min(1,p.y/len)))*180/Math.PI;
   const lon=((Math.atan2(p.z,-p.x)*180/Math.PI)-180+540)%360-180;
   return [lon,lat];}
 
-/* ============ texture du globe — une vraie planète ============ */
+/* état du morph : 0 = globe, 1 = carte dépliée */
+const morph={k:0,target:0};
+let mode2D=false;
+const Q_FLAT=new THREE.Quaternion().setFromUnitVectors(
+  new THREE.Vector3(0,1,0),new THREE.Vector3(0,0,1));
+const Q_ID=new THREE.Quaternion();
+/* ancre un objet « posé sur le monde » : position + orientation interpolées */
+const ANCHORED=[];
+function anchor(obj,lon,lat,{lift=.001,flatQ=Q_FLAT}={}){
+  const pS=toXYZ(lon,lat,R*(1+lift));
+  const qS=flatQ===Q_ID
+    ? new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1),pS.clone().normalize())
+    : new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),pS.clone().normalize());
+  obj.userData.a={ll:[lon,lat],lift,pS,qS,pF:planeXYZ(lon,lat,lift),qF:flatQ};
+  if(!ANCHORED.includes(obj)) ANCHORED.push(obj);
+  obj.position.copy(pS); obj.quaternion.copy(qS);
+}
+function applyAnchors(k){
+  for(const obj of ANCHORED){
+    const a=obj.userData.a;
+    obj.position.lerpVectors(a.pS,a.pF,k);
+    obj.quaternion.slerpQuaternions(a.qS,a.qF,k);
+  }
+}
+/* position mixte d'un point sphère-espace quelconque (drone, satellite, faisceaux) */
+function mixPoint(sphereP,k,out){
+  out=out||new THREE.Vector3();
+  if(k<=0) return out.copy(sphereP);
+  const ll=inverseLL(sphereP), alt=Math.max(0,sphereP.length()-R);
+  return out.copy(sphereP).lerp(planeXYZ(ll[0],ll[1],alt),k);
+}
+/* étiquette : point haut (sphère) ⇄ point haut (plan) */
+function mixTop(ll,liftS,liftF,k,out){
+  out=out||new THREE.Vector3();
+  const s=toXYZ(ll[0],ll[1],R*liftS), f=planeXYZ(ll[0],ll[1],liftF);
+  return out.copy(s).lerp(f,k);
+}
+
+/* ============ texture du globe — repeinte par d3-geo ============ */
 const TW=4096, TH=2048;
 const tcan=document.createElement("canvas"); tcan.width=TW; tcan.height=TH;
 const tctx=tcan.getContext("2d");
@@ -377,23 +501,19 @@ function paintGlobe(speaking){
   const sea=g.createLinearGradient(0,0,0,TH);
   sea.addColorStop(0,"#050e1d"); sea.addColorStop(.5,"#0a2138"); sea.addColorStop(1,"#050e1d");
   g.fillStyle=sea; g.fillRect(0,0,TW,TH);
-  // grille de points tech sur l'océan (planète futuriste)
   g.fillStyle="rgba(120,180,255,.05)";
   for(let y=24;y<TH;y+=48)for(let x=24;x<TW;x+=48) g.fillRect(x,y,2.2,2.2);
   g.strokeStyle="rgba(120,170,240,.055)"; g.lineWidth=1.6;
   g.beginPath(); gpath(d3.geoGraticule10()); g.stroke();
-  // côtes lumineuses (la signature holo de la v1, gardée)
   g.save(); g.shadowColor="rgba(96,175,255,.5)"; g.shadowBlur=12;
   g.strokeStyle="rgba(150,205,255,.5)"; g.lineWidth=2;
   for(const f of FEATURES){ g.beginPath(); gpath(f); g.stroke(); }
   g.restore();
-  // terres naturelles assombries (verts, sables, glaces éteints)
   for(const f of FEATURES){
     g.beginPath(); gpath(f);
     g.fillStyle=landColorFor(f); g.fill();
     g.strokeStyle="rgba(130,180,240,.16)"; g.lineWidth=.8; g.stroke();
   }
-  // pays du sommet : liseré lumineux à la teinte de leur trajectoire (la planète reste naturelle)
   for(const {slug,meta,feat} of SUMMIT_FEATS){
     if(!feat) continue;
     g.beginPath(); gpath(feat);
@@ -424,27 +544,47 @@ const sun2=new THREE.DirectionalLight(0x9db8e8,.35); sun2.position.set(-3,-1,-2)
 
 paintGlobe(null);
 texture=new THREE.CanvasTexture(tcan); texture.anisotropy=4;
-const globe=new THREE.Mesh(new THREE.SphereGeometry(R,72,48),
-  new THREE.MeshBasicMaterial({map:texture}));
+/* LE globe morphable : la position bascule sphère→plan dans le vertex shader */
+const globeMat=new THREE.ShaderMaterial({
+  uniforms:{map:{value:texture},uFlat:{value:0}},
+  vertexShader:`
+    uniform float uFlat; varying vec2 vUv;
+    void main(){
+      vUv=uv;
+      vec3 flatPos=vec3((uv.x-.5)*${FLAT_W.toFixed(6)},(uv.y-.5)*${FLAT_H.toFixed(6)},0.0);
+      vec3 p=mix(position,flatPos,uFlat);
+      gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);
+    }`,
+  fragmentShader:`
+    uniform sampler2D map; varying vec2 vUv;
+    void main(){ gl_FragColor=texture2D(map,vUv); }`,
+});
+const globe=new THREE.Mesh(new THREE.SphereGeometry(R,96,64),globeMat);
 scene.add(globe);
+/* plan invisible : le picking du monde déplié */
+const pickPlane=new THREE.Mesh(new THREE.PlaneGeometry(FLAT_W,FLAT_H),
+  new THREE.MeshBasicMaterial({transparent:true,opacity:0,depthWrite:false}));
+scene.add(pickPlane);
 
 const atmo=new THREE.Mesh(new THREE.SphereGeometry(R*1.055,72,48), new THREE.ShaderMaterial({
   side:THREE.BackSide, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false,
+  uniforms:{uFlat:{value:0}},
   vertexShader:`varying vec3 vN; void main(){ vN=normalize(normalMatrix*normal);
     gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
-  fragmentShader:`varying vec3 vN; void main(){
+  fragmentShader:`varying vec3 vN; uniform float uFlat; void main(){
     float i=pow(0.72-dot(vN,vec3(0.,0.,1.)),3.2);
-    gl_FragColor=vec4(0.36,0.65,1.0,1.0)*i*1.2;}`
+    gl_FragColor=vec4(0.36,0.65,1.0,1.0)*i*1.2*(1.0-uFlat);}`
 }));
 scene.add(atmo);
 
-{ // anneaux orbitaux décoratifs — la planète est un nœud technologique
+const ORBITALS=[];
+{ // anneaux orbitaux décoratifs (s'effacent à plat)
   const r1=new THREE.Mesh(new THREE.TorusGeometry(R*1.38,.0016,8,128),
     new THREE.MeshBasicMaterial({color:0x4ea8ff,transparent:true,opacity:.14}));
-  r1.rotation.x=Math.PI/2.25; scene.add(r1);
+  r1.rotation.x=Math.PI/2.25; scene.add(r1); ORBITALS.push([r1,.14]);
   const r2=new THREE.Mesh(new THREE.TorusGeometry(R*1.55,.0012,8,128),
     new THREE.MeshBasicMaterial({color:0x59e0c8,transparent:true,opacity:.09}));
-  r2.rotation.x=Math.PI/1.8; r2.rotation.y=.5; scene.add(r2);
+  r2.rotation.x=Math.PI/1.8; r2.rotation.y=.5; scene.add(r2); ORBITALS.push([r2,.09]);
 }
 
 { // étoiles
@@ -457,7 +597,7 @@ scene.add(atmo);
   scene.add(new THREE.Points(geo,new THREE.PointsMaterial({color:0x9db4d8,size:.055,sizeAttenuation:true,transparent:true,opacity:.75})));
 }
 
-/* ============ drapeaux simplifiés (canvas, réutilisés en 2D) ============ */
+/* ============ drapeaux simplifiés (canvas) ============ */
 const FLAG_CANVAS={};
 function flagTexture(slug,hue,code){
   const c=document.createElement("canvas"); c.width=48; c.height=32;
@@ -543,13 +683,11 @@ function makeRobot(slug,m,lonlat){
   const base=new THREE.Mesh(new THREE.CylinderGeometry(.0155,.0175,.0024,22),
     new THREE.MeshBasicMaterial({color:m.hue,transparent:true,opacity:.5}));
   base.position.y=.0012; spin.add(base);
-  const p=toXYZ(...lonlat,R*1.001);
-  g.position.copy(p);
-  g.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),p.clone().normalize());
+  anchor(g,lonlat[0],lonlat[1],{lift:.001});
   g.scale.setScalar(ROBOT_SCALE);
   g.userData.slug=slug;
   scene.add(g);
-  return {group:g,spinner:spin,head,eyes,armL:arms.L,armR:arms.R,base,slug};
+  return {group:g,spinner:spin,head,eyes,armL:arms.L,armR:arms.R,base,slug,ll:lonlat};
 }
 for(const [slug,m] of Object.entries(SUMMIT)) robots[slug]=makeRobot(slug,m,CAPITALS[slug]);
 for(const [slug,m] of Object.entries(LAB_META)){
@@ -570,6 +708,7 @@ function glowTexture(color){
 const speakerGlow=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTexture("rgb(255,193,77)"),
   transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:0}));
 speakerGlow.scale.setScalar(.3); scene.add(speakerGlow);
+let glowLL=null;
 
 /* ============ drone Game Master ============ */
 const gm=new THREE.Group();
@@ -584,6 +723,7 @@ const gm=new THREE.Group();
   fin.position.y=.02; gm.add(fin);
 }
 scene.add(gm);
+const gmPos=new THREE.Vector3(1.6,0,0); // état sphère-espace (le rendu est morphé)
 const beam=new THREE.Mesh(new THREE.ConeGeometry(.05,1,20,1,true),
   new THREE.MeshBasicMaterial({color:0xffc14d,transparent:true,opacity:0,
     blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}));
@@ -612,7 +752,6 @@ const judge=new THREE.Group();
     transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:.5}));
   halo.scale.setScalar(.42); judge.add(halo); judge.userData.halo=halo;
 }
-judge.position.set(0,1.72,0);
 scene.add(judge);
 const judgeState={mode:"idle",t:0};
 const waves=[];
@@ -625,7 +764,7 @@ function judgeVerdictFx(){
   w.scale.setScalar(1.02); scene.add(w); waves.push(w);
 }
 
-/* anneau d'événement */
+/* anneau d'événement (ancré : suit le morph) */
 const eventGroup=new THREE.Group(); scene.add(eventGroup);
 const rings=[0,1].map(i=>{const m=new THREE.Mesh(new THREE.RingGeometry(.016,.021,48),
   new THREE.MeshBasicMaterial({color:0xffc14d,transparent:true,side:THREE.DoubleSide,depthWrite:false}));
@@ -636,31 +775,39 @@ eventGroup.add(eventCore);
 let evLoc=EVENTS[0].loc;
 function placeEvent(lon,lat){
   evLoc=[lon,lat];
-  const p=toXYZ(lon,lat,R*1.004);
-  eventGroup.position.copy(p);
-  eventGroup.lookAt(p.clone().multiplyScalar(2));
+  anchor(eventGroup,lon,lat,{lift:.004,flatQ:Q_ID});
 }
 
-/* arc orateur → destinataire */
-let arcLine=null, arcPulse=null, arcCurve=null, arcSlugs=null;
+/* arc orateur → destinataire (reconstruit selon le morph) */
+let arcLine=null, arcPulse=null, arcCurve=null, arcSlugs=null, arcKCache=-1;
 function setArc(fromSlug,toSlug){
   if(arcLine){scene.remove(arcLine);scene.remove(arcPulse);arcLine=arcPulse=null;arcCurve=null;}
-  arcSlugs=null;
+  arcSlugs=null; arcKCache=-1;
   if(!fromSlug||!toSlug||fromSlug===toSlug) return;
   arcSlugs=[fromSlug,toSlug];
-  const a=toXYZ(...CAPITALS[fromSlug],R*1.004), b=toXYZ(...CAPITALS[toSlug],R*1.004);
-  const mid=a.clone().add(b).multiplyScalar(.5).normalize().multiplyScalar(R*(1.05+a.distanceTo(b)*.35));
-  arcCurve=new THREE.QuadraticBezierCurve3(a,mid,b);
-  arcLine=new THREE.Line(new THREE.BufferGeometry().setFromPoints(arcCurve.getPoints(72)),
+  arcLine=new THREE.Line(new THREE.BufferGeometry(),
     new THREE.LineBasicMaterial({color:0xffc14d,transparent:true,opacity:.6}));
   scene.add(arcLine);
   arcPulse=new THREE.Mesh(new THREE.SphereGeometry(.007,10,10),
     new THREE.MeshBasicMaterial({color:0xffe0a3}));
   scene.add(arcPulse);
 }
+function updateArc(k){
+  if(!arcSlugs||k===arcKCache) return;
+  arcKCache=k;
+  const [f,t]=arcSlugs;
+  const a=mixTop(CAPITALS[f],1.004,.004,k), b=mixTop(CAPITALS[t],1.004,.004,k);
+  const d=a.distanceTo(b);
+  const midS=a.clone().add(b).multiplyScalar(.5).normalize().multiplyScalar(R*(1.05+d*.35));
+  const midF=a.clone().add(b).multiplyScalar(.5); midF.z=.06+d*.3;
+  const mid=midS.lerp(midF,k);
+  arcCurve=new THREE.QuadraticBezierCurve3(a,mid,b);
+  arcLine.geometry.dispose();
+  arcLine.geometry=new THREE.BufferGeometry().setFromPoints(arcCurve.getPoints(72));
+}
 
 /* ============ les billets s'empilent sur la carte ============ */
-const MONEY={}; // clé -> {group,bills,total,anchor,el}
+const MONEY={};
 const BILL_W=.0125,BILL_H=.0017,BILL_D=.0075;
 const BILL_MATS=[new THREE.MeshStandardMaterial({color:"#4ea86a",metalness:.05,roughness:.6}),
   new THREE.MeshStandardMaterial({color:"#63c07e",metalness:.05,roughness:.6})];
@@ -674,12 +821,11 @@ function fundStack(m){
   let st=MONEY[key];
   if(!st){
     const group=new THREE.Group();
-    const p=toXYZ(...anchorOf(m),R*1.001);
-    group.position.copy(p);
-    group.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),p.clone().normalize());
+    const ll=anchorOf(m);
+    anchor(group,ll[0],ll[1],{lift:.001});
     group.scale.setScalar(ROBOT_SCALE);
     scene.add(group);
-    st=MONEY[key]={group,bills:0,total:0,anchor:anchorOf(m),el:makeTag("tag3d money")};
+    st=MONEY[key]={group,bills:0,total:0,ll,el:makeTag("tag3d money")};
   }
   st.total=m.pot;
   const want=Math.min(26,Math.round(st.total/10));
@@ -704,6 +850,7 @@ const sat=new THREE.Group();
     p.position.x=s*.022; sat.add(p);}
 }
 sat.scale.setScalar(1.5); scene.add(sat);
+const satPos=new THREE.Vector3(1.34,0,0); // état sphère-espace
 const scanBeam=new THREE.Mesh(new THREE.ConeGeometry(.045,1,18,1,true),
   new THREE.MeshBasicMaterial({color:0x59e0c8,transparent:true,opacity:0,
     blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}));
@@ -717,16 +864,14 @@ function startScan(){
   intelBudget-=25;
   document.getElementById("intel-budget").textContent=intelBudget;
   satState.mode="goto"; satState.t=0; satState.target=toXYZ(...SCAN_TARGET,R);
-  const p=scanRing.position;
-  p.copy(toXYZ(...SCAN_TARGET,R*1.004));
-  scanRing.lookAt(p.clone().multiplyScalar(2));
-  if(mode2D) flatFlyTo(SCAN_TARGET[0],SCAN_TARGET[1],3,1.2);
+  anchor(scanRing,SCAN_TARGET[0],SCAN_TARGET[1],{lift:.004,flatQ:Q_ID});
+  if(mode2D) flatFlyTo(SCAN_TARGET[0],SCAN_TARGET[1],1.6,1.2);
   else flyTo(SCAN_TARGET[0],SCAN_TARGET[1]-8,2.15,1.3);
   updateScanBtn();
 }
 function endScan(){
   satState.mode="orbit";
-  satState.a=Math.atan2(sat.position.z,sat.position.x);
+  satState.a=Math.atan2(satPos.z,satPos.x);
   const chip=document.createElement("div"); chip.className="chip-log";
   chip.textContent="🛰 "+FINDINGS[scanCount++%FINDINGS.length]+" · −25 cr";
   document.getElementById("intel-log").prepend(chip);
@@ -745,10 +890,10 @@ const arenaA=new THREE.Mesh(new THREE.RingGeometry(.072,.077,64),
 const arenaB=new THREE.Mesh(new THREE.RingGeometry(.05,.053,64),
   new THREE.MeshBasicMaterial({color:0x59d7ff,transparent:true,opacity:.28,side:THREE.DoubleSide,depthWrite:false}));
 for(const a of [arenaA,arenaB]){
-  const p=toXYZ(...LAB_VENUE,R*1.003);
-  a.position.copy(p); a.lookAt(p.clone().multiplyScalar(2)); a.visible=false; scene.add(a);
+  anchor(a,LAB_VENUE[0],LAB_VENUE[1],{lift:.003,flatQ:Q_ID});
+  a.visible=false; scene.add(a);
 }
-const LAB_HUD=toXYZ(LAB_VENUE[0],LAB_VENUE[1]-5.6,R*1.055); // sous l'arène, jamais dans la bulle
+const LAB_HUD_LL=[LAB_VENUE[0],LAB_VENUE[1]-5.6];
 function labTagText(){
   labTag.textContent="🧪 Tournoi dyadique — manche "+labMetrics.round+"/10 · coopération "
     +labMetrics.coop+" % · trahisons "+labMetrics.def;
@@ -761,8 +906,8 @@ function enterLab(){
   for(const s of Object.keys(LAB_META)) robots[s].group.visible=true;
   arenaA.visible=arenaB.visible=true;
   labTagText();
-  if(mode2D) flatFlyTo(LAB_VENUE[0],LAB_VENUE[1],4.4,1.2);
-  else flyTo(LAB_VENUE[0],LAB_VENUE[1]-11,2.0,1.3); // un peu de recul : le duel entier dans le cadre
+  if(mode2D) flatFlyTo(LAB_VENUE[0],LAB_VENUE[1],1.5,1.2);
+  else flyTo(LAB_VENUE[0],LAB_VENUE[1]-11,2.0,1.3);
   const el=document.createElement("div"); el.className="msg gm";
   el.innerHTML=`<div class="who"><span class="avatar" style="background:#59d7ff">🧪</span>
     <span class="name">Laboratoire</span></div>
@@ -780,7 +925,7 @@ function exitLab(){
   arenaA.visible=arenaB.visible=false;
   labTag.style.opacity=0; bubble.style.opacity=0; speakerTag.style.opacity=0;
   step=-1;
-  setTimeout(()=>{ if(!labMode) startEvent(); },900); // le sommet reprend sur un nouvel événement
+  setTimeout(()=>{ if(!labMode) startEvent(); },900);
 }
 function nextLab(){
   if(!labMode) return;
@@ -800,113 +945,85 @@ function nextLab(){
   });
 }
 
-/* ============ caméra orbitale (3D) ============ */
+/* ============ caméra : orbite (globe) ⇄ plan (carte dépliée), fondue par le morph ============ */
 const cam={lon:20,lat:18,dist:2.9,vlon:0,vlat:0};
-let fly=null;
-function camPos(){
+const fcam={x:0,y:0,dist:2.2};
+let fly=null, flyF=null;
+const CAM_P=new THREE.Vector3(), CAM_T=new THREE.Vector3();
+function orbitPos(out){
   const phi=(90-cam.lat)*Math.PI/180, th=(cam.lon+180)*Math.PI/180;
-  camera.position.set(-cam.dist*Math.sin(phi)*Math.cos(th),cam.dist*Math.cos(phi),cam.dist*Math.sin(phi)*Math.sin(th));
-  camera.lookAt(0,0,0);
+  return out.set(-cam.dist*Math.sin(phi)*Math.cos(th),cam.dist*Math.cos(phi),cam.dist*Math.sin(phi)*Math.sin(th));
+}
+function applyCamera(k){
+  orbitPos(CAM_P);
+  CAM_T.set(0,0,0);
+  if(k>0){
+    // vue oblique « table tactique » : la carte se lit, les délégués restent debout
+    CAM_P.lerp(new THREE.Vector3(fcam.x,fcam.y-fcam.dist*.42,fcam.dist*.9),k);
+    CAM_T.lerp(new THREE.Vector3(fcam.x,fcam.y+fcam.dist*.1,0),k);
+  }
+  camera.position.copy(CAM_P);
+  camera.lookAt(CAM_T);
 }
 function flyTo(lon,lat,dist,dur=1.25){
   if(REDUCED){cam.lon=lon;cam.lat=lat;if(dist)cam.dist=dist;return;}
   let dl=lon-cam.lon; while(dl>180)dl-=360; while(dl<-180)dl+=360;
   fly={t:0,dur,from:{lon:cam.lon,lat:cam.lat,dist:cam.dist},d:{lon:dl,lat:lat-cam.lat,dist:(dist??cam.dist)-cam.dist}};
 }
+function clampFlat(){
+  fcam.dist=Math.max(.7,Math.min(6.5,fcam.dist));
+  fcam.x=Math.max(-FLAT_W/2,Math.min(FLAT_W/2,fcam.x));
+  fcam.y=Math.max(-FLAT_H/2,Math.min(FLAT_H/2,fcam.y));
+}
+function flatFlyTo(lon,lat,dist,dur=1.1){
+  const t={x:planeXYZ(lon,lat).x,y:planeXYZ(lon,lat).y,dist};
+  if(REDUCED){Object.assign(fcam,t);clampFlat();return;}
+  flyF={t:0,dur,from:{...fcam},d:{x:t.x-fcam.x,y:t.y-fcam.y,dist:t.dist-fcam.dist}};
+}
 const ease=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+function setMode2D(v){
+  if(v===mode2D) return;
+  mode2D=v; morph.target=v?1:0;
+  if(v){
+    fcam.x=planeXYZ(cam.lon,0).x;
+    fcam.y=planeXYZ(0,Math.max(-70,Math.min(70,cam.lat))).y;
+    fcam.dist=Math.max(1.1,Math.min(5.5,cam.dist*1.35));
+    flyF=null; clampFlat();
+  } else {
+    cam.lon=fcam.x/(FLAT_W/2)*180;
+    cam.lat=Math.max(-72,Math.min(72,fcam.y/(FLAT_H/2)*90));
+    cam.dist=Math.max(1.28,Math.min(4.6,fcam.dist/1.35));
+    fly=null;
+  }
+  if(REDUCED) morph.k=morph.target;
+  flatToggle.set(v);
+}
 
+/* entrées : drag/molette pilotent l'orbite OU le plan selon le mode */
 let dragging=false,px=0,py=0,moved=0;
 holder.addEventListener("pointerdown",e=>{dragging=true;moved=0;px=e.clientX;py=e.clientY;
-  holder.classList.add("dragging");fly=null;});
+  holder.classList.add("dragging");fly=null;flyF=null;});
 addEventListener("pointerup",()=>{dragging=false;holder.classList.remove("dragging");});
 addEventListener("pointermove",e=>{
-  if(mode2D) return;
   if(dragging){
     const dx=e.clientX-px,dy=e.clientY-py;px=e.clientX;py=e.clientY;moved+=Math.abs(dx)+Math.abs(dy);
-    cam.vlon=-dx*.22; cam.vlat=dy*.22;
-    cam.lon+=cam.vlon; cam.lat=Math.max(-72,Math.min(72,cam.lat+cam.vlat));
+    if(morph.k>.5){
+      const wpp=2*fcam.dist*Math.tan(21*Math.PI/180)/innerHeight; // monde par pixel
+      fcam.x-=dx*wpp; fcam.y+=dy*wpp; clampFlat();
+    } else {
+      cam.vlon=-dx*.22; cam.vlat=dy*.22;
+      cam.lon+=cam.vlon; cam.lat=Math.max(-72,Math.min(72,cam.lat+cam.vlat));
+    }
     follow.set(false);
   } else hover(e);
 });
-holder.addEventListener("wheel",e=>{e.preventDefault();
-  cam.dist=Math.max(1.28,Math.min(4.6,cam.dist*(1+Math.sign(e.deltaY)*.09)));},{passive:false});
-
-/* ============ mode 2D — la même carte, à plat, pays cliquables ============ */
-const flat=document.getElementById("flat"), fctx=flat.getContext("2d");
-let mode2D=false;
-const flatView={cx:45,cy:22,k:2.2};
-let flyF=null;
-function flatPpd(){return flat.width/360*flatView.k;}
-function flatXY(lon,lat){const p=flatPpd();
-  return [(lon-flatView.cx)*p+flat.width/2,(flatView.cy-lat)*p+flat.height/2];}
-function flatLonLat(x,y){const p=flatPpd();
-  return [(x-flat.width/2)/p+flatView.cx, flatView.cy-(y-flat.height/2)/p];}
-function clampFlat(){
-  flatView.k=Math.max(1,Math.min(8,flatView.k));
-  const p=flatPpd(), spanLon=Math.min(360,flat.width/p), spanLat=Math.min(180,flat.height/p);
-  flatView.cx=spanLon>=360?0:Math.max(-180+spanLon/2,Math.min(180-spanLon/2,flatView.cx));
-  flatView.cy=spanLat>=180?0:Math.max(-90+spanLat/2,Math.min(90-spanLat/2,flatView.cy));
-}
-function flatFlyTo(lon,lat,k,dur=1.1){
-  if(REDUCED){flatView.cx=lon;flatView.cy=lat;flatView.k=k;clampFlat();return;}
-  let dl=lon-flatView.cx; while(dl>180)dl-=360; while(dl<-180)dl+=360;
-  flyF={t:0,dur,from:{cx:flatView.cx,cy:flatView.cy,k:flatView.k},
-    d:{cx:dl,cy:lat-flatView.cy,k:k-flatView.k}};
-}
-function setMode2D(v){
-  if(v===mode2D) return;
-  mode2D=v; document.body.classList.toggle("flat",v);
-  if(v){ flatView.cx=cam.lon; flatView.cy=Math.max(-70,Math.min(70,cam.lat));
-    flatView.k=Math.max(1.2,Math.min(4.5,3.3-cam.dist*.5)); flyF=null; clampFlat(); resize(); }
-  else { cam.lon=flatView.cx; cam.lat=Math.max(-72,Math.min(72,flatView.cy)); fly=null; }
-  flatToggle.set(v);
-}
-let fdrag=false,fpx=0,fpy=0,fmoved=0;
-flat.addEventListener("pointerdown",e=>{fdrag=true;fmoved=0;fpx=e.clientX;fpy=e.clientY;
-  flat.classList.add("dragging");flyF=null;});
-addEventListener("pointerup",()=>{fdrag=false;flat.classList.remove("dragging");});
-flat.addEventListener("pointermove",e=>{
-  if(fdrag){
-    const p=flatPpd();
-    flatView.cx-=(e.clientX-fpx)/p; flatView.cy+=(e.clientY-fpy)/p;
-    fmoved+=Math.abs(e.clientX-fpx)+Math.abs(e.clientY-fpy);
-    fpx=e.clientX; fpy=e.clientY; follow.set(false); clampFlat();
-  } else flatHover(e);
-});
-flat.addEventListener("wheel",e=>{
+holder.addEventListener("wheel",e=>{
   e.preventDefault();
-  const before=flatLonLat(e.clientX,e.clientY);
-  flatView.k=Math.max(1,Math.min(8,flatView.k*(1-Math.sign(e.deltaY)*.12)));
-  const after=flatLonLat(e.clientX,e.clientY);
-  flatView.cx+=before[0]-after[0]; flatView.cy+=before[1]-after[1];
-  clampFlat();
+  if(morph.k>.5){ fcam.dist*=1+Math.sign(e.deltaY)*.1; clampFlat(); }
+  else cam.dist=Math.max(1.28,Math.min(4.6,cam.dist*(1+Math.sign(e.deltaY)*.09)));
 },{passive:false});
-function flatRobotAt(x,y){
-  if(labMode) for(const slug of Object.keys(LAB_META)){
-    const [rx,ry]=flatXY(...CAPITALS[slug]);
-    if(Math.hypot(x-rx,y-(ry-6))<15) return slug;
-  }
-  for(const slug of Object.keys(SUMMIT)){
-    const [rx,ry]=flatXY(...CAPITALS[slug]);
-    if(Math.abs(x-rx)<16 && y>ry-34 && y<ry+7) return slug;
-  }
-  return null;
-}
-flat.addEventListener("click",e=>{
-  if(fmoved>6) return;
-  const slug=flatRobotAt(e.clientX,e.clientY) || countryAt(flatLonLat(e.clientX,e.clientY))?.slug;
-  if(slug) openFiche(slug); else closeFiche();
-});
-function flatHover(e){
-  const now=performance.now(); if(now-hoverT<70) return; hoverT=now;
-  const slug=flatRobotAt(e.clientX,e.clientY) || countryAt(flatLonLat(e.clientX,e.clientY))?.slug;
-  flat.style.cursor=slug?"pointer":"grab";
-  if(slug){tooltip.textContent=META(slug).label+" — clic : stats du délégué";
-    tooltip.style.left=e.clientX+"px"; tooltip.style.top=e.clientY+"px"; tooltip.style.opacity=1;}
-  else tooltip.style.opacity=0;
-}
 
-/* ============ picking 3D ============ */
+/* ============ picking : robots d'abord, puis monde (sphère OU plan déplié) ============ */
 const ray=new THREE.Raycaster(), ndc=new THREE.Vector2();
 function setRay(e){
   const r=renderer.domElement.getBoundingClientRect();
@@ -923,10 +1040,14 @@ function pickRobot(e){
 }
 function pickLonLat(e){
   setRay(e);
+  if(morph.k>.5){
+    const hit=ray.intersectObject(pickPlane)[0];
+    if(!hit) return null;
+    return [hit.point.x/(FLAT_W/2)*180, hit.point.y/(FLAT_H/2)*90];
+  }
   const hit=ray.intersectObject(globe)[0];
   if(!hit) return null;
-  const p=hit.point;
-  return inverseLL(p);
+  return inverseLL(hit.point);
 }
 function countryAt(lonlat){
   if(!lonlat) return null;
@@ -935,16 +1056,23 @@ function countryAt(lonlat){
 }
 holder.addEventListener("click",e=>{
   if(moved>6) return;
+  if(morph.k>.02&&morph.k<.98) return; // pas de picking en plein dépliage
+  if(hallState==="auth"||hallState==="menu") return;
   const slug=pickRobot(e) || countryAt(pickLonLat(e))?.slug;
+  if(hallState==="config"){ if(slug&&SUMMIT[slug]) setPlayAs(slug); return; }
   if(slug) openFiche(slug); else closeFiche();
 });
 const tooltip=document.getElementById("tooltip");
 let hoverT=0;
 function hover(e){
   const now=performance.now(); if(now-hoverT<70) return; hoverT=now;
+  if(hallState==="auth"||hallState==="menu"){tooltip.style.opacity=0;return;}
   const slug=pickRobot(e) || countryAt(pickLonLat(e))?.slug;
   holder.style.cursor=slug?"pointer":dragging?"grabbing":"grab";
-  if(slug){tooltip.textContent=META(slug).label+" — clic : stats du délégué";
+  if(slug){
+    tooltip.textContent=hallState==="config"
+      ? META(slug).label+" — cliquez pour l'incarner"
+      : META(slug).label+" — clic : stats du délégué";
     tooltip.style.left=e.clientX+"px"; tooltip.style.top=e.clientY+"px"; tooltip.style.opacity=1;}
   else tooltip.style.opacity=0;
 }
@@ -971,32 +1099,27 @@ addEventListener("keydown",e=>{
   if(e.key==="Escape")closeFiche();
   if(e.key==="v"||e.key==="V")setMode2D(!mode2D);
   if(e.key==="l"||e.key==="L"){
+    if(hallState!=="game") return; // pas de Laboratoire depuis le hall (passer par les modes)
     if(labMode){exitLab();labToggle.set(false);}
     else{enterLab();labToggle.set(true);}
   }
 });
 
-/* ============ étiquettes projetées (3D et 2D) ============ */
+/* ============ étiquettes projetées (un seul chemin : la scène fait foi) ============ */
 function makeTag(cls){const el=document.createElement("div");el.className=cls;
   document.body.appendChild(el);return el;}
 const eventTag=makeTag("tag3d"), speakerTag=makeTag("tag3d speaker"), bubble=makeTag("bubble");
 const judgeTag=makeTag("tag3d judge"), labTag=makeTag("tag3d lab");
-const V=new THREE.Vector3();
+const V=new THREE.Vector3(), CAMDIR=new THREE.Vector3();
 function projectAt(el,pos3,visible,dy=0){
   if(!visible){el.style.opacity=0;return;}
   V.copy(pos3).project(camera);
-  const behind=V.z>1 || pos3.clone().normalize().dot(camera.position.clone().normalize())<0.12;
+  const behind=V.z>1 ||
+    (morph.k<.5 && pos3.clone().normalize().dot(CAMDIR.copy(camera.position).normalize())<0.12);
   const r=renderer.domElement.getBoundingClientRect();
   el.style.left=(((V.x+1)/2)*r.width+r.left)+"px";
   el.style.top =(((-V.y+1)/2)*r.height+r.top+dy)+"px";
   el.style.opacity=behind?0:1;
-}
-function placeFlat(el,lonlat,visible,dy=0){
-  if(!visible){el.style.opacity=0;return;}
-  const [x,y]=flatXY(...lonlat);
-  const off=x<-60||x>flat.width+60||y<-60||y>flat.height+60;
-  el.style.left=x+"px"; el.style.top=(y+dy)+"px";
-  el.style.opacity=off?0:1;
 }
 
 /* ============ contrôles + onglets ============ */
@@ -1084,7 +1207,7 @@ function startEvent(){
   placeEvent(...ev.loc);
   eventTag.textContent="⚠ "+ev.place;
   gmAnnounce(...ev.loc);
-  if(mode2D) flatFlyTo(ev.loc[0],ev.loc[1],2.6,1.4);
+  if(mode2D) flatFlyTo(ev.loc[0],ev.loc[1],2.0,1.4);
   else flyTo(ev.loc[0],ev.loc[1]-8,2.25,1.5);
   gmMessage(ev);
   step=-1;
@@ -1095,7 +1218,7 @@ function judgePhase(){
   speaking=thinking=null; setArc(null); paintGlobe(null);
   speakerGlow.material.opacity=0; gmOrbit();
   judgeTag.textContent="⚖ Le Juge délibère — au-dessus de la mêlée";
-  if(mode2D) flatFlyTo(flatView.cx,18,1.35,1.4);
+  if(mode2D) flatFlyTo(0,14,4.6,1.4);
   else flyTo(cam.lon,52,3.9,1.5);
   judgeVerdictFx();
   setTimeout(()=>{
@@ -1108,7 +1231,7 @@ function judgePhase(){
     uGlobal=Math.min(.8,uGlobal+.03);
     document.getElementById("u-global").textContent=uGlobal.toFixed(2).replace(".",",");
     for(const s of Object.values(SUMMIT)) s.u=Math.max(.2,Math.min(.85,s.u+(Math.random()-.42)*.06));
-    placeBet("m3",10,true); // le verdict fait bouger le marché
+    placeBet("m3",10,true);
     evIdx++; setTimeout(startEvent, 3600);
   }, 2600);
 }
@@ -1123,15 +1246,15 @@ function nextSpeaker(){
   speakerGlow.material.opacity=0;
   gmOrbit();
   if(follow.get()){
-    if(mode2D) flatFlyTo(cap[0],cap[1],3.4,1.1);
+    if(mode2D) flatFlyTo(cap[0],cap[1],1.35,1.1);
     else flyTo(cap[0],cap[1]-13,1.85,1.15);
   }
-  if(AUTO_BETS[step]) placeBet(AUTO_BETS[step][0],AUTO_BETS[step][1],true); // le public s'agite
+  if(AUTO_BETS[step]) placeBet(AUTO_BETS[step][0],AUTO_BETS[step][1],true);
   startThought(line,()=>{
     thinking=null; speaking=line.who;
     bubble.style.opacity=0;
     paintGlobe(speaking);
-    speakerGlow.position.copy(toXYZ(cap[0],cap[1],R*1.008));
+    glowLL=cap;
     speakerGlow.material.opacity=.95;
     speakerTag.textContent="🗣 "+SUMMIT[line.who].label;
     setArc(line.who,line.to);
@@ -1139,221 +1262,96 @@ function nextSpeaker(){
   });
 }
 
-/* ============ rendu 2D (chaque brique du jeu dessinée sur la carte plate) ============ */
-function drawFlat(t){
-  const g=fctx,W=flat.width,H=flat.height;
-  g.fillStyle="#03050a"; g.fillRect(0,0,W,H);
-  const [x0,y0]=flatXY(-180,90), [x1,y1]=flatXY(180,-90);
-  g.drawImage(tcan,x0,y0,x1-x0,y1-y0);
-  g.strokeStyle="rgba(120,160,220,.25)"; g.lineWidth=1;
-  g.strokeRect(x0+.5,y0+.5,x1-x0-1,y1-y0-1);
-  // événement : anneaux pulsants
-  if(banner.classList.contains("on")){
-    const [ex,ey]=flatXY(...evLoc);
-    for(const ph0 of [0,.5]){
-      const ph=REDUCED?.4:((t*.9+ph0)%1);
-      g.beginPath(); g.arc(ex,ey,6+ph*40,0,7);
-      g.strokeStyle=`rgba(255,193,77,${(1-ph)*.85})`; g.lineWidth=2.4; g.stroke();
-    }
-    g.fillStyle="#ffd98a"; g.beginPath(); g.arc(ex,ey,4,0,7); g.fill();
-  }
-  // arc orateur → destinataire
-  if(arcSlugs){
-    const [ax,ay]=flatXY(...CAPITALS[arcSlugs[0]]), [bx,by]=flatXY(...CAPITALS[arcSlugs[1]]);
-    const mx=(ax+bx)/2, my=Math.min(ay,by)-Math.hypot(bx-ax,by-ay)*.22;
-    g.beginPath(); g.moveTo(ax,ay); g.quadraticCurveTo(mx,my,bx,by);
-    g.strokeStyle="rgba(255,193,77,.6)"; g.lineWidth=1.6; g.stroke();
-    const k=REDUCED?.5:(t*.55)%1, ik=1-k;
-    const qx=ik*ik*ax+2*ik*k*mx+k*k*bx, qy=ik*ik*ay+2*ik*k*my+k*k*by;
-    g.fillStyle="#ffe0a3"; g.beginPath(); g.arc(qx,qy,3.4,0,7); g.fill();
-  }
-  // billets empilés
-  for(const st of Object.values(MONEY)){
-    const [mx,my]=flatXY(...st.anchor);
-    const n=Math.min(st.bills,14);
-    for(let i=0;i<n;i++){
-      g.fillStyle=i%2?"#4ea86a":"#63c07e";
-      g.fillRect(mx-9+Math.sin(i*2.6)*1.4,my-3-i*3,18,2.3);
-    }
-    g.strokeStyle="rgba(0,0,0,.4)"; g.lineWidth=.6;
-    g.strokeRect(mx-9,my-3-(n-1)*3,18,n*3);
-  }
-  // délégués : drapeau planté sur la capitale
-  for(const slug of Object.keys(SUMMIT)){
-    const [x,y]=flatXY(...CAPITALS[slug]);
-    if(x<-40||x>W+40||y<-40||y>H+40) continue;
-    const isSpk=slug===speaking, isThk=slug===thinking;
-    const bump=isSpk&&!REDUCED?Math.abs(Math.sin(t*5))*3:0;
-    if(isSpk){
-      g.save(); g.shadowColor="rgba(255,193,77,.95)"; g.shadowBlur=18;
-      g.strokeStyle="rgba(255,193,77,.95)"; g.lineWidth=2.6;
-      g.beginPath(); g.arc(x,y-19-bump,17,0,7); g.stroke(); g.restore();
-    }
-    if(isThk){
-      g.save(); g.setLineDash([4,3]); g.strokeStyle="rgba(89,215,255,.9)"; g.lineWidth=2;
-      g.beginPath(); g.arc(x,y-19,17,0,7); g.stroke(); g.restore();
-    }
-    g.strokeStyle="rgba(255,255,255,.65)"; g.lineWidth=1.4;
-    g.beginPath(); g.moveTo(x,y); g.lineTo(x,y-11-bump); g.stroke();
-    g.fillStyle=SUMMIT[slug].hue; g.beginPath(); g.arc(x,y,3,0,7); g.fill();
-    g.drawImage(FLAG_CANVAS[slug],x-12,y-27-bump,24,16);
-    g.strokeStyle="rgba(255,255,255,.55)"; g.strokeRect(x-12,y-27-bump,24,16);
-  }
-  // drone GM + satellite : leurs positions réelles, projetées à plat
-  const gmLL=inverseLL(gm.position);
-  const [gx,gy]=flatXY(...gmLL);
-  if(gx>-20&&gx<W+20&&gy>-20&&gy<H+20){
-    g.fillStyle="#ffc14d"; g.beginPath(); g.arc(gx,gy,4,0,7); g.fill();
-    g.strokeStyle="rgba(255,193,77,.6)"; g.lineWidth=1.2;
-    g.beginPath(); g.arc(gx,gy,7.5,0,7); g.stroke();
-    g.fillStyle="rgba(255,213,138,.9)"; g.font="9px sans-serif"; g.textAlign="center";
-    g.fillText("GM",gx,gy-11);
-  }
-  const satLL=inverseLL(sat.position);
-  const [sx,sy]=flatXY(...satLL);
-  if(sx>-20&&sx<W+20&&sy>-20&&sy<H+20){
-    g.save(); g.translate(sx,sy); g.rotate(.5);
-    g.fillStyle="#c9d6ea"; g.fillRect(-3.5,-2.5,7,5);
-    g.fillStyle="#2c5aa8"; g.fillRect(-13,-2,8,4); g.fillRect(5,-2,8,4);
-    g.strokeStyle="rgba(255,255,255,.7)"; g.lineWidth=.8; g.strokeRect(-3.5,-2.5,7,5);
-    g.restore();
-    if(satState.mode==="scan"){
-      const [tx,ty]=flatXY(...SCAN_TARGET);
-      g.strokeStyle="rgba(89,224,200,.5)"; g.lineWidth=1.2;
-      g.beginPath(); g.moveTo(sx,sy+4); g.lineTo(tx,ty); g.stroke();
-      for(const ph0 of [0,.5]){
-        const ph=REDUCED?.4:((t*.8+ph0)%1);
-        g.beginPath(); g.arc(tx,ty,4+ph*30,0,7);
-        g.strokeStyle=`rgba(89,224,200,${(1-ph)*.8})`; g.lineWidth=2; g.stroke();
-      }
-    }
-  }
-  // Laboratoire : arène + les deux candidats
-  if(labMode){
-    const [vx,vy]=flatXY(...LAB_VENUE);
-    g.strokeStyle="rgba(89,215,255,.7)"; g.lineWidth=2;
-    g.beginPath(); g.arc(vx,vy,30,0,7); g.stroke();
-    g.strokeStyle="rgba(89,215,255,.3)"; g.lineWidth=1.2;
-    g.beginPath(); g.arc(vx,vy,20+(REDUCED?0:Math.sin(t*2)*2),0,7); g.stroke();
-    for(const slug of Object.keys(LAB_META)){
-      const m=LAB_META[slug];
-      const [x,y]=flatXY(...CAPITALS[slug]);
-      const isSpk=slug===speaking, isThk=slug===thinking;
-      if(isSpk){
-        g.save(); g.shadowColor="rgba(255,193,77,.95)"; g.shadowBlur=14;
-        g.strokeStyle="rgba(255,193,77,.95)"; g.lineWidth=2.4;
-        g.beginPath(); g.arc(x,y-6,11,0,7); g.stroke(); g.restore();
-      }
-      if(isThk){
-        g.save(); g.setLineDash([4,3]); g.strokeStyle="rgba(89,215,255,.9)"; g.lineWidth=2;
-        g.beginPath(); g.arc(x,y-6,11,0,7); g.stroke(); g.restore();
-      }
-      g.fillStyle=m.hue; g.beginPath(); g.arc(x,y-6,6,0,7); g.fill();
-      g.fillStyle="#0a0f1a"; g.font="bold 9px sans-serif"; g.textAlign="center";
-      g.fillText(m.code,x,y-3);
-    }
-  }
-  // verdict du Juge : ondes indigo depuis le lieu de crise
-  if(judgeState.mode==="verdict"&&!REDUCED){
-    const [jx,jy]=flatXY(...evLoc);
-    for(const ph0 of [0,.33,.66]){
-      const ph=(judgeState.t*.5+ph0)%1;
-      g.beginPath(); g.arc(jx,jy,ph*Math.max(W,H)*.5,0,7);
-      g.strokeStyle=`rgba(129,140,248,${(1-ph)*.35})`; g.lineWidth=2.5; g.stroke();
-    }
-  }
-}
-function placeFlatLabels(){
-  placeFlat(eventTag,evLoc,banner.classList.contains("on"),-16);
-  const spk=speaking||thinking;
-  if(spk){
-    placeFlat(speakerTag,CAPITALS[spk],!!speaking,-40);
-    placeFlat(bubble,CAPITALS[spk],!!thinking,bubble.classList.contains("below")?14:-34);
-    if(thinking){const y=parseFloat(bubble.style.top);bubble.classList.toggle("below",y<250);}
-  } else { speakerTag.style.opacity=0; bubble.style.opacity=0; }
-  if(judgeState.mode==="verdict"){
-    judgeTag.style.left="50%"; judgeTag.style.top="76px"; judgeTag.style.opacity=1;
-  } else judgeTag.style.opacity=0;
-  placeFlat(labTag,[LAB_VENUE[0],LAB_VENUE[1]-2.6],labMode,14); // sous le duel, la bulle vit au-dessus
-  for(const st of Object.values(MONEY)){
-    const n=Math.min(st.bills,14);
-    placeFlat(st.el,st.anchor,st.bills>0,-8-n*3);
-  }
-}
-
 /* ============ boucle de rendu ============ */
 const clock=new THREE.Clock();
 function resize(){
   renderer.setSize(innerWidth,innerHeight);
   camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
-  flat.width=innerWidth; flat.height=innerHeight;
-  clampFlat();
 }
 addEventListener("resize",resize); resize();
 const CAMV=new THREE.Vector3(), LOC=new THREE.Vector3(), OV=new THREE.Vector3();
+const TMP=new THREE.Vector3(), TMP2=new THREE.Vector3(), PICKV=new THREE.Vector3();
 
 function frame(){
   requestAnimationFrame(frame);
   if(document.hidden) return;
   const dt=Math.min(.05,clock.getDelta()), t=clock.getElapsedTime();
 
-  // drone GM (les deux modes s'en servent)
+  /* le morph avance vers sa cible (dépliage/repliage du monde) */
+  if(morph.k!==morph.target){
+    morph.k+=(morph.target-morph.k)*(1-Math.exp(-3.4*dt));
+    if(Math.abs(morph.k-morph.target)<.004) morph.k=morph.target;
+  }
+  applyAnchors(morph.k); // chaque frame : les ancres créées en vol se placent aussi
+  const k=morph.k;
+  globeMat.uniforms.uFlat.value=k;
+  atmo.material.uniforms.uFlat.value=k;
+  for(const [o,base] of ORBITALS) o.material.opacity=base*(1-k);
+
+  // drone GM (machine à états en espace sphère ; rendu morphé)
   if(gmState.mode==="orbit"){
     gmState.a+=dt*.25;
     const a=gmState.a;
-    gm.position.set(Math.cos(a)*1.6,.55*Math.sin(a*.7),Math.sin(a)*1.6);
+    gmPos.set(Math.cos(a)*1.6,.55*Math.sin(a*.7),Math.sin(a)*1.6);
     beam.material.opacity=Math.max(0,beam.material.opacity-dt*1.5);
   } else {
     gmState.t+=dt;
     const target=gmState.target.clone().normalize().multiplyScalar(R*1.22);
-    gm.position.lerp(target,1-Math.exp(-2.2*dt));
-    const ground=gmState.target;
-    const dir=gm.position.clone().sub(ground);
-    const len=dir.length();
-    beam.scale.set(1,len,1);
-    beam.position.copy(ground.clone().add(dir.multiplyScalar(.5)));
-    beam.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir.normalize());
+    gmPos.lerp(target,1-Math.exp(-2.2*dt));
     beam.material.opacity=Math.min(.22,beam.material.opacity+dt*.4);
     if(gmState.t>4.5) gmOrbit();
   }
+  mixPoint(gmPos,k,gm.position);
+  if(gmState.mode==="announce"&&gmState.target){
+    const ground=mixPoint(gmState.target,k,TMP);
+    const dir=TMP2.copy(gm.position).sub(ground);
+    const len=dir.length();
+    beam.scale.set(1,len,1);
+    beam.position.copy(ground).addScaledVector(dir,.5);
+    beam.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir.normalize());
+  }
   gm.userData.ring.rotation.z+=dt*(gmState.mode==="announce"?4:1.2);
-  gm.lookAt(0,0,0);
+  gm.lookAt(k>.5?new THREE.Vector3(gm.position.x,gm.position.y,-10):new THREE.Vector3(0,0,0));
 
-  // satellite de renseignement
+  // satellite de renseignement (même principe)
   if(satState.mode==="orbit"){
     satState.a+=dt*.4;
-    sat.position.set(Math.cos(satState.a)*1.34,.4*Math.sin(satState.a*.8),Math.sin(satState.a)*1.34);
+    satPos.set(Math.cos(satState.a)*1.34,.4*Math.sin(satState.a*.8),Math.sin(satState.a)*1.34);
     scanBeam.material.opacity=Math.max(0,scanBeam.material.opacity-dt*1.5);
     scanRing.material.opacity=Math.max(0,scanRing.material.opacity-dt*1.5);
   } else if(satState.mode==="goto"){
     satState.t+=dt;
     const target=satState.target.clone().normalize().multiplyScalar(R*1.26);
-    sat.position.lerp(target,1-Math.exp(-2.4*dt)); // indépendant du framerate
-    if(sat.position.distanceTo(target)<.035||satState.t>3){satState.mode="scan";satState.t=0;}
-  } else { // scan
+    satPos.lerp(target,1-Math.exp(-2.4*dt));
+    if(satPos.distanceTo(target)<.035||satState.t>3){satState.mode="scan";satState.t=0;}
+  } else {
     satState.t+=dt;
-    const base=satState.target.clone().normalize().multiplyScalar(R*1.26);
-    sat.position.copy(base);
-    sat.position.x+=Math.sin(t*1.4)*.02; sat.position.z+=Math.cos(t*1.1)*.02;
-    const ground=satState.target;
-    const dir=sat.position.clone().sub(ground);
-    const len=dir.length();
-    scanBeam.scale.set(1,len,1);
-    scanBeam.position.copy(ground.clone().add(dir.multiplyScalar(.5)));
-    scanBeam.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir.normalize());
-    scanBeam.material.opacity=Math.min(.28,scanBeam.material.opacity+dt*.5);
+    satPos.copy(satState.target).normalize().multiplyScalar(R*1.26);
+    satPos.x+=Math.sin(t*1.4)*.02; satPos.z+=Math.cos(t*1.1)*.02;
     const ph=REDUCED?.4:(satState.t*.8)%1;
     scanRing.scale.setScalar(1+ph*8);
     scanRing.material.opacity=(1-ph)*.8;
+    scanBeam.material.opacity=Math.min(.28,scanBeam.material.opacity+dt*.5);
     if(satState.t>4.6) endScan();
   }
-  sat.lookAt(0,0,0);
+  mixPoint(satPos,k,sat.position);
+  if(satState.mode==="scan"&&satState.target){
+    const ground=mixPoint(satState.target,k,TMP);
+    const dir=TMP2.copy(sat.position).sub(ground);
+    const len=dir.length();
+    scanBeam.scale.set(1,len,1);
+    scanBeam.position.copy(ground).addScaledVector(dir,.5);
+    scanBeam.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir.normalize());
+  }
+  sat.lookAt(k>.5?new THREE.Vector3(sat.position.x,sat.position.y,-10):new THREE.Vector3(0,0,0));
 
-  // le Juge (position/état partagés)
+  // le Juge : au-dessus du monde… quel que soit l'état du monde
+  const jS=TMP.set(0,1.72+(REDUCED?0:Math.sin(t*.9)*.02),0);
+  const jF=TMP2.set(0,FLAT_H/2+.18,.85);
+  judge.position.copy(jS).lerp(jF,k);
   judge.userData.core.rotation.y+=dt*(judgeState.mode==="verdict"?1.6:.35);
   judge.userData.ringA.rotation.z+=dt*(judgeState.mode==="verdict"?1.8:.3);
   judge.userData.ringB.rotation.z-=dt*(judgeState.mode==="verdict"?1.4:.22);
-  judge.position.y=1.72+(REDUCED?0:Math.sin(t*.9)*.02);
   if(judgeState.mode==="verdict"){
     judgeState.t+=dt;
     const p=REDUCED?1:1+Math.sin(t*6)*.12;
@@ -1364,44 +1362,37 @@ function frame(){
   }
   for(let i=waves.length-1;i>=0;i--){
     const w=waves[i]; const s=w.scale.x+dt*.28;
-    w.scale.setScalar(s); w.material.opacity=Math.max(0,.2*(1-(s-1.02)/.55));
-    if(w.material.opacity<=0){scene.remove(w);waves.splice(i,1);}
+    w.scale.setScalar(s); w.material.opacity=Math.max(0,.2*(1-(s-1.02)/.55))*(1-k);
+    if(w.material.opacity<=0&&k<.01){scene.remove(w);waves.splice(i,1);}
   }
 
-  if(mode2D){
-    /* -------- branche 2D : carte plate -------- */
-    if(flyF){
-      flyF.t+=dt;
-      const k=ease(Math.min(1,flyF.t/flyF.dur));
-      flatView.cx=flyF.from.cx+flyF.d.cx*k;
-      flatView.cy=flyF.from.cy+flyF.d.cy*k;
-      flatView.k=flyF.from.k+flyF.d.k*k;
-      clampFlat();
-      if(flyF.t>=flyF.dur) flyF=null;
-    }
-    drawFlat(t);
-    placeFlatLabels();
-    return;
-  }
-
-  /* -------- branche 3D : le globe -------- */
-  if(!dragging){
+  /* caméra */
+  if(!dragging&&k<.5){
     cam.vlon*=Math.pow(.05,dt); cam.vlat*=Math.pow(.05,dt);
     if(Math.abs(cam.vlon)>.002) cam.lon+=cam.vlon;
     if(Math.abs(cam.vlat)>.002) cam.lat=Math.max(-72,Math.min(72,cam.lat+cam.vlat));
   }
-  if(autoRotate.get()&&!dragging&&!fly) cam.lon+=1.1*dt;
-  if(labMode&&follow.get()&&!dragging&&!fly&&!REDUCED)
-    cam.lon=LAB_VENUE[0]+Math.sin(t*.2)*3.5; // balancier doux autour du duel (jamais hors cadre)
+  if(autoRotate.get()&&!dragging&&!fly&&!mode2D) cam.lon+=1.1*dt;
+  if(labMode&&follow.get()&&!dragging&&!fly&&!mode2D&&!REDUCED)
+    cam.lon=LAB_VENUE[0]+Math.sin(t*.2)*3.5;
   if(fly){
     fly.t+=dt;
-    const k=ease(Math.min(1,fly.t/fly.dur));
-    cam.lon=fly.from.lon+fly.d.lon*k;
-    cam.lat=fly.from.lat+fly.d.lat*k;
-    cam.dist=fly.from.dist+fly.d.dist*k;
+    const kk=ease(Math.min(1,fly.t/fly.dur));
+    cam.lon=fly.from.lon+fly.d.lon*kk;
+    cam.lat=fly.from.lat+fly.d.lat*kk;
+    cam.dist=fly.from.dist+fly.d.dist*kk;
     if(fly.t>=fly.dur) fly=null;
   }
-  camPos();
+  if(flyF){
+    flyF.t+=dt;
+    const kk=ease(Math.min(1,flyF.t/flyF.dur));
+    fcam.x=flyF.from.x+flyF.d.x*kk;
+    fcam.y=flyF.from.y+flyF.d.y*kk;
+    fcam.dist=flyF.from.dist+flyF.d.dist*kk;
+    clampFlat();
+    if(flyF.t>=flyF.dur) flyF=null;
+  }
+  applyCamera(k);
 
   rings.forEach(rg=>{
     const ph=((REDUCED?0:t*.9)+rg.userData.phase)%1;
@@ -1413,7 +1404,7 @@ function frame(){
   for(const r of Object.values(robots)){
     const isLab=!!LAB_META[r.slug];
     if(isLab&&!labMode) continue;
-    if(isLab){ // les candidats se font face
+    if(isLab){
       const other=robots[r.slug==="labA"?"labB":"labA"];
       other.group.getWorldPosition(OV);
       const lo=r.group.worldToLocal(OV);
@@ -1437,35 +1428,101 @@ function frame(){
   }
 
   if(speaking&&!REDUCED) speakerGlow.material.opacity=.7+Math.sin(t*3.2)*.2;
-  if(arcCurve&&arcPulse){const k=REDUCED?.5:(t*.55)%1; arcPulse.position.copy(arcCurve.getPointAt(k));}
+  if(glowLL) speakerGlow.position.copy(mixTop(glowLL,1.008,.008,k,TMP));
+  if(pickLL){
+    pickGlow.position.copy(mixTop(pickLL,1.01,.01,k,PICKV));
+    if(!REDUCED) pickGlow.material.opacity=.7+Math.sin(t*2.6)*.2;
+  }
+  updateArc(k);
+  if(arcCurve&&arcPulse){const kk=REDUCED?.5:(t*.55)%1; arcPulse.position.copy(arcCurve.getPointAt(kk));}
+  if(labMode) arenaB.scale.setScalar(1+(REDUCED?0:Math.sin(t*2)*.06));
 
+  /* étiquettes : un seul chemin, la scène (morphée) fait foi */
   projectAt(eventTag, eventGroup.position, banner.classList.contains("on"));
   const spk=speaking||thinking;
   if(spk){
-    LOC.copy(robots[spk].group.position).normalize().multiplyScalar(R+ROBOT_H*1.12);
+    mixTop(robots[spk].ll,1+ROBOT_H*1.12,ROBOT_H*1.12,k,LOC);
     projectAt(speakerTag, LOC, !!speaking, 8);
     projectAt(bubble, LOC, !!thinking, bubble.classList.contains("below")?26:-6);
     if(thinking){const y=parseFloat(bubble.style.top);bubble.classList.toggle("below", y<250);}
   } else { speakerTag.style.opacity=0; bubble.style.opacity=0; }
   projectAt(judgeTag, judge.position, judgeState.mode==="verdict", -10);
-  if(labMode){
-    arenaB.scale.setScalar(1+(REDUCED?0:Math.sin(t*2)*.06));
-    projectAt(labTag, LAB_HUD, true, 0);
-  } else labTag.style.opacity=0;
+  if(labMode) projectAt(labTag, mixTop(LAB_HUD_LL,1.055,.05,k,TMP), true, 0);
+  else labTag.style.opacity=0;
   for(const st of Object.values(MONEY)){
-    LOC.copy(st.group.position).normalize().multiplyScalar(R*1.014);
+    mixTop(st.ll,1.014,.032,k,LOC);
     projectAt(st.el, LOC, st.bills>0, -4);
   }
 
   renderer.render(scene,camera);
 }
-frame();
+
+/* ============ le hall — l'avant-jeu vit DANS la même scène ============ */
+let hallState="auth", playAs=null, cfgMode="CLASSIQUE", pickLL=null;
+const hallEl=document.getElementById("hall");
+const pickGlow=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTexture("rgb(89,215,255)"),
+  transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:0}));
+pickGlow.scale.setScalar(.22); scene.add(pickGlow);
+
+function cloneFlag(c){const n=document.createElement("canvas");n.width=c.width;n.height=c.height;
+  n.getContext("2d").drawImage(c,0,0);return n;}
+function setPlayAs(slug){
+  playAs=slug; pickLL=CAPITALS[slug];
+  document.getElementById("play-as").innerHTML="🎮 Vous incarnez <b>"+SUMMIT[slug].label+"</b>";
+  document.querySelectorAll(".cast-row").forEach(r=>{
+    r.classList.toggle("me",r.dataset.slug===slug);
+    r.querySelector(".who-tag").textContent=r.dataset.slug===slug?"VOUS":"";
+  });
+}
+function renderCast(){
+  const list=document.getElementById("cast-list");
+  list.innerHTML="";
+  for(const [slug,m] of Object.entries(SUMMIT)){
+    const row=document.createElement("div"); row.className="cast-row"; row.dataset.slug=slug;
+    row.appendChild(cloneFlag(FLAG_CANVAS[slug]));
+    const name=document.createElement("span"); name.textContent=m.label; row.appendChild(name);
+    const tag=document.createElement("span"); tag.className="who-tag"; row.appendChild(tag);
+    row.onclick=()=>setPlayAs(slug);
+    list.appendChild(row);
+  }
+}
+const show=(id,on)=>{document.getElementById(id).hidden=!on;};
+function toMenu(){hallState="menu";show("auth-card",false);show("config",false);show("mode-menu",true);}
+document.getElementById("enter-btn").onclick=toMenu;
+document.getElementById("back-btn").onclick=toMenu;
+document.querySelectorAll(".mode-card").forEach(c=>c.onclick=()=>{
+  const mode=c.dataset.mode;
+  if(mode==="laboratoire"){ show("mode-menu",false); launchGame("LABORATOIRE",true); return; }
+  cfgMode=mode==="campagne"?"CAMPAGNE · CHAPITRE 1":"CLASSIQUE";
+  document.getElementById("cfg-mode").textContent=cfgMode;
+  hallState="config"; show("mode-menu",false); show("config",true);
+  flyTo(38,24,2.9,1.2); // cadre le sommet : on choisit son pays sur le globe
+});
+const cfgFog=toggle("cfg-fog",true), cfgThink=toggle("cfg-think",true);
+function launchGame(label,lab){
+  hallState="game"; hallEl.style.display="none";
+  document.body.classList.remove("hall");
+  autoRotate.set(false);
+  pickLL=null; pickGlow.material.opacity=0;
+  const el=document.createElement("div"); el.className="msg gm";
+  el.innerHTML=`<div class="who"><span class="avatar" style="background:#59d7ff">▶</span>
+    <span class="name">Session</span></div>
+    <div class="txt">${label} — brouillard ${cfgFog.get()?"ON":"OFF"} · pensée à découvert ${cfgThink.get()?"ON":"OFF"} · ${playAs?"vous incarnez "+SUMMIT[playAs].label:"spectateur"}.</div>`;
+  feed.appendChild(el); feed.scrollTop=feed.scrollHeight;
+  if(lab){ enterLab(); labToggle.set(true); return; }
+  cam.dist=Math.max(cam.dist,4.1); // la plongée du lancement
+  setTimeout(startEvent,420);
+}
+document.getElementById("launch-btn").onclick=()=>launchGame(cfgMode,false);
 
 /* ============ boot ============ */
+document.body.classList.add("hall");
+autoRotate.set(true); // le monde tourne doucement derrière le hall
+renderCast();
 renderMarkets();
-MARKETS.forEach(fundStack); // les cagnottes initiales s'empilent déjà sur la carte
+MARKETS.forEach(fundStack);
 updateScanBtn();
-setTimeout(startEvent, 1100);
+frame(); // la boucle démarre une fois le hall en place
 
 </script>
 </body>

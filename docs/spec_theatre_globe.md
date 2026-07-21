@@ -8,8 +8,9 @@
 > holographique** avant sa déclaration publique. L'événement du GM est **géolocalisé** et pulse
 > au lieu réel de la crise, annoncé par un **drone Game Master** qui descend de son orbite.
 > Cliquer un délégué (ou son pays) ouvre sa **fiche** (stats + provenance — l'onglet
-> Informations vient au joueur). **Deux vues au choix, façon worldmonitor : globe 3D ou carte
-> 2D à plat — la 2D est aussi interactive** (pan/zoom, pays cliquables, mêmes couches).
+> Informations vient au joueur). **Deux vues au choix, façon worldmonitor — mais UNE seule
+> scène three : la carte 2D est le même monde qui se DÉPLIE** (morph sphère⇄plan animé,
+> vue oblique tactique, pan/zoom, pays et délégués cliquables, toutes les couches suivent).
 > Principe directeur : **chaque brique du jeu a une présence sur la carte** (§4 bis) — le
 > marché s'empile en billets, le renseignement orbite en satellite, le Juge plane au-dessus
 > du monde. Prototype validé : `docs/prototypes/theatre-globe.html`.
@@ -31,7 +32,7 @@ erreur console) démontre :
 |---|---|
 | **Planète futuriste** (arbitrage Laury : équilibre entre la carte holo v1 et la carte naturelle v2) | three.js (r128+), sphère + **texture canvas équirectangulaire 4096×2048** repeinte par d3-geo (`geoEquirectangular` + `geoPath(ctx)`) depuis **world-atlas 50m** ; **géographie réelle, palette assombrie** : océan quasi-nuit + **grille de points tech**, terres en verts/sables/glaces **éteints** (variés par hash d'ISO : ceintures désertiques, boréal, Groenland/Antarctique), **côtes lumineuses** (la signature holo, conservée), frontières bleu pâle, graticule discret ; **anneaux orbitaux décoratifs** autour de la planète ; HUD **sci-fi en CSS pur** (panneaux chanfreinés `clip-path`, néon cyan, balayage lumineux, onglets capitale espacée) |
 | Teintes du jeu | la trajectoire U ne peint plus le pays (la planète reste naturelle) : **liseré lumineux** `uTint(u)` (double stroke : glow shadowBlur + trait net) autour de chaque pays du sommet ; l'**orateur** garde le remplissage **ambre** + glow ; repeint seulement au changement d'orateur (`texture.needsUpdate`) |
-| **Mode 2D interactif** | **la même texture canvas dessinée à plat** (un seul `drawImage` du canvas 4096×2048, zoom/pan par transformation lon/lat↔px linéaire) : cohérence visuelle totale 2D↔3D gratuite ; couches redessinées en 2D (drapeaux plantés sur capitales, anneaux d'événement, piles de billets, satellite vectoriel, arcs quadratiques, ondes de verdict) ; **pan (drag) + zoom molette ancré sous le curseur + clic pays/délégué → fiche + tooltip** ; bascule instantanée 3D↔2D (touche V ou réglage) qui **préserve le point de vue** (lon/lat/zoom ≈ dist) |
+| **Le dépliage — UNE scène three, deux vues** (décision full-three, 2026-07-21) | le 2D n'est **pas un second renderer** : le globe **se déplie en carte** dans un morph animé. Vertex shader : `position = mix(sphère, plan équirect (uv), uFlat)` ; **ancres** (robots, piles, arène, anneaux) : `position.lerpVectors(pS, pF, k)` + `quaternion.slerpQuaternions(qS, qF, k)` ; objets libres (drone, satellite, faisceaux) : re-projetés par `inverseLL → plan` au rendu, leurs machines à états restent en espace sphère ; caméra **fondue orbite ⇄ vue oblique tactique** (la carte se lit, les délégués restent debout) ; picking à plat par **plan invisible** ; étiquettes DOM : un seul chemin `projectAt` (la scène fait foi) ; atmosphère/anneaux orbitaux s'effacent à plat. Artefact connu : dents de scie à la lisière polaire (fan du pôle déplié) — bénin, hors zone de jeu ; correctif app possible (clamp au-delà de ±85°). Testé headless : dépliage, clic→fiche à plat, Laboratoire à plat, repliage — zéro erreur |
 | **Billets sur la carte** | chaque cagnotte de marché = **pile de billets 3D** (boîtes fines vertes, jitter de position/rotation, 2ᵉ pile au-delà de 13) ancrée près de la capitale ou du lieu d'événement visé, étiquette « 💰 N ₲ » projetée ; en 2D : pile de rectangles ; `fundStack` rejoue la hauteur depuis la cagnotte (idempotent) |
 | **Satellite de renseignement** | petit satellite (corps + panneaux solaires) en **orbite basse continue** ; « balayage » : machine à états orbit → goto (lerp **indépendant du framerate** `1−e^(−k·dt)` + garde-fou 3 s) → scan (faisceau conique cyan + anneau au sol qui bat, 4,6 s) → retour orbite + **rapport dans l'onglet Renseignement** (burn de budget, bouton désactivé pendant le vol) |
 | **Duel du Laboratoire** | mode bascule (touche **L**) : le sommet se met en pause proprement (les chaînes de timeouts meurent via garde `labMode`, la sortie relance un événement frais) ; **deux candidats** (α deepseek-r1:7b cyan / β qwen3:4b magenta) **face à face** près de Genève — orientation mutuelle (et non face caméra), **arène** à double anneau pulsé, échanges pensée→réponse alternés avec les mêmes bulles/arcs que le sommet, **métriques flottantes** (manche, coopération, trahisons) sous l'arène, caméra en **balancier doux** autour du duel, fiche candidat au clic (modèle, constance, tromperie…) ; rendu 2D équivalent (arène + pions α/β) |
@@ -149,11 +150,19 @@ Trois mécaniques choisies pour muscler la boucle de déduction, chacune vivant 
 
 - **La vue est un choix du joueur, pas un repli** (façon worldmonitor) : réglage
   `stageView: "3d" | "2d"` par appareil (persisté), bascule **touche V** / bouton dans les
-  contrôles caméra, **point de vue préservé** à la bascule (lon/lat/zoom).
-- Le mode 2D est **la StageMap enrichie** : pays cliquables → fiche, marqueur d'événement
-  géolocalisé, badges pense/parle, piles de billets et satellite en glyphes 2D.
-- Replis automatiques vers la 2D : **WebGL absent / `prefers-reduced-motion` / perf basse**
-  (et `stage3d:"off"` hérité devient `stageView:"2d"`).
+  contrôles caméra, **point de vue préservé** à la bascule.
+- **Full-three (décision 2026-07-21)** : les deux vues sont **la même scène** — le 2D est le
+  monde **déplié** (morph §1), pas un second moteur de rendu. Toutes les couches (délégués,
+  billets, satellite, arcs, arène du Laboratoire) n'existent qu'une fois. La bascule est un
+  moment de mise en scène, pas un switch d'écran.
+- **Ce qui reste en DOM (délibéré)** : le transcript/onglets, la fiche, et la **bulle de
+  pensée** (texte streamé : netteté, sélection, lecteurs d'écran). v1.5 : les étiquettes
+  COURTES (🗣 orateur, 💰 totaux, ⚠ lieu) passent en **sprites dans la scène** (profondeur,
+  occlusion) ; **bloom sélectif** (liserés, yeux, faisceaux) uniquement si le protocole perf
+  le permet.
+- Replis automatiques : **WebGL absent / perf basse → StageMap SVG** (conservée à cette seule
+  fin, avec `onCountryClick` + marqueur `eventGeo`) ; `prefers-reduced-motion` → morph
+  instantané, pulsations figées (le full-three reste utilisable).
 - Budget perf (2060S partagée avec Ollama) : pixelRatio ≤ 1.5 en partie, `low-power`,
   pause `document.hidden`, **aucune animation pilotée par React** (tout dans la boucle three),
   texture repeinte seulement aux changements d'état. **Protocole de mesure obligatoire en
@@ -187,8 +196,9 @@ pour les 33 pays du roster.
    le code est à transposer en React (composant client-only `dynamic(() => …, {ssr:false})`).
 2. `GlobeStage` branché sur l'état réel (`useRoundStream` + `GameDetail`) derrière le réglage
    `stageView`, à parité visuelle avec le prototype (**palette planète naturelle + liserés**).
-3. **StageMap interactive** (le mode 2D) : `onCountryClick` → fiche, marqueur `eventGeo`,
-   badges pense/parle ; **bascule 2D↔3D** (réglage + touche V) avec point de vue préservé.
+3. **Le dépliage 2D⇄3D** (full-three, §5) : morph sphère⇄plan transposé du prototype
+   (ancres, caméra oblique, plan de picking) derrière `stageView` + touche V ; StageMap SVG
+   rendue interactive (`onCountryClick`, `eventGeo`) **uniquement comme repli sans WebGL**.
 4. Layout immersif (§4) dans `app/games/[id]/page.tsx` — transcript à onglets
    (Dialogues · Paris · Renseignement).
 5. Bulle de pensée branchée sur `turn.reasoning`/digest selon `expose_thinking` ;
@@ -212,3 +222,39 @@ reste à la brancher sur les vraies expériences (`research/`) ; sélection de v
 vrais drapeaux ; sons discrets ; relecture cinématique d'une partie (caméra automatique round
 par round) ; chute animée des billets à chaque mise ; covert ops, alliances et motions
 visualisées (§4 bis, lignes v2).
+
+## 9. L'avant-jeu — le hall du théâtre (décision 2026-07-21, prototypé)
+
+> Demande de Laury : « adapter tout en amont — la connexion, les pages de sélection des
+> paramètres — dans le même design futuriste, le maximum en three, le reste adaptable. »
+
+- **L'app devient UNE scène continue.** La planète est montée au niveau du layout et
+  **persiste entre les routes** ; les pages d'avant-jeu ne sont plus des écrans mais des
+  **overlays DOM (kit futuriste) posés sur le monde** : les « pages » sont des états de
+  caméra + des panneaux. Aucune coupure visuelle de la connexion au théâtre.
+- **Le flux validé dans le prototype** (états `auth → menu → config → game`) :
+  1. **Connexion** — carte de verre chanfreinée centrée (logo néon, pseudo/mot de passe,
+     CTA ambre), la planète tourne lentement derrière (transcript et HUD de jeu masqués).
+  2. **Modes** — trois cartes (Classique · Campagne · Laboratoire) en bas d'écran,
+     hover = lévitation + néon ; Laboratoire lance directement le duel (arène de Genève).
+  3. **Config** — panneau droit **dans le même emplacement que le futur transcript**
+     (continuité : il « devient » la colonne du théâtre au lancement) : casting avec
+     mini-drapeaux, interrupteurs (Brouillard, Pensée à découvert), et **choix du pays
+     incarné EN CLIQUANT le pays sur le globe** (halo cyan sur le délégué choisi, badge
+     « VOUS » dans la liste — l'onglet Informations version décision).
+  4. **Lancement** — les panneaux glissent, la caméra **plonge** de loin vers l'événement
+     du round 1, le récap de session (mode, brouillard, pensée, pays) s'inscrit au fil.
+- **Kit UI futuriste partagé** : tokens + composants extraits du prototype dans
+  `web/src/styles/theatre-kit.css` (chanfreins, panneaux néon, CTA ambre, interrupteurs,
+  onglets, rangées de casting, cartes de mode, balayage lumineux, scanlines,
+  `prefers-reduced-motion`). TOUTES les surfaces existantes (`/`, `/accueil`, `/lobby`,
+  `/campagne`, `/laboratoire`, `/defi`, `/reglages`, `/profil`, `/leaderboard`, header,
+  `auth-gate`) adoptent ce kit — trois catégories : **converties en overlay** de la scène
+  (connexion, lobby, config), **re-stylées kit** (réglages, profil, leaderboard, admin),
+  **héritées** (les pages in-game déjà refondues).
+- **Campagne au hall (v2)** : les chapitres épinglés sur le globe (cartes-chapitres →
+  survol = la caméra glisse vers le lieu du chapitre).
+- **Repli sans WebGL** : les mêmes pages en fond uni `--thk-bg` (le kit ne dépend pas de
+  la scène) ; `prefers-reduced-motion` : planète statique, transitions instantanées.
+- Vérifié headless de bout en bout (connexion → modes → config → Iran incarné au clic →
+  partie lancée, transcript de retour, zéro erreur console).
