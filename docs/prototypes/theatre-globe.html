@@ -73,6 +73,8 @@
   .msg details[open] summary::before{content:"▾ "}
   .msg details .think{font-size:11px;color:var(--fg-muted);font-style:italic;margin-top:4px}
   .msg.gm{border-color:rgba(255,193,77,.35);background:rgba(30,24,12,.6)}
+  .msg.pulse{border-color:rgba(89,215,255,.4);background:rgba(10,24,38,.62)}
+  .msg.onu{border-color:rgba(75,146,219,.5);background:rgba(12,26,44,.66)}
   .tabbar{display:flex;gap:4px;margin-top:8px}
   .tab{flex:1;padding:5px 0;border:1px solid var(--edge);border-radius:7px;background:none;
     color:var(--fg-faint);font-size:10.5px;cursor:pointer;letter-spacing:.04em}
@@ -210,6 +212,27 @@
   .cast-row.me{border-color:rgba(255,193,77,.6);background:rgba(255,193,77,.07)}
   .cast-row canvas{width:24px;height:16px;border:1px solid rgba(255,255,255,.3)}
   .cast-row .who-tag{margin-left:auto;font-size:9px;color:var(--amber);letter-spacing:.1em}
+  .cast-row.off{opacity:.42}
+  .cast-row .who-btn{margin-left:auto;padding:1px 7px;font-size:9px;color:var(--fg-faint);
+    border:1px solid var(--edge);background:none;cursor:pointer}
+  .cast-row .who-btn:hover{color:var(--amber);border-color:rgba(255,193,77,.6)}
+  .cast-row.me .who-btn{color:var(--amber);border-color:rgba(255,193,77,.7)}
+  .chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{padding:4px 9px;font:inherit;font-size:10px;color:var(--fg-muted);cursor:pointer;
+    background:none;border:1px solid var(--edge);letter-spacing:.03em;
+    clip-path:polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)}
+  .chip:hover{color:var(--fg)}
+  .chip.on{background:rgba(78,168,255,.14);border-color:var(--edge-strong);color:var(--fg)}
+  .cfg-input{width:100%;margin-bottom:7px;padding:8px 10px;font:inherit;font-size:12px;
+    color:var(--fg);background:rgba(10,18,32,.8);border:1px solid var(--edge);outline:none;
+    clip-path:polygon(7px 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%,0 7px)}
+  .cfg-input:focus{border-color:var(--cyan)}
+  .row2{display:flex;align-items:center;gap:8px;margin-top:8px}
+  .row2 input[type=range]{flex:1;accent-color:var(--cyan)}
+  .assign-row{display:flex;align-items:center;gap:8px;padding:3px 2px;font-size:11px}
+  .assign-row .mdl{margin-left:auto;padding:2px 8px;font-size:9.5px;color:var(--cyan);
+    border:1px solid var(--edge);background:none;cursor:pointer;letter-spacing:.03em}
+  .assign-row .mdl:hover{border-color:var(--cyan)}
   .sel{color:var(--fg);font-size:12px}
   .back{margin-top:10px;width:100%;padding:7px 0;font:inherit;font-size:11px;color:var(--fg-muted);
     background:none;border:1px solid var(--edge);cursor:pointer}
@@ -272,16 +295,61 @@
   <div class="hall-extra" id="tuto-open" hidden>▸ Première fois ? <b>Visite guidée — avec Laury</b></div>
   <aside class="hall-config" id="config" hidden>
     <h3>NOUVELLE PARTIE — <b id="cfg-mode">CLASSIQUE</b></h3>
-    <div class="cfg-block"><h4>Casting · sommet mer Rouge</h4><div id="cast-list"></div></div>
-    <div class="cfg-block">
-      <div class="ctl on" id="cfg-fog"><span class="sw"></span> Brouillard de guerre</div>
+    <p class="mini" style="margin:-6px 0 12px">Toutes les options du lobby, rhabillées —
+      rien ne se perd. <span style="color:var(--fg-faint)">(aperçu théâtre : casting de démonstration)</span></p>
+    <div class="cfg-block"><h4>Rôle</h4>
+      <div class="chips" id="role-chips">
+        <button class="chip on" data-role="player">Jouer un pays</button>
+        <button class="chip" data-role="invent">Créer son pays</button>
+        <button class="chip" data-role="gm">Game Master</button>
+        <button class="chip" data-role="sentinel">ONU</button>
+        <button class="chip" data-role="council">Spectateur</button>
+      </div></div>
+    <div class="cfg-block" id="forge-block" hidden><h4>Forge — invente ton pays</h4>
+      <input id="forge-name" class="cfg-input" placeholder="nom du pays" autocomplete="off">
+      <input id="forge-concept" class="cfg-input" placeholder="concept (« thalassocratie neutre »…)" autocomplete="off">
+      <p class="mini">Le modèle forge profil + mandat ; attributs fins et jusqu'à 3 alliances
+        réelles se règlent comme aujourd'hui.</p></div>
+    <div class="cfg-block"><h4>Scénario</h4>
+      <div class="chips" id="scn-chips">
+        <button class="chip on">Mer Rouge</button><button class="chip">Ormuz</button>
+        <button class="chip">Baltique</button></div></div>
+    <div class="cfg-block"><h4>Sommet — <b id="sel-count">7</b>/<span id="sel-cap">7</span>
+        <span class="mini">· roster : 33 pays</span></h4>
+      <p class="mini" style="margin:0 0 6px">Clique les pays <b>sur le globe</b> ou dans la
+        liste. <b>🎮</b> sur un pays retenu : tu l'incarnes.</p>
+      <div class="row2"><span class="mini">Taille du sommet</span>
+        <div class="chips" id="size-chips">
+          <button class="chip">5</button><button class="chip on">7</button>
+          <button class="chip">9</button><button class="chip">12</button></div></div>
+      <div id="cast-list"></div></div>
+    <div class="cfg-block"><h4>Modèles d'IA</h4>
+      <div class="ctl" id="cfg-cast"><span class="sw"></span> Casting multi-modèles</div>
+      <div id="cast-detail" hidden>
+        <div class="chips" style="margin-top:7px" id="dispatch-chips">
+          <button class="chip on" data-d="balanced">Répartition équilibrée</button>
+          <button class="chip" data-d="random">Aléatoire</button>
+          <button class="chip" data-d="manual">Manuelle</button></div>
+        <div id="assign-list"></div>
+      </div>
+      <p class="mini" id="cast-note">Modèle unique : deepseek-r1:7b (raisonnement natif).</p></div>
+    <div class="cfg-block"><h4>Réglages</h4>
+      <div class="ctl" id="cfg-fog"><span class="sw"></span> Brouillard de guerre</div>
+      <div class="ctl" id="cfg-esc"><span class="sw"></span> Réel / escalade</div>
       <div class="ctl on" id="cfg-think"><span class="sw"></span> Pensée à découvert</div>
-    </div>
-    <div class="cfg-block"><h4>Incarner un pays</h4>
-      <p class="mini" style="margin:0 0 8px">Cliquez votre pays <b>directement sur le globe</b> —
-        ou restez spectateur.</p>
-      <div id="play-as" class="sel">👁 Spectateur</div>
-    </div>
+      <div class="ctl on" id="cfg-pulse"><span class="sw"></span> Flux autonome — le monde vit</div>
+      <div class="row2"><span class="mini">Difficulté</span>
+        <div class="chips" id="diff-chips"><button class="chip">Découverte</button>
+          <button class="chip on">Intermédiaire</button><button class="chip">Expert</button></div></div>
+      <div class="row2"><span class="mini">Rounds : <b id="rounds-val">5</b></span>
+        <input type="range" id="rounds" min="3" max="20" value="5"></div>
+      <div class="row2"><span class="mini">Tour humain : <b id="turn-val">90</b> s</span>
+        <input type="range" id="turnsec" min="30" max="300" step="30" value="90"></div></div>
+    <div class="cfg-block"><h4>Table (partie libre)</h4>
+      <div class="chips" id="table-chips"><button class="chip on">Équilibrée</button>
+        <button class="chip">Colombes</button><button class="chip">Faucons</button>
+        <button class="chip">Aléatoire</button></div></div>
+    <div class="cfg-block"><h4>Incarner</h4><div id="play-as" class="sel">👁 Spectateur</div></div>
     <button class="cta" id="launch-btn">⟢ LANCER LA PARTIE</button>
     <button class="back" id="back-btn">← revenir aux modes</button>
   </aside>
@@ -368,6 +436,7 @@ const WORLD_TOPO = {"type":"Topology","objects":{"countries":{"type":"GeometryCo
 <script>
 "use strict";
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let hallState="auth"; let cfg=null; // le hall (états déclarés tôt : la peinture les lit)
 
 /* ============ données de la partie (factices, casting mer Rouge) ============ */
 const SUMMIT = {
@@ -450,6 +519,45 @@ const LAB_SCRIPT=[
    text:"Coopération confirmée de mon côté. Historique : 4/4, aucun écart détecté."},
 ];
 
+/* ============ le roster COMPLET (33 pays de data/countries) ============ */
+/* labels/teintes = web/src/lib/countries.ts · capitales = web/src/lib/stage.ts */
+const ROSTER33={
+  usa:{label:"États-Unis",code:"US",hue:"#60a5fa",iso:"840",cap:[-77.04,38.9]},
+  china:{label:"Chine",code:"CN",hue:"#f87171",iso:"156",cap:[116.4,39.9]},
+  iran:{label:"Iran",code:"IR",hue:"#34d399",iso:"364",cap:[51.39,35.7]},
+  france:{label:"France",code:"FR",hue:"#a78bfa",iso:"250",cap:[2.35,48.86]},
+  egypt:{label:"Égypte",code:"EG",hue:"#fbbf24",iso:"818",cap:[31.24,30.04]},
+  saudi_arabia:{label:"Arabie saoudite",code:"SA",hue:"#2dd4bf",iso:"682",cap:[46.72,24.63]},
+  uk:{label:"Royaume-Uni",code:"UK",hue:"#fb923c",iso:"826",cap:[-0.13,51.51]},
+  japan:{label:"Japon",code:"JP",hue:"#f472b6",iso:"392",cap:[139.69,35.68]},
+  russia:{label:"Russie",code:"RU",hue:"#38bdf8",iso:"643",cap:[37.62,55.75]},
+  germany:{label:"Allemagne",code:"DE",hue:"#a3e635",iso:"276",cap:[13.4,52.52]},
+  spain:{label:"Espagne",code:"ES",hue:"#e879f9",iso:"724",cap:[-3.7,40.42]},
+  italy:{label:"Italie",code:"IT",hue:"#4ade80",iso:"380",cap:[12.5,41.9]},
+  mexico:{label:"Mexique",code:"MX",hue:"#22d3ee",iso:"484",cap:[-99.13,19.43]},
+  brazil:{label:"Brésil",code:"BR",hue:"#fde047",iso:"076",cap:[-47.93,-15.78]},
+  india:{label:"Inde",code:"IN",hue:"#fb7185",iso:"356",cap:[77.21,28.61]},
+  south_africa:{label:"Afrique du Sud",code:"ZA",hue:"#c084fc",iso:"710",cap:[28.19,-25.75]},
+  algeria:{label:"Algérie",code:"DZ",hue:"#22c55e",iso:"012",cap:[3.06,36.75]},
+  argentina:{label:"Argentine",code:"AR",hue:"#67e8f9",iso:"032",cap:[-58.38,-34.6]},
+  australia:{label:"Australie",code:"AU",hue:"#fdba74",iso:"036",cap:[149.13,-35.28]},
+  morocco:{label:"Maroc",code:"MA",hue:"#fca5a5",iso:"504",cap:[-6.85,34.02]},
+  ukraine:{label:"Ukraine",code:"UA",hue:"#facc15",iso:"804",cap:[30.52,50.45]},
+  canada:{label:"Canada",code:"CA",hue:"#f43f5e",iso:"124",cap:[-75.7,45.42]},
+  turkey:{label:"Turquie",code:"TR",hue:"#5eead4",iso:"792",cap:[32.85,39.93]},
+  israel:{label:"Israël",code:"IL",hue:"#818cf8",iso:"376",cap:[35.21,31.78]},
+  south_korea:{label:"Corée du Sud",code:"KR",hue:"#f0abfc",iso:"410",cap:[126.98,37.57]},
+  north_korea:{label:"Corée du Nord",code:"KP",hue:"#ef4444",iso:"408",cap:[125.75,39.03]},
+  pakistan:{label:"Pakistan",code:"PK",hue:"#10b981",iso:"586",cap:[73.05,33.69]},
+  democratic_republic_congo:{label:"Rép. dém. du Congo",code:"CD",hue:"#60a5fa",iso:"180",cap:[15.27,-4.44]},
+  mali:{label:"Mali",code:"ML",hue:"#fbbf24",iso:"466",cap:[-8.0,12.64]},
+  senegal:{label:"Sénégal",code:"SN",hue:"#34d399",iso:"686",cap:[-17.47,14.72]},
+  singapore:{label:"Singapour",code:"SG",hue:"#fb7185",iso:"702",cap:[103.82,1.35]},
+  tunisia:{label:"Tunisie",code:"TN",hue:"#f43f5e",iso:"788",cap:[10.18,36.81]},
+  united_arab_emirates:{label:"Émirats arabes unis",code:"AE",hue:"#2dd4bf",iso:"784",cap:[54.38,24.45]},
+};
+const MODELS=["deepseek-r1:7b","qwen3:4b","mistral:latest"];
+
 /* teinte utopie↔dystopie (le liseré des pays du sommet) */
 function tint(u){
   const t=Math.max(0,Math.min(1,(u-.3)/(0.7-.3)));
@@ -479,6 +587,12 @@ function landColorFor(f){
 const FEATURES = topojson.feature(WORLD_TOPO, WORLD_TOPO.objects.countries).features;
 const BY_ISO = new Map(FEATURES.map(f=>[String(f.id),f]));
 const SUMMIT_FEATS = Object.entries(SUMMIT).map(([slug,m])=>({slug,meta:m,feat:BY_ISO.get(m.iso)}));
+const ROSTER_FEATS = Object.entries(ROSTER33).map(([slug,m])=>({slug,feat:BY_ISO.get(m.iso)}));
+function rosterAt(lonlat){
+  if(!lonlat) return null;
+  for(const r of ROSTER_FEATS) if(r.feat&&d3.geoContains(r.feat,lonlat)) return r.slug;
+  return null;
+}
 const R = 1;
 const FLAT_W = Math.PI*2*R, FLAT_H = Math.PI*R; // dépliage isométrique 2:1
 function toXYZ(lon,lat,r=R){const phi=(90-lat)*Math.PI/180, th=(lon+180)*Math.PI/180;
@@ -514,6 +628,7 @@ function applyAnchors(k){
     obj.quaternion.slerpQuaternions(a.qS,a.qF,k);
   }
 }
+function unanchor(obj){ const i=ANCHORED.indexOf(obj); if(i>=0) ANCHORED.splice(i,1); scene.remove(obj); }
 /* position mixte d'un point sphère-espace quelconque (drone, satellite, faisceaux) */
 function mixPoint(sphereP,k,out){
   out=out||new THREE.Vector3();
@@ -555,6 +670,7 @@ function paintGlobe(speaking){
   }
   for(const {slug,meta,feat} of SUMMIT_FEATS){
     if(!feat) continue;
+    if(hallState==="config") break; // en config : seuls les pays SÉLECTIONNÉS s'allument
     g.beginPath(); gpath(feat);
     if(slug===speaking){
       g.save(); g.shadowColor="rgba(255,193,77,.95)"; g.shadowBlur=48;
@@ -565,6 +681,16 @@ function paintGlobe(speaking){
       g.save(); g.shadowColor=c; g.shadowBlur=22;
       g.strokeStyle=c; g.lineWidth=4.4; g.stroke(); g.restore();
       g.strokeStyle="rgba(255,255,255,.7)"; g.lineWidth=1.2; g.stroke();
+    }
+  }
+  if(hallState==="config"&&cfg){
+    for(const slug of cfg.sel){
+      const meta=ROSTER33[slug]; const f=meta&&BY_ISO.get(meta.iso);
+      if(!f) continue;
+      g.beginPath(); gpath(f);
+      g.save(); g.shadowColor="rgba(255,193,77,.9)"; g.shadowBlur=16;
+      g.strokeStyle="#ffc14d"; g.lineWidth=3; g.stroke(); g.restore();
+      g.strokeStyle="rgba(255,255,255,.8)"; g.lineWidth=1.1; g.stroke();
     }
   }
   if(texture) texture.needsUpdate=true;
@@ -663,6 +789,12 @@ function flagTexture(slug,hue,code){
         g[i?"lineTo":"moveTo"](10+6*Math.cos(a),10+6*Math.sin(a));} g.closePath(); g.fill(); break;
     case "saudi_arabia": g.fillStyle="#3f7d54"; g.fillRect(0,0,48,32);
       g.fillStyle="#f5f5f5"; g.fillRect(8,20,32,3); g.fillRect(8,8,32,6); break;
+    case "onu": g.fillStyle="#4b92db"; g.fillRect(0,0,48,32);
+      g.strokeStyle="#f5f5f5"; g.lineWidth=1;
+      g.beginPath(); g.arc(24,16,7,0,7); g.stroke();
+      g.beginPath(); g.moveTo(17,16); g.lineTo(31,16); g.stroke();
+      g.beginPath(); g.ellipse(24,16,3,7,0,0,7); g.stroke();
+      g.beginPath(); g.arc(24,17,10,Math.PI*0.72,Math.PI*0.28,false); g.stroke(); break;
     default: g.fillStyle=hue; g.fillRect(0,0,48,32);
       g.fillStyle="#0a0f1a"; g.font="bold 13px sans-serif"; g.textAlign="center"; g.fillText(code,24,21);
   }
@@ -1072,7 +1204,7 @@ function setRay(e){
 }
 function pickRobot(e){
   setRay(e);
-  const pool=labMode?labMeshes.concat(summitMeshes):summitMeshes;
+  const pool=(labMode?labMeshes.concat(summitMeshes):summitMeshes).filter(g=>g.visible);
   const hit=ray.intersectObjects(pool,true)[0];
   if(!hit) return null;
   let o=hit.object; while(o&&!o.userData.slug) o=o.parent;
@@ -1098,8 +1230,12 @@ holder.addEventListener("click",e=>{
   if(moved>6) return;
   if(morph.k>.02&&morph.k<.98) return; // pas de picking en plein dépliage
   if(hallState==="auth"||hallState==="menu") return;
+  if(hallState==="config"){
+    const s2=pickRobot(e)||rosterAt(pickLonLat(e));
+    if(s2&&ROSTER33[s2]) toggleSel(s2);
+    return;
+  }
   const slug=pickRobot(e) || countryAt(pickLonLat(e))?.slug;
-  if(hallState==="config"){ if(slug&&SUMMIT[slug]) setPlayAs(slug); return; }
   if(slug) openFiche(slug); else closeFiche();
 });
 const tooltip=document.getElementById("tooltip");
@@ -1107,12 +1243,16 @@ let hoverT=0;
 function hover(e){
   const now=performance.now(); if(now-hoverT<70) return; hoverT=now;
   if(hallState==="auth"||hallState==="menu"){tooltip.style.opacity=0;return;}
-  const slug=pickRobot(e) || countryAt(pickLonLat(e))?.slug;
-  holder.style.cursor=slug?"pointer":dragging?"grabbing":"grab";
-  if(slug){
+  const slug=hallState==="config"
+    ? (pickRobot(e)||rosterAt(pickLonLat(e)))
+    : (pickRobot(e) || countryAt(pickLonLat(e))?.slug);
+  const m0=slug?(META(slug)||ROSTER33[slug]):null;
+  holder.style.cursor=(slug&&m0)?"pointer":dragging?"grabbing":"grab";
+  if(slug&&m0){
+    const m=m0;
     tooltip.textContent=hallState==="config"
-      ? META(slug).label+" — cliquez pour l'incarner"
-      : META(slug).label+" — clic : stats du délégué";
+      ? m.label+(cfg&&cfg.sel.includes(slug)?" — clic : retirer du sommet":" — clic : ajouter au sommet")
+      : m.label+" — clic : stats du délégué";
     tooltip.style.left=e.clientX+"px"; tooltip.style.top=e.clientY+"px"; tooltip.style.opacity=1;}
   else tooltip.style.opacity=0;
 }
@@ -1303,6 +1443,50 @@ function nextSpeaker(){
   });
 }
 
+/* ============ le Pouls du monde — flux d'événements AUTONOME (spec §13) ============ */
+/* Indépendant du Game Master : il frappe les stats des pays JOUÉS (le sommet) et
+   ajoute de l'aléa aux rounds — un délégué peut dévier à cause d'un choc, pas d'une
+   trahison : c'est le sel du doute. */
+const PULSE_EVENTS=[
+  {icon:"🌍",kind:"Séisme majeur",stat:"Stabilité",du:-.05},
+  {icon:"🔥",kind:"Sécheresse & incendies",stat:"Croissance",du:-.04},
+  {icon:"💥",kind:"Cyberattaque d'ampleur",stat:"Techno & Stabilité",du:-.04},
+  {icon:"🦠",kind:"Flambée épidémique",stat:"Stabilité",du:-.04},
+  {icon:"📉",kind:"Krach boursier",stat:"Croissance",du:-.06},
+  {icon:"⛽",kind:"Manne énergétique",stat:"Croissance",du:.05},
+  {icon:"🌾",kind:"Récoltes exceptionnelles",stat:"Croissance",du:.04},
+  {icon:"🔬",kind:"Percée technologique",stat:"Techno",du:.05},
+];
+const ambients=[];
+function ambientPing(lon,lat){
+  const grp=new THREE.Group();
+  const ring=new THREE.Mesh(new THREE.RingGeometry(.014,.02,40),
+    new THREE.MeshBasicMaterial({color:0x59d7ff,transparent:true,opacity:.9,side:THREE.DoubleSide,depthWrite:false}));
+  grp.add(ring);
+  const core=new THREE.Mesh(new THREE.SphereGeometry(.006,10,10),
+    new THREE.MeshBasicMaterial({color:0x9ee7ff,transparent:true}));
+  grp.add(core);
+  anchor(grp,lon,lat,{lift:.004,flatQ:Q_ID});
+  grp.userData.life=0; grp.userData.ring=ring; grp.userData.core=core;
+  ambients.push(grp);
+}
+let pulseIdx=0;
+function worldPulse(){
+  const played=Object.keys(SUMMIT);
+  const c=played[pulseIdx++%played.length];
+  const e=PULSE_EVENTS[Math.floor(Math.random()*PULSE_EVENTS.length)];
+  ambientPing(...CAPITALS[c]);
+  SUMMIT[c].u=Math.max(.2,Math.min(.85,SUMMIT[c].u+e.du));
+  if(!speaking&&!thinking) paintGlobe(null); else paintGlobe(speaking);
+  const sign=e.du>0?"↑":"↓";
+  const el=document.createElement("div"); el.className="msg pulse";
+  el.innerHTML=`<div class="who"><span class="avatar" style="background:#59d7ff">🌐</span>
+    <span class="name">Dépêche — le monde</span><span class="live" style="color:#59d7ff">hors récit</span></div>
+    <div class="txt">${e.icon} ${e.kind} — <b>${SUMMIT[c].label}</b>. ${e.stat} ${sign} · trajectoire ${sign}.
+    <i>Indépendant du Game Master.</i></div>`;
+  feed.appendChild(el); feed.scrollTop=feed.scrollHeight;
+}
+
 /* ============ boucle de rendu ============ */
 const clock=new THREE.Clock();
 function resize(){
@@ -1478,6 +1662,14 @@ function frame(){
   if(arcCurve&&arcPulse){const kk=REDUCED?.5:(t*.55)%1; arcPulse.position.copy(arcCurve.getPointAt(kk));}
   if(labMode) arenaB.scale.setScalar(1+(REDUCED?0:Math.sin(t*2)*.06));
 
+  for(let i=ambients.length-1;i>=0;i--){
+    const a=ambients[i]; a.userData.life+=dt;
+    a.userData.ring.scale.setScalar(1+a.userData.life*2.4);
+    const op=Math.max(0,1-a.userData.life/2.4);
+    a.userData.ring.material.opacity=op*.9; a.userData.core.material.opacity=op;
+    if(a.userData.life>2.4){ unanchor(a); ambients.splice(i,1); }
+  }
+
   // Laury : flotte près de la caméra, va « présenter » la cible de l'étape
   if(laury.g.visible){
     camera.getWorldDirection(TMP);
@@ -1636,37 +1828,132 @@ tutoNext.onclick=()=>{ if(!tutoNext.disabled) stepTuto(); };
 document.getElementById("tuto-skip").onclick=endTuto;
 
 /* ============ le hall — l'avant-jeu vit DANS la même scène ============ */
-let hallState="auth", playAs=null, cfgMode="CLASSIQUE", pickLL=null;
+/* Règle : TOUTES les options du lobby actuel existent ici (spec §9) — rien ne se perd. */
+let cfgMode="CLASSIQUE", pickLL=null;
 const hallEl=document.getElementById("hall");
 const pickGlow=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTexture("rgb(89,215,255)"),
   transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:0}));
 pickGlow.scale.setScalar(.22); scene.add(pickGlow);
+cfg={role:"player",size:7,sel:["usa","china","iran","france","egypt","saudi_arabia","uk"],
+  playAs:null,cast:false,dispatch:"balanced",assign:{},
+  fog:false,esc:false,think:true,pulse:true,diff:"Intermédiaire",rounds:5,turnsec:90,
+  table:"Équilibrée",scn:"Mer Rouge"};
+const capOf=()=>cfg.role==="invent"?cfg.size-1:cfg.size;
+
+/* sièges hors-roster : le pays FORGÉ (plate-forme océanique) et l'ONU (Genève, vraie identité) */
+const OCEAN_SEAT=[-41,32]; // plein Atlantique : le pays inventé n'a pas de capitale réelle
+robots.forge=makeRobot("forge",{hue:"#9ca3af",code:"★"},OCEAN_SEAT);
+robots.forge.group.visible=false; summitMeshes.push(robots.forge.group);
+const ONU_SEAT=[6.9,46.2]; // Genève
+robots.onu=makeRobot("onu",{hue:"#4b92db",code:"UN"},ONU_SEAT);
+robots.onu.group.visible=false; summitMeshes.push(robots.onu.group);
+
+/* robots à la demande pour n'importe lequel des 33 pays du roster */
+function ensureRobot(slug){
+  if(robots[slug]) return robots[slug];
+  const m=ROSTER33[slug];
+  robots[slug]=makeRobot(slug,m,m.cap);
+  robots[slug].group.visible=false;
+  summitMeshes.push(robots[slug].group);
+  return robots[slug];
+}
+/* la carte reflète la sélection : on POSE / RETIRE les délégués en direct */
+function syncRobots(){
+  const shown=new Set(cfg.sel);
+  for(const slug of Object.keys(ROSTER33)){
+    if(shown.has(slug)) ensureRobot(slug).group.visible=true;
+    else if(robots[slug]) robots[slug].group.visible=false;
+  }
+  robots.forge.group.visible = cfg.role==="invent";
+  robots.onu.group.visible   = cfg.role==="sentinel";
+}
 
 function cloneFlag(c){const n=document.createElement("canvas");n.width=c.width;n.height=c.height;
   n.getContext("2d").drawImage(c,0,0);return n;}
+function flagFor(slug){
+  if(!FLAG_CANVAS[slug]){const m=ROSTER33[slug];flagTexture(slug,m.hue,m.code);}
+  return cloneFlag(FLAG_CANVAS[slug]);
+}
 function setPlayAs(slug){
-  playAs=slug; pickLL=CAPITALS[slug];
-  document.getElementById("play-as").innerHTML="🎮 Vous incarnez <b>"+SUMMIT[slug].label+"</b>";
-  document.querySelectorAll(".cast-row").forEach(r=>{
-    r.classList.toggle("me",r.dataset.slug===slug);
-    r.querySelector(".who-tag").textContent=r.dataset.slug===slug?"VOUS":"";
-  });
+  cfg.playAs=slug; pickLL=slug?ROSTER33[slug].cap:null;
+  pickGlow.material.opacity=slug?.9:0;
+  document.getElementById("play-as").innerHTML=slug
+    ?"🎮 Vous incarnez <b>"+ROSTER33[slug].label+"</b>"
+    :(cfg.role==="gm"?"🎲 Game Master — vous écrivez les crises"
+      :cfg.role==="sentinel"?"🕊 Vous jouez l'ONU — vous surveillez le sommet, veillez aux traités et conseillez le Juge"
+      :cfg.role==="invent"?"🏗 Vous incarnerez votre pays forgé — siège océanique neutre"
+      :"👁 Spectateur");
+  renderCast();
+}
+function toggleSel(slug){
+  const i=cfg.sel.indexOf(slug);
+  if(i>=0){ cfg.sel.splice(i,1); if(cfg.playAs===slug) setPlayAs(null); }
+  else if(cfg.sel.length<capOf()) cfg.sel.push(slug);
+  syncSummit();
+}
+function syncSummit(){
+  while(cfg.sel.length>capOf()){ const out=cfg.sel.pop(); if(cfg.playAs===out) setPlayAs(null); }
+  document.getElementById("sel-count").textContent=cfg.sel.length;
+  document.getElementById("sel-cap").textContent=capOf();
+  renderCast(); renderAssign(); syncRobots(); paintGlobe(null);
 }
 function renderCast(){
   const list=document.getElementById("cast-list");
   list.innerHTML="";
-  for(const [slug,m] of Object.entries(SUMMIT)){
-    const row=document.createElement("div"); row.className="cast-row"; row.dataset.slug=slug;
-    row.appendChild(cloneFlag(FLAG_CANVAS[slug]));
+  const rest=Object.keys(ROSTER33).filter(s=>!cfg.sel.includes(s))
+    .sort((x,y)=>ROSTER33[x].label.localeCompare(ROSTER33[y].label,"fr"));
+  for(const slug of [...cfg.sel,...rest]){
+    const m=ROSTER33[slug], inSel=cfg.sel.includes(slug);
+    const row=document.createElement("div");
+    row.className="cast-row"+(inSel?"":" off")+(cfg.playAs===slug?" me":"");
+    row.appendChild(flagFor(slug));
     const name=document.createElement("span"); name.textContent=m.label; row.appendChild(name);
-    const tag=document.createElement("span"); tag.className="who-tag"; row.appendChild(tag);
-    row.onclick=()=>setPlayAs(slug);
+    if(inSel&&(cfg.role==="player")){
+      const btn=document.createElement("button"); btn.className="who-btn";
+      btn.textContent=cfg.playAs===slug?"🎮 VOUS":"🎮";
+      btn.onclick=(ev)=>{ev.stopPropagation();setPlayAs(cfg.playAs===slug?null:slug);};
+      row.appendChild(btn);
+    } else if(inSel){
+      const tag=document.createElement("span"); tag.className="who-tag"; tag.textContent="●";
+      row.appendChild(tag);
+    }
+    row.onclick=()=>toggleSel(slug);
     list.appendChild(row);
   }
 }
+function renderAssign(){
+  const box=document.getElementById("assign-list");
+  if(!cfg.cast||cfg.dispatch!=="manual"){ box.innerHTML=""; return; }
+  box.innerHTML="";
+  for(const slug of cfg.sel){
+    const row=document.createElement("div"); row.className="assign-row";
+    const name=document.createElement("span"); name.textContent=ROSTER33[slug].label;
+    row.appendChild(name);
+    const b=document.createElement("button"); b.className="mdl";
+    b.textContent=cfg.assign[slug]||MODELS[0];
+    b.onclick=()=>{const i=MODELS.indexOf(cfg.assign[slug]||MODELS[0]);
+      cfg.assign[slug]=MODELS[(i+1)%MODELS.length]; b.textContent=cfg.assign[slug];};
+    row.appendChild(b);
+    box.appendChild(row);
+  }
+}
+function castNote(){
+  const el=document.getElementById("cast-note");
+  if(!cfg.cast){el.textContent="Modèle unique : deepseek-r1:7b (raisonnement natif).";return;}
+  el.textContent=cfg.dispatch==="manual"?"Assignation par pays ci-dessus (clic : change le modèle)."
+    :cfg.dispatch==="random"?"Chaque pays tire un modèle au sort parmi : "+MODELS.join(", ")+"."
+    :"Répartition équilibrée entre : "+MODELS.join(", ")+".";
+}
+function wireChips(id,cb){
+  const box=document.getElementById(id);
+  box.querySelectorAll(".chip").forEach(ch=>ch.onclick=()=>{
+    box.querySelectorAll(".chip").forEach(x=>x.classList.toggle("on",x===ch));
+    cb(ch.dataset.role||ch.dataset.d||ch.textContent.trim());
+  });
+}
 const show=(id,on)=>{document.getElementById(id).hidden=!on;};
 function toMenu(){hallState="menu";show("auth-card",false);show("config",false);
-  show("mode-menu",true);show("tuto-open",true);}
+  show("mode-menu",true);show("tuto-open",true);paintGlobe(null);}
 document.getElementById("enter-btn").onclick=toMenu;
 document.getElementById("back-btn").onclick=toMenu;
 document.querySelectorAll(".mode-card").forEach(c=>c.onclick=()=>{
@@ -1676,24 +1963,49 @@ document.querySelectorAll(".mode-card").forEach(c=>c.onclick=()=>{
   cfgMode=mode==="campagne"?"CAMPAGNE · CHAPITRE 1":"CLASSIQUE";
   document.getElementById("cfg-mode").textContent=cfgMode;
   hallState="config"; show("mode-menu",false); show("config",true);
-  flyTo(38,24,2.9,1.2); // cadre le sommet : on choisit son pays sur le globe
+  syncSummit(); setPlayAs(cfg.playAs);
+  flyTo(38,24,3.1,1.2); // cadre le sommet : on compose sa table sur le globe
 });
 document.getElementById("tuto-open").onclick=()=>{
   show("tuto-open",false); show("mode-menu",false);
   launchGame("TUTORIEL — VISITE GUIDÉE",false);
   setTimeout(startTuto,700);
 };
-const cfgFog=toggle("cfg-fog",true), cfgThink=toggle("cfg-think",true);
+wireChips("role-chips",r=>{cfg.role=r;show("forge-block",r==="invent");
+  setPlayAs(null);syncSummit();});
+wireChips("scn-chips",v=>{cfg.scn=v;});
+wireChips("size-chips",v=>{cfg.size=parseInt(v,10);syncSummit();});
+wireChips("dispatch-chips",v=>{cfg.dispatch=v;renderAssign();castNote();});
+wireChips("diff-chips",v=>{cfg.diff=v;});
+wireChips("table-chips",v=>{cfg.table=v;});
+const cfgFog=toggle("cfg-fog",false,v=>cfg.fog=v);
+const cfgEsc=toggle("cfg-esc",false,v=>cfg.esc=v);
+const cfgThink=toggle("cfg-think",true,v=>cfg.think=v);
+toggle("cfg-pulse",true,v=>cfg.pulse=v);
+toggle("cfg-cast",false,v=>{cfg.cast=v;show("cast-detail",v);renderAssign();castNote();});
+document.getElementById("rounds").oninput=e=>{cfg.rounds=+e.target.value;
+  document.getElementById("rounds-val").textContent=cfg.rounds;};
+document.getElementById("turnsec").oninput=e=>{cfg.turnsec=+e.target.value;
+  document.getElementById("turn-val").textContent=cfg.turnsec;};
 function launchGame(label,lab){
   hallState="game"; hallEl.style.display="none";
   document.body.classList.remove("hall");
   autoRotate.set(false);
   pickLL=null; pickGlow.material.opacity=0;
+  paintGlobe(null);
+  const models=!cfg.cast?"deepseek-r1:7b"
+    :cfg.dispatch==="manual"?"casting manuel"
+    :cfg.dispatch==="random"?"casting aléatoire":"casting équilibré";
   const el=document.createElement("div"); el.className="msg gm";
   el.innerHTML=`<div class="who"><span class="avatar" style="background:#59d7ff">▶</span>
     <span class="name">Session</span></div>
-    <div class="txt">${label} — brouillard ${cfgFog.get()?"ON":"OFF"} · pensée à découvert ${cfgThink.get()?"ON":"OFF"} · ${playAs?"vous incarnez "+SUMMIT[playAs].label:"spectateur"}.</div>`;
+    <div class="txt">${label} — ${cfg.scn} · sommet de ${cfg.sel.length} · ${cfg.rounds} rounds · ${models} · brouillard ${cfg.fog?"ON":"OFF"} · escalade ${cfg.esc?"ON":"OFF"} · pensée ${cfg.think?"à découvert":"à huis clos"} · tour humain ${cfg.turnsec} s · ${cfg.playAs?"vous incarnez "+ROSTER33[cfg.playAs].label:cfg.role==="gm"?"Game Master humain":cfg.role==="invent"?"pays forgé : "+(document.getElementById("forge-name").value||"(à nommer)"):"spectateur"}.</div>`;
   feed.appendChild(el); feed.scrollTop=feed.scrollHeight;
+  // la démo joue le casting scripté (le dialogue le connaît) ; on montre ce cast
+  for(const slug of Object.keys(ROSTER33)) if(robots[slug]) robots[slug].group.visible=false;
+  for(const slug of Object.keys(SUMMIT)) robots[slug].group.visible=true;
+  robots.forge.group.visible=false;
+  robots.onu.group.visible = cfg.role==="sentinel"; // l'ONU reste en scène si on la joue
   if(lab){ enterLab(); labToggle.set(true); return; }
   cam.dist=Math.max(cam.dist,4.1); // la plongée du lancement
   setTimeout(startEvent,420);
@@ -1703,10 +2015,11 @@ document.getElementById("launch-btn").onclick=()=>launchGame(cfgMode,false);
 /* ============ boot ============ */
 document.body.classList.add("hall");
 autoRotate.set(true); // le monde tourne doucement derrière le hall
-renderCast();
+syncSummit(); setPlayAs(null);
 renderMarkets();
 MARKETS.forEach(fundStack);
 updateScanBtn();
+setInterval(()=>{ if(hallState==="game"&&!labMode&&cfg.pulse&&!document.hidden&&Math.random()<.72) worldPulse(); }, 8000);
 frame(); // la boucle démarre une fois le hall en place
 
 </script>

@@ -59,6 +59,21 @@
 - [ ] Part **calibration** du score mixte (spec §4 bis : suspicion juste et précoce récompensée,
   faux positif coûteux) + tests.
 
+### C5 — Socle de l'ONU jouable (backend, spec §12)
+- [ ] `agents/organization.py` (`OrgAgent` no-think, remplacé par l'humain si rôle ONU)
+  + `OrgReport` Pydantic (additif) ; **5ᵉ rôle `un`/ONU** dans `GameRole` + score dédié.
+- [ ] Hook de round : avis consultatif **avant** le verdict (borné ±0,05, cité par le Juge),
+  rapport public après (trame SSE `org`) ; persistance `extras`.
+- [ ] Saisine (audit ciblé, coût renseignement) + faillibilité (tromperie sous Brouillard).
+- [ ] Tests MockBackend : conformité, avis borné, résolution, tromperie, rétro-compat.
+
+### C6 — Pouls du monde + instabilité (backend pur, spec §13)
+- [ ] `simulation/world_pulse.py` : flux **autonome déterministe seedé** frappant les stats
+  des pays JOUÉS (deltas bornés, mix chocs/aubaines) — réglage on/off + intensité ; le pays
+  forgé peut être exclu ; le GM le lit en contexte, ne le cause pas.
+- [ ] `simulation/instability.py` : indice par pays depuis `WorldState` + **convergence** de
+  signaux ; zéro réseau. Tests pytest (déterminisme, bornes, summit-only).
+
 ### C4 — Kit UI futuriste — ✅ livré (2026-07-21)
 - [x] `web/src/styles/theatre-kit.css` : tokens + composants (chanfreins, panneaux néon,
   CTA ambre, interrupteurs, onglets, casting, cartes de mode, balayage, scanlines,
@@ -79,36 +94,46 @@
   prototype (shader `uFlat`, ancres lerp/slerp, caméra oblique tactique, plan de picking)
   derrière `stageView` + touche V, point de vue préservé ; StageMap SVG rendue interactive
   (`onCountryClick`, `eventGeo`) **uniquement en repli sans WebGL**.
-  *(fait 2026-07-22, `3fd6077` — vérifié live)*
+  *(fait 2026-07-22, `3fd6077` — morph.ts pur testé ; vérifié live)*
 - [x] **S4** — Layout immersif (spec §4) dans `app/games/[id]/page.tsx` : globe plein théâtre,
   transcript overlay droite **à onglets** (Dialogues · Paris · Renseignement), bandeau
-  événement, contrôles bas-gauche, fiche gauche. *(fait 2026-07-22 — `GlobeTheatre`
-  (composition : la page garde la donnée, le composant le plateau) + `CountryFiche` ;
-  réglage `stageView` persisté (Réglages, clé wosi.stage) ; repli SVG si WebGL absent ou
-  palier léger ; colonne empilée sous la scène en mobile (même DOM, le transcript garde
-  sa ref) ; vérifié live sur une vraie partie)*
-- [ ] **S5** — Branchements réels : bulle de pensée sur `turn.reasoning`/digest selon
+  événement, contrôles bas-gauche, fiche gauche. *(fait 2026-07-22, `70cbbe0` —
+  `GlobeTheatre` + `CountryFiche`, réglage `stageView` persisté (wosi.stage), repli SVG
+  sans WebGL / palier léger, colonne empilée en mobile ; vérifié live sur une partie)*
+- [x] **S5** — Branchements réels : bulle de pensée sur `turn.reasoning`/digest selon
   `expose_thinking` ; fiche sur les données Informations + état de partie ; géoloc via
   `geo_lon`/`geo_lat` (C1) avec repli barycentre côté front en attendant.
-- [ ] **S6** — Perf + accessibilité : mesure tokens/s ON/OFF (protocole §5), réglages,
+  *(fait 2026-07-22, `5a0339d` — bulle holographique streamée, queue 240 chars)*
+- [x] **S6** — Perf + accessibilité : mesure tokens/s ON/OFF (protocole §5), réglages,
   `prefers-reduced-motion`, i18n fr/en, annonces sr-only conservées.
-- [ ] **S7** — Campagne : vérifier que le chapitre hérite du théâtre sans code spécifique.
-- [ ] **S8** — v1.5 « le jeu sur la carte » : piles de billets ← vraies cagnottes
+  *(fait 2026-07-22, `cec56b2` — clés theatre.*/fiche.* fr+en ; protocole de mesure
+  documenté dans `docs/PROTOCOLE_PERF_GLOBE.md`, MESURE LOCALE À FAIRE par Laury
+  avant merge — Ollama chaud requis)*
+- [x] **S7** — Campagne : vérifier que le chapitre hérite du théâtre sans code spécifique.
+  *(vérifié 2026-07-22 — la partie témoin de S4 était un chapitre (sommet-inaugural),
+  même route games/[id], zéro code théâtre spécifique campagne)*
+- [x] **S8** — v1.5 « le jeu sur la carte » : piles de billets ← vraies cagnottes
   (`market_api`) ; satellite ← bureau de renseignement (coût compute, rapports réels).
-- [ ] **S9** — v1.5 renforts gameplay (spec §4 bis) : UI du **carnet de suspicion** (épingles
+  *(fait 2026-07-22, `40da627` — cagnotte réelle = volume du marché de la partie,
+  onglet Paris avec pari rapide, IntelPanel déménagé dans l'onglet Renseignement,
+  achat ciblé → le satellite balaye la capitale)*
+- [x] **S9** — v1.5 renforts gameplay (spec §4 bis) : UI du **carnet de suspicion** (épingles
   sur les robots ; socle C3), **cicatrices du monde** (couche texture ← `RoundSummary`),
   **motion de censure** en séquence de vote illuminée (trames SSE existantes).
+  *(fait 2026-07-22, `2e0ff93` — épingles depuis le carnet existant wosi.suspects
+  (0-2, C3 s'y branchera), cicatrices dérivées des rounds persistés (ΔU + géoloc C1),
+  socles illuminés par bulletin + décompte flottant)*
 - [x] **S10** — **Kit futuriste sur toutes les surfaces** (spec §9) : adopter
   `web/src/styles/theatre-kit.css` (tokens en `@theme` Tailwind et/ou classes telles
   quelles) sur `/`, `/accueil`, `/lobby`, `/campagne`, `/laboratoire`, `/defi`,
   `/reglages`, `/profil`, `/leaderboard`, header, `auth-gate` — texte net, chanfreins,
-  néon discret, a11y intacte. *(fait 2026-07-22, `d9f2deb` — par le système : tokens
-  rebasés + ui.tsx chanfreiné ; nota : le CSS du kit, non-layered, prime sur les
-  utilitaires Tailwind → états sélectionnés en style inline ; vérifié live)*
+  néon discret, a11y intacte. *(fait 2026-07-22, `d9f2deb` — par le système ; nota :
+  le CSS du kit, non-layered, prime sur les utilitaires Tailwind)*
 - [ ] **S11** — **Le hall** (spec §9, prototype comme référence : états
   `auth → menu → config → game`) : GlobeStage monté au **layout** (scène persistante entre
-  routes), connexion/lobby/config convertis en **overlays** ; choix du pays incarné **au
-  clic sur le globe** (halo cyan + badge VOUS) ; lancement = plongée caméra vers le round 1 ;
+  routes), connexion/lobby/config convertis en **overlays** ; **5 rôles dont ONU (siège
+  Genève, vrai drapeau) et pays forgé (siège océanique)** ; **les délégués se posent/retirent
+  du globe au fil de la sélection** ; choix du pays incarné **au clic sur le globe** (halo cyan + badge VOUS) ; lancement = plongée caméra vers le round 1 ;
   repli sans WebGL : mêmes pages sur fond `--thk-bg`.
   **Checklist anti-régression (spec §9 « rien ne se perd ») : chaque option du lobby
   actuel — 4 rôles, sélection 7/33 sur le globe (+ tailles 5-12), forge complète, casting
@@ -122,6 +147,14 @@
 - [ ] **S13** — **Cérémonie de fin + entrées du hall** (spec §11) : fin de partie sur le
   globe (accusé isolé, chute du masque, onde du Juge, score mixte + XP en carte kit) ;
   cartes hall : Défi du jour, Forger un pays (v1.5), casting des modèles (v1.5).
+- [ ] **S14** — **L'ONU au théâtre** (spec §12, socle C5) : délégué ONU à Genève,
+  drones bleus, onde bleue de résolution, rapports dans l'onglet Renseignement + saisine
+  (audit), avis cité dans le délibéré du Juge ; **jouable via le rôle ONU** (pupitre dédié :
+  auditer, résoudre, voter, conseiller).
+- [ ] **S15** — **Pouls du monde + v2 worldmonitor** (spec §13, socle C6) : dépêches
+  autonomes (ping cyan, stats des pays joués, style hors-récit) dès la v1.5 ; puis routes
+  vivantes & reroutage de blocus, halo d'instabilité & alertes de convergence, sanctions
+  hachurées & unités événementielles.
 
 ## Ordre & dépendances
 

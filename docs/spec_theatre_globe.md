@@ -128,6 +128,11 @@ web/src/lib/globe-view.ts  # mapping ÉTAT DE JEU → props scène (pur, vitest)
 | **Motion de censure** | la motion devient une **séquence de vote sur le globe** : chaque délégué s'illumine **vert/rouge** à son tour de vote, décompte flottant au-dessus du banc ; adoption → **cérémonie de suspension** (le liseré du pays s'éteint, cadenas au sol, robot figé gris) | v1.5 |
 | Opérations covert | impact visuel au lieu de l'op (éclair/onde discrète) | v2 |
 | Alliances / promesses | arcs persistants discrets entre alliés ; promesse rompue = arc qui casse | v2 |
+| **L'ONU** (§12, JOUABLE) | délégué ONU (vrai drapeau) à Genève + **drones d'observation bleus**, **onde bleue** de résolution (distincte de l'indigo du Juge), hachures « casques bleus » sur une zone gelée | v1.5 |
+| **Pouls du monde** (§13, flux AUTONOME) | **dépêche hors récit** + ping cyan au lieu du choc, qui **modifie les stats du pays JOUÉ visé** (indépendant du GM) | v1.5 |
+| **Routes vivantes** (§13.1) | flux commerciaux animés le long des corridors ; un blocus **coupe** le flux, le reroutage s'anime par le corridor long, surcoût affiché | v2 |
+| **Instabilité & convergence** (§13.3) | halo d'instabilité par pays + **alerte de convergence** quand les signaux s'alignent | v1.5 |
+| **Sanctions & unités** (§13.4) | pays sanctionné hachuré + flux coupés ; navires/avions événementiels dans le détroit en crise | v2 |
 
 ### Renforts gameplay retenus (2026-07, avec Laury)
 
@@ -244,6 +249,33 @@ visualisées (§4 bis, lignes v2).
      « VOUS » dans la liste — l'onglet Informations version décision).
   4. **Lancement** — les panneaux glissent, la caméra **plonge** de loin vers l'événement
      du round 1, le récap de session (mode, brouillard, pensée, pays) s'inscrit au fil.
+- **RIEN NE SE PERD — l'inventaire verrouillé du lobby** (2026-07-21, à la demande de
+  Laury : « conserver tout notre moteur et toutes nos spécificités »). La config du hall
+  expose **TOUTES** les options du lobby actuel (`web/src/app/lobby/page.tsx`,
+  `web/src/lib/flow.ts`, `CreateGameRequest`) — adaptées au kit, jamais supprimées :
+  - **5 rôles** : Jouer un pays · Créer son pays (forge) · Game Master · **ONU** (jouable,
+    §12) · Spectateur ;
+  - **sélection du sommet sur le globe** (clic pays = ajouter/retirer, liseré doré +
+    compteur) parmi les **33 pays du roster** — **les délégués se POSENT / se RETIRENT du
+    globe en direct au fil de la sélection** (règle Laury : sélectionner un pays fait
+    apparaître son robot, le désélectionner le retire) — 7 pile aujourd'hui (6 + pays forgé pour
+    l'Architecte) ; **nouveau (demande 2026-07-21)** : taille de sommet réglable
+    **5/7/9/12** (défaut 7 recommandé ; l'API accepte jusqu'à 24 — avertir du coût en
+    temps de round sur le pool mono-GPU) ;
+  - **forge de pays complète** : nom, concept, attributs optionnels, ≤ 3 alliances réelles ;
+    le pays forgé n'a pas de capitale réelle → son délégué se pose sur une **plate-forme
+    océanique neutre** (siège en plein Atlantique) au lieu du barycentre du sommet ;
+  - **casting multi-modèles** : activable, modèles du panel de recherche (filtre
+    raisonnement pour les pays), **répartition équilibrée / aléatoire / manuelle** avec
+    assignation par pays ;
+  - **scénario** (`data/scenarios`, défaut mer Rouge) ; **réglages** : Brouillard,
+    Réel/escalade, Pensée à découvert, **difficulté** (découverte/intermédiaire/expert),
+    **rounds 3-20**, **délai du tour humain 30-300 s**, partie **libre** + composition de
+    **table** G17 (équilibrée/colombes/faucons/aléatoire), **langue fr/en**, mode admin ;
+  - incarnation : 🎮 sur un pays retenu (halo cyan sur le globe), ou GM/spectateur.
+  Le prototype démontre ce panneau complet (5 rôles dont ONU à Genève et siège océanique
+  du pays forgé, 33 pays cliquables posant/retirant leur délégué en direct, tailles, casting
+  manuel par pays, curseurs, table, flux autonome togglable) — vérifié headless.
 - **Kit UI futuriste partagé** : tokens + composants extraits du prototype dans
   `web/src/styles/theatre-kit.css` (chanfreins, panneaux néon, CTA ambre, interrupteurs,
   onglets, rangées de casting, cartes de mode, balayage lumineux, scanlines,
@@ -305,3 +337,92 @@ visualisées (§4 bis, lignes v2).
 | Leaderboard / profil / XP-niveaux | kit S10 ; v2 : gain d'XP animé pendant la cérémonie | S10 |
 | Admin (`/admin`, éditeur de crises) | kit minimal (hors théâtre, outil interne) | S10 |
 | Sons | v2 (§8) | — |
+
+## 12. L'ONU — l'organisation de veille, JOUABLE (2026-07-21, idée d'un ami de Laury, retenue)
+
+> Une **8ᵉ super-intelligence, neutre**, siégeant sous les couleurs de l'**ONU (vrai drapeau,
+> pour qu'on voie tout de suite qui l'on incarne)**, mandatée par le concert des nations pour
+> surveiller les autres. Elle ne négocie jamais : elle **observe, vérifie, rapporte** — et
+> peut peser sur le Juge. C'est l'*alignment oversight* rendu jouable : une IA qui surveille
+> des IA, au cœur du thème du projet.
+
+- **Nouveau 5ᵉ rôle au lobby — « ONU » (playable).** Comme « Game Master », c'est un siège
+  d'où l'on ne joue **aucun pays** : le sommet reste 100 % IA, et l'humain tient l'ONU. Son
+  délégué (drapeau ONU) se dresse à Genève ; on la joue en surveillant, auditant, votant.
+  Sinon (autres rôles), l'ONU est **tenue par une IA** (`OrgAgent`, no-think).
+- **But propre (score dédié)** : l'ONU gagne en **gardant le monde debout** ET en **désignant
+  juste** les violations par voie institutionnelle — c'est la traque du traître depuis le
+  fauteuil de l'arbitre. Résolution contre le vrai fautif = points ; accusation à tort = coût.
+  Axe de score distinct du joueur-pays (qui, lui, démasque en négociant).
+
+- **Veille** : chaque round, elle lit le **registre des promesses et traités** (existant :
+  `judge_json["promises"]`, traités du Juge) et les déclarations publiques, puis publie un
+  **rapport de conformité** public (trame SSE `org`) : écarts détectés, pays épinglés.
+- **Résolutions** : écarts répétés → résolution **non contraignante** ; l'ignorer coûte
+  (réputation/tension, via le moteur de conséquences existant), la respecter apaise.
+- **Avis consultatif au Juge** : avant chaque verdict, son avis est injecté dans le prompt
+  du Juge — **influence bornée** (au plus ±0,05 sur sévérité/delta de tension) et **citée
+  dans le délibéré** (« l'ONU relève… ») : le Juge reste souverain, le joueur voit
+  la chaîne d'influence.
+- **Saisine par le joueur** : 1 audit ciblé par round (coût en crédits du bureau de
+  renseignement) → rapport dédié sur un pays : un flux d'indices **meilleur que le marché,
+  moins bon que la vérité**.
+- **Interventions votables** : casques bleus (gel d'escalade localisé un round, coût
+  collectif en compute), inspection sur place (probabilité de révéler une op covert).
+- **FAILLIBLE — le sel détective** : c'est une IA (ou un humain faillible). Le traître peut la tromper (fausses
+  preuves → rapport erroné, probabilité liée au Brouillard). Sa **précision est révélée en
+  fin de partie** (le joueur apprend à calibrer sa confiance dans l'oversight). v2 (Dérive
+  avancée) : l'ONU elle-même peut être compromise.
+- **Sur le globe** : §4 bis — pavillon à Genève (voisin de l'arène du Laboratoire), drones
+  bleus, onde bleue, hachures de gel.
+- **Backend (additif, hors ligne)** : `agents/organization.py` (`OrgAgent`, modèle
+  no-think), `OrgReport` Pydantic, hook **avant le verdict** dans le round (avis) + trame
+  publique après ; persistance via `extras` ; tests MockBackend (conformité, avis borné,
+  tromperie).
+
+## 13. Le Pouls du monde — flux d'événements AUTONOME (worldmonitor, retenu 2026-07-21)
+
+> Source d'inspiration : les *concepts* de worldmonitor (Route Explorer, CII, convergence
+> de signaux, couches d'événements) — **jamais son code (AGPL-3.0)**.
+
+**Le recadrage de Laury (2026-07-21) : ces couches ne décorent pas — elles agissent.** Un
+**flux d'événements autonome**, INDÉPENDANT du Game Master, frappe **uniquement les pays
+JOUÉS (le sommet)** et **modifie leurs stats** (`CountryState`). Cela injecte de l'aléa dans
+les rounds et rend le jeu plus dur et plus poignant : un délégué peut dévier **à cause d'un
+choc, pas d'une trahison** — le joueur doit démêler l'intention du hasard. C'est du bruit
+ajouté au signal de la traque : exactement ce qui fait douter.
+
+- **Moteur** : `simulation/world_pulse.py` — générateur **déterministe seedé** (reproductible,
+  testé, hors ligne). 0-2 dépêches par round, mix de chocs négatifs et d'aubaines, **deltas
+  bornés** (jamais de défaite au dé), télégraphiés. Cible **au hasard un pays du sommet**.
+- **Réglage** : interrupteur **« Flux autonome — le monde vit »** au lobby (défaut ON ;
+  OFF = négociation pure), intensité calme/normal/turbulent (v1.5). Respecte « rien ne se
+  perd » : c'est une option, pas une imposition.
+- **Sur la carte** (§4 bis) : dépêche **hors récit** dans le fil (style distinct du GM),
+  **ping cyan** au lieu du choc, **liseré/fiche du pays mis à jour**. Le GM **lit** ces
+  dépêches comme contexte (il peut les tisser dans sa prochaine crise) mais ne les **cause**
+  pas. **Le pays FORGÉ (Architecte) peut être exclu du flux** (pas grave — décision Laury).
+- Prototype : dépêche « ⛽ Manne énergétique — États-Unis · trajectoire ↑ · indépendant du
+  Game Master », ping cyan, trajectoire du pays joué qui bouge — vérifié headless.
+
+Les quatre couches qui alimentent (ou habillent) ce flux :
+
+1. **Routes vivantes & goulets** *(v2)* — les corridors commerciaux (Suez, Ormuz,
+   Bab el-Mandeb, Malacca… — notre gazetteer les connaît) portent des **flux animés**
+   permanents. Un blocus **coupe** le flux à l'écran ; les navires se **reroutent** par le
+   corridor long ; le **surcoût** s'affiche et nourrit le moteur (croissance/tension des
+   dépendants). L'enjeu de chaque crise de détroit devient tangible d'un coup d'œil.
+2. **Types de chocs** *(v1.5)* — catastrophe (séisme, sécheresse, inondation), choc
+   économique (krach, flambée), cyber, épidémie, sociale, **aubaine** (manne énergétique,
+   récoltes, percée techno). Chacun porte un delta de stat signé, borné.
+3. **Instabilité & convergence d'alertes** *(v1.5)* — un **indice d'instabilité par pays**
+   (façon CII : tensions, économie, stabilité, promesses rompues — tout existe dans
+   `WorldState`) affiché en fiche (sparkline) et en halo discret sur la carte ; quand
+   plusieurs familles de signaux **convergent** sur un pays, une **alerte** s'allume — la
+   surface diégétique de l'instrumentation M1-M7, et un aimant à crises pour le GM.
+   Backend pur : `simulation/instability.py`, testé hors ligne.
+4. **Sanctions & unités visibles** *(v2)* — la sanction devient une **action formelle**
+   avec présence carte (pays hachuré, flux financiers coupés — synergie avec 13.1) ;
+   pendant une crise navale, des **unités événementielles** (navires, avions) apparaissent
+   dans le détroit concerné : le théâtre montre les forces en présence.
+
