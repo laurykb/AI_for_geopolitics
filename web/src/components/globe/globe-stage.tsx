@@ -24,6 +24,7 @@ import * as THREE from "three";
 import { feature } from "topojson-client";
 import type { GeometryCollection, Topology } from "topojson-specification";
 
+import { useT } from "@/components/settings-provider";
 import { speakerMeta } from "@/lib/countries";
 import type { EventGeo } from "@/lib/globe-view";
 import { CAPITALS, prefersReducedMotion } from "@/lib/stage";
@@ -168,12 +169,17 @@ export function GlobeStage(props: GlobeStageProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const propsRef = useRef(props);
   const handleRef = useRef<GlobeHandle | null>(null);
+  // i18n (S6) : la scène construit ses libellés hors rendu (verdict, tooltip) —
+  // la traduction passe par une ref, comme les props.
+  const t = useT();
+  const tRef = useRef(t);
 
   // La boucle three et les handlers lisent toujours les DERNIÈRES props via la
   // ref, synchronisée hors rendu (règle react-hooks/refs). Déclaré en premier :
   // les effets suivants la trouvent à jour.
   useEffect(() => {
     propsRef.current = props;
+    tRef.current = t;
   });
 
   // Signatures stables : ne toucher la scène QUE quand l'état change vraiment.
@@ -578,7 +584,7 @@ export function GlobeStage(props: GlobeStageProps) {
     // de la mêlée ».
     const verdict = () => {
       judgeMode = { mode: "verdict", t: 0 };
-      judgeTag.textContent = "⚖ Le Juge délibère";
+      judgeTag.textContent = tRef.current("theatre.juge-delibere");
       if (!reduced) {
         const w = makeVerdictWave();
         scene.add(w);
@@ -704,7 +710,7 @@ export function GlobeStage(props: GlobeStageProps) {
       renderer.domElement.style.cursor = slug ? "pointer" : "grab";
       if (slug) {
         const r = host.getBoundingClientRect();
-        tooltip.textContent = `${speakerMeta(slug).label} — clic : fiche du délégué`;
+        tooltip.textContent = `${speakerMeta(slug).label} — ${tRef.current("theatre.tooltip-fiche")}`;
         tooltip.style.left = `${e.clientX - r.left}px`;
         tooltip.style.top = `${e.clientY - r.top}px`;
         tooltip.style.opacity = "1";
@@ -972,7 +978,7 @@ export function GlobeStage(props: GlobeStageProps) {
     <div
       ref={hostRef}
       role="img"
-      aria-label="Théâtre du sommet — planète interactive (décorative pour lecteurs d'écran)"
+      aria-label={t("theatre.aria-globe")}
       className={props.className ?? "relative h-full w-full overflow-hidden"}
       style={{ position: "relative", overflow: "hidden", touchAction: "none" }}
     />

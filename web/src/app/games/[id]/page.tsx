@@ -597,7 +597,7 @@ export default function TheatrePage() {
   const thinkingText = globeView.thinking
     ? detail?.expose_thinking && activeTurn?.reasoning
       ? `…${activeTurn.reasoning.replace(/<\/?think>/g, "").slice(-240)}`
-      : "réfléchit à huis clos…"
+      : t("theatre.huis-clos")
     : undefined;
 
   // Les avis persistants (motion, suspensions, campagne, dérive) s'empilaient au-dessus
@@ -1223,21 +1223,13 @@ export default function TheatrePage() {
                 </span>
               </p>
             )}
-            <p className="text-xs text-fg-faint">
-              Les paris éclair s&apos;ouvrent sur la scène pendant le round ; le marché de la
-              partie (utopie ou dystopie ?) vit sur sa page dédiée.
-            </p>
+            <p className="text-xs text-fg-faint">{t("theatre.paris-note")}</p>
             <Link href={`/games/${id}/marche`} className="thk-ghost inline-block">
-              💹 Ouvrir le marché de la partie
+              {t("theatre.paris-marche")}
             </Link>
           </div>
         }
-        renseignement={
-          <p className="text-xs text-fg-faint">
-            Le bureau de renseignement vit dans la salle des observables, sous le théâtre —
-            ses rapports rejoindront cet onglet avec le satellite (v1.5).
-          </p>
-        }
+        renseignement={<p className="text-xs text-fg-faint">{t("theatre.rens-note")}</p>}
         dock={
         <ActionDock
           phase={phase}

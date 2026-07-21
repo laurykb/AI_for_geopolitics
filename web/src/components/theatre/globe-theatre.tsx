@@ -15,6 +15,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState, type ReactNode } from "react";
 
+import { useT } from "@/components/settings-provider";
 import { StageMap, type StageMapProps } from "@/components/stage-map";
 import { fmt } from "@/lib/format";
 import type { GlobeView } from "@/lib/globe-view";
@@ -26,13 +27,9 @@ const GlobeStage = dynamic(
   { ssr: false },
 );
 
-const TABS = [
-  { id: "dialogues", label: "Dialogues" },
-  { id: "paris", label: "Paris" },
-  { id: "renseignement", label: "Renseignement" },
-] as const;
+const TABS = ["dialogues", "paris", "renseignement"] as const;
 
-type TabId = (typeof TABS)[number]["id"];
+type TabId = (typeof TABS)[number];
 
 export type GlobeTheatreProps = {
   /** Vue dérivée du round (deriveGlobeView) — la même pour 3D et repli SVG. */
@@ -79,6 +76,7 @@ export function GlobeTheatre({
   overlay,
   fallback = {},
 }: GlobeTheatreProps) {
+  const t = useT();
   const [tab, setTab] = useState<TabId>("dialogues");
   const [webglOk, setWebglOk] = useState(true);
   const [follow, setFollow] = useState(true);
@@ -97,7 +95,7 @@ export function GlobeTheatre({
   const toggleView = () => onStageViewChange(stageView === "3d" ? "2d" : "3d");
 
   return (
-    <section className="relative space-y-3" data-tour="scene" aria-label="Théâtre du sommet">
+    <section className="relative space-y-3" data-tour="scene" aria-label={t("theatre.aria-scene")}>
       {/* --- le plateau ---------------------------------------------------------- */}
       <div className="relative h-[48vh] min-h-[360px] overflow-hidden border border-edge bg-[#04060c] md:h-[76vh] md:max-h-[860px]">
         {use3D ? (
@@ -162,7 +160,7 @@ export function GlobeTheatre({
               <button
                 type="button"
                 onClick={onFicheClose}
-                aria-label="Fermer la fiche"
+                aria-label={t("theatre.fiche-fermer")}
                 className="thk-ghost absolute right-2 top-2 px-2 py-0.5"
               >
                 ✕
@@ -182,11 +180,11 @@ export function GlobeTheatre({
             className={`thk-switch ${follow ? "on" : ""}`}
           >
             <span className="sw" aria-hidden />
-            suivre l&apos;orateur
+            {t("theatre.suivre")}
           </button>
           {use3D && (
-            <button type="button" onClick={toggleView} className="thk-tab on" title="touche V">
-              {stageView === "3d" ? "🗺 carte (V)" : "🌍 globe (V)"}
+            <button type="button" onClick={toggleView} className="thk-tab on" title="V">
+              {stageView === "3d" ? t("theatre.vue-carte") : t("theatre.vue-globe")}
             </button>
           )}
           <span className="flex items-center gap-1.5 border border-edge bg-surface/70 px-2 py-1 text-[11px] text-fg-faint backdrop-blur">
@@ -198,7 +196,7 @@ export function GlobeTheatre({
               }}
             />
             <span className="font-mono tabular-nums" style={{ color: uTint(utopia) }}>
-              Monde : {fmt(utopia)}
+              {t("theatre.monde")} : {fmt(utopia)}
             </span>
           </span>
         </div>
@@ -206,17 +204,17 @@ export function GlobeTheatre({
 
       {/* --- la colonne du théâtre : overlay à droite (md+), empilée en mobile --- */}
       <div className="z-10 flex flex-col gap-2 md:absolute md:inset-y-3 md:right-6 md:w-[380px] md:max-w-[44%]">
-        <div className="flex gap-1" role="tablist" aria-label="Colonne du théâtre">
-          {TABS.map((t) => (
+        <div className="flex gap-1" role="tablist" aria-label={t("theatre.colonne")}>
+          {TABS.map((id) => (
             <button
-              key={t.id}
+              key={id}
               type="button"
               role="tab"
-              aria-selected={tab === t.id}
-              onClick={() => setTab(t.id)}
-              className={`thk-tab ${tab === t.id ? "on" : ""}`}
+              aria-selected={tab === id}
+              onClick={() => setTab(id)}
+              className={`thk-tab ${tab === id ? "on" : ""}`}
             >
-              {t.label}
+              {t(`theatre.tab.${id}`)}
             </button>
           ))}
         </div>

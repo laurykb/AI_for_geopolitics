@@ -7,6 +7,7 @@
  * requête supplémentaire. */
 
 import type { CountrySnapshot } from "@/components/country-table";
+import { useT } from "@/components/settings-provider";
 import { speakerMeta } from "@/lib/countries";
 import { fmt } from "@/lib/format";
 import { uTint } from "@/lib/stage";
@@ -37,12 +38,13 @@ export function CountryFiche({
   misledBy,
   promises = [],
 }: CountryFicheProps) {
+  const t = useT();
   const meta = speakerMeta(slug);
   const attrs: { label: string; value: number | undefined }[] = [
-    { label: "Croissance", value: snapshot?.economy?.growth },
-    { label: "Stabilité", value: snapshot?.political_stability },
-    { label: "Technologie", value: snapshot?.technology_level },
-    { label: "Projection", value: snapshot?.military?.projection },
+    { label: t("fiche.croissance"), value: snapshot?.economy?.growth },
+    { label: t("fiche.stabilite"), value: snapshot?.political_stability },
+    { label: t("fiche.technologie"), value: snapshot?.technology_level },
+    { label: t("fiche.projection"), value: snapshot?.military?.projection },
   ];
 
   return (
@@ -66,27 +68,25 @@ export function CountryFiche({
           </p>
           <p className="text-xs text-fg-faint">
             {snapshot?.temperament
-              ? `tempérament affiché : ${snapshot.temperament}`
-              : "délégué du sommet"}
+              ? `${t("fiche.temperament")} : ${snapshot.temperament}`
+              : t("fiche.delegue")}
           </p>
         </div>
       </header>
 
       <p className="flex items-baseline justify-between border-y border-edge py-2 text-xs text-fg-muted">
-        <span>Trajectoire locale</span>
+        <span>{t("fiche.trajectoire")}</span>
         <span className="font-mono text-sm tabular-nums" style={{ color: uTint(uLocal) }}>
           {fmt(uLocal)}
         </span>
       </p>
 
       {suspended && (
-        <p className="border border-bad/40 px-2 py-1.5 text-xs text-bad">
-          Suspendu ce round — au banc du sommet.
-        </p>
+        <p className="border border-bad/40 px-2 py-1.5 text-xs text-bad">{t("fiche.suspendu")}</p>
       )}
       {misledBy && (
         <p className="border border-edge px-2 py-1.5 text-xs text-fg-muted">
-          🌫 Trompé : « {misledBy} »
+          🌫 {t("fiche.trompe")} : « {misledBy} »
         </p>
       )}
 
@@ -98,7 +98,7 @@ export function CountryFiche({
           ))}
         {snapshot?.compute != null && (
           <p className="flex items-baseline justify-between text-xs text-fg-muted">
-            <span>Compute</span>
+            <span>{t("fiche.compute")}</span>
             <span className="font-mono tabular-nums">{Math.round(snapshot.compute)}</span>
           </p>
         )}
@@ -107,7 +107,7 @@ export function CountryFiche({
       {promises.length > 0 && (
         <div>
           <p className="mb-1.5 text-[11px] uppercase tracking-[0.12em] text-fg-faint">
-            Promesses en cours
+            {t("fiche.promesses")}
           </p>
           <ul className="space-y-1.5">
             {promises.slice(0, 4).map((p) => (
