@@ -9,11 +9,14 @@ import { Hint } from "./hint";
 // Ré-exportée ici : tous les call sites importent la bulle d'aide depuis le kit.
 export { Hint };
 
-/** Habillage partagé des champs de saisie (bordure, fond, focus indigo). Recopié à
- * l'identique sur neuf `<input>`/`<select>` du théâtre — factorisé ici pour que tous
- * les champs vibrent pareil. `SelectField` ajoute juste le curseur pointeur. */
+/** Habillage partagé des champs de saisie (kit théâtre S10 : champ carré, arête
+ * néon, focus cyan lumineux). Recopié à l'identique sur neuf `<input>`/`<select>`
+ * du théâtre — factorisé ici pour que tous les champs vibrent pareil.
+ * `SelectField` ajoute juste le curseur pointeur. */
 const FIELD_BASE =
-  "rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo";
+  "rounded-none border border-edge bg-surface-2/80 px-3 py-2 text-sm outline-none " +
+  "transition-[border-color,box-shadow] focus:border-cyan " +
+  "focus:shadow-[0_0_14px_-4px_rgba(89,215,255,0.6)]";
 
 /** `<input>` du kit : toutes les props natives passent, la classe de base se compose
  * avec un éventuel `className` (largeur, flex…) fourni par l'appelant. */
@@ -52,21 +55,19 @@ export function Eyebrow({
 }) {
   return (
     <p className={`text-[11px] font-medium uppercase tracking-[0.14em] text-fg-faint ${className}`}>
+      <span aria-hidden className="text-cyan">
+        ▮{" "}
+      </span>
       {children}
     </p>
   );
 }
 
 export function Panel({ children, className = "" }: { children: ReactNode; className?: string }) {
-  // Verre spatial : surface translucide + flou d'arrière-plan (le ciel étoilé transparaît),
-  // liseré clair en haut (lumière rasante) + ombre douce pour l'élévation.
-  return (
-    <section
-      className={`rounded-xl border border-edge bg-surface/70 p-5 shadow-[inset_0_1px_0_0_rgba(248,250,252,0.06),0_12px_36px_-20px_rgba(0,0,0,0.85)] backdrop-blur-md ${className}`}
-    >
-      {children}
-    </section>
-  );
+  // Panneau de verre CHANFREINÉ du kit théâtre (S10) : fond bleuté translucide,
+  // arête néon, lueur cyan interne (le clip-path couperait une ombre externe —
+  // le kit n'utilise que des lueurs internes, exprès).
+  return <section className={`thk-panel thk-cut p-5 ${className}`}>{children}</section>;
 }
 
 /** Titre de panneau : surtitre discret + intitulé + bulle d'aide (jargon masqué). */
@@ -198,7 +199,7 @@ export function Banner({
   return (
     <div
       role="status"
-      className={`rounded-lg border border-l-[3px] ${border} ${edge} bg-surface-2 px-4 py-3 text-sm text-fg-muted`}
+      className={`rounded-none border border-l-[3px] ${border} ${edge} bg-surface-2/80 px-4 py-3 text-sm text-fg-muted`}
     >
       {children}
     </div>
@@ -250,12 +251,12 @@ export function Switch({
         disabled={disabled}
         onClick={() => onChange(!checked)}
         className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors ${
-          checked ? "bg-accent" : "bg-surface-2"
+          checked ? "bg-[rgba(78,168,255,0.45)]" : "bg-surface-2"
         } ${disabled ? "cursor-not-allowed" : ""}`}
       >
         <span
-          className={`absolute top-0.5 h-4 w-4 rounded-full bg-background transition-transform ${
-            checked ? "left-0.5 translate-x-4" : "left-0.5"
+          className={`absolute top-0.5 h-4 w-4 rounded-full transition-transform ${
+            checked ? "left-0.5 translate-x-4 bg-foreground" : "left-0.5 bg-fg-faint"
           }`}
         />
       </button>
@@ -352,7 +353,7 @@ export function ConfirmDialog({
         className="absolute inset-0 cursor-default bg-background/80 backdrop-blur-sm"
         tabIndex={-1}
       />
-      <div className="relative w-full max-w-sm rounded-xl border border-edge bg-surface p-5 shadow-[inset_0_1px_0_0_rgba(248,250,252,0.06),0_24px_64px_-24px_rgba(0,0,0,0.9)]">
+      <div className="thk-panel--strong thk-panel thk-cut relative w-full max-w-sm bg-surface p-5">
         <h2 className="text-sm font-semibold text-foreground">{title}</h2>
         <div className="mt-2 text-sm text-fg-muted">{message}</div>
         <div className="mt-5 flex justify-end gap-2">

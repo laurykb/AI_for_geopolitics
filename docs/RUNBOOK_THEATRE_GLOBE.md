@@ -66,25 +66,18 @@
 
 ## Étapes Claude Code
 
-- [x] **S0** — Lire la spec, ouvrir le prototype dans un navigateur. `npm i three @types/three`
-  (web/). Commit `chore`. *(fait 2026-07-21 — three ^0.185)*
-- [x] **S1** — `GlobeStage` client-only (`dynamic(() => …, {ssr:false})`) : globe + **texture
+- [ ] **S0** — Lire la spec, ouvrir le prototype dans un navigateur. `npm i three @types/three`
+  (web/). Commit `chore`.
+- [ ] **S1** — `GlobeStage` client-only (`dynamic(() => …, {ssr:false})`) : globe + **texture
   canvas peinte** (palette planète futuriste, spec §1) + caméra orbitale (drag/molette/fly-to)
   + picking pays. Parité visuelle avec le prototype, **sans robots d'abord**.
-  *(fait 2026-07-21 — modules purs `texture.ts`/`camera.ts`/`picking.ts` testés vitest ;
-  atelier `/dev/globe` hors navigation pour itérer ; vérifié live)*
-- [x] **S2** — Délégués humanoïdes + drone GM + entité Juge + arcs + anneau d'événement :
+- [ ] **S2** — Délégués humanoïdes + drone GM + entité Juge + arcs + anneau d'événement :
   transposer le prototype dans les modules de la spec §2 (`texture.ts`, `robots.ts`,
-  `camera.ts`, `picking.ts`…). *(fait 2026-07-21 — `robots.ts` testé en node sans WebGL ;
-  drapeaux C2 au torse ; humeurs pense/parle/suspendu/fog ; vérifié live)*
-- [x] **S3** — **Le dépliage 2D⇄3D** (full-three, spec §5) : morph sphère⇄plan transposé du
+  `camera.ts`, `picking.ts`…).
+- [ ] **S3** — **Le dépliage 2D⇄3D** (full-three, spec §5) : morph sphère⇄plan transposé du
   prototype (shader `uFlat`, ancres lerp/slerp, caméra oblique tactique, plan de picking)
   derrière `stageView` + touche V, point de vue préservé ; StageMap SVG rendue interactive
   (`onCountryClick`, `eventGeo`) **uniquement en repli sans WebGL**.
-  *(fait 2026-07-22 — `morph.ts` pur testé vitest (ancres, mixPoint/mixTop, caméra plate,
-  arc morphé, bascule aller-retour) ; `GlobeStage` porte la prop `view` + `onViewToggle`
-  (touche V, le réglage `stageView` viendra avec l'hôte en S4) ; vérifié live : dépliage,
-  clic pays à plat via le plan de picking, repliage avec point de vue préservé)*
 - [ ] **S4** — Layout immersif (spec §4) dans `app/games/[id]/page.tsx` : globe plein théâtre,
   transcript overlay droite **à onglets** (Dialogues · Paris · Renseignement), bandeau
   événement, contrôles bas-gauche, fiche gauche.
@@ -109,6 +102,13 @@
   routes), connexion/lobby/config convertis en **overlays** ; choix du pays incarné **au
   clic sur le globe** (halo cyan + badge VOUS) ; lancement = plongée caméra vers le round 1 ;
   repli sans WebGL : mêmes pages sur fond `--thk-bg`.
+- [ ] **S12** — **Laury en 3D + tutoriel immersif** (spec §10, prototype comme référence) :
+  `mascot.ts` (chibi fidèle au SVG maître, contour-coques, petit monde = texture du théâtre),
+  compagnon caméra + présentation des cibles ; la visite guidée à portes rebranchée sur les
+  jalons de `tutorial-events.ts` ; entrée « Première fois ? » au hall.
+- [ ] **S13** — **Cérémonie de fin + entrées du hall** (spec §11) : fin de partie sur le
+  globe (accusé isolé, chute du masque, onde du Juge, score mixte + XP en carte kit) ;
+  cartes hall : Défi du jour, Forger un pays (v1.5), casting des modèles (v1.5).
 
 ## Ordre & dépendances
 
@@ -119,6 +119,7 @@
   épingles peut venir avant).
 - S10 (kit, surfaces existantes) peut démarrer dès maintenant — indépendant du globe.
   S11 (hall) vient après S1-S3 (il réutilise la scène et le morph).
+- S12 (mascotte/tutoriel) vient après S2 ; S13 (cérémonie, hall enrichi) après S11.
 
 ## Definition of done (v1)
 

@@ -186,7 +186,7 @@ export default function CampagnePage() {
                 type="button"
                 onClick={() => void play(chapter, effective)}
                 disabled={busy !== null || castModels.length < 2}
-                className="rounded-md bg-accent px-5 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:opacity-45"
+                className="thk-cta thk-cut-sm px-5 font-semibold"
               >
                 {busy === chapter.id ? "Lancement…" : "Entrer dans le théâtre"}
               </button>
@@ -308,7 +308,7 @@ function ChapterCard({
           <button
             onClick={onPlay}
             disabled={!playable || disabled}
-            className="cursor-pointer rounded-md bg-accent px-4 py-1.5 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-40"
+            className="thk-cta thk-cut-sm px-4 py-1.5 font-semibold"
           >
             {busy ? "…" : configureCast ? "Configurer les IA" : "Jouer"}
           </button>

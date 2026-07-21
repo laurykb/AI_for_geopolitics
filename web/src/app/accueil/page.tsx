@@ -125,7 +125,7 @@ export default function AccueilPage() {
             onClick={() => launch("/lobby")}
             disabled={launching}
             data-tour="demarrer"
-            className="cursor-pointer rounded-full bg-accent px-8 py-3.5 text-base font-semibold text-background shadow-[0_0_32px_rgba(202,138,4,0.35)] transition-all hover:bg-accent-bright hover:shadow-[0_0_48px_rgba(234,179,8,0.45)] disabled:cursor-default disabled:opacity-60"
+            className="thk-cta thk-cut-sm px-8 text-base font-semibold"
           >
             {t("accueil.demarrer")}
           </button>
@@ -186,7 +186,7 @@ export default function AccueilPage() {
               <button
                 onClick={() => playDaily(false)}
                 disabled={dailyBusy || launching || !daily}
-                className="flex cursor-pointer items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
+                className="thk-cta thk-cut-sm flex items-center gap-2 font-semibold"
               >
                 {dailyBusy && <Spinner />}
                 {dailyBusy ? t("daily.lancement") : t("daily.jouer")}

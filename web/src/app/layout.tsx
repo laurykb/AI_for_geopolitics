@@ -29,6 +29,8 @@ export default function RootLayout({
           <span className="shooting-star ss2" />
           <span className="shooting-star ss3" />
         </div>
+        {/* Voile scanlines du kit théâtre (S10) — décoratif, coupé en perf légère. */}
+        <div className="thk-scanlines" aria-hidden="true" />
         <AuthProvider>
           <SettingsProvider>
           <TourProvider>

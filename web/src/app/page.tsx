@@ -85,7 +85,7 @@ export default function ConnexionPage() {
           type="button"
           onClick={playAsGuest}
           disabled={busy || launching}
-          className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-accent px-5 py-3.5 text-base font-semibold text-background shadow-[0_0_36px_rgba(202,138,4,0.28)] transition-all hover:bg-accent-bright hover:shadow-[0_0_48px_rgba(234,179,8,0.38)] disabled:cursor-not-allowed disabled:opacity-50"
+          className="thk-cta thk-cut-sm flex w-full items-center justify-center gap-2 text-base font-semibold"
         >
           {busy && <Spinner />}
           Jouer maintenant — sans compte
@@ -102,10 +102,7 @@ export default function ConnexionPage() {
         <span className="h-px flex-1 bg-edge" />
       </div>
 
-      <form
-        onSubmit={submit}
-        className="w-full max-w-sm space-y-3 rounded-xl border border-edge bg-surface p-5 text-left shadow-[inset_0_1px_0_0_rgba(248,250,252,0.04),0_12px_32px_-20px_rgba(0,0,0,0.8)]"
-      >
+      <form onSubmit={submit} className="thk-panel thk-cut w-full max-w-sm space-y-3 p-5 text-left">
         {/* Bascule connexion / création */}
         <div className="mb-1">
           <Segmented
@@ -129,7 +126,7 @@ export default function ConnexionPage() {
             onChange={(e) => setPseudo(e.target.value)}
             autoComplete="username"
             placeholder={t("login.pseudo-ph")}
-            className="w-full rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+            className="thk-input text-sm"
             required
           />
         </label>
@@ -140,7 +137,7 @@ export default function ConnexionPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete={mode === "signin" ? "current-password" : "new-password"}
-            className="w-full rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm outline-none transition-colors focus:border-indigo"
+            className="thk-input text-sm"
             required
           />
         </label>
@@ -150,7 +147,7 @@ export default function ConnexionPage() {
         <button
           type="submit"
           disabled={busy}
-          className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
+          className="thk-cta thk-cut-sm flex w-full items-center justify-center gap-2 text-sm font-semibold"
         >
           {busy && <Spinner />}
           {mode === "signin" ? "Se connecter" : "Créer mon compte"}

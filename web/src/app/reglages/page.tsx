@@ -194,7 +194,7 @@ function PasswordForm({ t }: { t: (key: string) => string }) {
       <button
         type="submit"
         disabled={busy || !oldPw || !newPw || !confirmPw}
-        className="flex cursor-pointer items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
+        className="thk-cta thk-cut-sm flex items-center gap-2 font-semibold"
       >
         {busy && <Spinner />}
         {t("reglages.mdp-bouton")}

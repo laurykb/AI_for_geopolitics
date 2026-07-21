@@ -458,15 +458,12 @@ function LobbyFlow() {
         <button
           onClick={onBack}
           disabled={step === "mode"}
-          className="rounded-md border border-edge px-4 py-2 text-sm text-fg-muted transition-colors hover:border-edge-strong hover:text-foreground disabled:opacity-40"
+          className="thk-ghost disabled:cursor-not-allowed disabled:opacity-40"
         >
           {t("lobby.retour")}
         </button>
         {step !== "pays" ? (
-          <button
-            onClick={onNext}
-            className="rounded-md bg-accent px-6 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright"
-          >
+          <button onClick={onNext} className="thk-cta thk-cut-sm font-semibold">
             {step === "mode" && destination
               ? baseMode === "campaign"
                 ? t("lobby.chapitre")
@@ -483,7 +480,7 @@ function LobbyFlow() {
             <button
               onClick={onLaunch}
               disabled={!launchable || creating}
-              className="flex items-center gap-2 rounded-md bg-accent px-6 py-2 text-sm font-semibold text-background transition-colors hover:bg-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
+              className="thk-cta thk-cut-sm flex items-center gap-2 font-semibold"
             >
               {creating && <Spinner />}
               {creating ? t("lobby.lancement") : t("lobby.jouer")}
@@ -526,20 +523,24 @@ function ModeStep({
     <div className="space-y-6">
       <div className="grid gap-3 md:grid-cols-3" data-tour="modes">
         {FLOW_MODES.map((m) => (
+          // Carte de mode du kit (lévite + néon au survol) ; l'état choisi passe
+          // en style inline : le CSS du kit (non-layered) prime sur les utilitaires.
           <button
             key={m.value}
             onClick={() => setBaseMode(m.value)}
-            className={`rounded-lg border p-4 text-left transition-colors ${
+            className="thk-mode-card thk-cut text-left"
+            style={
               baseMode === m.value
-                ? "border-accent-bright bg-surface-2"
-                : "border-edge hover:border-edge-strong"
-            }`}
+                ? {
+                    borderColor: "var(--thk-amber)",
+                    boxShadow: "inset 0 0 24px -10px rgba(255, 193, 77, 0.45)",
+                  }
+                : undefined
+            }
           >
-            <p
-              className={`text-sm font-semibold ${baseMode === m.value ? "text-accent-bright" : "text-foreground"}`}
-            >
+            <h3 style={baseMode === m.value ? { color: "var(--thk-amber)" } : undefined}>
               {t(`lobby.mode.${m.value}.titre`)}
-            </p>
+            </h3>
             <p className="mt-1 text-xs text-fg-muted">{t(`lobby.mode.${m.value}.blurb`)}</p>
             <p className="mt-2 text-xs text-fg-faint">
               {t("lobby.apprend-prefixe")} {t(`lobby.mode.${m.value}.apprend`)}
