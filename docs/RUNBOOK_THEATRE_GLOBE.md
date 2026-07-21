@@ -13,6 +13,9 @@
   La seule référence de code est notre prototype maison.
 - Une seule dépendance front nouvelle : **`three`** (+ `@types/three`). Rien d'autre.
 - **Aucune animation pilotée par `setState` React** : tout vit dans la boucle three / canvas.
+- **Full-three** (décision 2026-07-21) : une seule scène pour les deux vues (le 2D = monde
+  déplié). Texte en DOM (transcript, fiche, bulle) ; étiquettes courtes en sprites et bloom
+  sélectif = v1.5, sous protocole perf.
 - Chaque étape se termine par : tests verts (`pytest -q` / `npm test -- --run`), `ruff` propre,
   **commit atomique** conventionnel (`feat(globe): …`), fins de ligne LF (`.gitattributes`).
 - Budget perf (la 2060S est partagée avec Ollama) : pixelRatio ≤ 1.5 en partie, `low-power`,
@@ -56,19 +59,28 @@
 - [ ] Part **calibration** du score mixte (spec §4 bis : suspicion juste et précoce récompensée,
   faux positif coûteux) + tests.
 
+### C4 — Kit UI futuriste — ✅ livré (2026-07-21)
+- [x] `web/src/styles/theatre-kit.css` : tokens + composants (chanfreins, panneaux néon,
+  CTA ambre, interrupteurs, onglets, casting, cartes de mode, balayage, scanlines,
+  `prefers-reduced-motion`) — extraits du prototype, à adopter par S10.
+
 ## Étapes Claude Code
 
-- [ ] **S0** — Lire la spec, ouvrir le prototype dans un navigateur. `npm i three @types/three`
-  (web/). Commit `chore`.
-- [ ] **S1** — `GlobeStage` client-only (`dynamic(() => …, {ssr:false})`) : globe + **texture
+- [x] **S0** — Lire la spec, ouvrir le prototype dans un navigateur. `npm i three @types/three`
+  (web/). Commit `chore`. *(fait 2026-07-21 — three ^0.185)*
+- [x] **S1** — `GlobeStage` client-only (`dynamic(() => …, {ssr:false})`) : globe + **texture
   canvas peinte** (palette planète futuriste, spec §1) + caméra orbitale (drag/molette/fly-to)
   + picking pays. Parité visuelle avec le prototype, **sans robots d'abord**.
-- [ ] **S2** — Délégués humanoïdes + drone GM + entité Juge + arcs + anneau d'événement :
+  *(fait 2026-07-21 — modules purs `texture.ts`/`camera.ts`/`picking.ts` testés vitest ;
+  atelier `/dev/globe` hors navigation pour itérer ; vérifié live)*
+- [x] **S2** — Délégués humanoïdes + drone GM + entité Juge + arcs + anneau d'événement :
   transposer le prototype dans les modules de la spec §2 (`texture.ts`, `robots.ts`,
-  `camera.ts`, `picking.ts`…).
-- [ ] **S3** — **StageMap interactive** (le mode 2D) : `onCountryClick` → fiche, marqueur
-  `eventGeo`, badges pense/parle ; **bascule 2D⇄3D** (réglage `stageView` + touche V,
-  point de vue préservé, replis auto spec §5).
+  `camera.ts`, `picking.ts`…). *(fait 2026-07-21 — `robots.ts` testé en node sans WebGL ;
+  drapeaux C2 au torse ; humeurs pense/parle/suspendu/fog ; vérifié live)*
+- [ ] **S3** — **Le dépliage 2D⇄3D** (full-three, spec §5) : morph sphère⇄plan transposé du
+  prototype (shader `uFlat`, ancres lerp/slerp, caméra oblique tactique, plan de picking)
+  derrière `stageView` + touche V, point de vue préservé ; StageMap SVG rendue interactive
+  (`onCountryClick`, `eventGeo`) **uniquement en repli sans WebGL**.
 - [ ] **S4** — Layout immersif (spec §4) dans `app/games/[id]/page.tsx` : globe plein théâtre,
   transcript overlay droite **à onglets** (Dialogues · Paris · Renseignement), bandeau
   événement, contrôles bas-gauche, fiche gauche.
@@ -83,6 +95,16 @@
 - [ ] **S9** — v1.5 renforts gameplay (spec §4 bis) : UI du **carnet de suspicion** (épingles
   sur les robots ; socle C3), **cicatrices du monde** (couche texture ← `RoundSummary`),
   **motion de censure** en séquence de vote illuminée (trames SSE existantes).
+- [ ] **S10** — **Kit futuriste sur toutes les surfaces** (spec §9) : adopter
+  `web/src/styles/theatre-kit.css` (tokens en `@theme` Tailwind et/ou classes telles
+  quelles) sur `/`, `/accueil`, `/lobby`, `/campagne`, `/laboratoire`, `/defi`,
+  `/reglages`, `/profil`, `/leaderboard`, header, `auth-gate` — texte net, chanfreins,
+  néon discret, a11y intacte.
+- [ ] **S11** — **Le hall** (spec §9, prototype comme référence : états
+  `auth → menu → config → game`) : GlobeStage monté au **layout** (scène persistante entre
+  routes), connexion/lobby/config convertis en **overlays** ; choix du pays incarné **au
+  clic sur le globe** (halo cyan + badge VOUS) ; lancement = plongée caméra vers le round 1 ;
+  repli sans WebGL : mêmes pages sur fond `--thk-bg`.
 
 ## Ordre & dépendances
 
@@ -91,6 +113,8 @@
   documentée ci-dessus et brancher ensuite.
 - S5 dépend de C1 (repli barycentre front en attendant). S9-score dépend de C3 (l'UI des
   épingles peut venir avant).
+- S10 (kit, surfaces existantes) peut démarrer dès maintenant — indépendant du globe.
+  S11 (hall) vient après S1-S3 (il réutilise la scène et le morph).
 
 ## Definition of done (v1)
 

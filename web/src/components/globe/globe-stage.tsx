@@ -24,6 +24,8 @@ import { CAPITALS, prefersReducedMotion } from "@/lib/stage";
 
 import {
   CAM_HOME,
+  EVENT_VIEW,
+  JUDGE_VIEW,
   SPEAKER_VIEW,
   camPosition,
   clampLat,
@@ -33,7 +35,27 @@ import {
   type CameraFly,
   type CamState,
 } from "./camera";
+import { paintFlag } from "./flags";
 import { countryAt, inverseLL, summitFeatures, toXYZ, type GlobeFeature } from "./picking";
+import {
+  ROBOT_H,
+  animateRobot,
+  buildArc,
+  makeEventGroup,
+  makeGMDrone,
+  makeJudge,
+  makeRobot,
+  makeVerdictWave,
+  placeEventGroup,
+  setRobotMood,
+  stepDrone,
+  stepEventRings,
+  stepVerdictWaves,
+  type ArcHandle,
+  type DroneState,
+  type RobotHandle,
+  type RobotMood,
+} from "./robots";
 import { TEX_H, TEX_W, createGlobePainter } from "./texture";
 
 /** Superset des props StageMap (spec §2) : le théâtre passe la même vue aux
@@ -53,6 +75,10 @@ export type GlobeStageProps = {
   eventGeo?: EventGeo | null;
   /** L'anneau d'événement pulse (round en cours). */
   pulse?: boolean;
+  /** Temps suspendu (verdict) : le Juge s'anime, onde planétaire. */
+  frozen?: boolean;
+  /** Arc diplomatique orateur → destinataire. */
+  arc?: { from: string; to: string } | null;
   /** Clic sur un pays du sommet (ou son délégué) → fiche. */
   onCountryClick?: (slug: string) => void;
   /** La caméra suit l'orateur. Le réglage appartient à l'hôte : `onUserDrag`
@@ -83,6 +109,9 @@ function loadFeatures50m(): Promise<GlobeFeature[]> {
 type GlobeHandle = {
   refresh: () => void;
   flyToCountry: (slug: string) => void;
+  setEvent: () => void;
+  setArc: () => void;
+  verdict: () => void;
 };
 
 function glowTexture(color: string): THREE.CanvasTexture {
@@ -110,8 +139,16 @@ export function GlobeStage(props: GlobeStageProps) {
     propsRef.current = props;
   });
 
-  // Signature stable des teintes : repeindre SEULEMENT quand l'état change.
-  const { speaking = null, followSpeaker = true, utopia } = props;
+  // Signatures stables : ne toucher la scène QUE quand l'état change vraiment.
+  const {
+    speaking = null,
+    thinking = null,
+    followSpeaker = true,
+    utopia,
+    eventTitle,
+    pulse = false,
+    frozen = false,
+  } = props;
   const tintKey = useMemo(
     () =>
       props.countries
@@ -119,6 +156,8 @@ export function GlobeStage(props: GlobeStageProps) {
         .join("|"),
     [props.countries, props.uByCountry, utopia],
   );
+  const eventKey = props.eventGeo ? `${props.eventGeo.lon},${props.eventGeo.lat}` : "";
+  const arcKey = props.arc ? `${props.arc.from}>${props.arc.to}` : "";
 
   useEffect(() => {
     const host = hostRef.current;
@@ -235,14 +274,73 @@ export function GlobeStage(props: GlobeStageProps) {
     speakerGlow.scale.setScalar(0.3);
     scene.add(speakerGlow);
 
-    // Tooltip du survol (DOM projeté, jamais de setState).
-    const tooltip = document.createElement("div");
-    tooltip.style.cssText =
-      "position:absolute;pointer-events:none;z-index:10;transform:translate(-50%,-140%);" +
-      "padding:4px 8px;border-radius:6px;font-size:11px;white-space:nowrap;opacity:0;" +
-      "background:rgba(8,12,24,.92);border:1px solid rgba(120,170,255,.35);color:#dbe6ff;" +
-      "transition:opacity .12s";
-    host.appendChild(tooltip);
+    // Les habitants du globe (S2) : délégués, drone GM, Juge, événement, arc.
+    const robots = new Map<string, RobotHandle>();
+    const flagTextures = new Map<string, THREE.Texture>();
+    const flagTextureOf = (slug: string): THREE.Texture => {
+      let tex = flagTextures.get(slug);
+      if (!tex) {
+        const c = document.createElement("canvas");
+        c.width = 48;
+        c.height = 32;
+        const g = c.getContext("2d")!;
+        paintFlag(g, slug, 48, 32, speakerMeta(slug).hue);
+        g.strokeStyle = "rgba(0,0,0,.35)";
+        g.strokeRect(0, 0, 48, 32);
+        tex = new THREE.CanvasTexture(c);
+        tex.anisotropy = 2;
+        tex.colorSpace = THREE.SRGBColorSpace;
+        flagTextures.set(slug, tex);
+      }
+      return tex;
+    };
+    const { drone: gmDrone, beam: gmBeam } = makeGMDrone();
+    scene.add(gmDrone);
+    scene.add(gmBeam);
+    let droneState: DroneState = { mode: "orbit", a: 0, t: 0, target: null };
+    const judge = makeJudge(glowTexture("rgb(129,140,248)"));
+    scene.add(judge.group);
+    let judgeMode: { mode: "idle" | "verdict"; t: number } = { mode: "idle", t: 0 };
+    let waves: ReturnType<typeof makeVerdictWave>[] = [];
+    const eventGroup = makeEventGroup();
+    scene.add(eventGroup.group);
+    let arcHandle: ArcHandle | null = null;
+
+    // DOM projeté (tooltip, bandeau d'événement, étiquette d'orateur) —
+    // stylé inline, piloté par la boucle : jamais de setState.
+    const makeTag = (extra: string): HTMLDivElement => {
+      const el = document.createElement("div");
+      el.style.cssText =
+        "position:absolute;pointer-events:none;z-index:10;transform:translate(-50%,-140%);" +
+        "padding:4px 8px;border-radius:6px;font-size:11px;white-space:nowrap;opacity:0;" +
+        "background:rgba(8,12,24,.92);border:1px solid rgba(120,170,255,.35);color:#dbe6ff;" +
+        "transition:opacity .12s;" +
+        extra;
+      host.appendChild(el);
+      return el;
+    };
+    const tooltip = makeTag("");
+    const eventTag = makeTag("border-color:rgba(255,193,77,.55);color:#ffe0a3;");
+    const speakerTag = makeTag("border-color:rgba(255,193,77,.55);color:#ffe9c2;font-weight:600;");
+    const judgeTag = makeTag("border-color:rgba(129,140,248,.55);color:#c7d2fe;");
+
+    const PROJ = new THREE.Vector3();
+    const CAMV = new THREE.Vector3();
+    const LOC = new THREE.Vector3();
+    const projectAt = (el: HTMLElement, pos: THREE.Vector3, visible: boolean, dy = 0): void => {
+      if (!visible) {
+        el.style.opacity = "0";
+        return;
+      }
+      PROJ.copy(pos).project(camera);
+      const behind =
+        PROJ.z > 1 || pos.clone().normalize().dot(camera.position.clone().normalize()) < 0.12;
+      const w = host.clientWidth;
+      const h = host.clientHeight;
+      el.style.left = `${((PROJ.x + 1) / 2) * w}px`;
+      el.style.top = `${((-PROJ.y + 1) / 2) * h + dy}px`;
+      el.style.opacity = behind ? "0" : "1";
+    };
 
     // État interne de la scène (refs, pas de React).
     let cam: CamState = { ...CAM_HOME };
@@ -270,10 +368,31 @@ export function GlobeStage(props: GlobeStageProps) {
       feats = summitFeatures(p.countries, allFeatures);
       painter.paint(summitTints(), p.speaking ?? null);
       texture.needsUpdate = true;
+      // Délégués : un robot par pays du sommet à capitale connue (un pays
+      // inventé n'en a pas — règle existante, conservée).
+      const want = new Set(p.countries.filter((c) => CAPITALS[c]));
+      for (const [slug, r] of robots) {
+        if (want.has(slug)) continue;
+        scene.remove(r.group);
+        robots.delete(slug);
+      }
+      for (const slug of want) {
+        if (robots.has(slug)) continue;
+        const meta = speakerMeta(slug);
+        const r = makeRobot({
+          slug,
+          hue: meta.hue,
+          lonlat: CAPITALS[slug],
+          flagMap: flagTextureOf(slug),
+        });
+        scene.add(r.group);
+        robots.set(slug, r);
+      }
       const cap = p.speaking ? CAPITALS[p.speaking] : null;
-      if (cap) {
+      if (cap && p.speaking) {
         speakerGlow.position.set(...toXYZ(cap[0], cap[1], 1.008));
         speakerGlow.material.opacity = 0.95;
+        speakerTag.textContent = `🗣 ${speakerMeta(p.speaking).label}`;
       } else {
         speakerGlow.material.opacity = 0;
       }
@@ -290,29 +409,109 @@ export function GlobeStage(props: GlobeStageProps) {
       fly = flyTowards(cam, target, 1.15);
     };
 
+    // L'événement du GM : anneaux au lieu de crise, drone qui descend
+    // l'annoncer, caméra en plan large. Ré-annonce SEULEMENT si le lieu change
+    // (le titre ou la pulsation peuvent bouger sans re-descendre le drone).
+    let lastEventKey = "";
+    const setEvent = () => {
+      const p = propsRef.current;
+      const key = p.eventGeo ? `${p.eventGeo.lon},${p.eventGeo.lat}` : "";
+      const isNew = key !== lastEventKey && key !== "";
+      lastEventKey = key;
+      if (!p.eventGeo) {
+        eventGroup.group.visible = false;
+        eventTag.style.opacity = "0";
+        return;
+      }
+      placeEventGroup(eventGroup, p.eventGeo.lon, p.eventGeo.lat);
+      eventGroup.group.visible = true;
+      eventTag.textContent = p.eventTitle ? `⚠ ${p.eventTitle}` : "⚠";
+      if (!isNew) return;
+      droneState = {
+        mode: "announce",
+        a: droneState.a,
+        t: 0,
+        target: new THREE.Vector3(...toXYZ(p.eventGeo.lon, p.eventGeo.lat, 1)),
+      };
+      if ((p.followSpeaker ?? true) && !dragging) {
+        const target = {
+          lon: p.eventGeo.lon,
+          lat: p.eventGeo.lat + EVENT_VIEW.latOffset,
+          dist: EVENT_VIEW.dist,
+        };
+        if (reduced) cam = { lon: target.lon, lat: clampLat(target.lat), dist: target.dist };
+        else fly = flyTowards(cam, target, 1.5);
+      }
+    };
+
+    const setArc = () => {
+      if (arcHandle) {
+        scene.remove(arcHandle.line);
+        scene.remove(arcHandle.pulse);
+        arcHandle.line.geometry.dispose();
+        (arcHandle.line.material as THREE.Material).dispose();
+        arcHandle = null;
+      }
+      const a = propsRef.current.arc;
+      if (!a || a.from === a.to) return;
+      const from = CAPITALS[a.from];
+      const to = CAPITALS[a.to];
+      if (!from || !to) return;
+      arcHandle = buildArc(from, to);
+      scene.add(arcHandle.line);
+      scene.add(arcHandle.pulse);
+    };
+
+    // Verdict : le Juge s'emballe, onde planétaire, plan large « au-dessus
+    // de la mêlée ».
+    const verdict = () => {
+      judgeMode = { mode: "verdict", t: 0 };
+      judgeTag.textContent = "⚖ Le Juge délibère";
+      if (!reduced) {
+        const w = makeVerdictWave();
+        scene.add(w);
+        waves.push(w);
+      }
+      const p = propsRef.current;
+      if ((p.followSpeaker ?? true) && !dragging) {
+        if (reduced) cam = { ...cam, lat: JUDGE_VIEW.lat, dist: JUDGE_VIEW.dist };
+        else fly = flyTowards(cam, { lon: cam.lon, lat: JUDGE_VIEW.lat, dist: JUDGE_VIEW.dist }, 1.5);
+      }
+    };
+
     let allFeatures: GlobeFeature[] = [];
     loadFeatures50m().then((loaded) => {
       if (dead) return;
       allFeatures = loaded;
       painter = createGlobePainter({ ctx: tctx, features: allFeatures });
       refresh();
-      handleRef.current = { refresh, flyToCountry };
+      setEvent();
+      setArc();
+      handleRef.current = { refresh, flyToCountry, setEvent, setArc, verdict };
     });
 
     // --- interactions --------------------------------------------------------
     const ray = new THREE.Raycaster();
     const ndc = new THREE.Vector2();
-    const pickPoint = (e: PointerEvent | MouseEvent): [number, number, number] | null => {
+    const setRay = (e: PointerEvent | MouseEvent): boolean => {
       const r = renderer.domElement.getBoundingClientRect();
-      if (r.width === 0 || r.height === 0) return null;
+      if (r.width === 0 || r.height === 0) return false;
       ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
       ray.setFromCamera(ndc, camera);
-      const hit = ray.intersectObject(globe)[0];
-      return hit ? [hit.point.x, hit.point.y, hit.point.z] : null;
+      return true;
     };
+    // Robots d'abord (gros hitbox), sinon la sphère → lon/lat → geoContains.
     const slugAt = (e: PointerEvent | MouseEvent): string | null => {
-      const p = pickPoint(e);
-      return p ? countryAt(inverseLL(p), feats) : null;
+      if (!setRay(e)) return null;
+      const pool = [...robots.values()].map((r) => r.group);
+      const robotHit = ray.intersectObjects(pool, true)[0];
+      if (robotHit) {
+        let o: THREE.Object3D | null = robotHit.object;
+        while (o && !o.userData.slug) o = o.parent;
+        if (o) return o.userData.slug as string;
+      }
+      const hit = ray.intersectObject(globe)[0];
+      return hit ? countryAt(inverseLL([hit.point.x, hit.point.y, hit.point.z]), feats) : null;
     };
 
     const onPointerDown = (e: PointerEvent) => {
@@ -409,9 +608,76 @@ export function GlobeStage(props: GlobeStageProps) {
       camera.position.set(...camPosition(cam));
       camera.lookAt(0, 0, 0);
 
-      if (propsRef.current.speaking && !reduced) {
-        speakerGlow.material.opacity = 0.7 + Math.sin(clock.elapsedTime * 3.2) * 0.2;
+      const t = clock.elapsedTime;
+      const p = propsRef.current;
+
+      // Drone GM (orbite ↔ annonce) et Juge (idle ↔ verdict + ondes).
+      droneState = stepDrone(gmDrone, gmBeam, droneState, dt);
+      const verdictOn = judgeMode.mode === "verdict";
+      judge.core.rotation.y += dt * (verdictOn ? 1.6 : 0.35);
+      judge.ringA.rotation.z += dt * (verdictOn ? 1.8 : 0.3);
+      judge.ringB.rotation.z -= dt * (verdictOn ? 1.4 : 0.22);
+      judge.group.position.y = 1.72 + (reduced ? 0 : Math.sin(t * 0.9) * 0.02);
+      if (verdictOn) {
+        judgeMode = { mode: "verdict", t: judgeMode.t + dt };
+        judge.core.scale.setScalar(reduced ? 1 : 1 + Math.sin(t * 6) * 0.12);
+        if (judge.halo) judge.halo.material.opacity = 0.5 + Math.sin(t * 5) * 0.25;
+        if (judgeMode.t > 5) {
+          judgeMode = { mode: "idle", t: 0 };
+          judge.core.scale.setScalar(1);
+          if (judge.halo) judge.halo.material.opacity = 0.5;
+        }
       }
+      const aliveWaves = stepVerdictWaves(waves, dt);
+      for (const w of waves) {
+        if (aliveWaves.includes(w)) continue;
+        scene.remove(w);
+        w.geometry.dispose();
+        w.material.dispose();
+      }
+      waves = aliveWaves;
+
+      // Délégués : humeur (suspendu > pense > parle > repos) + face caméra.
+      const suspendedSet = new Set(p.suspended ?? []);
+      for (const r of robots.values()) {
+        const mood: RobotMood = suspendedSet.has(r.slug)
+          ? "suspended"
+          : p.thinking === r.slug
+            ? "thinking"
+            : p.speaking === r.slug
+              ? "speaking"
+              : "idle";
+        if (mood !== r.mood) setRobotMood(r, mood);
+        if (mood !== "suspended") {
+          const local = r.group.worldToLocal(CAMV.copy(camera.position));
+          r.spinner.rotation.y = Math.atan2(local.x, local.z);
+        }
+        animateRobot(r, t, reduced);
+        r.veil.visible = !!p.misled?.[r.slug];
+      }
+
+      // Anneau d'événement, arc voyageur, glow d'orateur.
+      if (eventGroup.group.visible) {
+        stepEventRings(eventGroup.rings, t, !reduced && (p.pulse ?? false));
+      }
+      if (arcHandle) {
+        const k = reduced ? 0.5 : (t * 0.55) % 1;
+        arcHandle.pulse.position.copy(arcHandle.curve.getPointAt(k));
+      }
+      if (p.speaking && !reduced) {
+        speakerGlow.material.opacity = 0.7 + Math.sin(t * 3.2) * 0.2;
+      }
+
+      // Étiquettes projetées (DOM piloté par la boucle).
+      projectAt(eventTag, eventGroup.group.position, eventGroup.group.visible, -14);
+      const spk = p.speaking ? robots.get(p.speaking) : undefined;
+      if (spk) {
+        LOC.copy(spk.group.position).normalize().multiplyScalar(1 + ROBOT_H * 1.12);
+        projectAt(speakerTag, LOC, true, 8);
+      } else {
+        speakerTag.style.opacity = "0";
+      }
+      projectAt(judgeTag, judge.group.position, judgeMode.mode === "verdict", -10);
 
       renderer.render(scene, camera);
     };
@@ -440,7 +706,7 @@ export function GlobeStage(props: GlobeStageProps) {
         }
       });
       renderer.dispose();
-      tooltip.remove();
+      for (const el of [tooltip, eventTag, speakerTag, judgeTag]) el.remove();
       renderer.domElement.remove();
     };
     // Montage unique : les changements d'état passent par l'effet ci-dessous.
@@ -452,8 +718,22 @@ export function GlobeStage(props: GlobeStageProps) {
     const h = handleRef.current;
     if (!h) return;
     h.refresh();
-    if (speaking && followSpeaker) h.flyToCountry(speaking);
-  }, [tintKey, speaking, followSpeaker]);
+    const target = speaking ?? thinking;
+    if (target && followSpeaker) h.flyToCountry(target);
+  }, [tintKey, speaking, thinking, followSpeaker]);
+
+  useEffect(() => {
+    handleRef.current?.setEvent();
+  }, [eventKey, eventTitle, pulse]);
+
+  useEffect(() => {
+    handleRef.current?.setArc();
+  }, [arcKey]);
+
+  // Front montant seulement : le verdict est un événement, pas un état.
+  useEffect(() => {
+    if (frozen) handleRef.current?.verdict();
+  }, [frozen]);
 
   return (
     <div
