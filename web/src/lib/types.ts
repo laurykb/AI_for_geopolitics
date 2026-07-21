@@ -287,6 +287,10 @@ export type GeoEvent = {
   act?: string;
   ties_to?: string;
   ties_label?: string;
+  // Théâtre-globe §3 — géolocalisation additive (absente des vieux rounds).
+  geo_lon?: number;
+  geo_lat?: number;
+  geo_precision?: "place" | "actors";
 };
 
 export type AttributeDelta = {
