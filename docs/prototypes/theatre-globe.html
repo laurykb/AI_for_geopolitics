@@ -214,6 +214,34 @@
   .back{margin-top:10px;width:100%;padding:7px 0;font:inherit;font-size:11px;color:var(--fg-muted);
     background:none;border:1px solid var(--edge);cursor:pointer}
   .back:hover{color:var(--fg);border-color:var(--edge-strong)}
+  .hall-extra{pointer-events:auto;position:fixed;left:50%;bottom:4vh;transform:translateX(-50%);
+    padding:7px 16px;font-size:11px;color:var(--fg-muted);cursor:pointer;background:var(--panel);
+    border:1px solid var(--edge);backdrop-filter:blur(8px);
+    clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)}
+  .hall-extra b{color:var(--cyan)}
+  .hall-extra:hover{border-color:var(--cyan)}
+  /* ---- le tutoriel : la visite guidée de Laury ---- */
+  #tuto-card{left:50%;bottom:56px;transform:translateX(-50%);width:min(460px,92vw);z-index:14;
+    padding:13px 16px 11px;background:var(--panel);border:1px solid var(--edge-strong);
+    backdrop-filter:blur(12px);box-shadow:inset 0 0 24px -10px rgba(89,215,255,.4);
+    clip-path:polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px)}
+  #tuto-card[hidden]{display:none}
+  .tuto-name{font-size:10px;letter-spacing:.16em;color:var(--cyan);margin-bottom:6px}
+  .tuto-name span{color:var(--fg-faint);letter-spacing:.08em}
+  #tuto-text{font-size:12.5px;line-height:1.6;color:var(--fg);min-height:40px}
+  .tuto-row{display:flex;align-items:center;gap:10px;margin-top:9px}
+  #tuto-step{font-size:10px;color:var(--fg-faint);font-variant-numeric:tabular-nums}
+  #tuto-skip{margin-left:auto;padding:5px 10px;font:inherit;font-size:10.5px;color:var(--fg-faint);
+    background:none;border:1px solid var(--edge);cursor:pointer}
+  #tuto-skip:hover{color:var(--fg)}
+  #tuto-next{padding:6px 14px;font:inherit;font-size:11px;letter-spacing:.1em;color:#08101e;
+    background:linear-gradient(100deg,#9ee7ff,var(--cyan));border:0;cursor:pointer;
+    clip-path:polygon(7px 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%,0 7px);
+    box-shadow:0 0 18px -5px rgba(89,215,255,.7)}
+  #tuto-next:disabled{opacity:.35;cursor:default}
+  .tuto-hl{outline:2px solid var(--cyan);outline-offset:-2px;animation:tuto-pulse 1.4s infinite}
+  @keyframes tuto-pulse{50%{outline-color:rgba(89,215,255,.25)}}
+  @media (prefers-reduced-motion:reduce){.tuto-hl{animation:none}}
   @media (prefers-reduced-motion:reduce){
     #event-dot,.msg .live,.msg .txt .caret,#transcript header::after{animation:none}
   }
@@ -241,6 +269,7 @@
     <div class="mode-card" data-mode="laboratoire"><h3>◆ LABORATOIRE</h3>
       <p>Le banc d'essai scientifique : duels de modèles, protocoles, métriques.</p></div>
   </div>
+  <div class="hall-extra" id="tuto-open" hidden>▸ Première fois ? <b>Visite guidée — avec Laury</b></div>
   <aside class="hall-config" id="config" hidden>
     <h3>NOUVELLE PARTIE — <b id="cfg-mode">CLASSIQUE</b></h3>
     <div class="cfg-block"><h4>Casting · sommet mer Rouge</h4><div id="cast-list"></div></div>
@@ -316,6 +345,16 @@
 </div>
 
 <div class="hud" id="hint">glisser : tourner · molette : zoom · <b>clic délégué/pays : stats</b> · <b>V</b> : 2D ⇄ 3D · <b>L</b> : laboratoire · Échap : fermer</div>
+
+<div class="hud" id="tuto-card" hidden>
+  <div class="tuto-name">● LAURY <span>— gardien du petit monde</span></div>
+  <div id="tuto-text"></div>
+  <div class="tuto-row">
+    <span id="tuto-step">1/8</span>
+    <button id="tuto-skip">passer la visite</button>
+    <button id="tuto-next">SUIVANT ⟶</button>
+  </div>
+</div>
 <div id="tooltip"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -997,6 +1036,7 @@ function setMode2D(v){
   }
   if(REDUCED) morph.k=morph.target;
   flatToggle.set(v);
+  if(v) tutoGateHit("flat");
 }
 
 /* entrées : drag/molette pilotent l'orbite OU le plan selon le mode */
@@ -1092,6 +1132,7 @@ function openFiche(slug){
     <div class="attr"><div class="lab"><span>${k}</span><b>${v.toFixed(2).replace(".",",")}</b></div>
     <div class="track"><div class="fill" style="width:${v*100}%"></div></div></div>`).join("");
   fiche.classList.add("on");
+  tutoGateHit("fiche");
 }
 function closeFiche(){fiche.classList.remove("on");}
 fiche.querySelector(".close").onclick=closeFiche;
@@ -1437,6 +1478,24 @@ function frame(){
   if(arcCurve&&arcPulse){const kk=REDUCED?.5:(t*.55)%1; arcPulse.position.copy(arcCurve.getPointAt(kk));}
   if(labMode) arenaB.scale.setScalar(1+(REDUCED?0:Math.sin(t*2)*.06));
 
+  // Laury : flotte près de la caméra, va « présenter » la cible de l'étape
+  if(laury.g.visible){
+    camera.getWorldDirection(TMP);
+    OV.crossVectors(TMP,camera.up).normalize();
+    TMP2.crossVectors(OV,TMP).normalize();
+    CAMV.copy(camera.position).addScaledVector(TMP,.28)
+      .addScaledVector(OV,-.125).addScaledVector(TMP2,-.052);
+    if(tutoTarget) CAMV.lerp(mixTop(tutoTarget,1.07,.07,k,LOC),.38);
+    laury.g.position.lerp(CAMV,1-Math.exp(-6*dt));
+    laury.g.quaternion.slerp(camera.quaternion,1-Math.exp(-8*dt));
+    laury.rig.position.y=REDUCED?0:Math.sin(t*2.1)*.0016;
+    laury.rig.rotation.z=REDUCED?0:Math.sin(t*1.3)*.04;
+    laury.mini.rotation.y+=dt*.7;
+    laury.halo.material.opacity=.6+(REDUCED?0:Math.sin(t*3)*.2);
+    laury.spark.position.set(laury.mini.position.x+Math.cos(t*1.8)*.013,
+      laury.mini.position.y+Math.sin(t*1.8)*.013,laury.mini.position.z);
+  }
+
   /* étiquettes : un seul chemin, la scène (morphée) fait foi */
   projectAt(eventTag, eventGroup.position, banner.classList.contains("on"));
   const spk=speaking||thinking;
@@ -1456,6 +1515,125 @@ function frame(){
 
   renderer.render(scene,camera);
 }
+
+/* ============ Laury — la mascotte en 3D, guide de la visite ============ */
+/* Fidèle à docs/design/PHILOSOPHIE_MASCOTTE.md : chibi à la casquette, le petit
+   monde offert dans la main (LA texture du théâtre), contour autocollant blanc
+   (coques inversées), palette du SVG maître. */
+const laury=(function(){
+  const g=new THREE.Group();
+  const rig=new THREE.Group(); g.add(rig);
+  const M={
+    skin:new THREE.MeshStandardMaterial({color:"#a7693d",roughness:.62,metalness:.04}),
+    black:new THREE.MeshStandardMaterial({color:"#131317",roughness:.5,metalness:.12}),
+    hair:new THREE.MeshStandardMaterial({color:"#1c0f08",roughness:.75}),
+    tee:new THREE.MeshStandardMaterial({color:"#f4f2ea",roughness:.72}),
+    gum:new THREE.MeshStandardMaterial({color:"#d9d6cb",roughness:.85}),
+    eye:new THREE.MeshBasicMaterial({color:"#3a2313"}),
+  };
+  const OUT=new THREE.MeshBasicMaterial({color:"#ffffff",side:THREE.BackSide});
+  const put=(m,x,y,z,p=rig)=>{m.position.set(x,y,z);p.add(m);return m;};
+  const hull=(m,s=1.08)=>{const o=new THREE.Mesh(m.geometry,OUT);
+    o.position.copy(m.position);o.rotation.copy(m.rotation);
+    o.scale.copy(m.scale).multiplyScalar(s);m.parent.add(o);return o;};
+  const head=put(new THREE.Mesh(new THREE.SphereGeometry(.021,22,18),M.skin),0,.052,0);
+  head.scale.set(1,.95,.96);
+  for(const s of [-1,1]){ // yeux hublots bruns + reflets
+    put(new THREE.Mesh(new THREE.SphereGeometry(.0052,10,10),M.eye),s*.0082,.051,.0175);
+    put(new THREE.Mesh(new THREE.SphereGeometry(.0016,6,6),
+      new THREE.MeshBasicMaterial({color:"#ffffff"})),s*.0065,.0535,.0215);
+  }
+  for(let i=0;i<8;i++){ // boucles en grappes de billes
+    const a=Math.PI*.15+i*(Math.PI*.7/7);
+    put(new THREE.Mesh(new THREE.SphereGeometry(.0045,8,8),M.hair),
+      Math.cos(a)*.019,.045+Math.sin(i*2.1)*.003,-.006-Math.sin(a)*.012);
+  }
+  const cap=put(new THREE.Mesh(
+    new THREE.SphereGeometry(.0215,20,14,0,Math.PI*2,0,Math.PI*.52),M.black),0,.0585,-.001);
+  const visor=put(new THREE.Mesh(
+    new THREE.CylinderGeometry(.019,.019,.0028,18,1,false,-.62,1.24),M.black),0,.0585,.006);
+  visor.scale.set(1,.55,1.35);
+  const torso=put(new THREE.Mesh(new THREE.CylinderGeometry(.0125,.0155,.024,14),M.tee),0,.026,0);
+  const strap=put(new THREE.Mesh(new THREE.BoxGeometry(.0035,.026,.003),M.black),-.004,.027,.0128);
+  strap.rotation.z=.55;
+  put(new THREE.Mesh(new THREE.BoxGeometry(.011,.007,.005),M.black),-.0125,.017,.006); // sacoche
+  const armL=put(new THREE.Mesh(new THREE.CylinderGeometry(.0032,.003,.017,8),M.tee),-.014,.028,0);
+  armL.rotation.z=.28;
+  put(new THREE.Mesh(new THREE.SphereGeometry(.0036,8,8),M.skin),-.0175,.019,0);
+  // bras droit levé — LE geste : offrir le petit monde
+  const armR=new THREE.Group(); armR.position.set(.013,.033,.002); rig.add(armR);
+  const upperR=new THREE.Mesh(new THREE.CylinderGeometry(.0032,.003,.016,8),M.tee);
+  upperR.position.set(.004,.007,.004); upperR.rotation.z=-.9; upperR.rotation.x=-.35; armR.add(upperR);
+  const handR=new THREE.Mesh(new THREE.SphereGeometry(.0038,8,8),M.skin);
+  handR.position.set(.011,.013,.008); armR.add(handR);
+  const mini=new THREE.Mesh(new THREE.SphereGeometry(.0085,18,14),
+    new THREE.MeshBasicMaterial({map:texture})); // le monde du jeu, dans sa main
+  mini.position.set(.011,.0255,.008); armR.add(mini);
+  const halo=new THREE.Mesh(new THREE.TorusGeometry(.0122,.0006,8,36),
+    new THREE.MeshBasicMaterial({color:0x38bdf8,transparent:true,opacity:.75}));
+  halo.position.copy(mini.position); halo.rotation.x=Math.PI/2.6; armR.add(halo);
+  const spark=new THREE.Mesh(new THREE.OctahedronGeometry(.0016,0),
+    new THREE.MeshBasicMaterial({color:0xeab308}));
+  armR.add(spark);
+  for(const s of [-1,1]){ // jambes + sneakers (semelle gomme)
+    put(new THREE.Mesh(new THREE.CylinderGeometry(.004,.0045,.015,10),M.black),s*.006,.0075,0);
+    put(new THREE.Mesh(new THREE.BoxGeometry(.0085,.004,.0125),M.tee),s*.006,.0005,.002);
+    put(new THREE.Mesh(new THREE.BoxGeometry(.009,.0016,.013),M.gum),s*.006,-.0022,.002);
+  }
+  hull(head,1.07); hull(cap,1.07); hull(torso,1.08); // contour autocollant
+  g.visible=false; g.scale.setScalar(.68); scene.add(g);
+  return {g,rig,head,armR,mini,halo,spark};
+})();
+
+/* ============ la visite guidée (le tutoriel de Laury) ============ */
+const TUTO=[
+ {text:"Bienvenue au théâtre. Je m'appelle Laury — je garde ce petit monde, et le temps d'une visite, je te le confie."},
+ {text:"La planète EST le plateau. Chaque round s'ouvre sur une crise réelle, géolocalisée — le drone ambré du Game Master descend l'annoncer sur place.",go:"event"},
+ {text:"Les délégués sont des IA à pensée native. Quand l'un réfléchit, sa bulle s'ouvre au-dessus de lui — lis-la : c'est là que se cachent les indices.",go:"speaker"},
+ {text:"Le liseré de chaque pays du sommet, c'est sa trajectoire utopie ↔ dystopie. L'ambre, c'est celui qui parle.",go:"wide"},
+ {text:"Ta colonne de commandement : Dialogues (le fil), Paris (mise sur l'avenir — les billets s'empilent sur la carte) et Renseignement (ton satellite).",hl:"transcript"},
+ {text:"Clique un délégué — ou son pays — pour ouvrir sa fiche : attributs, tempérament, provenance. De quoi nourrir tes soupçons.",gate:"fiche",hint:"clique un délégué"},
+ {text:"Appuie sur V : le monde se déplie en carte tactique. (Re-V pour le replier.)",gate:"flat",hint:"appuie sur V"},
+ {text:"Ta mission : démasquer le traître SANS faire tomber le monde. Le Juge tranche, le marché parie… et moi, je veille. Bonne chance.",end:true},
+];
+let tutoIdx=-1, tutoGate=null, tutoIv=null, tutoTarget=null;
+const tutoCard=document.getElementById("tuto-card");
+const tutoNext=document.getElementById("tuto-next");
+function startTuto(){
+  laury.g.visible=true; tutoIdx=-1; tutoCard.hidden=false;
+  follow.set(false); // la visite tient la caméra
+  stepTuto();
+}
+function endTuto(){
+  tutoCard.hidden=true; laury.g.visible=false; tutoGate=null; tutoTarget=null;
+  clearInterval(tutoIv);
+  document.getElementById("transcript").classList.remove("tuto-hl");
+  follow.set(true);
+}
+function tutoGateHit(kind){ if(tutoGate===kind){ tutoGate=null; tutoNext.disabled=true;
+  setTimeout(stepTuto,650); } }
+function stepTuto(){
+  tutoIdx++;
+  document.getElementById("transcript").classList.remove("tuto-hl");
+  if(tutoIdx>=TUTO.length){ endTuto(); return; }
+  const s=TUTO[tutoIdx];
+  document.getElementById("tuto-step").textContent=(tutoIdx+1)+"/"+TUTO.length;
+  const el=document.getElementById("tuto-text");
+  clearInterval(tutoIv); let i=0; const cps=REDUCED?9999:52;
+  tutoIv=setInterval(()=>{ i=Math.min(s.text.length,i+2); el.textContent=s.text.slice(0,i);
+    if(i>=s.text.length) clearInterval(tutoIv); },2000/cps);
+  tutoTarget=null;
+  if(s.go==="event"){ flyTo(evLoc[0],evLoc[1]-8,2.2,1.2); tutoTarget=[...evLoc]; }
+  if(s.go==="speaker"){ const who=thinking||speaking||"usa"; const c=CAPITALS[who];
+    flyTo(c[0],c[1]-13,1.9,1.2); tutoTarget=c; }
+  if(s.go==="wide") flyTo(cam.lon,26,3.3,1.2);
+  if(s.hl==="transcript") document.getElementById("transcript").classList.add("tuto-hl");
+  tutoGate=s.gate||null;
+  tutoNext.disabled=!!s.gate;
+  tutoNext.textContent=s.end?"TERMINER ✓":(s.gate?"⟡ "+s.hint:"SUIVANT ⟶");
+}
+tutoNext.onclick=()=>{ if(!tutoNext.disabled) stepTuto(); };
+document.getElementById("tuto-skip").onclick=endTuto;
 
 /* ============ le hall — l'avant-jeu vit DANS la même scène ============ */
 let hallState="auth", playAs=null, cfgMode="CLASSIQUE", pickLL=null;
@@ -1487,17 +1665,24 @@ function renderCast(){
   }
 }
 const show=(id,on)=>{document.getElementById(id).hidden=!on;};
-function toMenu(){hallState="menu";show("auth-card",false);show("config",false);show("mode-menu",true);}
+function toMenu(){hallState="menu";show("auth-card",false);show("config",false);
+  show("mode-menu",true);show("tuto-open",true);}
 document.getElementById("enter-btn").onclick=toMenu;
 document.getElementById("back-btn").onclick=toMenu;
 document.querySelectorAll(".mode-card").forEach(c=>c.onclick=()=>{
   const mode=c.dataset.mode;
+  show("tuto-open",false);
   if(mode==="laboratoire"){ show("mode-menu",false); launchGame("LABORATOIRE",true); return; }
   cfgMode=mode==="campagne"?"CAMPAGNE · CHAPITRE 1":"CLASSIQUE";
   document.getElementById("cfg-mode").textContent=cfgMode;
   hallState="config"; show("mode-menu",false); show("config",true);
   flyTo(38,24,2.9,1.2); // cadre le sommet : on choisit son pays sur le globe
 });
+document.getElementById("tuto-open").onclick=()=>{
+  show("tuto-open",false); show("mode-menu",false);
+  launchGame("TUTORIEL — VISITE GUIDÉE",false);
+  setTimeout(startTuto,700);
+};
 const cfgFog=toggle("cfg-fog",true), cfgThink=toggle("cfg-think",true);
 function launchGame(label,lab){
   hallState="game"; hallEl.style.display="none";

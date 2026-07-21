@@ -258,3 +258,50 @@ visualisées (§4 bis, lignes v2).
   la scène) ; `prefers-reduced-motion` : planète statique, transitions instantanées.
 - Vérifié headless de bout en bout (connexion → modes → config → Iran incarné au clic →
   partie lancée, transcript de retour, zéro erreur console).
+## 10. Laury en 3D — la mascotte-guide et le tutoriel immersif (2026-07-21, prototypé)
+
+- **La mascotte passe en 3D**, fidèle à `docs/design/PHILOSOPHIE_MASCOTTE.md` et au SVG
+  maître : chibi à la casquette (palette exacte du SVG : peau `#a7693d`, noir profond
+  `#131317`, blanc cassé `#f4f2ea`, gomme `#d9d6cb`, boucles `#1c0f08`), yeux-hublots bruns
+  à reflets, boucles en grappes de billes, sacoche en bandoulière, sneakers à semelle
+  gomme ; le **contour autocollant blanc** = coques inversées (`BackSide`) sur les masses
+  maîtresses (tête, casquette, torse). **L'attribut** : le petit monde offert dans la main
+  porte **LA texture vivante du théâtre** (le même canvas que le globe — liserés compris),
+  halo cyan `#38bdf8`, satellite d'or `#eab308` en orbite. L'interdit demeure : aucune
+  citation d'un personnage existant.
+- **Compagnon caméra** : Laury flotte en bas-gauche de la vue (ancre en espace caméra,
+  amortie `1−e^(−k·dt)`), et **va « présenter » la cible de l'étape** (position interpolée
+  vers le point monde, 3D comme carte dépliée) ; bob et balancement doux, figés en
+  `prefers-reduced-motion`.
+- **Le tutoriel = la visite guidée de Laury.** 8 étapes prototypées : accueil → événement
+  géolocalisé → pensée native → liserés/trajectoire → colonne de commandement (halo
+  `.tuto-hl`) → **porte « clique un délégué »** → **porte « appuie sur V »** → la mission.
+  Carte-guide chanfreinée (« ● LAURY — gardien du petit monde », texte tapé, compteur,
+  passer/suivant) ; les **portes** n'avancent qu'à l'action réelle du joueur. Entrée au
+  hall : « Première fois ? Visite guidée — avec Laury ». Testé headless de bout en bout.
+- **App** : Laury vit dans `web/src/components/globe/mascot.ts` ; les jalons métier du
+  tutoriel existant (`tutorial-events.ts`) se rebranchent sur ces étapes. v2 : Laury au
+  hall (posé près de la carte de connexion), réactions aux jalons (verdict, démasquage).
+
+## 11. Couverture de la refonte — les briques restantes (audit 2026-07-21)
+
+> Réponse à « qu'est-ce qu'on a oublié ? » : l'inventaire complet des surfaces et
+> mécaniques, avec leur traitement. Tout ce qui n'est pas listé ici est déjà couvert
+> par les §1-§10.
+
+| Surface / mécanique | Traitement décidé | Étape |
+|---|---|---|
+| **Tutoriel** | visite guidée par Laury (§10) | S12 |
+| **Fin de partie** (`/games/[id]/fin`) + révélation Dérive (`reveal`) | **cérémonie sur le globe** : la caméra isole l'accusé, chute du masque (liseré → rouge traître / vert loyal), onde du Juge, puis carte kit : score mixte décomposé (monde × détection), gain d'XP | S13 |
+| **Replay** (`/games/[id]/replay`) + partage (`/r/[id]`) | restylés kit ; relecture cinématique = v2 (§8) | S10 |
+| **Défi du jour** (`/defi`) | carte-mission au hall, sous les modes (seed du jour + chrono) | S13 |
+| **Forge de pays** (Architecte) | bloc « Forger un pays » dans la config du hall ; robot générique au barycentre (règle existante conservée) | S13 (v1.5) |
+| **Casting des modèles** (`model-cast-panel`) | bloc config du hall : chips modèle par pays (deepseek-r1/qwen3…) | S13 (v1.5) |
+| **Pupitre du joueur** : ActionDock, directives (`directive-composer`), **vote de motion** (`motion-vote-form`) | bas-droite du théâtre en kit ; déposer une motion déclenche la **séquence de vote illuminée** (§4 bis) | S4 / S9 |
+| **Prévisions croisées** (`scenario-forecast-panel`) | panneau kit sous le théâtre ; v2 : arcs de scénario tracés sur le globe | S10 |
+| **Observables / operational-picture / pages monde & marché** | kit S10 ; la page marché devient le **détail de l'onglet Paris** | S10 |
+| Promesses / traités / alliances | déjà cadrés §4 bis (arcs, v2) | — |
+| **Compute par pays** | v2 : **jauge d'énergie au socle du délégué** (une op covert la vide à vue) | v2 |
+| Leaderboard / profil / XP-niveaux | kit S10 ; v2 : gain d'XP animé pendant la cérémonie | S10 |
+| Admin (`/admin`, éditeur de crises) | kit minimal (hors théâtre, outil interne) | S10 |
+| Sons | v2 (§8) | — |
