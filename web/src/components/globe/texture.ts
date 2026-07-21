@@ -45,6 +45,11 @@ export function landColorFor(isoId: string): string {
 
 export type SummitTint = { slug: string; feat: GlobeFeature | undefined; u: number };
 
+/** Cicatrice du monde (spec §4 bis, S9) : chaque verdict marque le lieu de
+ * crise — brûlure (escalade) ou halo de guérison (désescalade), qui s'estompe
+ * avec l'âge (0 = fraîche, 1 = disparue, ~5 rounds). */
+export type Scar = { lon: number; lat: number; kind: "burn" | "heal"; age: number };
+
 export type GlobePainterInput = {
   ctx: CanvasRenderingContext2D;
   features: GlobeFeature[];
@@ -69,7 +74,7 @@ export function createGlobePainter({
   );
   const path = geoPath(proj, ctx);
 
-  function paint(summit: SummitTint[], speaking: string | null): void {
+  function paint(summit: SummitTint[], speaking: string | null, scars: Scar[] = []): void {
     // Océan : dégradé nuit + grille de points tech (planète futuriste).
     const sea = ctx.createLinearGradient(0, 0, 0, height);
     sea.addColorStop(0, "#050e1d");
@@ -106,6 +111,29 @@ export function createGlobePainter({
       ctx.strokeStyle = "rgba(130,180,240,.16)";
       ctx.lineWidth = 0.8;
       ctx.stroke();
+    }
+    // Cicatrices du monde (S9) : l'usure ou la guérison se lit sur la planète.
+    for (const scar of scars) {
+      const alpha = Math.max(0, 1 - scar.age);
+      if (alpha <= 0) continue;
+      const pt = proj([scar.lon, scar.lat]);
+      if (!pt) continue;
+      const [x, y] = pt;
+      const r = scar.kind === "burn" ? 46 : 56;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      if (scar.kind === "burn") {
+        g.addColorStop(0, `rgba(14, 6, 3, ${0.62 * alpha})`);
+        g.addColorStop(0.55, `rgba(46, 20, 8, ${0.34 * alpha})`);
+        g.addColorStop(1, "rgba(0, 0, 0, 0)");
+      } else {
+        g.addColorStop(0, `rgba(120, 235, 190, ${0.3 * alpha})`);
+        g.addColorStop(0.6, `rgba(89, 215, 255, ${0.14 * alpha})`);
+        g.addColorStop(1, "rgba(0, 0, 0, 0)");
+      }
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
     }
     // Pays du sommet : liseré à leur teinte U ; l'orateur se remplit d'ambre.
     for (const { slug, feat, u } of summit) {

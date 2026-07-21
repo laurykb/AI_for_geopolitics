@@ -27,6 +27,10 @@ function recordingCtx() {
     set shadowBlur(_v: unknown) {},
     set lineWidth(_v: unknown) {},
     createLinearGradient: () => ({ addColorStop: () => undefined }),
+    createRadialGradient: () => {
+      push("radialGradient");
+      return { addColorStop: () => undefined };
+    },
     fillRect: (...a: unknown[]) => push("fillRect", a),
     beginPath: () => push("beginPath"),
     moveTo: () => undefined,
@@ -90,5 +94,24 @@ describe("createGlobePainter (entrées → opérations de dessin)", () => {
     );
     const styles = ctx.ops.filter(([op]) => op === "fillStyle").map(([, v]) => v);
     expect(styles).not.toContain("#ffc14d");
+  });
+
+  it("cicatrices du monde (S9) : une brûlure et une guérison marquent la texture", () => {
+    const ctx = recordingCtx();
+    const painter = createGlobePainter({ ctx, features: WORLD_FEATURES, width: TEX_W, height: TEX_H });
+    const before = ctx.ops.length;
+    painter.paint(summit, null, [
+      { lon: 56.5, lat: 26.6, kind: "burn", age: 0 },
+      { lon: 2.35, lat: 48.86, kind: "heal", age: 0.6 },
+    ]);
+    const scarGradients = ctx.ops.slice(before).filter(([op]) => op === "radialGradient");
+    expect(scarGradients.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("une cicatrice totalement estompée (age ≥ 1) ne peint plus rien", () => {
+    const ctx = recordingCtx();
+    const painter = createGlobePainter({ ctx, features: WORLD_FEATURES, width: TEX_W, height: TEX_H });
+    painter.paint(summit, null, [{ lon: 0, lat: 0, kind: "burn", age: 1 }]);
+    expect(ctx.ops.filter(([op]) => op === "radialGradient")).toHaveLength(0);
   });
 });

@@ -27,7 +27,7 @@ import type { GeometryCollection, Topology } from "topojson-specification";
 import { useT } from "@/components/settings-provider";
 import { speakerMeta } from "@/lib/countries";
 import type { EventGeo } from "@/lib/globe-view";
-import { CAPITALS, prefersReducedMotion } from "@/lib/stage";
+import { CAPITALS, prefersReducedMotion, summitCenter } from "@/lib/stage";
 
 import {
   CAM_HOME,
@@ -92,7 +92,7 @@ import {
   type RobotMood,
   type SatelliteState,
 } from "./robots";
-import { TEX_H, TEX_W, createGlobePainter } from "./texture";
+import { TEX_H, TEX_W, createGlobePainter, type Scar } from "./texture";
 
 /** Superset des props StageMap (spec §2) : le théâtre passe la même vue aux
  * deux modes. Les champs encore muets ici (pense, événement, brouillard…)
@@ -122,6 +122,13 @@ export type GlobeStageProps = {
   funds?: { key: string; lon: number; lat: number; total: number }[];
   /** Balayage satellite (S8) : un `key` nouveau déclenche le vol + scan. */
   scan?: { lon: number; lat: number; key: string | number } | null;
+  /** Cicatrices du monde (S9) : les verdicts marquent la texture, ~5 rounds. */
+  scars?: Scar[];
+  /** Carnet de suspicion (S9) : niveau 0-2 épinglé au-dessus de chaque robot. */
+  suspicion?: Record<string, number>;
+  /** Motion de censure (S9) : votes en séquence illuminée + décompte. */
+  motionVotes?: { country: string; vote: string }[];
+  motionTarget?: string | null;
   /** La vue du joueur (spec §5) : globe, ou LE MÊME monde déplié en carte. */
   view?: "3d" | "2d";
   /** Touche V pressée : l'hôte (qui possède le réglage `stageView`) bascule. */
@@ -421,6 +428,11 @@ export function GlobeStage(props: GlobeStageProps) {
     );
     let bubbleBelow = false;
     let bubbleText = "";
+    // Épingles de suspicion (S9) : une petite étiquette par robot suspecté.
+    const pinTags = new Map<string, HTMLElement>();
+    // Décompte de la motion (S9), projeté au barycentre du sommet.
+    const tallyTag = makeTag("border-color:rgba(248,113,113,.55);color:#fecaca;font-weight:600;");
+    let tallyText = "";
 
     const PROJ = new THREE.Vector3();
     const CAMV = new THREE.Vector3();
@@ -479,7 +491,7 @@ export function GlobeStage(props: GlobeStageProps) {
       if (!painter) return;
       const p = propsRef.current;
       feats = summitFeatures(p.countries, allFeatures);
-      painter.paint(summitTints(), p.speaking ?? null);
+      painter.paint(summitTints(), p.speaking ?? null, p.scars ?? []);
       texture.needsUpdate = true;
       // Délégués : un robot par pays du sommet à capitale connue (un pays
       // inventé n'en a pas — règle existante, conservée).
@@ -929,6 +941,7 @@ export function GlobeStage(props: GlobeStageProps) {
 
       // Délégués : humeur (suspendu > pense > parle > repos) + face caméra.
       const suspendedSet = new Set(p.suspended ?? []);
+      const voteBySlug = new Map((p.motionVotes ?? []).map((v) => [v.country, v.vote]));
       for (const r of robots.values()) {
         const mood: RobotMood = suspendedSet.has(r.slug)
           ? "suspended"
@@ -944,6 +957,20 @@ export function GlobeStage(props: GlobeStageProps) {
         }
         animateRobot(r, t, reduced);
         r.veil.visible = !!p.misled?.[r.slug];
+        // Motion illuminée (S9) : le socle du votant s'allume — pour (suspendre)
+        // = rouge, contre (garder) = vert, abstention = gris ; la cible rougit.
+        const vote = voteBySlug.get(r.slug);
+        r.base.material.color.set(
+          vote === "pour"
+            ? "#f87171"
+            : vote === "contre"
+              ? "#34d399"
+              : vote
+                ? "#9ca3af"
+                : p.motionTarget === r.slug
+                  ? "#f87171"
+                  : speakerMeta(r.slug).hue,
+        );
       }
 
       // Anneau d'événement, arc (reconstruit selon le morph), glow d'orateur.
@@ -999,6 +1026,46 @@ export function GlobeStage(props: GlobeStageProps) {
         mixTop(entry.ll, 1.014, 0.032, morphK, LOC);
         projectAt(entry.el, LOC, entry.stack.bills > 0, -4);
       }
+      // Épingles de suspicion (S9) au-dessus des délégués suspectés.
+      const suspicion = p.suspicion ?? {};
+      for (const r of robots.values()) {
+        const level = suspicion[r.slug] ?? 0;
+        let pin = pinTags.get(r.slug);
+        const cap = CAPITALS[r.slug];
+        if (level > 0 && cap) {
+          if (!pin) {
+            pin = makeTag("padding:2px 6px;font-size:10px;");
+            pinTags.set(r.slug, pin);
+          }
+          const label = level >= 2 ? "🔍‼" : "🔍";
+          if (pin.textContent !== label) pin.textContent = label;
+          pin.style.borderColor =
+            level >= 2 ? "rgba(248,113,113,.65)" : "rgba(255,193,77,.55)";
+          mixTop(cap, 1 + ROBOT_H * 1.5, ROBOT_H * 1.5, morphK, LOC);
+          projectAt(pin, LOC, true, -2);
+        } else if (pin) {
+          pin.style.opacity = "0";
+        }
+      }
+      // Décompte de la motion (S9), au-dessus du barycentre du sommet.
+      const votes = p.motionVotes ?? [];
+      if (votes.length > 0) {
+        const pour = votes.filter((v) => v.vote === "pour").length;
+        const contre = votes.filter((v) => v.vote === "contre").length;
+        const abst = votes.length - pour - contre;
+        const txt = `⚖ pour ${pour} · contre ${contre}${abst ? ` · abst. ${abst}` : ""}`;
+        if (txt !== tallyText) {
+          tallyText = txt;
+          tallyTag.textContent = txt;
+        }
+        const center = summitCenter(p.countries);
+        if (center) {
+          mixTop(center, 1.09, 0.09, morphK, LOC);
+          projectAt(tallyTag, LOC, true, 0);
+        }
+      } else {
+        tallyTag.style.opacity = "0";
+      }
 
       renderer.render(scene, camera);
     };
@@ -1028,8 +1095,9 @@ export function GlobeStage(props: GlobeStageProps) {
         }
       });
       renderer.dispose();
-      for (const el of [tooltip, eventTag, speakerTag, judgeTag, bubbleTag]) el.remove();
+      for (const el of [tooltip, eventTag, speakerTag, judgeTag, bubbleTag, tallyTag]) el.remove();
       for (const entry of fundStacks.values()) entry.el.remove();
+      for (const pin of pinTags.values()) pin.remove();
       renderer.domElement.remove();
     };
     // Montage unique : les changements d'état passent par les effets ci-dessous.
@@ -1037,13 +1105,14 @@ export function GlobeStage(props: GlobeStageProps) {
 
   // Changements d'état de jeu → repeindre / suivre l'orateur (via la poignée,
   // jamais de setState : la boucle three reste seule maîtresse du temps).
+  const scarsKey = JSON.stringify(props.scars ?? []);
   useEffect(() => {
     const h = handleRef.current;
     if (!h) return;
     h.refresh();
     const target = speaking ?? thinking;
     if (target && followSpeaker) h.flyToCountry(target);
-  }, [tintKey, speaking, thinking, followSpeaker]);
+  }, [tintKey, speaking, thinking, followSpeaker, scarsKey]);
 
   useEffect(() => {
     handleRef.current?.setEvent();

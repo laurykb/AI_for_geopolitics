@@ -74,7 +74,9 @@ import {
   type FlashMarket,
 } from "@/lib/market";
 import { FlashMarketsPopup } from "@/components/flash-markets";
-import { deriveGlobeView } from "@/lib/globe-view";
+import { deriveGlobeView, eventGeoOf } from "@/lib/globe-view";
+import type { Scar } from "@/components/globe/texture";
+import type { SuspectNotebook } from "@/lib/suspects";
 import { CAPITALS, summitCenter } from "@/lib/stage";
 import { deriveStageView } from "@/lib/stage-view";
 import type {
@@ -161,6 +163,13 @@ export default function TheatrePage() {
   const [betting, setBetting] = useState(false);
   const [scanTarget, setScanTarget] = useState<{ lon: number; lat: number; key: number } | null>(
     null,
+  );
+  // S9 — miroir du carnet de suspicion (SuspectBoard) pour les épingles 3D.
+  const [suspicion, setSuspicion] = useState<Record<string, number>>({});
+  const onSuspicionChange = useCallback(
+    (nb: SuspectNotebook) =>
+      setSuspicion(Object.fromEntries(Object.entries(nb).map(([c, e]) => [c, e.level]))),
+    [],
   );
   const transcriptRef = useRef<HTMLElement | null>(null);
   // Campagne (G5) : le chapitre de la partie (scenario "campaign:<id>") impose la crise.
@@ -646,6 +655,26 @@ export default function TheatrePage() {
     if (!cap) return;
     setScanTarget({ lon: cap[0], lat: cap[1], key: Date.now() });
   };
+
+  // S9 — cicatrices du monde : chaque round persisté marque son lieu de crise
+  // (brûlure si l'indice U a baissé, halo de guérison sinon), s'estompant sur
+  // les ~5 derniers rounds. Dérivé des données déjà streamées, zéro requête.
+  const scars: Scar[] = [];
+  {
+    let prevU = 0.5;
+    for (const r of detail?.rounds ?? []) {
+      const u = r.trajectory?.utopia;
+      const geo = eventGeoOf(r.event as Parameters<typeof eventGeoOf>[0]);
+      if (u != null && geo) {
+        scars.push({ lon: geo.lon, lat: geo.lat, kind: u < prevU ? "burn" : "heal", age: 0 });
+      }
+      if (u != null) prevU = u;
+    }
+  }
+  const recentScars = scars.slice(-5).map((s, i, arr) => ({
+    ...s,
+    age: (arr.length - 1 - i) / 5,
+  }));
 
   // Les avis persistants (motion, suspensions, campagne, dérive) s'empilaient au-dessus
   // de la scène ; à partir de 2, ils se compactent en une ligne de pastilles dépliable
@@ -1258,6 +1287,10 @@ export default function TheatrePage() {
         }}
         funds={funds}
         scan={scanTarget}
+        scars={recentScars}
+        suspicion={suspicion}
+        motionVotes={viewed ? [] : round.motionVotes}
+        motionTarget={motionPending?.country ?? null}
         paris={
           <div className="space-y-3 text-sm text-fg-muted">
             {gameMarket && (
@@ -1402,6 +1435,7 @@ export default function TheatrePage() {
               gameId={id}
               countries={detail.countries}
               playAs={detail.play_as ?? undefined}
+              onChange={onSuspicionChange}
               onPrepareMotion={
                 !motionPending && !roundActive
                   ? (country) => {

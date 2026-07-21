@@ -17,6 +17,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { useT } from "@/components/settings-provider";
 import { StageMap, type StageMapProps } from "@/components/stage-map";
+import type { Scar } from "@/components/globe/texture";
 import { fmt } from "@/lib/format";
 import type { GlobeView } from "@/lib/globe-view";
 import type { StageView } from "@/lib/settings";
@@ -46,6 +47,13 @@ export type GlobeTheatreProps = {
   funds?: { key: string; lon: number; lat: number; total: number }[];
   /** Balayage satellite (S8). */
   scan?: { lon: number; lat: number; key: string | number } | null;
+  /** Cicatrices du monde (S9). */
+  scars?: Scar[];
+  /** Carnet de suspicion (S9) : niveau par pays, épinglé sur les robots. */
+  suspicion?: Record<string, number>;
+  /** Motion de censure (S9) : votes illuminés + décompte. */
+  motionVotes?: { country: string; vote: string }[];
+  motionTarget?: string | null;
   onCountryClick: (slug: string) => void;
   /** Contenu de la fiche pays (tiroir gauche) ; null = fermée. */
   fiche?: ReactNode;
@@ -72,6 +80,10 @@ export function GlobeTheatre({
   thinkingText,
   funds,
   scan = null,
+  scars,
+  suspicion,
+  motionVotes,
+  motionTarget = null,
   onCountryClick,
   fiche = null,
   onFicheClose,
@@ -121,6 +133,10 @@ export function GlobeTheatre({
             arc={view.arc}
             funds={funds}
             scan={scan}
+            scars={scars}
+            suspicion={suspicion}
+            motionVotes={motionVotes}
+            motionTarget={motionTarget}
             view={stageView}
             onViewToggle={toggleView}
             onCountryClick={onCountryClick}
