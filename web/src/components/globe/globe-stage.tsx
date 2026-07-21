@@ -1,12 +1,18 @@
 "use client";
 
-/** GlobeStage (spec théâtre-globe §1-§2) — la planète futuriste du théâtre.
+/** GlobeStage (spec théâtre-globe §1-§2, §5) — la planète futuriste du théâtre.
  *
  * S1 : globe à texture canvas (palette naturelle assombrie, côtes lumineuses,
  * liserés U), halo atmosphérique, anneaux orbitaux, étoiles, caméra orbitale
  * (drag + inertie + molette + fly-to) et picking pays (clic → fiche).
- * Les délégués, le drone GM, le Juge et les arcs arrivent en S2 — le contrat
- * de props (superset StageMap, spec §2) est déjà complet et stable.
+ * S2 : délégués humanoïdes, drone GM, entité Juge, arcs, anneau d'événement.
+ * S3 : LE DÉPLIAGE — une seule scène pour les deux vues (décision full-three) :
+ * le vertex shader du globe interpole sphère→plan (`uFlat`), les ancres
+ * suivent (position + orientation), le drone garde son orbite en espace
+ * sphère et se re-projette au rendu, la caméra fond vers une vue oblique
+ * « table tactique », le picking à plat passe par un plan invisible.
+ * Bascule par la prop `view` (l'hôte possède le réglage) et touche V
+ * (`onViewToggle`) ; le point de vue est préservé dans les deux sens.
  *
  * Règles non négociables (runbook) : composant client only (l'hôte l'importe
  * via `dynamic(…, { ssr: false })`), AUCUNE animation pilotée par setState —
@@ -36,9 +42,33 @@ import {
   type CamState,
 } from "./camera";
 import { paintFlag } from "./flags";
+import {
+  AnchorRegistry,
+  FLAT_EVENT_DIST,
+  FLAT_H,
+  FLAT_JUDGE_VIEW,
+  FLAT_SPEAKER_DIST,
+  FLAT_W,
+  Q_ID,
+  arcCurveAt,
+  clampFlat,
+  enterFlatView,
+  exitFlatView,
+  flatCameraPose,
+  flatFlyTowards,
+  flatWorldPerPixel,
+  mixPoint,
+  mixTop,
+  planeXYZ,
+  stepFlatFly,
+  stepMorph,
+  type FlatCamState,
+  type FlatFly,
+} from "./morph";
 import { countryAt, inverseLL, summitFeatures, toXYZ, type GlobeFeature } from "./picking";
 import {
   ROBOT_H,
+  aimBeam,
   animateRobot,
   buildArc,
   makeEventGroup,
@@ -46,7 +76,6 @@ import {
   makeJudge,
   makeRobot,
   makeVerdictWave,
-  placeEventGroup,
   setRobotMood,
   stepDrone,
   stepEventRings,
@@ -79,6 +108,10 @@ export type GlobeStageProps = {
   frozen?: boolean;
   /** Arc diplomatique orateur → destinataire. */
   arc?: { from: string; to: string } | null;
+  /** La vue du joueur (spec §5) : globe, ou LE MÊME monde déplié en carte. */
+  view?: "3d" | "2d";
+  /** Touche V pressée : l'hôte (qui possède le réglage `stageView`) bascule. */
+  onViewToggle?: () => void;
   /** Clic sur un pays du sommet (ou son délégué) → fiche. */
   onCountryClick?: (slug: string) => void;
   /** La caméra suit l'orateur. Le réglage appartient à l'hôte : `onUserDrag`
@@ -112,6 +145,7 @@ type GlobeHandle = {
   setEvent: () => void;
   setArc: () => void;
   verdict: () => void;
+  setView: (flat: boolean) => void;
 };
 
 function glowTexture(color: string): THREE.CanvasTexture {
@@ -148,6 +182,7 @@ export function GlobeStage(props: GlobeStageProps) {
     eventTitle,
     pulse = false,
     frozen = false,
+    view = "3d",
   } = props;
   const tintKey = useMemo(
     () =>
@@ -187,13 +222,15 @@ export function GlobeStage(props: GlobeStageProps) {
     sun2.position.set(-3, -1, -2);
     scene.add(sun2);
 
-    // Anneaux orbitaux décoratifs — la planète est un nœud technologique.
+    // Anneaux orbitaux décoratifs — s'effacent quand le monde se déplie.
+    const orbitals: [THREE.Mesh<THREE.TorusGeometry, THREE.MeshBasicMaterial>, number][] = [];
     const ring1 = new THREE.Mesh(
       new THREE.TorusGeometry(1.38, 0.0016, 8, 128),
       new THREE.MeshBasicMaterial({ color: 0x4ea8ff, transparent: true, opacity: 0.14 }),
     );
     ring1.rotation.x = Math.PI / 2.25;
     scene.add(ring1);
+    orbitals.push([ring1, 0.14]);
     const ring2 = new THREE.Mesh(
       new THREE.TorusGeometry(1.55, 0.0012, 8, 128),
       new THREE.MeshBasicMaterial({ color: 0x59e0c8, transparent: true, opacity: 0.09 }),
@@ -201,6 +238,7 @@ export function GlobeStage(props: GlobeStageProps) {
     ring2.rotation.x = Math.PI / 1.8;
     ring2.rotation.y = 0.5;
     scene.add(ring2);
+    orbitals.push([ring2, 0.09]);
 
     // Étoiles.
     {
@@ -229,37 +267,55 @@ export function GlobeStage(props: GlobeStageProps) {
       );
     }
 
-    // Halo atmosphérique (fresnel BackSide additif).
-    const atmo = new THREE.Mesh(
-      new THREE.SphereGeometry(1.055, 72, 48),
-      new THREE.ShaderMaterial({
-        side: THREE.BackSide,
-        transparent: true,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        vertexShader: `varying vec3 vN; void main(){ vN=normalize(normalMatrix*normal);
-          gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
-        fragmentShader: `varying vec3 vN; void main(){
-          float i=pow(0.72-dot(vN,vec3(0.,0.,1.)),3.2);
-          gl_FragColor=vec4(0.36,0.65,1.0,1.0)*i*1.2;}`,
-      }),
-    );
+    // Halo atmosphérique (fresnel BackSide additif) — s'efface à plat.
+    const atmoMat = new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      uniforms: { uFlat: { value: 0 } },
+      vertexShader: `varying vec3 vN; void main(){ vN=normalize(normalMatrix*normal);
+        gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+      fragmentShader: `varying vec3 vN; uniform float uFlat; void main(){
+        float i=pow(0.72-dot(vN,vec3(0.,0.,1.)),3.2);
+        gl_FragColor=vec4(0.36,0.65,1.0,1.0)*i*1.2*(1.0-uFlat);}`,
+    });
+    const atmo = new THREE.Mesh(new THREE.SphereGeometry(1.055, 72, 48), atmoMat);
     scene.add(atmo);
 
     // Texture du globe — peinte au chargement du fond 50m, puis aux
-    // changements d'état seulement (`refresh`).
+    // changements d'état seulement (`refresh`). Pas d'étiquette de colorspace :
+    // le shader écrit le texel tel quel, comme le prototype.
     const tcan = document.createElement("canvas");
     tcan.width = TEX_W;
     tcan.height = TEX_H;
     const tctx = tcan.getContext("2d")!;
     const texture = new THREE.CanvasTexture(tcan);
     texture.anisotropy = 4;
-    texture.colorSpace = THREE.SRGBColorSpace;
-    const globe = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 72, 48),
-      new THREE.MeshBasicMaterial({ map: texture }),
-    );
+    // LE globe morphable : chaque sommet bascule sphère→plan dans le vertex
+    // shader (uv = position dépliée, par construction de l'équirectangulaire).
+    const globeMat = new THREE.ShaderMaterial({
+      uniforms: { map: { value: texture }, uFlat: { value: 0 } },
+      vertexShader: `
+        uniform float uFlat; varying vec2 vUv;
+        void main(){
+          vUv=uv;
+          vec3 flatPos=vec3((uv.x-.5)*${FLAT_W.toFixed(6)},(uv.y-.5)*${FLAT_H.toFixed(6)},0.0);
+          vec3 p=mix(position,flatPos,uFlat);
+          gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);
+        }`,
+      fragmentShader: `
+        uniform sampler2D map; varying vec2 vUv;
+        void main(){ gl_FragColor=texture2D(map,vUv); }`,
+    });
+    const globe = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 64), globeMat);
     scene.add(globe);
+    // Plan invisible : le picking du monde déplié.
+    const pickPlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(FLAT_W, FLAT_H),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+    );
+    scene.add(pickPlane);
 
     // Glow de l'orateur (le pays s'allume, le halo respire dans la boucle).
     const speakerGlow = new THREE.Sprite(
@@ -275,6 +331,7 @@ export function GlobeStage(props: GlobeStageProps) {
     scene.add(speakerGlow);
 
     // Les habitants du globe (S2) : délégués, drone GM, Juge, événement, arc.
+    const anchors = new AnchorRegistry();
     const robots = new Map<string, RobotHandle>();
     const flagTextures = new Map<string, THREE.Texture>();
     const flagTextureOf = (slug: string): THREE.Texture => {
@@ -294,9 +351,11 @@ export function GlobeStage(props: GlobeStageProps) {
       }
       return tex;
     };
-    const { drone: gmDrone, beam: gmBeam } = makeGMDrone();
+    const { drone: gmDrone, ring: gmRing, beam: gmBeam } = makeGMDrone();
     scene.add(gmDrone);
     scene.add(gmBeam);
+    // La machine à états du drone vit en ESPACE SPHÈRE ; le rendu mixe.
+    const gmPos = new THREE.Vector3(1.6, 0, 0);
     let droneState: DroneState = { mode: "orbit", a: 0, t: 0, target: null };
     const judge = makeJudge(glowTexture("rgb(129,140,248)"));
     scene.add(judge.group);
@@ -305,6 +364,8 @@ export function GlobeStage(props: GlobeStageProps) {
     const eventGroup = makeEventGroup();
     scene.add(eventGroup.group);
     let arcHandle: ArcHandle | null = null;
+    let arcLL: [[number, number], [number, number]] | null = null;
+    let arcKCache = -1;
 
     // DOM projeté (tooltip, bandeau d'événement, étiquette d'orateur) —
     // stylé inline, piloté par la boucle : jamais de setState.
@@ -327,35 +388,50 @@ export function GlobeStage(props: GlobeStageProps) {
     const PROJ = new THREE.Vector3();
     const CAMV = new THREE.Vector3();
     const LOC = new THREE.Vector3();
+    const TMP = new THREE.Vector3();
+    const TMP2 = new THREE.Vector3();
+    const CAMP = new THREE.Vector3();
+    const CAMT = new THREE.Vector3();
+    const ORIGIN = new THREE.Vector3(0, 0, 0);
+
+    // État interne de la scène (refs, pas de React).
+    let cam: CamState = { ...CAM_HOME };
+    let fly: CameraFly | null = null;
+    let fcam: FlatCamState = { x: 0, y: 0, dist: 2.2 };
+    let flyF: FlatFly | null = null;
+    let morphK = 0;
+    let morphTarget = 0;
+    let vlon = 0;
+    let vlat = 0;
+    let dragging = false;
+    let dragSignaled = false;
+    let moved = 0;
+    let px = 0;
+    let py = 0;
+    let hoverT = 0;
+    let glowLL: [number, number] | null = null;
+    let painter: ReturnType<typeof createGlobePainter> | null = null;
+    let feats: ReturnType<typeof summitFeatures> = [];
+    let raf = 0;
+
     const projectAt = (el: HTMLElement, pos: THREE.Vector3, visible: boolean, dy = 0): void => {
       if (!visible) {
         el.style.opacity = "0";
         return;
       }
       PROJ.copy(pos).project(camera);
+      // Le test d'horizon n'a de sens que côté sphère : à plat, rien n'est
+      // « derrière » le monde.
       const behind =
-        PROJ.z > 1 || pos.clone().normalize().dot(camera.position.clone().normalize()) < 0.12;
+        PROJ.z > 1 ||
+        (morphK < 0.5 &&
+          pos.clone().normalize().dot(TMP.copy(camera.position).normalize()) < 0.12);
       const w = host.clientWidth;
       const h = host.clientHeight;
       el.style.left = `${((PROJ.x + 1) / 2) * w}px`;
       el.style.top = `${((-PROJ.y + 1) / 2) * h + dy}px`;
       el.style.opacity = behind ? "0" : "1";
     };
-
-    // État interne de la scène (refs, pas de React).
-    let cam: CamState = { ...CAM_HOME };
-    let fly: CameraFly | null = null;
-    let vlon = 0;
-    let vlat = 0;
-    let dragging = false;
-    let moved = 0;
-    let px = 0;
-    let py = 0;
-    let hoverT = 0;
-    let dragSignaled = false;
-    let painter: ReturnType<typeof createGlobePainter> | null = null;
-    let feats: ReturnType<typeof summitFeatures> = [];
-    let raf = 0;
 
     const summitTints = () => {
       const p = propsRef.current;
@@ -373,27 +449,26 @@ export function GlobeStage(props: GlobeStageProps) {
       const want = new Set(p.countries.filter((c) => CAPITALS[c]));
       for (const [slug, r] of robots) {
         if (want.has(slug)) continue;
+        anchors.remove(r.group);
         scene.remove(r.group);
         robots.delete(slug);
       }
       for (const slug of want) {
         if (robots.has(slug)) continue;
         const meta = speakerMeta(slug);
-        const r = makeRobot({
-          slug,
-          hue: meta.hue,
-          lonlat: CAPITALS[slug],
-          flagMap: flagTextureOf(slug),
-        });
+        const cap = CAPITALS[slug];
+        const r = makeRobot({ slug, hue: meta.hue, lonlat: cap, flagMap: flagTextureOf(slug) });
+        anchors.anchor(r.group, cap[0], cap[1], { lift: 0.001 });
         scene.add(r.group);
         robots.set(slug, r);
       }
       const cap = p.speaking ? CAPITALS[p.speaking] : null;
       if (cap && p.speaking) {
-        speakerGlow.position.set(...toXYZ(cap[0], cap[1], 1.008));
+        glowLL = cap;
         speakerGlow.material.opacity = 0.95;
         speakerTag.textContent = `🗣 ${speakerMeta(p.speaking).label}`;
       } else {
+        glowLL = null;
         speakerGlow.material.opacity = 0;
       }
     };
@@ -401,6 +476,16 @@ export function GlobeStage(props: GlobeStageProps) {
     const flyToCountry = (slug: string) => {
       const cap = CAPITALS[slug];
       if (!cap || dragging) return;
+      if (morphTarget === 1) {
+        const target = { lon: cap[0], lat: cap[1], dist: FLAT_SPEAKER_DIST };
+        if (reduced) {
+          const [x, y] = planeXYZ(target.lon, target.lat);
+          fcam = clampFlat({ x, y, dist: target.dist });
+          return;
+        }
+        flyF = flatFlyTowards(fcam, target, 1.1);
+        return;
+      }
       const target = { lon: cap[0], lat: cap[1] + SPEAKER_VIEW.latOffset, dist: SPEAKER_VIEW.dist };
       if (reduced) {
         cam = { lon: target.lon, lat: clampLat(target.lat), dist: target.dist };
@@ -420,10 +505,14 @@ export function GlobeStage(props: GlobeStageProps) {
       lastEventKey = key;
       if (!p.eventGeo) {
         eventGroup.group.visible = false;
+        anchors.remove(eventGroup.group);
         eventTag.style.opacity = "0";
         return;
       }
-      placeEventGroup(eventGroup, p.eventGeo.lon, p.eventGeo.lat);
+      anchors.anchor(eventGroup.group, p.eventGeo.lon, p.eventGeo.lat, {
+        lift: 0.004,
+        flatQ: Q_ID,
+      });
       eventGroup.group.visible = true;
       eventTag.textContent = p.eventTitle ? `⚠ ${p.eventTitle}` : "⚠";
       if (!isNew) return;
@@ -434,6 +523,16 @@ export function GlobeStage(props: GlobeStageProps) {
         target: new THREE.Vector3(...toXYZ(p.eventGeo.lon, p.eventGeo.lat, 1)),
       };
       if ((p.followSpeaker ?? true) && !dragging) {
+        if (morphTarget === 1) {
+          const target = { lon: p.eventGeo.lon, lat: p.eventGeo.lat, dist: FLAT_EVENT_DIST };
+          if (reduced) {
+            const [x, y] = planeXYZ(target.lon, target.lat);
+            fcam = clampFlat({ x, y, dist: target.dist });
+          } else {
+            flyF = flatFlyTowards(fcam, target, 1.4);
+          }
+          return;
+        }
         const target = {
           lon: p.eventGeo.lon,
           lat: p.eventGeo.lat + EVENT_VIEW.latOffset,
@@ -451,6 +550,7 @@ export function GlobeStage(props: GlobeStageProps) {
         arcHandle.line.geometry.dispose();
         (arcHandle.line.material as THREE.Material).dispose();
         arcHandle = null;
+        arcLL = null;
       }
       const a = propsRef.current.arc;
       if (!a || a.from === a.to) return;
@@ -458,6 +558,8 @@ export function GlobeStage(props: GlobeStageProps) {
       const to = CAPITALS[a.to];
       if (!from || !to) return;
       arcHandle = buildArc(from, to);
+      arcLL = [from, to];
+      arcKCache = -1; // reconstruit au prochain tour de boucle, quel que soit k
       scene.add(arcHandle.line);
       scene.add(arcHandle.pulse);
     };
@@ -474,9 +576,34 @@ export function GlobeStage(props: GlobeStageProps) {
       }
       const p = propsRef.current;
       if ((p.followSpeaker ?? true) && !dragging) {
+        if (morphTarget === 1) {
+          if (reduced) {
+            const [x, y] = planeXYZ(FLAT_JUDGE_VIEW.lon, FLAT_JUDGE_VIEW.lat);
+            fcam = clampFlat({ x, y, dist: FLAT_JUDGE_VIEW.dist });
+          } else {
+            flyF = flatFlyTowards(fcam, FLAT_JUDGE_VIEW, 1.4);
+          }
+          return;
+        }
         if (reduced) cam = { ...cam, lat: JUDGE_VIEW.lat, dist: JUDGE_VIEW.dist };
         else fly = flyTowards(cam, { lon: cam.lon, lat: JUDGE_VIEW.lat, dist: JUDGE_VIEW.dist }, 1.5);
       }
+    };
+
+    // La bascule (spec §5) : le point de vue est préservé dans les deux sens ;
+    // `prefers-reduced-motion` saute le dépliage (morph instantané).
+    const setView = (flat: boolean) => {
+      const target = flat ? 1 : 0;
+      if (morphTarget === target) return;
+      morphTarget = target;
+      if (flat) {
+        fcam = enterFlatView(cam);
+        flyF = null;
+      } else {
+        cam = exitFlatView(fcam);
+        fly = null;
+      }
+      if (reduced) morphK = target;
     };
 
     let allFeatures: GlobeFeature[] = [];
@@ -487,7 +614,8 @@ export function GlobeStage(props: GlobeStageProps) {
       refresh();
       setEvent();
       setArc();
-      handleRef.current = { refresh, flyToCountry, setEvent, setArc, verdict };
+      setView(propsRef.current.view === "2d");
+      handleRef.current = { refresh, flyToCountry, setEvent, setArc, verdict, setView };
     });
 
     // --- interactions --------------------------------------------------------
@@ -500,7 +628,9 @@ export function GlobeStage(props: GlobeStageProps) {
       ray.setFromCamera(ndc, camera);
       return true;
     };
-    // Robots d'abord (gros hitbox), sinon la sphère → lon/lat → geoContains.
+    // Robots d'abord (gros hitbox), sinon le monde : sphère → geoContains, ou
+    // plan déplié → lon/lat linéaire (le raycast CPU ignore le vertex shader,
+    // d'où le plan de picking dédié).
     const slugAt = (e: PointerEvent | MouseEvent): string | null => {
       if (!setRay(e)) return null;
       const pool = [...robots.values()].map((r) => r.group);
@@ -509,6 +639,14 @@ export function GlobeStage(props: GlobeStageProps) {
         let o: THREE.Object3D | null = robotHit.object;
         while (o && !o.userData.slug) o = o.parent;
         if (o) return o.userData.slug as string;
+      }
+      if (morphK > 0.5) {
+        const hit = ray.intersectObject(pickPlane)[0];
+        if (!hit) return null;
+        return countryAt(
+          [(hit.point.x / (FLAT_W / 2)) * 180, (hit.point.y / (FLAT_H / 2)) * 90],
+          feats,
+        );
       }
       const hit = ray.intersectObject(globe)[0];
       return hit ? countryAt(inverseLL([hit.point.x, hit.point.y, hit.point.z]), feats) : null;
@@ -521,6 +659,7 @@ export function GlobeStage(props: GlobeStageProps) {
       px = e.clientX;
       py = e.clientY;
       fly = null;
+      flyF = null;
     };
     const onPointerUp = () => {
       dragging = false;
@@ -536,9 +675,15 @@ export function GlobeStage(props: GlobeStageProps) {
         dragSignaled = true;
         propsRef.current.onUserDrag?.();
       }
-      vlon = -dx * 0.22;
-      vlat = dy * 0.22;
-      cam = { ...cam, lon: cam.lon + vlon, lat: clampLat(cam.lat + vlat) };
+      if (morphK > 0.5) {
+        // À plat, le drag PANNE la carte : le monde suit le curseur.
+        const wpp = flatWorldPerPixel(fcam.dist, host.clientHeight || 1);
+        fcam = clampFlat({ x: fcam.x - dx * wpp, y: fcam.y + dy * wpp, dist: fcam.dist });
+      } else {
+        vlon = -dx * 0.22;
+        vlat = dy * 0.22;
+        cam = { ...cam, lon: cam.lon + vlon, lat: clampLat(cam.lat + vlat) };
+      }
     };
     const onHover = (e: PointerEvent) => {
       if (dragging) return;
@@ -559,12 +704,24 @@ export function GlobeStage(props: GlobeStageProps) {
     };
     const onClick = (e: MouseEvent) => {
       if (moved > 6) return;
+      if (morphK > 0.02 && morphK < 0.98) return; // pas de picking en plein dépliage
       const slug = slugAt(e);
       if (slug) propsRef.current.onCountryClick?.(slug);
     };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      cam = zoomBy(cam, Math.sign(e.deltaY));
+      if (morphK > 0.5) {
+        fcam = clampFlat({ ...fcam, dist: fcam.dist * (1 + Math.sign(e.deltaY) * 0.1) });
+      } else {
+        cam = zoomBy(cam, Math.sign(e.deltaY));
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "v" && e.key !== "V") return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable))
+        return;
+      propsRef.current.onViewToggle?.();
     };
 
     renderer.domElement.addEventListener("pointerdown", onPointerDown);
@@ -573,6 +730,7 @@ export function GlobeStage(props: GlobeStageProps) {
     renderer.domElement.addEventListener("wheel", onWheel, { passive: false });
     window.addEventListener("pointerup", onPointerUp);
     window.addEventListener("pointermove", onWindowMove);
+    window.addEventListener("keydown", onKeyDown);
 
     const resize = () => {
       const w = host.clientWidth;
@@ -593,7 +751,15 @@ export function GlobeStage(props: GlobeStageProps) {
       if (document.hidden) return;
       const dt = Math.min(0.05, clock.getDelta());
 
-      if (!dragging) {
+      // Le morph avance vers sa cible ; tout le monde suit.
+      morphK = stepMorph(morphK, morphTarget, dt);
+      anchors.apply(morphK);
+      globeMat.uniforms.uFlat.value = morphK;
+      atmoMat.uniforms.uFlat.value = morphK;
+      for (const [o, base] of orbitals) o.material.opacity = base * (1 - morphK);
+
+      // Caméra : inertie orbitale (côté sphère), vols des deux mondes.
+      if (!dragging && morphK < 0.5) {
         vlon *= Math.pow(0.05, dt);
         vlat *= Math.pow(0.05, dt);
         if (Math.abs(vlon) > 0.002 || Math.abs(vlat) > 0.002) {
@@ -605,19 +771,43 @@ export function GlobeStage(props: GlobeStageProps) {
         cam = step.cam;
         fly = step.fly;
       }
-      camera.position.set(...camPosition(cam));
-      camera.lookAt(0, 0, 0);
+      if (flyF) {
+        const step = stepFlatFly(fcam, flyF, dt);
+        fcam = step.fcam;
+        flyF = step.fly;
+      }
+      CAMP.set(...camPosition(cam));
+      CAMT.copy(ORIGIN);
+      if (morphK > 0) {
+        const pose = flatCameraPose(fcam);
+        CAMP.lerp(TMP.set(...pose.position), morphK);
+        CAMT.lerp(TMP2.set(...pose.target), morphK);
+      }
+      camera.position.copy(CAMP);
+      camera.lookAt(CAMT);
 
       const t = clock.elapsedTime;
       const p = propsRef.current;
 
-      // Drone GM (orbite ↔ annonce) et Juge (idle ↔ verdict + ondes).
-      droneState = stepDrone(gmDrone, gmBeam, droneState, dt);
+      // Drone GM : machine à états en espace sphère, rendu morphé.
+      droneState = stepDrone(gmPos, gmBeam, droneState, dt);
+      mixPoint(gmPos, morphK, gmDrone.position);
+      if (droneState.mode === "announce" && droneState.target) {
+        aimBeam(gmBeam, gmDrone.position, mixPoint(droneState.target, morphK, TMP));
+      }
+      gmRing.rotation.z += dt * (droneState.mode === "announce" ? 4 : 1.2);
+      gmDrone.lookAt(
+        morphK > 0.5 ? TMP.set(gmDrone.position.x, gmDrone.position.y, -10) : ORIGIN,
+      );
+
+      // Le Juge : au-dessus du monde… quel que soit l'état du monde.
       const verdictOn = judgeMode.mode === "verdict";
       judge.core.rotation.y += dt * (verdictOn ? 1.6 : 0.35);
       judge.ringA.rotation.z += dt * (verdictOn ? 1.8 : 0.3);
       judge.ringB.rotation.z -= dt * (verdictOn ? 1.4 : 0.22);
-      judge.group.position.y = 1.72 + (reduced ? 0 : Math.sin(t * 0.9) * 0.02);
+      TMP.set(0, 1.72 + (reduced ? 0 : Math.sin(t * 0.9) * 0.02), 0);
+      TMP2.set(0, FLAT_H / 2 + 0.18, 0.85);
+      judge.group.position.copy(TMP).lerp(TMP2, morphK);
       if (verdictOn) {
         judgeMode = { mode: "verdict", t: judgeMode.t + dt };
         judge.core.scale.setScalar(reduced ? 1 : 1 + Math.sin(t * 6) * 0.12);
@@ -628,7 +818,7 @@ export function GlobeStage(props: GlobeStageProps) {
           if (judge.halo) judge.halo.material.opacity = 0.5;
         }
       }
-      const aliveWaves = stepVerdictWaves(waves, dt);
+      const aliveWaves = stepVerdictWaves(waves, dt, morphK);
       for (const w of waves) {
         if (aliveWaves.includes(w)) continue;
         scene.remove(w);
@@ -656,23 +846,33 @@ export function GlobeStage(props: GlobeStageProps) {
         r.veil.visible = !!p.misled?.[r.slug];
       }
 
-      // Anneau d'événement, arc voyageur, glow d'orateur.
+      // Anneau d'événement, arc (reconstruit selon le morph), glow d'orateur.
       if (eventGroup.group.visible) {
         stepEventRings(eventGroup.rings, t, !reduced && (p.pulse ?? false));
       }
-      if (arcHandle) {
-        const k = reduced ? 0.5 : (t * 0.55) % 1;
-        arcHandle.pulse.position.copy(arcHandle.curve.getPointAt(k));
+      if (arcHandle && arcLL && morphK !== arcKCache) {
+        arcKCache = morphK;
+        arcHandle.curve = arcCurveAt(arcLL[0], arcLL[1], morphK);
+        arcHandle.line.geometry.dispose();
+        arcHandle.line.geometry = new THREE.BufferGeometry().setFromPoints(
+          arcHandle.curve.getPoints(72),
+        );
       }
+      if (arcHandle) {
+        const kk = reduced ? 0.5 : (t * 0.55) % 1;
+        arcHandle.pulse.position.copy(arcHandle.curve.getPointAt(kk));
+      }
+      if (glowLL) speakerGlow.position.copy(mixTop(glowLL, 1.008, 0.008, morphK, TMP));
       if (p.speaking && !reduced) {
         speakerGlow.material.opacity = 0.7 + Math.sin(t * 3.2) * 0.2;
       }
 
-      // Étiquettes projetées (DOM piloté par la boucle).
+      // Étiquettes projetées : un seul chemin, la scène (morphée) fait foi.
       projectAt(eventTag, eventGroup.group.position, eventGroup.group.visible, -14);
-      const spk = p.speaking ? robots.get(p.speaking) : undefined;
-      if (spk) {
-        LOC.copy(spk.group.position).normalize().multiplyScalar(1 + ROBOT_H * 1.12);
+      const spkSlug = p.speaking ?? null;
+      const spkCap = spkSlug ? CAPITALS[spkSlug] : null;
+      if (spkSlug && spkCap && robots.has(spkSlug)) {
+        mixTop(spkCap, 1 + ROBOT_H * 1.12, ROBOT_H * 1.12, morphK, LOC);
         projectAt(speakerTag, LOC, true, 8);
       } else {
         speakerTag.style.opacity = "0";
@@ -694,6 +894,7 @@ export function GlobeStage(props: GlobeStageProps) {
       renderer.domElement.removeEventListener("wheel", onWheel);
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointermove", onWindowMove);
+      window.removeEventListener("keydown", onKeyDown);
       scene.traverse((o) => {
         const mesh = o as Partial<THREE.Mesh>;
         if (mesh.geometry) mesh.geometry.dispose();
@@ -709,7 +910,7 @@ export function GlobeStage(props: GlobeStageProps) {
       for (const el of [tooltip, eventTag, speakerTag, judgeTag]) el.remove();
       renderer.domElement.remove();
     };
-    // Montage unique : les changements d'état passent par l'effet ci-dessous.
+    // Montage unique : les changements d'état passent par les effets ci-dessous.
   }, []);
 
   // Changements d'état de jeu → repeindre / suivre l'orateur (via la poignée,
@@ -734,6 +935,11 @@ export function GlobeStage(props: GlobeStageProps) {
   useEffect(() => {
     if (frozen) handleRef.current?.verdict();
   }, [frozen]);
+
+  // La vue du joueur : le monde se déplie ou se replie (spec §5).
+  useEffect(() => {
+    handleRef.current?.setView(view === "2d");
+  }, [view]);
 
   return (
     <div

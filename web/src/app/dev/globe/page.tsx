@@ -37,6 +37,7 @@ export default function GlobeDevPage() {
   const [suspendIran, setSuspendIran] = useState(false);
   const [fogEgypt, setFogEgypt] = useState(false);
   const [arcOn, setArcOn] = useState(false);
+  const [view, setView] = useState<"3d" | "2d">("3d");
 
   const current = speakerIdx >= 0 ? SUMMIT[speakerIdx % SUMMIT.length] : null;
   const speaking = phase === "speaking" ? current : null;
@@ -60,6 +61,8 @@ export default function GlobeDevPage() {
         pulse={eventOn}
         frozen={frozen}
         arc={arcOn ? { from: "usa", to: "iran" } : null}
+        view={view}
+        onViewToggle={() => setView((v) => (v === "3d" ? "2d" : "3d"))}
         onCountryClick={setPicked}
         className="h-full w-full"
       />
@@ -106,6 +109,14 @@ export default function GlobeDevPage() {
         </button>
         <button type="button" className={chip} data-on={arcOn} onClick={() => setArcOn((v) => !v)}>
           ➰ arc USA → Iran
+        </button>
+        <button
+          type="button"
+          className={chip}
+          data-on={view === "2d"}
+          onClick={() => setView((v) => (v === "3d" ? "2d" : "3d"))}
+        >
+          {view === "3d" ? "🗺 déplier (V)" : "🌍 replier (V)"}
         </button>
         <span className="text-fg-faint">
           {thinking

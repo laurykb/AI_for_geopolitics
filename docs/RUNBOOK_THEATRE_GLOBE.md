@@ -77,10 +77,14 @@
   transposer le prototype dans les modules de la spec §2 (`texture.ts`, `robots.ts`,
   `camera.ts`, `picking.ts`…). *(fait 2026-07-21 — `robots.ts` testé en node sans WebGL ;
   drapeaux C2 au torse ; humeurs pense/parle/suspendu/fog ; vérifié live)*
-- [ ] **S3** — **Le dépliage 2D⇄3D** (full-three, spec §5) : morph sphère⇄plan transposé du
+- [x] **S3** — **Le dépliage 2D⇄3D** (full-three, spec §5) : morph sphère⇄plan transposé du
   prototype (shader `uFlat`, ancres lerp/slerp, caméra oblique tactique, plan de picking)
   derrière `stageView` + touche V, point de vue préservé ; StageMap SVG rendue interactive
   (`onCountryClick`, `eventGeo`) **uniquement en repli sans WebGL**.
+  *(fait 2026-07-22 — `morph.ts` pur testé vitest (ancres, mixPoint/mixTop, caméra plate,
+  arc morphé, bascule aller-retour) ; `GlobeStage` porte la prop `view` + `onViewToggle`
+  (touche V, le réglage `stageView` viendra avec l'hôte en S4) ; vérifié live : dépliage,
+  clic pays à plat via le plan de picking, repliage avec point de vue préservé)*
 - [ ] **S4** — Layout immersif (spec §4) dans `app/games/[id]/page.tsx` : globe plein théâtre,
   transcript overlay droite **à onglets** (Dialogues · Paris · Renseignement), bandeau
   événement, contrôles bas-gauche, fiche gauche.

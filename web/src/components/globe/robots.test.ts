@@ -7,6 +7,7 @@ import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 
 import {
+  aimBeam,
   animateRobot,
   buildArc,
   makeEventGroup,
@@ -91,27 +92,37 @@ describe("animateRobot (états continus — la boucle three)", () => {
   });
 });
 
-describe("drone GM (orbite ↔ annonce)", () => {
+describe("drone GM (machine à états en ESPACE SPHÈRE — le rendu mixe ensuite)", () => {
   it("en orbite, avance son angle et éteint le faisceau", () => {
-    const { drone, beam } = makeGMDrone();
+    const { beam } = makeGMDrone();
     beam.material.opacity = 0.2;
+    const pos = new THREE.Vector3();
     const state = { mode: "orbit" as const, a: 0, t: 0, target: null };
-    const next = stepDrone(drone, beam, state, 0.1);
+    const next = stepDrone(pos, beam, state, 0.1);
     expect(next.a).toBeCloseTo(0.025, 6);
+    expect(pos.length()).toBeGreaterThan(1.5); // l'orbite haute, au-dessus du monde
     expect(beam.material.opacity).toBeLessThan(0.2);
   });
 
   it("en annonce, descend vers le lieu, allume le faisceau, puis rentre", () => {
-    const { drone, beam } = makeGMDrone();
-    drone.position.set(1.6, 0, 0);
+    const { beam } = makeGMDrone();
+    const pos = new THREE.Vector3(1.6, 0, 0);
     const target = new THREE.Vector3(...toXYZ(56.5, 26.6, 1));
+    const hover = target.clone().normalize().multiplyScalar(1.22);
+    const before = pos.distanceTo(hover);
     const state = { mode: "announce" as const, a: 0, t: 0, target };
-    const before = drone.position.distanceTo(target.clone().multiplyScalar(1.22));
-    let next = stepDrone(drone, beam, state, 0.1);
-    expect(drone.position.distanceTo(target.clone().multiplyScalar(1.22))).toBeLessThan(before);
+    let next = stepDrone(pos, beam, state, 0.1);
+    expect(pos.distanceTo(hover)).toBeLessThan(before);
     expect(beam.material.opacity).toBeGreaterThan(0);
-    next = stepDrone(drone, beam, { ...next, t: 4.6 }, 0.1);
+    next = stepDrone(pos, beam, { ...next, t: 4.6 }, 0.1);
     expect(next.mode).toBe("orbit");
+  });
+
+  it("aimBeam tend le faisceau entre le sol et le drone (réutilisé morphé)", () => {
+    const { beam } = makeGMDrone();
+    aimBeam(beam, new THREE.Vector3(1.22, 0, 0), new THREE.Vector3(1, 0, 0));
+    expect(beam.scale.y).toBeCloseTo(0.22, 6);
+    expect(beam.position.distanceTo(new THREE.Vector3(1.11, 0, 0))).toBeLessThan(1e-6);
   });
 });
 
@@ -134,6 +145,17 @@ describe("le Juge et ses ondes de verdict", () => {
     expect(wave.scale.x).toBeGreaterThan(1.02);
     for (let i = 0; i < 40; i++) alive = stepVerdictWaves(alive, 0.1);
     expect(alive).toHaveLength(0);
+  });
+
+  it("à plat (k=1), l'onde s'efface mais survit jusqu'au retour au globe", () => {
+    const wave = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 8, 6),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.2 }),
+    );
+    wave.scale.setScalar(1.02);
+    const alive = stepVerdictWaves([wave], 0.1, 1);
+    expect(wave.material.opacity).toBe(0);
+    expect(alive).toHaveLength(1); // pas de disparition sèche en pleine carte
   });
 });
 

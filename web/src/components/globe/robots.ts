@@ -281,33 +281,44 @@ export function makeGMDrone(): {
   return { drone, ring, beam };
 }
 
-/** Une frame du drone : orbite haute, ou descente + faisceau vers le lieu.
- * Lerp indépendant du framerate (1−e^(−k·dt)), retour en orbite après 4,5 s. */
+/** Une frame du drone, en ESPACE SPHÈRE (`spherePos`) : orbite haute, ou
+ * descente vers le lieu. Lerp indépendant du framerate (1−e^(−k·dt)), retour
+ * en orbite après 4,5 s. Le rendu (globe-stage) mixe ensuite cette position
+ * selon le dépliage et vise le faisceau avec `aimBeam` — la machine à états
+ * ne sait pas que le monde peut être à plat. */
 export function stepDrone(
-  drone: THREE.Group,
+  spherePos: THREE.Vector3,
   beam: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>,
   state: DroneState,
   dt: number,
 ): DroneState {
   if (state.mode === "orbit" || !state.target) {
     const a = state.a + dt * 0.25;
-    drone.position.set(Math.cos(a) * 1.6, 0.55 * Math.sin(a * 0.7), Math.sin(a) * 1.6);
+    spherePos.set(Math.cos(a) * 1.6, 0.55 * Math.sin(a * 0.7), Math.sin(a) * 1.6);
     beam.material.opacity = Math.max(0, beam.material.opacity - dt * 1.5);
-    drone.lookAt(0, 0, 0);
     return { ...state, mode: "orbit", a };
   }
   const t = state.t + dt;
   const hover = state.target.clone().normalize().multiplyScalar(1.22);
-  drone.position.lerp(hover, 1 - Math.exp(-2.2 * dt));
-  const dir = drone.position.clone().sub(state.target);
+  spherePos.lerp(hover, 1 - Math.exp(-2.2 * dt));
+  beam.material.opacity = Math.min(0.22, beam.material.opacity + dt * 0.4);
+  if (t > 4.5)
+    return { ...state, mode: "orbit", a: Math.atan2(spherePos.z, spherePos.x), t: 0 };
+  return { ...state, t };
+}
+
+/** Tend un faisceau conique entre le sol et son émetteur (drone, satellite) —
+ * les deux points sont déjà dans l'espace rendu (mixés par le morph). */
+export function aimBeam(
+  beam: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>,
+  from: THREE.Vector3,
+  ground: THREE.Vector3,
+): void {
+  const dir = from.clone().sub(ground);
   const len = dir.length();
   beam.scale.set(1, len, 1);
-  beam.position.copy(state.target.clone().add(dir.multiplyScalar(0.5)));
+  beam.position.copy(ground).addScaledVector(dir, 0.5);
   beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
-  beam.material.opacity = Math.min(0.22, beam.material.opacity + dt * 0.4);
-  drone.lookAt(0, 0, 0);
-  if (t > 4.5) return { ...state, mode: "orbit", a: Math.atan2(drone.position.z, drone.position.x), t: 0 };
-  return { ...state, t };
 }
 
 // --- le Juge — entité supérieure au-dessus du monde ---------------------------
@@ -387,17 +398,20 @@ export function makeVerdictWave(): THREE.Mesh<THREE.SphereGeometry, THREE.MeshBa
 }
 
 /** Fait vivre les ondes ; rend celles encore visibles (les mortes sont à
- * retirer de la scène par l'appelant). */
+ * retirer de la scène par l'appelant). À plat (`k` → 1) l'onde s'efface mais
+ * n'est retirée qu'une fois le globe revenu — pas de disparition sèche en
+ * pleine carte. */
 export function stepVerdictWaves(
   waves: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>[],
   dt: number,
+  k = 0,
 ): THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>[] {
   const alive: typeof waves = [];
   for (const w of waves) {
     const s = w.scale.x + dt * 0.28;
     w.scale.setScalar(s);
-    w.material.opacity = Math.max(0, 0.2 * (1 - (s - 1.02) / 0.55));
-    if (w.material.opacity > 0) alive.push(w);
+    w.material.opacity = Math.max(0, 0.2 * (1 - (s - 1.02) / 0.55)) * (1 - k);
+    if (w.material.opacity > 0 || k >= 0.01) alive.push(w);
   }
   return alive;
 }
