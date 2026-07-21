@@ -58,6 +58,8 @@ class GMEvent(BaseModel):
     event_type: str = "incident"
     title: str
     description: str = ""
+    # Théâtre-globe §3 — le lieu précis nommé par le GM (résolu par simulation/geo).
+    location: str = ""
     actors: list[str] = Field(default_factory=list)
     severity: float = Field(0.5, ge=0.0, le=1.0)
     uncertainty: float = Field(0.5, ge=0.0, le=1.0)
@@ -122,7 +124,20 @@ class GameMasterAgent:
                     "ties_label": story.label_of(ties) if ties else "",
                 }
             )
-        return event
+        return self._geolocate(event)
+
+    @staticmethod
+    def _geolocate(event: GeoEvent) -> GeoEvent:
+        """Théâtre-globe §3 : ancre l'événement sur la carte à l'émission."""
+        # Import paresseux : évite tout cycle agents ↔ simulation à l'import.
+        from simulation.geo import resolve_location
+
+        lon, lat, precision = resolve_location(
+            event.location, event.actors, extra_text=f"{event.title} {event.description}"
+        )
+        if precision is None:
+            return event
+        return event.model_copy(update={"geo_lon": lon, "geo_lat": lat, "geo_precision": precision})
 
     def _ask(self, prompt: str) -> dict | None:
         try:
@@ -167,6 +182,8 @@ class GameMasterAgent:
                 "de faille et les échéances (« à la veille de… » noue l'intrigue). "
                 f"{_DETAIL_REQUIREMENT} "
                 "JSON : {event_type, title, description, "
+                "location (lieu PRÉCIS de la crise : ville, détroit, mer ou région — "
+                "jamais un pays entier), "
                 "actors (ids existants), severity (0-1), uncertainty (0-1)}. "
                 f"{prose}"
             )
@@ -192,7 +209,9 @@ class GameMasterAgent:
             f"Invente le prochain événement DANS cette trame, ancré sur les pays du sommet."
             f"{storyline_ask} "
             f"{_DETAIL_REQUIREMENT} "
-            "JSON : {event_type, title, description, actors (ids existants), "
+            "JSON : {event_type, title, description, "
+            "location (lieu PRÉCIS de la crise : ville, détroit, mer ou région — "
+            "jamais un pays entier), actors (ids existants), "
             "severity (0-1), uncertainty (0-1), ties_to, storyline}. "
             f"{prose}"
         )
@@ -230,6 +249,7 @@ class GameMasterAgent:
             date=date,
             event_type=str(data.get("event_type", "incident"))[:40],
             title=title[:120],
+            location=str(data.get("location", "") or "").strip()[:80],
             description=str(data.get("description", ""))[:900],
             actors=actors or sorted(world.countries)[:1],
             severity=severity,
