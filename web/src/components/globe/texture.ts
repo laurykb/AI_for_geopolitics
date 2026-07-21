@@ -74,7 +74,12 @@ export function createGlobePainter({
   );
   const path = geoPath(proj, ctx);
 
-  function paint(summit: SummitTint[], speaking: string | null, scars: Scar[] = []): void {
+  function paint(
+    summit: SummitTint[],
+    speaking: string | null,
+    scars: Scar[] = [],
+    lisere?: string,
+  ): void {
     // Océan : dégradé nuit + grille de points tech (planète futuriste).
     const sea = ctx.createLinearGradient(0, 0, 0, height);
     sea.addColorStop(0, "#050e1d");
@@ -151,7 +156,9 @@ export function createGlobePainter({
         ctx.lineWidth = 3.4;
         ctx.stroke();
       } else {
-        const c = uTint(u);
+        // Au hall (spec §9), la sélection porte un liseré UNIFORME (doré) au
+        // lieu de la teinte U : la partie n'a pas commencé, le monde est neutre.
+        const c = lisere ?? uTint(u);
         ctx.save();
         ctx.shadowColor = c;
         ctx.shadowBlur = 22;

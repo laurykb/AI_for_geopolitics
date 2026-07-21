@@ -113,19 +113,27 @@ export const DEFAULT_SETTINGS: FlowSettings = {
 
 // --- sélection des pays (S4) ----------------------------------------------------
 
-/** Le sommet compte toujours 7 États (§1 S4). « Créer son pays » en pose 6 sur la
- * carte + 1 forgé ; « Jouer un pays » et « Game Master » en posent 7. */
+/** Le sommet compte 7 États par défaut (§1 S4) — et devient RÉGLABLE au hall
+ * (spec théâtre-globe §9 : 5 / 7 / 9 / 12, défaut 7 recommandé ; l'API accepte
+ * jusqu'à 24, mais chaque pays de plus = une réflexion de plus par round sur le
+ * pool mono-GPU). « Créer son pays » en pose taille−1 sur la carte + 1 forgé. */
 export const SUMMIT_EXACT = 7;
+export const SUMMIT_SIZES = [5, 7, 9, 12] as const;
+export type SummitSize = (typeof SUMMIT_SIZES)[number];
 
 /** Combien de pays cliquer sur la carte selon le rôle (le pays inventé complète). */
-export function mapCapacity(role: FlowRole): number {
-  return role === "invent" ? SUMMIT_EXACT - 1 : SUMMIT_EXACT;
+export function mapCapacity(role: FlowRole, size: number = SUMMIT_EXACT): number {
+  return role === "invent" ? size - 1 : size;
 }
 
-/** Rabote une sélection à la capacité d'un rôle (au changement de rôle : « Créer son
- * pays » ne garde que 6 États sur la carte, le pays forgé complétant le sommet). */
-export function trimForRole(selected: string[], role: FlowRole): string[] {
-  return selected.slice(0, mapCapacity(role));
+/** Rabote une sélection à la capacité d'un rôle (au changement de rôle ou de
+ * taille : « Créer son pays » garde taille−1 États, le pays forgé complète). */
+export function trimForRole(
+  selected: string[],
+  role: FlowRole,
+  size: number = SUMMIT_EXACT,
+): string[] {
+  return selected.slice(0, mapCapacity(role, size));
 }
 
 /** Bascule blanc↔jaune : retire si présent, ajoute si sous la capacité, sinon ignore
@@ -136,9 +144,14 @@ export function toggleCountry(selected: string[], id: string, capacity: number):
   return [...selected, id];
 }
 
-/** La carte est-elle complète pour ce rôle (7 pile, ou 6 pile pour l'invention) ? */
-export function mapComplete(role: FlowRole, selected: string[]): boolean {
-  return selected.length === mapCapacity(role);
+/** La carte est-elle complète pour ce rôle (taille pile, ou taille−1 pour
+ * l'invention) ? */
+export function mapComplete(
+  role: FlowRole,
+  selected: string[],
+  size: number = SUMMIT_EXACT,
+): boolean {
+  return selected.length === mapCapacity(role, size);
 }
 
 /** Peut-on lancer la partie ? Gating final selon le rôle (drapeau / nom du pays inventé). */
@@ -146,11 +159,12 @@ export function canLaunch(
   role: FlowRole,
   selected: string[],
   opts: { flag?: string | null; inventName?: string } = {},
+  size: number = SUMMIT_EXACT,
 ): boolean {
-  if (!mapComplete(role, selected)) return false;
+  if (!mapComplete(role, selected, size)) return false;
   if (role === "player") return !!opts.flag && selected.includes(opts.flag);
   if (role === "invent") return (opts.inventName?.trim().length ?? 0) >= 2;
-  return true; // gm : 7 pays suffisent
+  return true; // gm : le compte pile suffit
 }
 
 // --- résolution vers l'API ------------------------------------------------------

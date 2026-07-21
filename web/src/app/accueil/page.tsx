@@ -137,6 +137,15 @@ export default function AccueilPage() {
           >
             {t("accueil.reprendre")}
           </button>
+          {/* S11 — l'entrée PARALLÈLE du hall : compose ton sommet sur le globe.
+              L'ancien lobby reste la voie canonique (checklist anti-régression). */}
+          <button
+            onClick={() => !launching && launch("/hall")}
+            disabled={launching}
+            className="cursor-pointer rounded-full border border-edge px-8 py-3.5 text-base font-medium text-cyan transition-colors hover:border-edge-strong disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            🏛 Le hall <span className="text-xs text-fg-faint">(nouveau)</span>
+          </button>
         </div>
 
         {/* Voile de plongée : couvre l'écran pendant le zoom. */}

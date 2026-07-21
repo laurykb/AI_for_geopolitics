@@ -129,6 +129,12 @@ export type GlobeStageProps = {
   /** Motion de censure (S9) : votes en séquence illuminée + décompte. */
   motionVotes?: { country: string; vote: string }[];
   motionTarget?: string | null;
+  /** HALL (S11) — pays cliquables au-delà du sommet (sélection sur le globe). */
+  pickable?: string[];
+  /** HALL (S11) — liseré uniforme (doré) : la partie n'a pas commencé. */
+  lisere?: string;
+  /** HALL (S11) — le pays incarné : halo cyan + badge « VOUS » sur son délégué. */
+  chosen?: string | null;
   /** La vue du joueur (spec §5) : globe, ou LE MÊME monde déplié en carte. */
   view?: "3d" | "2d";
   /** Touche V pressée : l'hôte (qui possède le réglage `stageView`) bascule. */
@@ -357,6 +363,18 @@ export function GlobeStage(props: GlobeStageProps) {
     );
     speakerGlow.scale.setScalar(0.3);
     scene.add(speakerGlow);
+    // Halo cyan du pays INCARNÉ (hall, spec §9) — badge VOUS projeté avec.
+    const chosenGlow = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: glowTexture("rgb(89,215,255)"),
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        opacity: 0,
+      }),
+    );
+    chosenGlow.scale.setScalar(0.22);
+    scene.add(chosenGlow);
 
     // Les habitants du globe (S2) : délégués, drone GM, Juge, événement, arc.
     const anchors = new AnchorRegistry();
@@ -433,6 +451,11 @@ export function GlobeStage(props: GlobeStageProps) {
     // Décompte de la motion (S9), projeté au barycentre du sommet.
     const tallyTag = makeTag("border-color:rgba(248,113,113,.55);color:#fecaca;font-weight:600;");
     let tallyText = "";
+    // Badge du pays incarné (hall, S11).
+    const chosenTag = makeTag(
+      "border-color:rgba(89,215,255,.6);color:#bfefff;font-weight:700;letter-spacing:.1em;",
+    );
+    chosenTag.textContent = "🎮 VOUS";
 
     const PROJ = new THREE.Vector3();
     const CAMV = new THREE.Vector3();
@@ -482,16 +505,18 @@ export function GlobeStage(props: GlobeStageProps) {
       el.style.opacity = behind ? "0" : "1";
     };
 
-    const summitTints = () => {
-      const p = propsRef.current;
-      return feats.map((f) => ({ ...f, u: p.uByCountry[f.slug] ?? p.utopia }));
-    };
-
     const refresh = () => {
       if (!painter) return;
       const p = propsRef.current;
-      feats = summitFeatures(p.countries, allFeatures);
-      painter.paint(summitTints(), p.speaking ?? null, p.scars ?? []);
+      // Picking : au hall, TOUT le roster est cliquable ; en partie, le sommet.
+      feats = summitFeatures(p.pickable ?? p.countries, allFeatures);
+      const paintFeats = p.pickable ? summitFeatures(p.countries, allFeatures) : feats;
+      painter.paint(
+        paintFeats.map((f) => ({ ...f, u: p.uByCountry[f.slug] ?? p.utopia })),
+        p.speaking ?? null,
+        p.scars ?? [],
+        p.lisere,
+      );
       texture.needsUpdate = true;
       // Délégués : un robot par pays du sommet à capitale connue (un pays
       // inventé n'en a pas — règle existante, conservée).
@@ -993,6 +1018,17 @@ export function GlobeStage(props: GlobeStageProps) {
       if (p.speaking && !reduced) {
         speakerGlow.material.opacity = 0.7 + Math.sin(t * 3.2) * 0.2;
       }
+      // Le pays incarné (hall) : halo cyan qui respire + badge VOUS.
+      const chosenCap = p.chosen ? CAPITALS[p.chosen] : null;
+      if (p.chosen && chosenCap) {
+        chosenGlow.position.copy(mixTop(chosenCap, 1.01, 0.01, morphK, TMP));
+        chosenGlow.material.opacity = reduced ? 0.7 : 0.6 + Math.sin(t * 2.6) * 0.2;
+        mixTop(chosenCap, 1 + ROBOT_H * 1.3, ROBOT_H * 1.3, morphK, LOC);
+        projectAt(chosenTag, LOC, true, -4);
+      } else {
+        chosenGlow.material.opacity = 0;
+        chosenTag.style.opacity = "0";
+      }
 
       // Étiquettes projetées : un seul chemin, la scène (morphée) fait foi.
       projectAt(eventTag, eventGroup.group.position, eventGroup.group.visible, -14);
@@ -1095,7 +1131,8 @@ export function GlobeStage(props: GlobeStageProps) {
         }
       });
       renderer.dispose();
-      for (const el of [tooltip, eventTag, speakerTag, judgeTag, bubbleTag, tallyTag]) el.remove();
+      for (const el of [tooltip, eventTag, speakerTag, judgeTag, bubbleTag, tallyTag, chosenTag])
+        el.remove();
       for (const entry of fundStacks.values()) entry.el.remove();
       for (const pin of pinTags.values()) pin.remove();
       renderer.domElement.remove();
@@ -1105,14 +1142,27 @@ export function GlobeStage(props: GlobeStageProps) {
 
   // Changements d'état de jeu → repeindre / suivre l'orateur (via la poignée,
   // jamais de setState : la boucle three reste seule maîtresse du temps).
-  const scarsKey = JSON.stringify(props.scars ?? []);
+  // Une SEULE dépendance composite : le tableau garde une taille constante à
+  // jamais (chaque ajout d'état étend la chaîne, pas le tableau — sinon chaque
+  // hot-reload d'un effet vivant déclenche l'avertissement React « size
+  // changed between renders »).
+  const sceneKey = [
+    tintKey,
+    speaking ?? "",
+    thinking ?? "",
+    followSpeaker ? "1" : "0",
+    JSON.stringify(props.scars ?? []),
+    (props.pickable ?? []).join("|"),
+    props.lisere ?? "",
+  ].join("§");
   useEffect(() => {
     const h = handleRef.current;
     if (!h) return;
     h.refresh();
-    const target = speaking ?? thinking;
-    if (target && followSpeaker) h.flyToCountry(target);
-  }, [tintKey, speaking, thinking, followSpeaker, scarsKey]);
+    const p = propsRef.current;
+    const target = p.speaking ?? p.thinking;
+    if (target && (p.followSpeaker ?? true)) h.flyToCountry(target);
+  }, [sceneKey]);
 
   useEffect(() => {
     handleRef.current?.setEvent();

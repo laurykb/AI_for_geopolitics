@@ -135,6 +135,16 @@
   Genève, vrai drapeau) et pays forgé (siège océanique)** ; **les délégués se posent/retirent
   du globe au fil de la sélection** ; choix du pays incarné **au clic sur le globe** (halo cyan + badge VOUS) ; lancement = plongée caméra vers le round 1 ;
   repli sans WebGL : mêmes pages sur fond `--thk-bg`.
+  *(v1 livrée 2026-07-22 : route `/hall` (entrée PARALLÈLE depuis l'accueil, l'ancien
+  lobby reste canonique) — menu 3 modes sur le monde, config en panneau droit : 5 sièges
+  dont ONU verrouillée (C5), sélection au clic sur le globe parmi les 33 (les délégués
+  se posent/retirent en direct, liseré doré, capacité + tailles 5/7/9/12 avec
+  avertissement mono-GPU), 🎮 incarner (halo cyan + badge VOUS), forge nom+concept,
+  brouillard/escalade/pensée, difficulté, rounds 3-20, délai 30-300 s, table G17,
+  casting multi-modèles + assignations, lancement réel vérifié de bout en bout
+  (partie créée et jouable). RESTENT avant de cocher : scène au layout + connexion/
+  accueil en overlays, plongée caméra, alliances de la forge, siège océanique du pays
+  forgé, i18n hall.*, et la checklist complète avant de toucher à /lobby.)*
   **Checklist anti-régression (spec §9 « rien ne se perd ») : chaque option du lobby
   actuel — 4 rôles, sélection 7/33 sur le globe (+ tailles 5-12), forge complète, casting
   multi-modèles avec répartition/assignations, scénarios, brouillard/escalade/pensée,
