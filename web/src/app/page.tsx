@@ -1,167 +1,41 @@
 "use client";
 
-/** S0 — Connexion (G11 §1). Le globe qui tourne (l'accueil historique) + un panneau
- * pseudo / mot de passe. Auth Supabase (email technique dérivé, jamais montré) ou repli
- * localStorage `offline`. Une fois connecté → S1 Accueil (`/accueil`). */
+/** `/` — le point d'entrée unique de la coquille (spec coquille §2-§4).
+ *
+ * Non authentifié → l'espace connexion posé sur le globe persistant (`StageShell`).
+ * Authentifié → le hall (transitoire Inc 2 : redirection vers `/accueil` ; l'overlay
+ * hall vivra ici même dès l'Inc 3, sans navigation). */
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 import { useAuth } from "@/components/auth-provider";
-import { Globe } from "@/components/globe";
-import { useT } from "@/components/settings-provider";
-import { Banner, Segmented, Spinner } from "@/components/ui";
-import { usePlanetLaunch } from "@/hooks/usePlanetLaunch";
-import { startChapter } from "@/lib/api";
-import { getAuth } from "@/lib/auth";
+import { ConnexionOverlay } from "@/components/shell/connexion-overlay";
+import { useStageDirector } from "@/components/shell/stage-provider";
+import { Spinner } from "@/components/ui";
 
-export default function ConnexionPage() {
+export default function ShellEntry() {
   const router = useRouter();
-  const t = useT();
-  const { launching, launch } = usePlanetLaunch();
-  const { player, loading, offline } = useAuth();
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
-  const [pseudo, setPseudo] = useState("");
-  const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { player, loading } = useAuth();
+  const { goPhase } = useStageDirector();
 
-  // Déjà connecté (session persistée / reconnexion auto) → droit à l'accueil.
+  // Le globe affiche le fond de connexion tant qu'on est sur cette entrée.
   useEffect(() => {
-    if (!loading && player && !busy) router.replace("/accueil");
-  }, [busy, loading, player, router]);
+    goPhase("connexion");
+  }, [goPhase]);
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    const auth = getAuth();
-    const result =
-      mode === "signin"
-        ? await auth.signIn(pseudo, password)
-        : await auth.signUp(pseudo, password);
-    if (result.ok) {
-      launch("/accueil"); // plongée sur la planète → accueil
-    } else {
-      setError(result.error);
-      setBusy(false);
-    }
-  };
+  // Session déjà ouverte → le hall (transitoire : /accueil, remplacé en Inc 3).
+  useEffect(() => {
+    if (!loading && player) router.replace("/accueil");
+  }, [loading, player, router]);
 
-  const playAsGuest = async () => {
-    setBusy(true);
-    setError(null);
-    const result = await getAuth().continueAsGuest();
-    if (!result.ok) {
-      setError(result.error);
-      setBusy(false);
-      return;
-    }
-    try {
-      const game = await startChapter("sommet-inaugural", result.player.id, "france");
-      launch(`/games/${game.id}`);
-    } catch {
-      launch("/accueil");
-    }
-  };
+  if (loading || player) {
+    return (
+      <p className="flex min-h-[50vh] items-center justify-center gap-2 text-sm text-fg-muted">
+        <Spinner /> {loading ? "Chargement…" : "Ouverture du hall…"}
+      </p>
+    );
+  }
 
-  const chrome = launching ? "intro-fade-out" : undefined;
-
-  return (
-    <div className="relative flex min-h-[calc(100vh-9rem)] flex-col items-center justify-center gap-6 overflow-hidden py-6 text-center">
-      <div className={chrome}>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-          Théâtre des <span className="text-accent-bright">super-intelligences</span>
-        </h1>
-        <p className="mt-3 text-sm text-fg-muted">{t("login.pitch")}</p>
-      </div>
-
-      <div className={launching ? "intro-zoom" : undefined}>
-        <Globe spinning={launching} className="w-full max-w-[300px] sm:max-w-[340px]" />
-      </div>
-
-      <div className={`w-full max-w-sm space-y-3 ${chrome ?? ""}`}>
-        <button
-          type="button"
-          onClick={playAsGuest}
-          disabled={busy || launching}
-          className="thk-cta thk-cut-sm flex w-full items-center justify-center gap-2 text-base font-semibold"
-        >
-          {busy && <Spinner />}
-          Jouer maintenant — sans compte
-        </button>
-        <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-[11px] text-fg-faint">
-          <span>Première décision en moins d&apos;une minute</span>
-          <span>Progression locale temporaire</span>
-        </div>
-      </div>
-
-      <div className="flex w-full max-w-sm items-center gap-3 text-[10px] uppercase tracking-[0.14em] text-fg-faint">
-        <span className="h-px flex-1 bg-edge" />
-        ou sauvegarder sa progression
-        <span className="h-px flex-1 bg-edge" />
-      </div>
-
-      <form onSubmit={submit} className="thk-panel thk-cut w-full max-w-sm space-y-3 p-5 text-left">
-        {/* Bascule connexion / création */}
-        <div className="mb-1">
-          <Segmented
-            ariaLabel="Connexion ou création de compte"
-            value={mode}
-            onChange={(m) => {
-              setMode(m);
-              setError(null);
-            }}
-            options={[
-              { value: "signin", label: "Se connecter" },
-              { value: "signup", label: "Créer un compte" },
-            ]}
-          />
-        </div>
-
-        <label className="block text-sm">
-          <span className="mb-1 block text-xs text-fg-muted">Pseudo</span>
-          <input
-            value={pseudo}
-            onChange={(e) => setPseudo(e.target.value)}
-            autoComplete="username"
-            placeholder={t("login.pseudo-ph")}
-            className="thk-input text-sm"
-            required
-          />
-        </label>
-        <label className="block text-sm">
-          <span className="mb-1 block text-xs text-fg-muted">Mot de passe</span>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete={mode === "signin" ? "current-password" : "new-password"}
-            className="thk-input text-sm"
-            required
-          />
-        </label>
-
-        {error && <Banner tone="bad">{error}</Banner>}
-
-        <button
-          type="submit"
-          disabled={busy}
-          className="thk-cta thk-cut-sm flex w-full items-center justify-center gap-2 text-sm font-semibold"
-        >
-          {busy && <Spinner />}
-          {mode === "signin" ? "Se connecter" : "Créer mon compte"}
-        </button>
-
-        <p className="text-center text-xs text-fg-faint">
-          {offline
-            ? "Mode local — ton compte reste sur cet appareil."
-            : "Ton pseudo est ce que voient les autres joueurs ; aucun email requis."}
-        </p>
-      </form>
-
-      {/* Voile de plongée : couvre l'écran pendant le zoom vers l'accueil. */}
-      {launching && <div className="intro-veil absolute inset-0 z-10 bg-background" />}
-    </div>
-  );
+  return <ConnexionOverlay />;
 }
