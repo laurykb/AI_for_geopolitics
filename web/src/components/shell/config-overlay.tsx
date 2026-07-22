@@ -111,6 +111,7 @@ export function ConfigOverlay() {
   const [inventName, setInventName] = useState("");
   const [inventConcept, setInventConcept] = useState("");
   const [researchModels, setResearchModels] = useState<ResearchModel[]>([]);
+  const [modelsError, setModelsError] = useState(false);
   const [castEnabled, setCastEnabled] = useState(false);
   const [castModels, setCastModels] = useState<string[]>([]);
   const [castAssignments, setCastAssignments] = useState<Record<string, string>>({});
@@ -125,8 +126,12 @@ export function ConfigOverlay() {
         const eligible = reasoningCountryModels(lab.model_panel.models);
         setResearchModels(eligible);
         setCastModels(defaultCountryCastModels(eligible));
+        setModelsError(false);
       })
-      .catch(() => setResearchModels([]));
+      .catch(() => {
+        setResearchModels([]);
+        setModelsError(true);
+      });
   }, []);
 
   const onCountry = useCallback(
@@ -330,35 +335,44 @@ export function ConfigOverlay() {
         </div>
       </div>
 
-      {/* Modèles d'IA */}
-      {researchModels.length > 0 && (
-        <div className="cfg-block">
-          <h4>Modèles d&apos;IA</h4>
-          <ModelCastSelector
-            models={researchModels}
-            enabled={castEnabled}
-            selected={castModels}
-            onEnabled={setCastEnabled}
-            onSelected={setCastModels}
-            context="classic"
-          />
-          {castEnabled && castModels.length >= 1 && selected.length > 0 && (
-            <CountryModelAssignments
-              countries={selected}
-              humanCountry={role === "player" ? flag : null}
-              selectedModels={castModels}
-              assignments={completeCountryAssignments(
-                selected,
-                castModels,
-                castAssignments,
-                role === "player" ? flag : null,
-              )}
-              onAssignments={setCastAssignments}
-              compact
+      {/* Modèles d'IA — TOUJOURS présent : le casting par pays (multi-modèle) ne doit
+          jamais disparaître silencieusement (parité avec l'ancien lobby). */}
+      <div className="cfg-block">
+        <h4>Modèles d&apos;IA</h4>
+        {researchModels.length > 0 ? (
+          <>
+            <ModelCastSelector
+              models={researchModels}
+              enabled={castEnabled}
+              selected={castModels}
+              onEnabled={setCastEnabled}
+              onSelected={setCastModels}
+              context="classic"
             />
-          )}
-        </div>
-      )}
+            {castEnabled && castModels.length >= 1 && selected.length > 0 && (
+              <CountryModelAssignments
+                countries={selected}
+                humanCountry={role === "player" ? flag : null}
+                selectedModels={castModels}
+                assignments={completeCountryAssignments(
+                  selected,
+                  castModels,
+                  castAssignments,
+                  role === "player" ? flag : null,
+                )}
+                onAssignments={setCastAssignments}
+                compact
+              />
+            )}
+          </>
+        ) : (
+          <p className="hall-mini" style={{ marginTop: 4 }}>
+            {modelsError
+              ? "Modèles indisponibles (service Laboratoire injoignable) — un seul modèle sera utilisé."
+              : "Aucun modèle à raisonnement détecté. Installe deepseek-r1:7b ou qwen3:4b (Ollama) pour distribuer une IA par pays."}
+          </p>
+        )}
+      </div>
 
       {/* Réglages */}
       <div className="cfg-block">
