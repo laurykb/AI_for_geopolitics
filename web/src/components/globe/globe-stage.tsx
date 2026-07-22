@@ -827,7 +827,7 @@ export function GlobeStage(props: GlobeStageProps) {
       stars: THREE.Texture;
     } | null> => {
       const loader = new THREE.TextureLoader();
-      const aniso = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+      const aniso = Math.min(16, renderer.capabilities.getMaxAnisotropy());
       const one = (url: string) =>
         new Promise<THREE.Texture>((res, rej) =>
           loader.load(
@@ -1056,7 +1056,9 @@ export function GlobeStage(props: GlobeStageProps) {
         em.setFlat(morphK);
         sk.atmo.setSun(SUNDIR);
         sk.atmo.setFlat(morphK);
-        (sk.clouds.material as THREE.ShaderMaterial).uniforms.uFlat.value = morphK;
+        const cloudU = (sk.clouds.material as THREE.ShaderMaterial).uniforms;
+        cloudU.uFlat.value = morphK;
+        (cloudU.uSun.value as THREE.Vector3).copy(SUNDIR);
         if (!reduced) sk.clouds.rotation.y += dt * 0.006;
         sun.position.copy(SUNDIR).multiplyScalar(10);
       } else {
