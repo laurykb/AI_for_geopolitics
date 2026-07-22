@@ -46,12 +46,16 @@ describe("persistance des réglages (localStorage aujourd'hui, profil en CC-3)",
 
   it("relit ce qui a été sauvé", () => {
     const store = fakeStore();
-    saveSettings({ lang: "en", perf: "leger", noAnim: true, stageView: "2d" }, store);
+    saveSettings(
+      { lang: "en", perf: "leger", noAnim: true, stageView: "2d", planetQuality: "light" },
+      store,
+    );
     expect(loadSettings(store)).toEqual({
       lang: "en",
       perf: "leger",
       noAnim: true,
       stageView: "2d",
+      planetQuality: "light",
     });
   });
 
@@ -63,5 +67,11 @@ describe("persistance des réglages (localStorage aujourd'hui, profil en CC-3)",
   it("la vue du théâtre : « 3d » par défaut, un choix persisté par appareil (spec §5)", () => {
     expect(loadSettings(fakeStore()).stageView).toBe("3d");
     expect(loadSettings(fakeStore({ "wosi.stage": "2d" })).stageView).toBe("2d");
+  });
+
+  it("la qualité de la planète : « realistic » par défaut, un choix persisté (spec A7)", () => {
+    expect(DEFAULT_SETTINGS.planetQuality).toBe("realistic");
+    expect(loadSettings(fakeStore()).planetQuality).toBe("realistic");
+    expect(loadSettings(fakeStore({ "wosi.planet": "light" })).planetQuality).toBe("light");
   });
 });
