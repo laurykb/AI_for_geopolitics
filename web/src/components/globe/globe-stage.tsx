@@ -21,6 +21,9 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { feature } from "topojson-client";
 import type { GeometryCollection, Topology } from "topojson-specification";
 
@@ -818,6 +821,7 @@ export function GlobeStage(props: GlobeStageProps) {
     const realistic = propsRef.current.quality === "realistic";
     let earthMat: EarthMaterial | null = null;
     let sky: { atmo: ReturnType<typeof makeAtmosphere>; clouds: THREE.Mesh } | null = null;
+    let composer: EffectComposer | null = null;
     const planetTextures: THREE.Texture[] = [];
     const loadPlanetTextures = (): Promise<{
       day: THREE.Texture;
@@ -880,6 +884,16 @@ export function GlobeStage(props: GlobeStageProps) {
         sky = { atmo: atmoSky, clouds };
         atmo.visible = false;
         pointStars.visible = false;
+        // Bloom « marqué » (retour user) : post-traitement réaliste — seules les hautes
+        // lumières (limbe, glint, villes de nuit, bords de nuages) rayonnent façon démo three.js.
+        composer = new EffectComposer(renderer);
+        composer.addPass(new RenderPass(scene, camera));
+        // Bloom « marqué » comme DERNIÈRE passe (rend à l'écran). NB : un OutputPass ajouté
+        // ensuite produit un cadre noir sous three r185 ici — la passe bloom finale suffit.
+        // Seuil haut → seules les hautes lumières (limbe, glint, villes de nuit, sommets de
+        // nuages) rayonnent ; les couleurs réglées (océan/terres) sont préservées.
+        const bloomRes = renderer.getSize(new THREE.Vector2());
+        composer.addPass(new UnrealBloomPass(bloomRes, 1.3, 0.6, 0.72));
         painter = createOverlayPainter(tctx, allFeatures);
       } else {
         painter = createGlobePainter({ ctx: tctx, features: allFeatures });
@@ -1027,6 +1041,7 @@ export function GlobeStage(props: GlobeStageProps) {
       const h = host.clientHeight;
       if (w === 0 || h === 0) return;
       renderer.setSize(w, h);
+      composer?.setSize(w, h);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
     };
@@ -1328,7 +1343,8 @@ export function GlobeStage(props: GlobeStageProps) {
         labTag.style.opacity = "0";
       }
 
-      renderer.render(scene, camera);
+      if (composer) composer.render();
+      else renderer.render(scene, camera);
     };
     frame();
 
@@ -1356,6 +1372,7 @@ export function GlobeStage(props: GlobeStageProps) {
         }
       });
       for (const tex of planetTextures) tex.dispose();
+      composer?.dispose();
       renderer.dispose();
       for (const el of [tooltip, eventTag, speakerTag, judgeTag, bubbleTag, tallyTag, chosenTag])
         el.remove();
