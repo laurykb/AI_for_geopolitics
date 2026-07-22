@@ -21,6 +21,9 @@ infra/k8s/secret.yaml
 *.gguf
 *.safetensors
 models/
+# Exception : les assets 3D publics (glTF/glb) sont versionnés (models/ ci-dessus vise les poids ML).
+!web/public/models/
+!web/public/models/**
 data/corpus/
 chroma/
 *.sqlite
