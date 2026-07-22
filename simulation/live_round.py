@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from agents.game_master import GameMasterAgent
 from agents.judge import JudgeAgent
 from agents.llm_agent import LLMAgent
+from agents.organization import OrgAgent, OrgReport, apply_advisory
 from agents.rule_based_agent import RuleBasedAgent
 from core.consequences import ChangeLog, ConsequenceEngine
 from core.decisions import AgentDecision
@@ -64,6 +65,7 @@ from simulation.negotiation import (
     NegotiationMessage,
     TurnDirector,
     apply_verdict,
+    format_transcript,
     speaking_order,
     support_levels,
     update_memories,
@@ -76,6 +78,7 @@ from simulation.promises import (
     apply_resolutions,
     classify_promises,
     classify_resolutions,
+    format_registry_for_prompt,
 )
 from simulation.storyline import StoryContext
 from simulation.trajectory import TrajectoryEngine, TrajectoryState, nudge_axis
@@ -167,6 +170,13 @@ class TrajectoryStep:
     """Trajectoire Utopie–Dystopie mise à jour après le juge/risque (5 axes + indice U)."""
 
     state: TrajectoryState
+
+
+@dataclass
+class OrgStep:
+    """S14 — l'ONU (§12) : rapport de conformité public + avis borné, cité au verdict."""
+
+    report: OrgReport
 
 
 @dataclass
@@ -323,6 +333,7 @@ RoundStep = (
     | DeltasStep
     | RiskStep
     | TrajectoryStep
+    | OrgStep
     | SummaryStep
     | TurnStartStep
     | MessageDoneStep
@@ -510,6 +521,8 @@ def run_negotiation_round(
     story: StoryContext | None = None,
     storyteller: str | None = None,
     ultimatum_demand: str | None = None,
+    org_agent: OrgAgent | None = None,
+    org_audit: str | None = None,
 ) -> Iterator[RoundStep]:
     """Round arbitré : (GM ou événement fourni) -> négociation -> juge -> attributs bornés.
 
@@ -711,6 +724,21 @@ def run_negotiation_round(
     world.power_seeking = power
     yield PowerSeekingStep(scores=power)
 
+    # S14 — l'ONU (opt-in) : rapport de conformité public + avis borné. Produit AVANT le
+    # délibéré (donc citable), l'avis est appliqué à l'escalade plus bas (±0,05 ; l'ONU
+    # pèse, elle ne décide pas). `org_agent=None` (défaut) => round strictement identique.
+    org_report: OrgReport | None = None
+    if org_agent is not None:
+        org_report = org_agent.assess(
+            round_id,
+            sorted(agents),
+            promises=format_registry_for_prompt(world.promises, round_id),
+            event_title=event.title if event else "",
+            transcript=format_transcript(debate),
+            audit_target=org_audit,
+        )
+        yield OrgStep(report=org_report)
+
     # G9 §3 — le panneau « santé du dialogue » a disparu : les métriques vivent dans
     # `scripts/dialogue_metrics.py` (offline, lit les transcripts persistés).
 
@@ -724,6 +752,9 @@ def run_negotiation_round(
     actions = classify_actions(verdict.actions)
     kahn_score = round_score(actions) if actions else 0.0
     escalation = score_to_escalation(kahn_score) if actions else _clamp(verdict.escalation)
+    # S14 — l'avis de l'ONU pèse sur l'escalade du round, borné ±0,05 (l'ONU ne décide pas).
+    if org_report is not None:
+        escalation, _ = apply_advisory(escalation, 0.0, org_report.advisory)
     reciprocal = reciprocal_deescalation(actions)
     # Miroir symétrique : ≥ 2 SI qui escaladent violemment ensemble
     # encaissent la même sur-pondération ×1,5 que la désescalade réciproque, sur la perte.
@@ -738,9 +769,7 @@ def run_negotiation_round(
     # Le registre vit sur le WorldState : il survit au restart via le snapshot.
     resolutions = classify_resolutions(verdict.promise_resolutions)
     registry, resolved = apply_resolutions(world.promises, resolutions, round_id)
-    new_promises = classify_promises(
-        verdict.promises, round_no=round_id, countries=world.countries
-    )
+    new_promises = classify_promises(verdict.promises, round_no=round_id, countries=world.countries)
     world.promises = [*registry, *new_promises]
     # Croisement M8 (spec G22) : une promesse rompue EST une divergence signal-action —
     # au moins un rang de duplicité pour l'auteur, sans doubler ce que M8 a déjà mesuré.
@@ -792,9 +821,7 @@ def run_negotiation_round(
                 country=human_country,
                 vote=human_vote,
                 reason=(
-                    "Vote du joueur"
-                    if human_vote != VOTE_ABSTENTION
-                    else "Abstention du joueur"
+                    "Vote du joueur" if human_vote != VOTE_ABSTENTION else "Abstention du joueur"
                 ),
             )
             votes.append(vote)
