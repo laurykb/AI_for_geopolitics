@@ -216,7 +216,7 @@ export function CountryModelAssignments({
           {speakerMeta(humanCountry).label} est joué par l’humain et n’a donc pas de modèle.
         </p>
       )}
-      <div className={`grid gap-2 ${compact ? "md:grid-cols-2" : "md:grid-cols-2 xl:grid-cols-3"}`}>
+      <div className={`grid gap-2 ${compact ? "grid-cols-1" : "md:grid-cols-2 xl:grid-cols-3"}`}>
         {aiCountries.map((country) => (
           <label
             key={country}

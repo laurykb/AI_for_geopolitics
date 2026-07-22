@@ -208,7 +208,9 @@ export function ConfigOverlay() {
         language: userSettings.lang,
         modelCast: activeCast.length
           ? {
-              strategy: "balanced",
+              // Multi-modèle = affectations explicites par pays → stratégie « manual »
+              // (le backend rejette « balanced » + assignments). Mono-modèle = « balanced ».
+              strategy: castEnabled ? "manual" : "balanced",
               models: activeCast,
               assignments: castEnabled
                 ? completeCountryAssignments(
