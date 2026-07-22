@@ -64,4 +64,3 @@
 ## Reste à l'appréciation du joueur
 Calibrage au ressenti (constantes documentées : pas 0.09 / deadband 0.02 / covert 500 tokens / budgets 60 s-35 s), et les chips de session en réserve (tension numérique des actions cachées, réglage par-partie du budget-temps).
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
