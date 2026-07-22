@@ -57,10 +57,6 @@ export type GlobeTheatreProps = {
   motionVotes?: { country: string; vote: string }[];
   motionTarget?: string | null;
   onCountryClick: (slug: string) => void;
-  /** Laury (mascotte 3D) : visible pendant la visite guidée. */
-  mascotVisible?: boolean;
-  /** Point [lon,lat] que Laury présente (null = flotte près de la caméra). */
-  mascotTarget?: [number, number] | null;
   /** Siège ONU (S14) : délégué à Genève, visible quand le rôle ONU est joué. */
   orgSeat?: boolean;
   /** L'ONU s'adresse au Juge (rapport cité) : onde cyan vers le Juge. */
@@ -99,8 +95,6 @@ export function GlobeTheatre({
   motionVotes,
   motionTarget = null,
   onCountryClick,
-  mascotVisible = false,
-  mascotTarget = null,
   orgSeat = false,
   orgActive = false,
   fiche = null,
@@ -160,8 +154,6 @@ export function GlobeTheatre({
             view={stageView}
             onViewToggle={toggleView}
             onCountryClick={onCountryClick}
-            mascotVisible={mascotVisible}
-            mascotTarget={mascotTarget}
             orgSeat={orgSeat}
             orgActive={orgActive}
             followSpeaker={follow}

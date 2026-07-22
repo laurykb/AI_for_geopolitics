@@ -18,7 +18,7 @@ export const CAM_HOME: CamState = { lon: 20, lat: 18, dist: 2.9 };
 
 /** Cadrages du prototype : orateur serré, événement plus large (lat − offset :
  * la caméra vise SOUS le sujet pour garder l'horizon en haut du cadre). */
-export const SPEAKER_VIEW = { latOffset: -13, dist: 1.85 };
+export const SPEAKER_VIEW = { latOffset: -13, dist: 2.35 };
 export const EVENT_VIEW = { latOffset: -8, dist: 2.25 };
 export const JUDGE_VIEW = { lat: 52, dist: 3.9 };
 

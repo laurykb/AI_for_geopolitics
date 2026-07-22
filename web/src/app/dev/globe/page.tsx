@@ -38,7 +38,6 @@ export default function GlobeDevPage() {
   const [fogEgypt, setFogEgypt] = useState(false);
   const [arcOn, setArcOn] = useState(false);
   const [view, setView] = useState<"3d" | "2d">("3d");
-  const [laury, setLaury] = useState(false);
   const [onu, setOnu] = useState(false);
   const [lab, setLab] = useState(false);
 
@@ -72,8 +71,6 @@ export default function GlobeDevPage() {
         view={view}
         onViewToggle={() => setView((v) => (v === "3d" ? "2d" : "3d"))}
         onCountryClick={setPicked}
-        mascotVisible={laury}
-        mascotTarget={laury && eventOn ? [ORMUZ.lon, ORMUZ.lat] : null}
         orgSeat={onu}
         orgActive={onu}
         labArena={lab ? { tag: "🧪 Tournoi dyadique — manche 3/10 · deepseek-r1:7b vs qwen3:4b" } : null}
@@ -123,9 +120,6 @@ export default function GlobeDevPage() {
         </button>
         <button type="button" className={chip} data-on={arcOn} onClick={() => setArcOn((v) => !v)}>
           ➰ arc USA → Iran
-        </button>
-        <button type="button" className={chip} data-on={laury} onClick={() => setLaury((v) => !v)}>
-          🎒 Laury
         </button>
         <button type="button" className={chip} data-on={onu} onClick={() => setOnu((v) => !v)}>
           🕊 ONU

@@ -199,7 +199,7 @@ export default function TheatrePage() {
 
   // CC-5 — chapitre marqué `tutorial` (ch. 0) : le guide se lance tout seul, une fois
   // par partie (le TourProvider tient le flag local) ; la page ne porte que les jalons.
-  const { startTutorial, tutorialActive } = useTour();
+  const { startTutorial } = useTour();
   const tutorialLaunched = useRef(false);
   useEffect(() => {
     if (!chapter?.tutorial || detail?.status !== "running" || tutorialLaunched.current) return;
@@ -744,6 +744,17 @@ export default function TheatrePage() {
       >
         {regieOpen ? "✕ fermer la régie" : "⚙ régie"}
       </button>
+      {/* Abandonner : contrôle VITAL toujours visible (régie fermée par défaut) — ouvre
+          le dialogue de forfait ; ne pas le laisser dans la régie masquée. */}
+      {detail?.status === "running" && detail.live && (
+        <button
+          type="button"
+          onClick={() => setForfeitOpen(true)}
+          className="thk-ghost thk-cut-sm fixed left-4 top-[4.3rem] z-50 text-xs text-fg-muted transition-colors hover:text-dystopia"
+        >
+          ✕ abandonner
+        </button>
+      )}
       {/* CC-5 — jalons du tutoriel : le TourProvider les lit ([data-tutorial=…]) pour
           avancer quand l'action attendue est faite. Aucune logique de guide ici. */}
       <header
@@ -1275,14 +1286,6 @@ export default function TheatrePage() {
         thinkingText={thinkingText}
         orgSeat={detail?.role === "un"}
         orgActive={!!round.org}
-        mascotVisible={tutorialActive}
-        mascotTarget={
-          tutorialActive
-            ? globeView.eventGeo
-              ? [globeView.eventGeo.lon, globeView.eventGeo.lat]
-              : (stageSpeaking && CAPITALS[stageSpeaking]) || null
-            : null
-        }
         onCountryClick={setFicheCountry}
         onFicheClose={() => setFicheCountry(null)}
         fiche={

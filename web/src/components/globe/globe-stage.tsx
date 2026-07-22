@@ -94,7 +94,6 @@ import {
   type SatelliteState,
 } from "./robots";
 import { TEX_H, TEX_W, createGlobePainter, type Scar } from "./texture";
-import { createMascot } from "./mascot";
 
 /** Superset des props StageMap (spec §2) : le théâtre passe la même vue aux
  * deux modes. Les champs encore muets ici (pense, événement, brouillard…)
@@ -154,10 +153,6 @@ export type GlobeStageProps = {
    * un nouveau `key` déclenche un fly-to vers (lon,lat,dist) sur `dur` s. L'hôte
    * (StageDirector) la pousse par phase ; la scène joue le vol dans sa boucle. */
   flyTo?: { lon: number; lat: number; dist: number; dur?: number; key: string | number };
-  /** Laury (mascotte 3D) : visible pendant la visite guidée, flotte près de la caméra. */
-  mascotVisible?: boolean;
-  /** Point du globe [lon,lat] que Laury « présente » (dérive vers lui) ; null = flotte. */
-  mascotTarget?: [number, number] | null;
   /** Siège ONU (S14) : le délégué de l'organisation, au siège historique de Genève,
    * visible quand le rôle ONU est joué. */
   orgSeat?: boolean;
@@ -427,10 +422,6 @@ export function GlobeStage(props: GlobeStageProps) {
     let droneState: DroneState = { mode: "orbit", a: 0, t: 0, target: null };
     const judge = makeJudge(glowTexture("rgb(129,140,248)"));
     scene.add(judge.group);
-
-    // Laury — la mascotte 3D, guide de la visite (masquée hors tutoriel). Elle offre
-    // LA texture du globe dans sa main (le « petit monde »).
-    const laury = createMascot(scene, texture);
     let judgeMode: { mode: "idle" | "verdict"; t: number } = { mode: "idle", t: 0 };
     let waves: ReturnType<typeof makeVerdictWave>[] = [];
     const eventGroup = makeEventGroup();
@@ -1241,30 +1232,6 @@ export function GlobeStage(props: GlobeStageProps) {
         projectAt(labTag, LOC, true, 0);
       } else {
         labTag.style.opacity = "0";
-      }
-
-      // Laury flotte près de la caméra et va « présenter » la cible de l'étape (proto).
-      laury.g.visible = !!p.mascotVisible;
-      if (laury.g.visible) {
-        camera.getWorldDirection(TMP); // avant
-        TMP2.crossVectors(TMP, camera.up).normalize(); // droite
-        CAMT.crossVectors(TMP2, TMP).normalize(); // haut
-        CAMV.copy(camera.position)
-          .addScaledVector(TMP, 0.28)
-          .addScaledVector(TMP2, -0.125)
-          .addScaledVector(CAMT, -0.052);
-        if (p.mascotTarget) CAMV.lerp(mixTop(p.mascotTarget, 1.07, 0.07, morphK, LOC), 0.38);
-        laury.g.position.lerp(CAMV, 1 - Math.exp(-6 * dt));
-        laury.g.quaternion.slerp(camera.quaternion, 1 - Math.exp(-8 * dt));
-        laury.rig.position.y = reduced ? 0 : Math.sin(t * 2.1) * 0.0016;
-        laury.rig.rotation.z = reduced ? 0 : Math.sin(t * 1.3) * 0.04;
-        laury.mini.rotation.y += dt * 0.7;
-        laury.halo.material.opacity = 0.6 + (reduced ? 0 : Math.sin(t * 3) * 0.2);
-        laury.spark.position.set(
-          laury.mini.position.x + Math.cos(t * 1.8) * 0.013,
-          laury.mini.position.y + Math.sin(t * 1.8) * 0.013,
-          laury.mini.position.z,
-        );
       }
 
       renderer.render(scene, camera);
