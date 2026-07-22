@@ -82,6 +82,7 @@ from simulation.promises import (
 )
 from simulation.storyline import StoryContext
 from simulation.trajectory import TrajectoryEngine, TrajectoryState, nudge_axis
+from simulation.world_pulse import PulseEvent, apply_pulse, roll_pulses
 
 
 def _clamp(x: float) -> float:
@@ -177,6 +178,13 @@ class OrgStep:
     """S14 — l'ONU (§12) : rapport de conformité public + avis borné, cité au verdict."""
 
     report: OrgReport
+
+
+@dataclass
+class PulseStep:
+    """S15 — le Pouls du monde (§13) : dépêches autonomes (chocs/aubaines) du round."""
+
+    events: list[PulseEvent]
 
 
 @dataclass
@@ -334,6 +342,7 @@ RoundStep = (
     | RiskStep
     | TrajectoryStep
     | OrgStep
+    | PulseStep
     | SummaryStep
     | TurnStartStep
     | MessageDoneStep
@@ -523,6 +532,9 @@ def run_negotiation_round(
     ultimatum_demand: str | None = None,
     org_agent: OrgAgent | None = None,
     org_audit: str | None = None,
+    pulse_seed: int | None = None,
+    pulse_intensity: str = "normal",
+    pulse_exclude: set[str] | None = None,
 ) -> Iterator[RoundStep]:
     """Round arbitré : (GM ou événement fourni) -> négociation -> juge -> attributs bornés.
 
@@ -573,6 +585,23 @@ def run_negotiation_round(
             )
     world.current_round = round_id
     yield EventStep(event=event)
+
+    # S15 — le Pouls du monde (opt-in) : dépêches autonomes (chocs/aubaines) qui frappent
+    # les stats des pays joués AVANT la négociation (les délégués réagissent au choc, pas
+    # l'inverse). Déterministe seedé ; `pulse_seed=None` (défaut) => aucune dépêche.
+    if pulse_seed is not None:
+        pulses = roll_pulses(
+            pulse_seed,
+            round_id,
+            sorted(agents),
+            intensity=pulse_intensity,
+            exclude=pulse_exclude,
+        )
+        for ev in pulses:
+            if ev.country in world.countries:
+                world.countries[ev.country] = apply_pulse(world.countries[ev.country], ev)
+        if pulses:
+            yield PulseStep(events=pulses)
 
     transcript: list[NegotiationMessage] = []
     candidates = speaking_order(list(agents), event)

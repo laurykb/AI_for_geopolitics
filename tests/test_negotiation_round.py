@@ -21,6 +21,7 @@ from simulation.live_round import (
     OrgStep,
     ParticipationStep,
     PowerSeekingStep,
+    PulseStep,
     SummaryStep,
     TokenStep,
     TrajectoryStep,
@@ -156,6 +157,69 @@ def test_org_step_serializes_to_org_sse_frame():
     name, payload = step_event(OrgStep(report=neutral_report(1, ["usa", "iran"])))
     assert name == "org"
     assert payload["report"]["round_id"] == 1
+
+
+def test_world_pulse_dispatches_and_applies():
+    """S15 — le Pouls du monde (opt-in) frappe les pays joués et émet des dépêches."""
+    world = _world()  # usa, iran
+    steps = list(
+        run_negotiation_round(
+            world,
+            _agents(world),
+            _gm(),
+            _judge(),
+            SimClock(current_date=date(2025, 1, 1)),
+            max_passes=1,
+            pulse_seed=7,
+            pulse_intensity="turbulent",  # (1..3) => au moins une dépêche, bornée au sommet
+        )
+    )
+    pulses = [s for s in steps if isinstance(s, PulseStep)]
+    assert len(pulses) == 1
+    events = pulses[0].events
+    assert 1 <= len(events) <= 2  # sommet de 2 pays, jamais deux fois le même
+    countries = {ev.country for ev in events}
+    assert len(countries) == len(events)  # pas de doublon
+    for ev in events:
+        assert ev.country in {"usa", "iran"}
+        assert -0.07 <= ev.delta <= 0.06  # micro-mouvement borné (table PULSE_KINDS)
+    # la dépêche tombe AVANT la négociation : le monde est déjà perturbé quand on parle
+    kinds = [type(s).__name__ for s in steps]
+    assert kinds.index("PulseStep") < kinds.index("VerdictStep")
+
+
+def test_world_pulse_optin_absent():
+    """Sans seed, aucune dépêche (garde des ~1310 tests)."""
+    world = _world()
+    steps = list(
+        run_negotiation_round(
+            world,
+            _agents(world),
+            _gm(),
+            _judge(),
+            SimClock(current_date=date(2025, 1, 1)),
+            max_passes=1,
+        )
+    )
+    assert not any(isinstance(s, PulseStep) for s in steps)
+
+
+def test_pulse_step_serializes_to_pulse_sse_frame():
+    """La trame SSE est générique : PulseStep -> event `pulse` porteur des dépêches."""
+    from simulation.world_pulse import PulseEvent
+
+    ev = PulseEvent(
+        round_id=1,
+        country="usa",
+        key="krach",
+        label="Krach",
+        stat="growth",
+        delta=-0.05,
+        boon=False,
+    )
+    name, payload = step_event(PulseStep(events=[ev]))
+    assert name == "pulse"
+    assert payload["events"][0]["country"] == "usa"
 
 
 def test_reasoning_judge_think_trace_never_reaches_public_steps():
