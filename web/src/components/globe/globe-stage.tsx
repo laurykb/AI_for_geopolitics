@@ -158,6 +158,11 @@ export type GlobeStageProps = {
   mascotVisible?: boolean;
   /** Point du globe [lon,lat] que Laury « présente » (dérive vers lui) ; null = flotte. */
   mascotTarget?: [number, number] | null;
+  /** Siège ONU (S14) : le délégué de l'organisation, au siège historique de Genève,
+   * visible quand le rôle ONU est joué. */
+  orgSeat?: boolean;
+  /** L'ONU s'adresse au Juge (rapport cité) : onde cyan Genève → Juge + regard cyan. */
+  orgActive?: boolean;
   /** WebGL indisponible : l'hôte peut retomber sur la StageMap 2D (S3). */
   onUnsupported?: () => void;
   className?: string;
@@ -454,6 +459,26 @@ export function GlobeStage(props: GlobeStageProps) {
       return el;
     };
     const tooltip = makeTag("");
+
+    // ONU (S14) — le délégué de l'organisation au siège historique de Genève. Visible
+    // quand le rôle ONU est joué ; quand il « parle au Juge » (rapport cité), une onde
+    // cyan relie le siège au Juge (mécanique : l'avis de l'ONU est cité avant le verdict).
+    const GENEVA: [number, number] = [6.14, 46.22];
+    const onu = makeRobot({ slug: "un", hue: "#59d7ff", lonlat: GENEVA, flagMap: null });
+    anchors.anchor(onu.group, GENEVA[0], GENEVA[1], { lift: 0.001 });
+    onu.group.visible = false;
+    scene.add(onu.group);
+    const orgBeamGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(),
+      new THREE.Vector3(),
+    ]);
+    const orgBeam = new THREE.Line(
+      orgBeamGeo,
+      new THREE.LineBasicMaterial({ color: 0x59d7ff, transparent: true, opacity: 0 }),
+    );
+    scene.add(orgBeam);
+    const orgTag = makeTag("border-color:rgba(89,215,255,.55);color:#bff0ff;");
+    orgTag.textContent = "🕊 ONU · Genève";
     const eventTag = makeTag("border-color:rgba(255,193,77,.55);color:#ffe0a3;");
     const speakerTag = makeTag("border-color:rgba(255,193,77,.55);color:#ffe9c2;font-weight:600;");
     const judgeTag = makeTag("border-color:rgba(129,140,248,.55);color:#c7d2fe;");
@@ -1137,6 +1162,27 @@ export function GlobeStage(props: GlobeStageProps) {
         }
       } else {
         tallyTag.style.opacity = "0";
+      }
+
+      // ONU (S14) : délégué au siège de Genève (face caméra) ; quand il « parle au
+      // Juge » (rapport cité), une onde cyan relie le siège au Juge et son regard s'allume.
+      onu.group.visible = !!p.orgSeat;
+      if (p.orgSeat) {
+        const onuLocal = onu.group.worldToLocal(CAMP.copy(camera.position));
+        onu.spinner.rotation.y = Math.atan2(onuLocal.x, onuLocal.z);
+        animateRobot(onu, t, reduced);
+        const active = !!p.orgActive;
+        for (const e of onu.eyes) e.material.color.set(active ? 0x59d7ff : 0x2a6b82);
+        const bp = orgBeamGeo.attributes.position as THREE.BufferAttribute;
+        bp.setXYZ(0, onu.group.position.x, onu.group.position.y, onu.group.position.z);
+        bp.setXYZ(1, judge.group.position.x, judge.group.position.y, judge.group.position.z);
+        bp.needsUpdate = true;
+        orgBeam.material.opacity = active ? (reduced ? 0.55 : 0.3 + Math.abs(Math.sin(t * 3)) * 0.35) : 0;
+        mixTop(GENEVA, 1 + ROBOT_H * 1.5, ROBOT_H * 1.5, morphK, LOC);
+        projectAt(orgTag, LOC, true, -2);
+      } else {
+        orgBeam.material.opacity = 0;
+        orgTag.style.opacity = "0";
       }
 
       // Laury flotte près de la caméra et va « présenter » la cible de l'étape (proto).

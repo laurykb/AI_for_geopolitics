@@ -61,6 +61,10 @@ export type GlobeTheatreProps = {
   mascotVisible?: boolean;
   /** Point [lon,lat] que Laury présente (null = flotte près de la caméra). */
   mascotTarget?: [number, number] | null;
+  /** Siège ONU (S14) : délégué à Genève, visible quand le rôle ONU est joué. */
+  orgSeat?: boolean;
+  /** L'ONU s'adresse au Juge (rapport cité) : onde cyan vers le Juge. */
+  orgActive?: boolean;
   /** Contenu de la fiche pays (tiroir gauche) ; null = fermée. */
   fiche?: ReactNode;
   onFicheClose: () => void;
@@ -97,6 +101,8 @@ export function GlobeTheatre({
   onCountryClick,
   mascotVisible = false,
   mascotTarget = null,
+  orgSeat = false,
+  orgActive = false,
   fiche = null,
   onFicheClose,
   dialogues,
@@ -156,6 +162,8 @@ export function GlobeTheatre({
             onCountryClick={onCountryClick}
             mascotVisible={mascotVisible}
             mascotTarget={mascotTarget}
+            orgSeat={orgSeat}
+            orgActive={orgActive}
             followSpeaker={follow}
             onUserDrag={() => setFollow(false)}
             onUnsupported={() => setWebglOk(false)}

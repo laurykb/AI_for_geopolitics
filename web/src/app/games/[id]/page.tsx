@@ -1273,6 +1273,8 @@ export default function TheatrePage() {
         onStageViewChange={setStageView}
         lowPerf={settings.perf === "leger"}
         thinkingText={thinkingText}
+        orgSeat={detail?.role === "un"}
+        orgActive={!!round.org}
         mascotVisible={tutorialActive}
         mascotTarget={
           tutorialActive
