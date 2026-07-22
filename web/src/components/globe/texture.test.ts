@@ -6,7 +6,14 @@ import { describe, expect, it } from "vitest";
 
 import { uTint } from "@/lib/stage";
 import { WORLD_FEATURES } from "@/lib/world";
-import { createGlobePainter, landColorFor, TEX_H, TEX_W } from "./texture";
+import {
+  createGlobePainter,
+  createOverlayPainter,
+  landColorFor,
+  SPEAKER_FILL,
+  TEX_H,
+  TEX_W,
+} from "./texture";
 import { summitFeatures } from "./picking";
 
 /** Contexte 2D minimal : enregistre styles posés et méthodes appelées. */
@@ -26,6 +33,7 @@ function recordingCtx() {
     },
     set shadowBlur(_v: unknown) {},
     set lineWidth(_v: unknown) {},
+    clearRect: (...a: unknown[]) => push("clearRect", a),
     createLinearGradient: () => ({ addColorStop: () => undefined }),
     createRadialGradient: () => {
       push("radialGradient");
@@ -112,6 +120,51 @@ describe("createGlobePainter (entrées → opérations de dessin)", () => {
     const ctx = recordingCtx();
     const painter = createGlobePainter({ ctx, features: WORLD_FEATURES, width: TEX_W, height: TEX_H });
     painter.paint(summit, null, [{ lon: 0, lat: 0, kind: "burn", age: 1 }]);
+    expect(ctx.ops.filter(([op]) => op === "radialGradient")).toHaveLength(0);
+  });
+});
+
+describe("createOverlayPainter (surcouche transparente : bordures-only, zéro aplat)", () => {
+  const feats = summitFeatures(["france", "usa"], WORLD_FEATURES);
+  const summit = feats.map((f, i) => ({ ...f, u: i === 0 ? 0.61 : 0.58 }));
+
+  it("efface d'abord toute la surcouche puis ne peint AUCUN aplat de pays/océan", () => {
+    const ctx = recordingCtx();
+    createOverlayPainter(ctx, WORLD_FEATURES).paint(summit, null);
+    // La surcouche démarre par un clearRect plein cadre (canvas transparent).
+    expect(ctx.ops[0]).toEqual(["clearRect", [0, 0, TEX_W, TEX_H]]);
+    // Aucun aplat océan (fillRect) ni remplissage de terre/orateur (fill) sans cicatrice.
+    expect(ctx.ops.filter(([op]) => op === "fillRect")).toHaveLength(0);
+    expect(ctx.ops.filter(([op]) => op === "fill")).toHaveLength(0);
+  });
+
+  it("trace le liseré teinté U des pays (stroke), jamais l'aplat ambre de l'orateur", () => {
+    const ctx = recordingCtx();
+    createOverlayPainter(ctx, WORLD_FEATURES).paint(summit, "france");
+    // Les bordures existent bien (double trait).
+    expect(ctx.ops.filter(([op]) => op === "stroke").length).toBeGreaterThan(0);
+    const strokes = ctx.ops.filter(([op]) => op === "strokeStyle").map(([, v]) => v);
+    expect(strokes).toContain(uTint(0.58)); // liseré des États-Unis à leur teinte U
+    // L'orateur porte un halo ambre, jamais un remplissage.
+    const fills = ctx.ops.filter(([op]) => op === "fillStyle").map(([, v]) => v);
+    expect(fills).not.toContain(SPEAKER_FILL);
+    expect(ctx.ops.filter(([op]) => op === "fill")).toHaveLength(0);
+  });
+
+  it("conserve les cicatrices du monde (alpha selon l'âge)", () => {
+    const ctx = recordingCtx();
+    createOverlayPainter(ctx, WORLD_FEATURES).paint(summit, null, [
+      { lon: 56.5, lat: 26.6, kind: "burn", age: 0 },
+      { lon: 2.35, lat: 48.86, kind: "heal", age: 0.6 },
+    ]);
+    expect(ctx.ops.filter(([op]) => op === "radialGradient").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("une cicatrice estompée (age ≥ 1) ne peint plus rien", () => {
+    const ctx = recordingCtx();
+    createOverlayPainter(ctx, WORLD_FEATURES).paint(summit, null, [
+      { lon: 0, lat: 0, kind: "burn", age: 1 },
+    ]);
     expect(ctx.ops.filter(([op]) => op === "radialGradient")).toHaveLength(0);
   });
 });

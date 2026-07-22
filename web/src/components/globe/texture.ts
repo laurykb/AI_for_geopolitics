@@ -175,3 +175,101 @@ export function createGlobePainter({
 
   return { paint };
 }
+
+/** Peintre de SURCOUCHE (spec planète réaliste A5) : même signature `paint(...)`
+ * que `createGlobePainter`, pour un swap direct, mais qui peint sur un canvas
+ * TRANSPARENT composé par-dessus le matériau Terre (jour/nuit/spéculaire). La
+ * géographie vient de la texture NASA en dessous : ici, ZÉRO aplat (ni océan, ni
+ * terre, ni orateur) — seuls survivent les signaux de jeu. Les bordures encodent
+ * l'indice U par leur COULEUR (`uTint`) en double trait — halo sombre dessous pour
+ * rester lisible sur les terres claires, trait teinté + glow dessus pour l'océan
+ * sombre. L'orateur porte un halo ambre (jamais un remplissage) ; cicatrices
+ * conservées. Env node sans canvas : contexte 2D factice, comme le peintre plein. */
+export function createOverlayPainter(
+  ctx: CanvasRenderingContext2D,
+  features: GlobeFeature[],
+  width = TEX_W,
+  height = TEX_H,
+) {
+  const proj = geoEquirectangular().fitExtent(
+    [
+      [0, 0],
+      [width, height],
+    ],
+    { type: "Sphere" },
+  );
+  const path = geoPath(proj, ctx);
+
+  function paint(
+    summit: SummitTint[],
+    speaking: string | null,
+    scars: Scar[] = [],
+    lisere?: string,
+  ): void {
+    // Surcouche transparente : on efface tout — la Terre (matériau) est dessous.
+    ctx.clearRect(0, 0, width, height);
+
+    // Cicatrices du monde (S9) : verbatim du peintre plein — brûlure/guérison qui
+    // s'estompe avec l'âge, sur fond transparent.
+    for (const scar of scars) {
+      const alpha = Math.max(0, 1 - scar.age);
+      if (alpha <= 0) continue;
+      const pt = proj([scar.lon, scar.lat]);
+      if (!pt) continue;
+      const [x, y] = pt;
+      const r = scar.kind === "burn" ? 46 : 56;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      if (scar.kind === "burn") {
+        g.addColorStop(0, `rgba(14, 6, 3, ${0.62 * alpha})`);
+        g.addColorStop(0.55, `rgba(46, 20, 8, ${0.34 * alpha})`);
+        g.addColorStop(1, "rgba(0, 0, 0, 0)");
+      } else {
+        g.addColorStop(0, `rgba(120, 235, 190, ${0.3 * alpha})`);
+        g.addColorStop(0.6, `rgba(89, 215, 255, ${0.14 * alpha})`);
+        g.addColorStop(1, "rgba(0, 0, 0, 0)");
+      }
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Pays du sommet : AUCUN aplat. Double trait pour la lisibilité partout.
+    for (const { slug, feat, u } of summit) {
+      if (!feat) continue;
+      ctx.beginPath();
+      path(feat);
+      if (slug === speaking) {
+        // Halo sombre dessous (contraste sur terre claire).
+        ctx.strokeStyle = "rgba(10, 6, 0, .55)";
+        ctx.lineWidth = 6;
+        ctx.stroke();
+        // Trait ambre + glow dessus : l'orateur, signalé sans remplissage.
+        ctx.save();
+        ctx.shadowColor = "rgba(255,193,77,.95)";
+        ctx.shadowBlur = 40;
+        ctx.strokeStyle = SPEAKER_STROKE;
+        ctx.lineWidth = 3.4;
+        ctx.stroke();
+        ctx.restore();
+      } else {
+        // Au hall, le liseré est uniforme (doré) ; en jeu, la teinte U.
+        const c = lisere ?? uTint(u);
+        // Halo sombre dessous : le liseré reste lisible sur les terres claires.
+        ctx.strokeStyle = "rgba(6, 10, 18, .5)";
+        ctx.lineWidth = 6;
+        ctx.stroke();
+        // Trait teinté U + glow doux dessus : lisible sur l'océan sombre.
+        ctx.save();
+        ctx.shadowColor = c;
+        ctx.shadowBlur = 18;
+        ctx.strokeStyle = c;
+        ctx.lineWidth = 3.4;
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+  }
+
+  return { paint };
+}
