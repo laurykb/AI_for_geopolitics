@@ -1,16 +1,18 @@
 "use client";
 
-/** Le théâtre immersif (spec théâtre-globe §4, runbook S4) — le globe EST le
- * plateau : plein cadre, transcript ancré à droite en colonne à onglets
- * (Dialogues · Paris · Renseignement), contrôles caméra + légende U bas-gauche,
- * dock d'action sous la colonne, fiche pays en tiroir gauche.
+/** Le théâtre immersif PLEIN-CADRE (spec théâtre-globe §4 + full immersion proto_9) :
+ * le globe occupe TOUT le viewport (`fixed inset-0`), et le HUD flotte dessus en boîtes
+ * `fixed` (marque haut-gauche · bandeau événement centré · colonne transcript à droite à
+ * onglets · fiche tiroir gauche · contrôles + légende bas-gauche · hint bas-droite). Aucune
+ * page qui scrolle : la régie (mise en scène + observables) vit dans un tiroir côté hôte.
  *
- * Le composant ne possède AUCUNE donnée de jeu : la page lui passe la vue
- * dérivée (`deriveGlobeView`) et des nœuds tout faits (transcript, dock…).
- * Deux replis (spec §5) : WebGL absent (`onUnsupported`) ou palier de
- * performance « léger » → la StageMap SVG interactive reprend le plateau.
- * Sur mobile, la colonne quitte l'overlay et s'empile sous la scène (même
- * DOM : le transcript garde sa ref et son suivi de scroll). */
+ * Le composant ne possède AUCUNE donnée de jeu : la page lui passe la vue dérivée
+ * (`deriveGlobeView`) et des nœuds tout faits (transcript, dock…). Deux replis (spec §5) :
+ * WebGL absent (`onUnsupported`) ou palier « léger » → la StageMap SVG reprend le plateau.
+ *
+ * pointer-events (patron `ShellMain`) : le plateau est `pointer-events-auto` (clic pays →
+ * fiche), la couche HUD est `pointer-events-none` et chaque panneau enfant `pointer-events-auto`
+ * — les zones vides laissent traverser les clics vers le globe. */
 
 import dynamic from "next/dynamic";
 import { useEffect, useState, type ReactNode } from "react";
@@ -66,6 +68,10 @@ export type GlobeTheatreProps = {
   dock?: ReactNode;
   /** Pop-ups posés sur la scène (paris éclair) — zone hors colonne droite. */
   overlay?: ReactNode;
+  /** Titre court affiché en marque haut-gauche (nom de la partie / scénario). */
+  brand?: ReactNode;
+  /** Bouton(s) de régie posés dans les contrôles bas-gauche (ex. ouvrir la mise en scène). */
+  controlsExtra?: ReactNode;
   /** Props que seul le repli SVG consomme (pulsations, respiration). */
   fallback?: Pick<StageMapProps, "pulseActors" | "pulseKey" | "breatheKey">;
 };
@@ -92,6 +98,8 @@ export function GlobeTheatre({
   renseignement,
   dock,
   overlay,
+  brand,
+  controlsExtra,
   fallback = {},
 }: GlobeTheatreProps) {
   const t = useT();
@@ -113,9 +121,9 @@ export function GlobeTheatre({
   const toggleView = () => onStageViewChange(stageView === "3d" ? "2d" : "3d");
 
   return (
-    <section className="relative space-y-3" data-tour="scene" aria-label={t("theatre.aria-scene")}>
-      {/* --- le plateau ---------------------------------------------------------- */}
-      <div className="relative h-[48vh] min-h-[360px] overflow-hidden border border-edge bg-[#04060c] md:h-[76vh] md:max-h-[860px]">
+    <div data-tour="scene" aria-label={t("theatre.aria-scene")}>
+      {/* --- LE PLATEAU : le globe occupe tout le viewport, cliquable ------------- */}
+      <div className="fixed inset-0 z-0 bg-[#04060c]">
         {use3D ? (
           <GlobeStage
             countries={view.countries}
@@ -165,18 +173,40 @@ export function GlobeTheatre({
             </div>
           </div>
         )}
+      </div>
 
-        {/* Pop-ups de scène (paris éclair) — hors de la zone colonne droite. */}
-        {overlay && (
-          <div className="pointer-events-none absolute inset-0 z-20 md:right-[404px]">
-            {overlay}
+      {/* --- LA COUCHE HUD : fixe, non-interactive ; panneaux enfants interactifs -- */}
+      <div className="pointer-events-none fixed inset-0 z-40">
+        {/* Marque, haut-gauche. */}
+        <div className="pointer-events-auto fixed left-4 top-3 text-xs text-fg-muted">
+          {brand ?? (
+            <span className="font-semibold uppercase tracking-[0.14em] text-foreground">
+              Théâtre des super-intelligences
+            </span>
+          )}
+        </div>
+
+        {/* Bandeau événement, haut-centre (pulsant quand une crise est en cours). */}
+        {view.eventTitle && (
+          <div className="pointer-events-auto fixed left-1/2 top-3 flex max-w-[min(680px,72vw)] -translate-x-1/2 items-center gap-2.5 border border-edge-strong bg-background/85 px-4 py-2 backdrop-blur thk-cut-sm">
+            <span
+              aria-hidden
+              className="inline-block h-2 w-2 shrink-0 rounded-full bg-[var(--amber)]"
+              style={{ boxShadow: "0 0 12px 2px rgba(255,193,77,.8)" }}
+            />
+            <span className="truncate text-[13px] font-semibold">{view.eventTitle}</span>
           </div>
         )}
 
-        {/* Fiche pays : tiroir gauche (au-dessus des contrôles). */}
+        {/* Pop-ups de scène (paris éclair) — hors de la colonne droite. */}
+        {overlay && (
+          <div className="pointer-events-none fixed inset-0 z-20 md:right-[404px]">{overlay}</div>
+        )}
+
+        {/* Fiche pays : tiroir gauche (slide-in). */}
         <div
-          className={`absolute bottom-16 left-3 top-3 z-30 w-[300px] max-w-[85%] transition-transform duration-300 motion-reduce:transition-none ${
-            fiche ? "translate-x-0" : "pointer-events-none -translate-x-[110%]"
+          className={`pointer-events-auto fixed bottom-20 left-4 top-16 z-30 w-[300px] max-w-[85%] transition-transform duration-300 motion-reduce:transition-none ${
+            fiche ? "translate-x-0" : "pointer-events-none -translate-x-[115%]"
           }`}
         >
           {fiche && (
@@ -194,8 +224,8 @@ export function GlobeTheatre({
           )}
         </div>
 
-        {/* Contrôles caméra + légende U — bas-gauche (spec §4). */}
-        <div className="absolute bottom-3 left-3 z-10 flex flex-wrap items-center gap-2">
+        {/* Contrôles caméra + légende U — bas-gauche. */}
+        <div className="pointer-events-auto fixed bottom-3 left-4 z-10 flex flex-wrap items-center gap-2">
           <button
             type="button"
             role="switch"
@@ -211,7 +241,7 @@ export function GlobeTheatre({
               {stageView === "3d" ? t("theatre.vue-carte") : t("theatre.vue-globe")}
             </button>
           )}
-          <span className="flex items-center gap-1.5 border border-edge bg-surface/70 px-2 py-1 text-[11px] text-fg-faint backdrop-blur">
+          <span className="flex items-center gap-1.5 border border-edge bg-background/70 px-2 py-1 text-[11px] text-fg-faint backdrop-blur">
             <span
               aria-hidden
               className="inline-block h-1.5 w-8"
@@ -223,42 +253,49 @@ export function GlobeTheatre({
               {t("theatre.monde")} : {fmt(utopia)}
             </span>
           </span>
+          {controlsExtra}
         </div>
-      </div>
 
-      {/* --- la colonne du théâtre : overlay à droite (md+), empilée en mobile --- */}
-      <div className="z-10 flex flex-col gap-2 md:absolute md:inset-y-3 md:right-6 md:w-[380px] md:max-w-[44%]">
-        <div className="flex gap-1" role="tablist" aria-label={t("theatre.colonne")}>
-          {TABS.map((id) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={tab === id}
-              onClick={() => setTab(id)}
-              className={`thk-tab ${tab === id ? "on" : ""}`}
-            >
-              {t(`theatre.tab.${id}`)}
-            </button>
-          ))}
+        {/* Hint des raccourcis, bas-droite (au-dessus de la colonne). */}
+        <div className="pointer-events-none fixed bottom-3 right-[calc(min(400px,42vw)+16px)] hidden border border-edge bg-background/70 px-2.5 py-1.5 text-[10.5px] text-fg-faint backdrop-blur lg:block thk-cut-sm">
+          glisser : tourner · molette : zoom · <b>clic délégué : fiche</b> · <b>V</b> : 2D⇄3D ·
+          Échap : fermer
         </div>
-        <div className="thk-panel thk-cut flex min-h-0 flex-1 flex-col overflow-hidden">
-          {/* Les trois volets restent MONTÉS (le transcript garde sa ref et son
-              scroll) ; seuls les inactifs sont masqués. */}
-          <div hidden={tab !== "dialogues"} className="relative min-h-0 flex-1 p-2">
-            {dialogues}
+
+        {/* Colonne du théâtre : droite, à onglets + dock. */}
+        <div className="pointer-events-auto fixed inset-y-3 right-3 z-10 flex w-[min(400px,42vw)] flex-col gap-2">
+          <div className="flex gap-1" role="tablist" aria-label={t("theatre.colonne")}>
+            {TABS.map((id) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={tab === id}
+                onClick={() => setTab(id)}
+                className={`thk-tab ${tab === id ? "on" : ""}`}
+              >
+                {t(`theatre.tab.${id}`)}
+              </button>
+            ))}
           </div>
-          <div hidden={tab !== "paris"} className="min-h-0 flex-1 overflow-y-auto p-3">
-            {paris}
+          <div className="thk-panel thk-cut flex min-h-0 flex-1 flex-col overflow-hidden">
+            {/* Les trois volets restent MONTÉS (le transcript garde sa ref et son
+                scroll) ; seuls les inactifs sont masqués. */}
+            <div hidden={tab !== "dialogues"} className="relative min-h-0 flex-1 p-2">
+              {dialogues}
+            </div>
+            <div hidden={tab !== "paris"} className="min-h-0 flex-1 overflow-y-auto p-3">
+              {paris}
+            </div>
+            <div hidden={tab !== "renseignement"} className="min-h-0 flex-1 overflow-y-auto p-3">
+              {renseignement}
+            </div>
           </div>
-          <div hidden={tab !== "renseignement"} className="min-h-0 flex-1 overflow-y-auto p-3">
-            {renseignement}
-          </div>
+          {dock && (
+            <div className="thk-panel thk-cut max-h-[46%] shrink-0 overflow-y-auto p-3">{dock}</div>
+          )}
         </div>
-        {dock && (
-          <div className="thk-panel thk-cut max-h-[46%] shrink-0 overflow-y-auto p-3">{dock}</div>
-        )}
       </div>
-    </section>
+    </div>
   );
 }

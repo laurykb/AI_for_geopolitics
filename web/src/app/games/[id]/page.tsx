@@ -141,6 +141,9 @@ export default function TheatrePage() {
   // G2 — la parole ne se perd jamais : en cas d'échec du POST, le texte est gardé ici.
   const [turnFailed, setTurnFailed] = useState<string | null>(null);
   const [forfeitOpen, setForfeitOpen] = useState(false); // dialogue de forfait (kit)
+  // Théâtre plein-cadre : la « régie » (header, commandes de round, panneaux d'observables)
+  // vit dans un tiroir masqué par défaut — la vue nue = globe immersif + HUD. Fermée = immersion.
+  const [regieOpen, setRegieOpen] = useState(false);
   const [forfeiting, setForfeiting] = useState(false);
   // Transcript : suivre le direct seulement si le lecteur est déjà en bas (sinon on
   // le laisse lire — bouton flottant pour revenir).
@@ -727,10 +730,22 @@ export default function TheatrePage() {
   if (!detail && !loadError) return <TheatreSkeleton />;
 
   return (
-    <div className="space-y-6">
+    <div className="relative z-10 space-y-6">
+      {/* Théâtre plein-cadre : bouton de régie (ouvre le tiroir header + commandes +
+          observables). Fixe, toujours visible ; la vue nue reste immersive. */}
+      <button
+        type="button"
+        onClick={() => setRegieOpen((v) => !v)}
+        aria-expanded={regieOpen}
+        className="thk-ghost thk-cut-sm fixed left-4 top-10 z-50 text-xs"
+      >
+        {regieOpen ? "✕ fermer la régie" : "⚙ régie"}
+      </button>
       {/* CC-5 — jalons du tutoriel : le TourProvider les lit ([data-tutorial=…]) pour
           avancer quand l'action attendue est faite. Aucune logique de guide ici. */}
-      <header className="flex flex-wrap items-center gap-3">
+      <header
+        className={`flex flex-wrap items-center gap-3 ${regieOpen ? "" : "hidden"}`}
+      >
         <div className="min-w-0 flex-1">
           <Eyebrow>
             Théâtre live ·{" "}
@@ -908,7 +923,7 @@ export default function TheatrePage() {
       )}
 
       {detail?.live && detail.status === "running" && (
-        <Panel>
+        <Panel className={regieOpen ? "" : "hidden"}>
           {isSpectator && (
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-accent-bright/40 bg-surface-2/60 px-3 py-2">
               <p className="text-xs text-fg-muted">
@@ -1244,7 +1259,7 @@ export default function TheatrePage() {
       )}
 
       {/* --- La scène (G1) : pleine largeur, la carte en grand --------------------- */}
-      <div className="relative left-1/2 w-screen max-w-[1600px] -translate-x-1/2 space-y-4 px-4 sm:px-6">
+      <div className="space-y-4">
       {/* Théâtre immersif (S4, spec §4) : le globe est le plateau, la colonne à
           onglets (Dialogues · Paris · Renseignement) vit dessus. */}
       <GlobeTheatre
@@ -1491,6 +1506,7 @@ export default function TheatrePage() {
         }
       />
 
+      <div className={regieOpen ? "space-y-4" : "hidden"}>
       {/* Panneaux contextuels de la scène — sous le théâtre, comme avant (spec §4). */}
       <div className="grid items-start gap-4 lg:grid-cols-2">
         <div className="space-y-3">
@@ -1614,7 +1630,9 @@ export default function TheatrePage() {
       />
       </div>
       </div>
+      </div>
 
+      <div className={regieOpen ? "" : "hidden"}>
       {/* Salle des observables (RG-4) : façade (Dossier + « La table ») toujours
           visible, MOTEUR (« Renseignement » + « Le monde ») en Expert seulement. */}
       <ObservablesGrid
@@ -1628,6 +1646,7 @@ export default function TheatrePage() {
         uHistory={uHistory}
         treatiesUpdate={treatiesUpdate}
       />
+      </div>
 
       {/* RG-1 — abandon d'une partie en cours : dialogue du kit (remplace confirm() natif). */}
       <ConfirmDialog

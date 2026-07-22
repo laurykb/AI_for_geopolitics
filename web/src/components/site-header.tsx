@@ -10,7 +10,9 @@ import { HeaderNav } from "@/components/header-nav";
 
 export function SiteHeader() {
   const pathname = usePathname();
-  if (pathname === "/" || pathname.startsWith("/r/")) return null;
+  // Le théâtre plein-cadre a son propre HUD (marque haut-gauche) : pas de chrome d'app.
+  if (pathname === "/" || pathname.startsWith("/r/") || pathname.startsWith("/games/"))
+    return null;
 
   return (
     <header className="thk-sweep sticky top-0 z-40 border-b border-edge bg-background/80 backdrop-blur">
