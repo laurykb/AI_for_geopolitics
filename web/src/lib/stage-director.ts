@@ -37,10 +37,10 @@ export function phaseDefaults(phase: Phase): StageIntent {
   const base: StageIntent = { uByCountry: {}, utopia: 0.5 };
   switch (phase) {
     case "connexion":
-      // Fond de connexion : planète nue qui tourne, aucun délégué.
-      return { ...base, countries: [] };
+      // Fond de connexion : planète nue qui tourne lentement (full immersion), aucun délégué.
+      return { ...base, countries: [], autoRotate: true };
     case "hall":
-      return { ...base, countries: DEFAULT_COUNTRIES };
+      return { ...base, countries: DEFAULT_COUNTRIES, autoRotate: true };
     case "config":
       // La composition : liseré doré uniforme (la partie n'a pas commencé).
       return { ...base, countries: DEFAULT_COUNTRIES, lisere: "#ffc14d" };

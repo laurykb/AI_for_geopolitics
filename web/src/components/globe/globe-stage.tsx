@@ -145,6 +145,9 @@ export type GlobeStageProps = {
    * lui signale un drag pour qu'il coupe le suivi (sémantique prototype). */
   followSpeaker?: boolean;
   onUserDrag?: () => void;
+  /** Rotation lente d'attente (avant-jeu) : le monde tourne seul derrière la connexion
+   * et le hall (full immersion, proto §3) — coupée dès qu'on drague ou qu'un vol se joue. */
+  autoRotate?: boolean;
   /** WebGL indisponible : l'hôte peut retomber sur la StageMap 2D (S3). */
   onUnsupported?: () => void;
   className?: string;
@@ -894,6 +897,12 @@ export function GlobeStage(props: GlobeStageProps) {
         if (Math.abs(vlon) > 0.002 || Math.abs(vlat) > 0.002) {
           cam = { ...cam, lon: cam.lon + vlon, lat: clampLat(cam.lat + vlat) };
         }
+      }
+      // Rotation lente d'attente (avant-jeu, full immersion) : le monde vit seul derrière
+      // la connexion et le hall — coupée par le drag, un vol de caméra, le mode carte ou
+      // le réglage reduced-motion.
+      if (propsRef.current.autoRotate && !dragging && !fly && morphK < 0.5 && !reduced) {
+        cam = { ...cam, lon: cam.lon + 3.5 * dt };
       }
       if (fly) {
         const step = stepFly(cam, fly, dt);
