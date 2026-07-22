@@ -68,7 +68,7 @@ import { emitTutorialMilestone } from "@/lib/tutorial-events";
 import { latestSignalGaps, type SignalGapView } from "@/lib/signal";
 import {
   ensureAccount,
-  getGameMarket,
+  getGameMarkets,
   openFlashMarkets,
   placeBet,
   resolveFlashMarkets,
@@ -76,10 +76,11 @@ import {
   type FlashMarket,
 } from "@/lib/market";
 import { FlashMarketsPopup } from "@/components/flash-markets";
+import { MarketCard } from "@/components/theatre/market-card";
 import { deriveGlobeView, eventGeoOf } from "@/lib/globe-view";
 import type { Scar } from "@/components/globe/texture";
 import type { SuspectNotebook } from "@/lib/suspects";
-import { CAPITALS, summitCenter } from "@/lib/stage";
+import { CAPITALS, marketAnchor } from "@/lib/stage";
 import { deriveStageView } from "@/lib/stage-view";
 import type {
   AccountView,
@@ -164,8 +165,8 @@ export default function TheatrePage() {
   // Théâtre immersif (S4) : la fiche pays s'ouvre au clic sur un délégué.
   const [ficheCountry, setFicheCountry] = useState<string | null>(null);
   // Le jeu sur la carte (S8) : cagnotte du marché + balayage satellite.
-  const [gameMarket, setGameMarket] = useState<MarketView | null>(null);
-  const [betting, setBetting] = useState(false);
+  const [gameMarkets, setGameMarkets] = useState<MarketView[]>([]);
+  const [betting, setBetting] = useState<string | null>(null);
   const [scanTarget, setScanTarget] = useState<{ lon: number; lat: number; key: number } | null>(
     null,
   );
@@ -224,9 +225,9 @@ export default function TheatrePage() {
       })
       .catch((err) => setLoadError(humanizeError(err)));
     // S8 — la cagnotte du marché de la partie (piles de billets + onglet Paris).
-    getGameMarket(id)
-      .then(setGameMarket)
-      .catch(() => setGameMarket(null));
+    getGameMarkets(id)
+      .then(setGameMarkets)
+      .catch(() => setGameMarkets([]));
   }, [id]);
 
   useEffect(resync, [resync]);
@@ -324,9 +325,10 @@ export default function TheatrePage() {
   // G12 §3 — la bourse du Spectateur (compteur d'argent) : chargée/rafraîchie après
   // chaque pari et chaque round. Crée le compte marché du navigateur au besoin.
   const refreshAccount = useCallback(() => {
-    if (!isSpectator) return;
+    // Le portefeuille est visible pour TOUS les rôles (parité proto) : alimenté au
+    // montage et après chaque round, plus seulement en spectateur.
     ensureAccount().then(setAccount).catch(() => {});
-  }, [isSpectator]);
+  }, []);
   const onFlashBet = useCallback(() => {
     emitTutorialMilestone({ milestone: "bet-confirmed", gameId: id, roundNo: round.roundNo });
     refreshFlash();
@@ -628,29 +630,30 @@ export default function TheatrePage() {
       : t("theatre.huis-clos")
     : undefined;
 
-  // S8 — la cagnotte du marché s'empile sur la carte : près du lieu de crise du
-  // round s'il existe, sinon au barycentre du sommet (même règle que le prototype).
-  const fundsAnchor = globeView.eventGeo
-    ? ([globeView.eventGeo.lon - 2.6, globeView.eventGeo.lat + 1.8] as [number, number])
-    : summitCenter(summit);
-  const funds =
-    gameMarket && gameMarket.volume > 0 && fundsAnchor
-      ? [{ key: "timeline", lon: fundsAnchor[0], lat: fundsAnchor[1], total: gameMarket.volume }]
-      : undefined;
+  // S8 / parité proto — chaque marché de la partie empile SA pile de billets à SA cible :
+  // capitale d'un pays, lieu de l'événement, ou centre du sommet (le marché « trahison »
+  // reste au sommet — spoiler-safe : jamais la capitale du traître).
+  const funds = gameMarkets
+    .filter((m) => m.volume > 0)
+    .map((m) => {
+      const anchor = marketAnchor(m.target, globeView.eventGeo, summit);
+      return anchor ? { key: m.id, lon: anchor[0], lat: anchor[1], total: m.volume } : null;
+    })
+    .filter((f): f is { key: string; lon: number; lat: number; total: number } => f !== null);
 
   // S8 — pari rapide depuis l'onglet Paris (10 parts, compte humain du navigateur).
-  const quickBet = async (outcomeId: string) => {
-    if (!gameMarket || betting) return;
-    setBetting(true);
+  const quickBet = async (marketId: string, outcomeId: string) => {
+    if (betting) return;
+    setBetting(marketId);
     try {
       const acc = await ensureAccount();
-      await placeBet(acc.id, gameMarket.id, outcomeId, 10);
-      setGameMarket(await getGameMarket(id));
+      await placeBet(acc.id, marketId, outcomeId, 10);
+      setGameMarkets(await getGameMarkets(id));
       setAccount(await ensureAccount());
     } catch {
       // marché fermé ou store reparti : le théâtre reste silencieux
     } finally {
-      setBetting(false);
+      setBetting(null);
     }
   };
 
@@ -1310,37 +1313,31 @@ export default function TheatrePage() {
         motionTarget={motionPending?.country ?? null}
         paris={
           <div className="space-y-3 text-sm text-fg-muted">
-            {gameMarket && (
-              <div className="space-y-2">
-                <p className="text-xs text-fg-muted">{gameMarket.question}</p>
-                <div className="flex gap-2">
-                  {gameMarket.outcomes.map((o) => (
-                    <button
-                      key={o.id}
-                      type="button"
-                      disabled={betting || gameMarket.status !== "open"}
-                      onClick={() => quickBet(o.id)}
-                      className="thk-ghost flex-1 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      {o.label} · {Math.round(o.price * 100)} %
-                    </button>
-                  ))}
-                </div>
-                <p className="text-[11px] text-fg-faint">
-                  💰 {Math.round(gameMarket.volume)} ₲ {t("theatre.paris-enjeu")}
-                </p>
-              </div>
-            )}
-            {isSpectator && account && (
+            {/* Portefeuille TOUJOURS visible (parité proto), au-dessus des marchés. */}
+            {account && (
               <p className="flex items-center justify-between border border-edge bg-surface-2/60 px-3 py-2 font-mono text-xs tabular-nums">
                 <span>Portefeuille</span>
                 <span>
-                  {Math.round(account.balance)}{" "}
+                  {Math.round(account.balance)} ₲{" "}
                   <span className={account.pnl >= 0 ? "text-utopia" : "text-dystopia"}>
                     ({account.pnl >= 0 ? "+" : ""}
                     {Math.round(account.pnl)})
                   </span>
                 </span>
+              </p>
+            )}
+            {gameMarkets.map((m) => (
+              <MarketCard
+                key={m.id}
+                market={m}
+                busy={betting === m.id}
+                onBet={(oid) => quickBet(m.id, oid)}
+                enjeuLabel={t("theatre.paris-enjeu")}
+              />
+            ))}
+            {gameMarkets.length === 0 && (
+              <p className="text-xs text-fg-faint">
+                Les marchés de la partie s&apos;ouvrent au premier round.
               </p>
             )}
             <p className="text-xs text-fg-faint">{t("theatre.paris-note")}</p>

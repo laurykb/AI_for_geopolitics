@@ -1246,6 +1246,10 @@ export type OutcomeView = {
   price: number; // probabilité implicite courante (LMSR)
 };
 
+/** Ancre on-globe d'un marché (pile de billets) : capitale d'un pays, lieu de
+ * l'événement, ou centre du sommet (spoiler-safe pour le marché « trahison »). */
+export type MarketTargetView = { type: "country" | "event" | "summit"; slug: string | null };
+
 export type MarketView = {
   id: string;
   round_id: number;
@@ -1257,6 +1261,7 @@ export type MarketView = {
   resolved_outcome: string | null;
   outcomes: OutcomeView[];
   volume: number;
+  target: MarketTargetView | null; // ancre on-globe (criterion.params.ui_target)
 };
 
 /** Passage du bot forecaster sur le marché de la partie (POST /games/{id}/market/bot). */
