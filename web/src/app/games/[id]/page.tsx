@@ -1376,6 +1376,7 @@ export default function TheatrePage() {
           </div>
         }
         dock={
+        <>
         <ActionDock
           phase={phase}
           playedRounds={playedRounds}
@@ -1470,6 +1471,25 @@ export default function TheatrePage() {
             />
           )}
         </ActionDock>
+        {/* RG — la conclusion de round (« Continuer la partie ») est un contrôle VITAL :
+            elle vit dans le dock TOUJOURS visible, jamais dans la régie masquée, sinon
+            en vue immersive (régie fermée) on ne peut plus enchaîner les rounds. */}
+        {phase === "round_complete" && detail && (
+          <RoundConclusion
+            roundNo={round.roundNo ?? playedRounds}
+            horizon={detail.horizon}
+            eventTitle={round.event?.title ?? detail.rounds.at(-1)?.event?.title}
+            deltas={round.verdict?.deltas ?? []}
+            motionUpheld={round.motionVerdict?.upheld}
+            busy={roundActive}
+            onContinue={
+              isSpectator
+                ? () => startAccel(Math.max(1, detail.horizon - playedRounds))
+                : play
+            }
+          />
+        )}
+        </>
         }
         dialogues={
           <div className="relative h-full">
@@ -1539,22 +1559,6 @@ export default function TheatrePage() {
           {showEngine && <OperationalPicturePanel picture={detail?.operational_picture} />}
         </div>
       </div>
-
-      {phase === "round_complete" && detail && (
-        <RoundConclusion
-          roundNo={round.roundNo ?? playedRounds}
-          horizon={detail.horizon}
-          eventTitle={round.event?.title ?? detail.rounds.at(-1)?.event?.title}
-          deltas={round.verdict?.deltas ?? []}
-          motionUpheld={round.motionVerdict?.upheld}
-          busy={roundActive}
-          onContinue={
-            isSpectator
-              ? () => startAccel(Math.max(1, detail.horizon - playedRounds))
-              : play
-          }
-        />
-      )}
 
       {/* G8 — directives : levier d'OBSERVATEUR (Spectateur + Architecte en labo). Le
           Joueur-pays incarne déjà sa SI et le Conseil n'en a pas (le composant se masque). */}
