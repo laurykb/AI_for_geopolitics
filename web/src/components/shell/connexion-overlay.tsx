@@ -1,24 +1,22 @@
 "use client";
 
-/** L'espace connexion, posé sur le globe persistant (spec coquille §4, Inc 2).
+/** L'espace connexion, posé sur le globe persistant (spec coquille §4, Inc 2-3).
  *
  * Reprend l'auth de l'ancien `app/page.tsx` (pseudo/mot de passe Supabase ou repli
- * offline, « jouer sans compte ») MAIS ne monte plus son propre globe 2D : la scène
- * du `StageShell` tourne derrière. Panneau de verre centré sur le monde. Une fois
- * connecté (ou invité), on plonge vers le hall (transitoire Inc 2 : `/accueil`). */
+ * offline, « jouer sans compte ») MAIS ne monte plus son propre globe et ne NAVIGUE
+ * plus : au succès, `refresh()` fait apparaître le joueur et `/` bascule en phase hall
+ * sur place (les délégués se posent sur le monde). Panneau de verre centré. */
 
 import { useState } from "react";
 
 import { useAuth } from "@/components/auth-provider";
 import { useT } from "@/components/settings-provider";
 import { Banner, Segmented, Spinner } from "@/components/ui";
-import { usePlanetLaunch } from "@/hooks/usePlanetLaunch";
 import { getAuth } from "@/lib/auth";
 
 export function ConnexionOverlay() {
   const t = useT();
-  const { offline } = useAuth();
-  const { launching, launch } = usePlanetLaunch();
+  const { offline, refresh } = useAuth();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [pseudo, setPseudo] = useState("");
   const [password, setPassword] = useState("");
@@ -33,7 +31,7 @@ export function ConnexionOverlay() {
     const result =
       mode === "signin" ? await auth.signIn(pseudo, password) : await auth.signUp(pseudo, password);
     if (result.ok) {
-      launch("/accueil"); // plongée → hall (transitoire Inc 2 ; overlay hall en Inc 3)
+      await refresh(); // le joueur apparaît → `/` passe en phase hall (pas de navigation)
     } else {
       setError(result.error);
       setBusy(false);
@@ -49,26 +47,23 @@ export function ConnexionOverlay() {
       setBusy(false);
       return;
     }
-    // Spec : « jouer sans compte » atterrit dans le hall (plus de plongée directe en partie).
-    launch("/accueil");
+    await refresh(); // idem : on atterrit dans le hall (plus de plongée directe en partie)
   };
 
-  const chrome = launching ? "intro-fade-out" : undefined;
-
   return (
-    <div className="relative flex min-h-[calc(100vh-9rem)] flex-col items-center justify-center gap-6 py-6 text-center">
-      <div className={chrome}>
+    <div className="pointer-events-auto relative mx-auto flex min-h-screen max-w-6xl flex-col items-center justify-center gap-6 px-6 py-6 text-center">
+      <div>
         <h1 className="text-3xl font-semibold tracking-tight drop-shadow sm:text-4xl">
           Théâtre des <span className="text-accent-bright">super-intelligences</span>
         </h1>
         <p className="mt-3 text-sm text-fg-muted">{t("login.pitch")}</p>
       </div>
 
-      <div className={`w-full max-w-sm space-y-3 ${chrome ?? ""}`}>
+      <div className="w-full max-w-sm space-y-3">
         <button
           type="button"
           onClick={playAsGuest}
-          disabled={busy || launching}
+          disabled={busy}
           className="thk-cta thk-cut-sm flex w-full items-center justify-center gap-2 text-base font-semibold"
         >
           {busy && <Spinner />}
@@ -142,8 +137,6 @@ export function ConnexionOverlay() {
             : "Ton pseudo est ce que voient les autres joueurs ; aucun email requis."}
         </p>
       </form>
-
-      {launching && <div className="intro-veil absolute inset-0 z-10 bg-background/80" />}
     </div>
   );
 }

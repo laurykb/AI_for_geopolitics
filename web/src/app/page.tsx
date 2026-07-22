@@ -2,40 +2,43 @@
 
 /** `/` — le point d'entrée unique de la coquille (spec coquille §2-§4).
  *
- * Non authentifié → l'espace connexion posé sur le globe persistant (`StageShell`).
- * Authentifié → le hall (transitoire Inc 2 : redirection vers `/accueil` ; l'overlay
- * hall vivra ici même dès l'Inc 3, sans navigation). */
+ * Une seule route, trois espaces posés sur le globe persistant :
+ *   non authentifié           → connexion
+ *   authentifié, phase hall    → le hall (portes de mode, Défi, reprise)
+ *   authentifié, phase config  → composer sa partie sur le globe
+ * Théâtre et fin vivent sur `/games/*` (le globe s'y étendra à l'Inc 4). */
 
-import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 import { useAuth } from "@/components/auth-provider";
+import { ConfigOverlay } from "@/components/shell/config-overlay";
 import { ConnexionOverlay } from "@/components/shell/connexion-overlay";
+import { HallOverlay } from "@/components/shell/hall-overlay";
 import { useStageDirector } from "@/components/shell/stage-provider";
 import { Spinner } from "@/components/ui";
 
 export default function ShellEntry() {
-  const router = useRouter();
   const { player, loading } = useAuth();
-  const { goPhase } = useStageDirector();
+  const { phase, goPhase } = useStageDirector();
 
-  // Le globe affiche le fond de connexion tant qu'on est sur cette entrée.
+  // La phase suit la session : connexion sans joueur ; sinon le hall (sauf compo en cours).
   useEffect(() => {
-    goPhase("connexion");
-  }, [goPhase]);
+    if (loading) return;
+    if (!player) {
+      goPhase("connexion");
+      return;
+    }
+    if (phase !== "hall" && phase !== "config") goPhase("hall");
+  }, [loading, player, phase, goPhase]);
 
-  // Session déjà ouverte → le hall (transitoire : /accueil, remplacé en Inc 3).
-  useEffect(() => {
-    if (!loading && player) router.replace("/accueil");
-  }, [loading, player, router]);
-
-  if (loading || player) {
+  if (loading) {
     return (
-      <p className="flex min-h-[50vh] items-center justify-center gap-2 text-sm text-fg-muted">
-        <Spinner /> {loading ? "Chargement…" : "Ouverture du hall…"}
+      <p className="pointer-events-auto flex min-h-screen items-center justify-center gap-2 text-sm text-fg-muted">
+        <Spinner /> Chargement…
       </p>
     );
   }
 
-  return <ConnexionOverlay />;
+  if (!player) return <ConnexionOverlay />;
+  return phase === "config" ? <ConfigOverlay /> : <HallOverlay />;
 }

@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
-import { AuthGate } from "@/components/auth-gate";
 import { AuthProvider } from "@/components/auth-provider";
 import { SettingsProvider } from "@/components/settings-provider";
+import { ShellMain } from "@/components/shell/shell-main";
 import { StageProvider } from "@/components/shell/stage-provider";
 import { StageShell } from "@/components/shell/stage-shell";
 import { SiteHeader } from "@/components/site-header";
@@ -47,9 +47,7 @@ export default function RootLayout({
               Aller au contenu
             </a>
             <SiteHeader />
-            <main id="contenu" className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
-              <AuthGate>{children}</AuthGate>
-            </main>
+            <ShellMain>{children}</ShellMain>
             <footer className="border-t border-edge py-4">
               <p className="mx-auto max-w-6xl px-6 text-xs text-fg-faint">
                 Ceci est une simulation : les scores observent le jeu, ils ne le dirigent pas.

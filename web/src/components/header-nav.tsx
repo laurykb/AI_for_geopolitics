@@ -16,7 +16,7 @@ import { useT } from "@/components/settings-provider";
 import { useTour } from "@/components/tour";
 
 export const HEADER_LINKS = [
-  { href: "/accueil", key: "header.accueil" },
+  { href: "/", key: "header.accueil" },
   { href: "/defi", key: "header.leaderboard" },
   { href: "/informations", key: "header.informations" },
 ];

@@ -14,7 +14,6 @@
 
 import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
-import { useCallback } from "react";
 
 import { useSettings } from "@/components/settings-provider";
 import { Hud } from "@/components/shell/hud";
@@ -27,19 +26,18 @@ const GlobeStage = dynamic(
 
 export function StageShell() {
   const pathname = usePathname();
-  const { stage, handlers } = useStageDirector();
+  const { phase, stage, handlers } = useStageDirector();
   const { settings, setStageView } = useSettings();
 
-  const onCountryClick = useCallback(
-    (slug: string) => handlers.current.onCountryClick?.(slug),
-    [handlers],
-  );
-  const onUserDrag = useCallback(() => handlers.current.onUserDrag?.(), [handlers]);
-  const onUnsupported = useCallback(() => handlers.current.onUnsupported?.(), [handlers]);
-  const onViewToggle = useCallback(() => {
+  // Wrappers stables via le ref de handlers (le React Compiler mémoïse) : l'overlay
+  // courant pose ses callbacks, le globe reçoit toujours la même passerelle.
+  const onCountryClick = (slug: string) => handlers.current.onCountryClick?.(slug);
+  const onUserDrag = () => handlers.current.onUserDrag?.();
+  const onUnsupported = () => handlers.current.onUnsupported?.();
+  const onViewToggle = () => {
     handlers.current.onViewToggle?.();
     setStageView(settings.stageView === "3d" ? "2d" : "3d");
-  }, [handlers, setStageView, settings.stageView]);
+  };
 
   // Le théâtre garde son globe jusqu'à l'Inc 4 ; le partage public reste nu.
   const hidden = pathname.startsWith("/r/") || pathname.startsWith("/games/");
@@ -47,10 +45,20 @@ export function StageShell() {
 
   const { countries = [], uByCountry = {}, utopia = 0.5, ...rest } = stage;
 
+  // Le globe capte les clics quand on compose (picking du sommet) ; sinon décor.
+  const interactive = phase === "config";
+
   return (
     <>
-      {/* Fond plein-cadre, derrière le contenu ; non interactif en Inc 1. */}
-      <div className="pointer-events-none fixed inset-0 -z-10" aria-hidden>
+      {/* Fond plein-cadre. En config, il remonte à z-0 (cliquable pour le picking, sous
+          le panneau z-20 et sous main z-10 qui est pointer-events-none) ; sinon il reste
+          en -z-10, décor derrière le contenu des autres routes. */}
+      <div
+        className={`fixed inset-0 ${
+          interactive ? "z-0 pointer-events-auto" : "-z-10 pointer-events-none"
+        }`}
+        aria-hidden
+      >
         <GlobeStage
           countries={countries}
           uByCountry={uByCountry}
