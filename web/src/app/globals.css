@@ -1,23 +1,28 @@
 @import "tailwindcss";
+@import "../styles/theatre-kit.css";
+@import "../styles/hall.css";
 
-/* Direction artistique « La Terre dans le ciel étoilé » : espace profond noir semé
-   d'étoiles, planète Terre réaliste (océans, terres, glace, halo atmosphérique) ;
-   accent or = lumière solaire, cyan = atmosphère. Motion sobre. */
+/* Direction artistique « théâtre futuriste » (spec théâtre-globe §9, S10) : la
+   palette de l'app est REBASÉE sur le kit theatre-kit.css — nuit du théâtre
+   #04060c (le même fond que la scène three), panneaux de verre bleutés, arêtes
+   néon cyan discrètes, ambre = l'action. Le ciel étoilé et la sobriété motion
+   sont conservés. */
 :root {
-  --background: #050710; /* espace profond, presque noir */
-  --surface: #0d1226; /* panneau « nuit spatiale » */
-  --surface-2: #141a33;
-  --muted: #212a47;
-  --foreground: #f8fafc;
-  --foreground-muted: #9fb0c6;
-  /* AA 4,5:1 sur --surface (fond assombri → contraste préservé/amélioré). */
+  --background: #04060c; /* la nuit du théâtre (= --thk-bg, fond de la scène) */
+  --surface: #0b1220; /* panneau (= --thk-panel-solid) */
+  --surface-2: #101a30;
+  --muted: #1c2a44;
+  --foreground: #dbe6f5; /* = --thk-fg */
+  --foreground-muted: #8fa3c0; /* = --thk-fg-muted */
+  /* Plus clair que --thk-fg-faint (#5c7194, sous AA) : a11y intacte (runbook S10). */
   --foreground-faint: #8494a8;
-  --border: rgba(148, 178, 214, 0.16);
-  --border-strong: rgba(148, 178, 214, 0.32);
+  --border: rgba(78, 168, 255, 0.26); /* = --thk-edge */
+  --border-strong: rgba(89, 215, 255, 0.5); /* = --thk-edge-strong */
   --primary: #1e1b4b;
   --secondary: #312e81;
-  --accent: #ca8a04;
-  --accent-bright: #eab308;
+  --accent: #e0a63c; /* ambre du kit, assombri pour les aplats */
+  --accent-bright: #ffc14d; /* = --thk-amber */
+  --cyan: #59d7ff; /* = --thk-cyan (arêtes vives, marqueurs) */
   --indigo: #4338ca;
   --indigo-soft: #818cf8;
   --good: #34d399;
@@ -55,6 +60,7 @@
   --color-secondary: var(--secondary);
   --color-accent: var(--accent);
   --color-accent-bright: var(--accent-bright);
+  --color-cyan: var(--cyan);
   --color-indigo: var(--indigo);
   --color-indigo-soft: var(--indigo-soft);
   --color-good: var(--good);
@@ -170,7 +176,7 @@ body::before {
 }
 
 ::selection {
-  background: rgba(202, 138, 4, 0.35);
+  background: rgba(255, 193, 77, 0.32);
 }
 
 /* ===== Polish ui-ux-pro-max (accessibilité + perception) ======================== */
@@ -609,4 +615,19 @@ p {
 .noanim *::after {
   animation: none !important;
   transition: none !important;
+}
+
+/* ===== S10 — le kit théâtre sur les paliers de performance ====================== */
+
+/* Confort : le balayage lumineux (animation continue) s'arrête. */
+.perf-confort .thk-sweep::after {
+  animation: none;
+}
+
+/* Léger : ni scanlines ni balayage — le décor s'efface, le contenu reste. */
+.perf-leger .thk-scanlines {
+  display: none;
+}
+.perf-leger .thk-sweep::after {
+  animation: none;
 }

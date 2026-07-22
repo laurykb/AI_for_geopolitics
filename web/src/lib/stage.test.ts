@@ -5,7 +5,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AttributeDelta } from "./types";
 
-import { CAPITALS, StageQueue, localU, summitCenter, tensionLevel, uTint } from "./stage";
+import {
+  CAPITALS,
+  StageQueue,
+  localU,
+  marketAnchor,
+  summitCenter,
+  tensionLevel,
+  uTint,
+} from "./stage";
 
 describe("tensionLevel — la pastille unique du bandeau (CC-15c)", () => {
   it("sans aucune donnée : null (la pastille ne s'affiche pas)", () => {
@@ -88,6 +96,42 @@ describe("summitCenter", () => {
 
   it("aucun pays connu → null (la scène n'affiche pas d'arc)", () => {
     expect(summitCenter(["neo-atlantis"])).toBeNull();
+  });
+});
+
+describe("marketAnchor — pile de billets ancrée par cible (parité proto)", () => {
+  const summit = ["france", "egypt"];
+  const center = summitCenter(summit)!;
+
+  it("cible pays : capitale décalée", () => {
+    expect(marketAnchor({ type: "country", slug: "iran" }, null, summit)).toEqual([
+      CAPITALS.iran[0] + 2.8,
+      CAPITALS.iran[1] - 1.2,
+    ]);
+  });
+
+  it("cible pays inconnu : repli sur le centre du sommet", () => {
+    expect(marketAnchor({ type: "country", slug: "neo-atlantis" }, null, summit)).toEqual(center);
+  });
+
+  it("cible événement : lieu décalé", () => {
+    expect(marketAnchor({ type: "event", slug: null }, { lon: 40, lat: 15 }, summit)).toEqual([
+      40 - 2.6,
+      15 + 1.8,
+    ]);
+  });
+
+  it("cible événement sans géo : repli sur le sommet", () => {
+    expect(marketAnchor({ type: "event", slug: null }, null, summit)).toEqual(center);
+  });
+
+  it("cible sommet (« trahison », spoiler-safe) : centre du sommet, jamais un pays", () => {
+    expect(marketAnchor({ type: "summit", slug: null }, null, summit)).toEqual(center);
+  });
+
+  it("cible absente : centre du sommet", () => {
+    expect(marketAnchor(null, null, summit)).toEqual(center);
+    expect(marketAnchor(undefined, { lon: 40, lat: 15 }, summit)).toEqual(center);
   });
 });
 

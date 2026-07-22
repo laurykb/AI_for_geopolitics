@@ -34,6 +34,9 @@ class MarketContext:
     game_over: bool = False
     # G22 — la parole donnée : statut par id de promesse (en_cours/tenue/rompue/caduque).
     promises: dict[str, str] = field(default_factory=dict)
+    # Marché « une trahison sera-t-elle démasquée ? » : vrai dès qu'un traître est démasqué
+    # par une motion humaine retenue (crédit de détection — jamais l'identité, cf. spoiler-safe).
+    deviant_caught: bool = False
 
 
 def _horizon(condition_met: bool, ctx: MarketContext, before_round: int) -> Resolution:
@@ -99,6 +102,12 @@ def _deadline_honored(p: dict, ctx: MarketContext) -> Resolution:
     return _horizon(p["ref"] in ctx.deadlines_honored, ctx, p["before_round"])
 
 
+def _deviant_caught(p: dict, ctx: MarketContext) -> Resolution:
+    """« Une trahison sera-t-elle démasquée d'ici le round N ? » : YES dès qu'un traître
+    est démasqué (motion humaine retenue), NO si l'horizon passe sans, sinon OPEN."""
+    return _horizon(ctx.deviant_caught, ctx, p["before_round"])
+
+
 def _u_above(p: dict, ctx: MarketContext) -> Resolution:
     return _at_round(True, ctx.utopia > p["threshold"], ctx, p["round"])
 
@@ -130,6 +139,7 @@ _CATALOG: dict[str, tuple] = {
     "pact_broken": (_pact_broken, {"before_round": int}),
     "suspension_before_end": (_suspension_before_end, {}),
     "deadline_honored": (_deadline_honored, {"ref": str, "before_round": int}),
+    "deviant_caught": (_deviant_caught, {"before_round": int}),
     "u_above": (_u_above, {"threshold": float, "round": int}),
     "promise_kept": (_promise_kept, {"id": str}),
 }

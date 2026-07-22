@@ -25,11 +25,14 @@ export function SuspectBoard({
   countries,
   playAs,
   onPrepareMotion,
+  onChange,
 }: {
   gameId: string;
   countries: string[];
   playAs?: string;
   onPrepareMotion?: (country: string) => void;
+  /** S9 — le théâtre épingle les niveaux au-dessus des robots : il écoute ici. */
+  onChange?: (notebook: SuspectNotebook) => void;
 }) {
   const storageKey = `wosi.suspects.${gameId}`;
   const [notebook, setNotebook] = useState<SuspectNotebook>({});
@@ -49,8 +52,10 @@ export function SuspectBoard({
   }, [storageKey]);
 
   useEffect(() => {
-    if (loaded) localStorage.setItem(storageKey, JSON.stringify(notebook));
-  }, [loaded, notebook, storageKey]);
+    if (!loaded) return;
+    localStorage.setItem(storageKey, JSON.stringify(notebook));
+    onChange?.(notebook);
+  }, [loaded, notebook, storageKey, onChange]);
 
   const ordered = useMemo(
     () =>

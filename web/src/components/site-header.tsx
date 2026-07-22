@@ -10,13 +10,15 @@ import { HeaderNav } from "@/components/header-nav";
 
 export function SiteHeader() {
   const pathname = usePathname();
-  if (pathname === "/" || pathname.startsWith("/r/")) return null;
+  // Le théâtre plein-cadre a son propre HUD (marque haut-gauche) : pas de chrome d'app.
+  if (pathname === "/" || pathname.startsWith("/r/") || pathname.startsWith("/games/"))
+    return null;
 
   return (
-    <header className="sticky top-0 z-40 border-b border-edge bg-background/80 backdrop-blur">
+    <header className="thk-sweep sticky top-0 z-40 border-b border-edge bg-background/80 backdrop-blur">
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
-        <Link href="/accueil" className="group min-w-0 items-baseline gap-3 sm:flex">
-          <span className="block truncate text-sm font-semibold tracking-wide">
+        <Link href="/" className="group min-w-0 items-baseline gap-3 sm:flex">
+          <span className="block truncate text-sm font-semibold uppercase tracking-[0.14em]">
             Théâtre des super-intelligences
           </span>
           <span className="hidden text-xs text-fg-faint transition-colors group-hover:text-fg-muted sm:inline">

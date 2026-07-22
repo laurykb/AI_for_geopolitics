@@ -1,0 +1,1510 @@
+{
+ "_meta": {
+  "description": "Gazetteer local du théâtre-globe : lieux stratégiques + capitales du roster. Clés et alias normalisés (minuscules, sans accents). Coordonnées [lon, lat], précision théâtre (ancrage visuel). Consommé par simulation/geo.py — zéro réseau.",
+  "spec": "docs/spec_theatre_globe.md §3"
+ },
+ "capitals": {
+  "algeria": [
+   3.06,
+   36.75
+  ],
+  "argentina": [
+   -58.38,
+   -34.6
+  ],
+  "australia": [
+   149.13,
+   -35.28
+  ],
+  "brazil": [
+   -47.93,
+   -15.78
+  ],
+  "canada": [
+   -75.7,
+   45.42
+  ],
+  "china": [
+   116.4,
+   39.9
+  ],
+  "democratic_republic_congo": [
+   15.27,
+   -4.44
+  ],
+  "denmark": [
+   12.57,
+   55.68
+  ],
+  "egypt": [
+   31.24,
+   30.04
+  ],
+  "france": [
+   2.35,
+   48.86
+  ],
+  "germany": [
+   13.4,
+   52.52
+  ],
+  "india": [
+   77.21,
+   28.61
+  ],
+  "iran": [
+   51.39,
+   35.7
+  ],
+  "israel": [
+   35.21,
+   31.78
+  ],
+  "italy": [
+   12.5,
+   41.9
+  ],
+  "japan": [
+   139.69,
+   35.68
+  ],
+  "mali": [
+   -8.0,
+   12.64
+  ],
+  "mexico": [
+   -99.13,
+   19.43
+  ],
+  "morocco": [
+   -6.85,
+   34.02
+  ],
+  "north_korea": [
+   125.75,
+   39.03
+  ],
+  "pakistan": [
+   73.05,
+   33.69
+  ],
+  "russia": [
+   37.62,
+   55.75
+  ],
+  "saudi_arabia": [
+   46.72,
+   24.63
+  ],
+  "senegal": [
+   -17.47,
+   14.72
+  ],
+  "singapore": [
+   103.82,
+   1.35
+  ],
+  "south_africa": [
+   28.19,
+   -25.75
+  ],
+  "south_korea": [
+   126.98,
+   37.57
+  ],
+  "spain": [
+   -3.7,
+   40.42
+  ],
+  "tunisia": [
+   10.18,
+   36.81
+  ],
+  "turkey": [
+   32.85,
+   39.93
+  ],
+  "uk": [
+   -0.13,
+   51.51
+  ],
+  "ukraine": [
+   30.52,
+   50.45
+  ],
+  "united_arab_emirates": [
+   54.38,
+   24.45
+  ],
+  "usa": [
+   -77.04,
+   38.9
+  ]
+ },
+ "places": {
+  "abou dabi": {
+   "lon": 54.38,
+   "lat": 24.45,
+   "label": "Abou Dabi",
+   "aliases": [
+    "abu dhabi"
+   ]
+  },
+  "abqaiq": {
+   "lon": 49.65,
+   "lat": 25.95,
+   "label": "Abqaïq",
+   "aliases": [
+    "abqaiq"
+   ]
+  },
+  "aden": {
+   "lon": 45.0,
+   "lat": 12.8,
+   "label": "Aden",
+   "aliases": []
+  },
+  "afrique australe": {
+   "lon": 25.0,
+   "lat": -28.0,
+   "label": "Afrique australe",
+   "aliases": [
+    "southern africa"
+   ]
+  },
+  "afrique de l ouest": {
+   "lon": -5.0,
+   "lat": 12.0,
+   "label": "Afrique de l'Ouest",
+   "aliases": [
+    "west africa"
+   ]
+  },
+  "afrique des grands lacs": {
+   "lon": 29.5,
+   "lat": -2.0,
+   "label": "Afrique des Grands Lacs",
+   "aliases": [
+    "grands lacs"
+   ]
+  },
+  "alep": {
+   "lon": 37.15,
+   "lat": 36.2,
+   "label": "Alep",
+   "aliases": [
+    "aleppo"
+   ]
+  },
+  "alexandrie": {
+   "lon": 29.9,
+   "lat": 31.2,
+   "label": "Alexandrie",
+   "aliases": [
+    "alexandria"
+   ]
+  },
+  "alger": {
+   "lon": 3.06,
+   "lat": 36.75,
+   "label": "Alger",
+   "aliases": [
+    "algiers"
+   ]
+  },
+  "amazonie": {
+   "lon": -62.0,
+   "lat": -4.0,
+   "label": "Amazonie",
+   "aliases": [
+    "amazon"
+   ]
+  },
+  "amerique centrale": {
+   "lon": -88.0,
+   "lat": 14.0,
+   "label": "Amérique centrale",
+   "aliases": [
+    "central america"
+   ]
+  },
+  "ankara": {
+   "lon": 32.85,
+   "lat": 39.93,
+   "label": "Ankara",
+   "aliases": []
+  },
+  "antarctique": {
+   "lon": 0.0,
+   "lat": -78.0,
+   "label": "Antarctique",
+   "aliases": [
+    "antarctica"
+   ]
+  },
+  "anvers": {
+   "lon": 4.4,
+   "lat": 51.2,
+   "label": "Anvers",
+   "aliases": [
+    "antwerp"
+   ]
+  },
+  "asie centrale": {
+   "lon": 64.0,
+   "lat": 42.0,
+   "label": "Asie centrale",
+   "aliases": [
+    "central asia"
+   ]
+  },
+  "asie du sud est": {
+   "lon": 105.0,
+   "lat": 12.0,
+   "label": "Asie du Sud-Est",
+   "aliases": [
+    "southeast asia"
+   ]
+  },
+  "atlantique nord": {
+   "lon": -35.0,
+   "lat": 45.0,
+   "label": "Atlantique Nord",
+   "aliases": [
+    "north atlantic"
+   ]
+  },
+  "bab el mandeb": {
+   "lon": 43.3,
+   "lat": 12.6,
+   "label": "Bab el-Mandeb",
+   "aliases": [
+    "bab al mandab",
+    "bab el mandeb"
+   ]
+  },
+  "balkans": {
+   "lon": 21.0,
+   "lat": 43.0,
+   "label": "Balkans",
+   "aliases": []
+  },
+  "bamako": {
+   "lon": -8.0,
+   "lat": 12.64,
+   "label": "Bamako",
+   "aliases": []
+  },
+  "bandar abbas": {
+   "lon": 56.3,
+   "lat": 27.2,
+   "label": "Bandar Abbas",
+   "aliases": []
+  },
+  "bande de gaza": {
+   "lon": 34.4,
+   "lat": 31.4,
+   "label": "bande de Gaza",
+   "aliases": [
+    "gaza"
+   ]
+  },
+  "bassorah": {
+   "lon": 47.8,
+   "lat": 30.5,
+   "label": "Bassorah",
+   "aliases": [
+    "basra"
+   ]
+  },
+  "berlin": {
+   "lon": 13.4,
+   "lat": 52.52,
+   "label": "Berlin",
+   "aliases": []
+  },
+  "bombay": {
+   "lon": 72.85,
+   "lat": 19.0,
+   "label": "Bombay",
+   "aliases": [
+    "mumbai"
+   ]
+  },
+  "bosphore": {
+   "lon": 29.05,
+   "lat": 41.1,
+   "label": "Bosphore",
+   "aliases": [
+    "bosphorus",
+    "detroit du bosphore"
+   ]
+  },
+  "brasilia": {
+   "lon": -47.93,
+   "lat": -15.78,
+   "label": "Brasilia",
+   "aliases": [
+    "brasilia"
+   ]
+  },
+  "bruxelles": {
+   "lon": 4.35,
+   "lat": 50.85,
+   "label": "Bruxelles",
+   "aliases": [
+    "brussels"
+   ]
+  },
+  "buenos aires": {
+   "lon": -58.38,
+   "lat": -34.6,
+   "label": "Buenos Aires",
+   "aliases": []
+  },
+  "busan": {
+   "lon": 129.05,
+   "lat": 35.1,
+   "label": "Busan",
+   "aliases": [
+    "pusan"
+   ]
+  },
+  "cachemire": {
+   "lon": 75.3,
+   "lat": 34.1,
+   "label": "Cachemire",
+   "aliases": [
+    "kashmir"
+   ]
+  },
+  "canal de panama": {
+   "lon": -79.6,
+   "lat": 9.1,
+   "label": "canal de Panama",
+   "aliases": [
+    "panama canal"
+   ]
+  },
+  "canal de sicile": {
+   "lon": 12.5,
+   "lat": 37.2,
+   "label": "canal de Sicile",
+   "aliases": []
+  },
+  "canal de suez": {
+   "lon": 32.35,
+   "lat": 30.45,
+   "label": "canal de Suez",
+   "aliases": [
+    "suez"
+   ]
+  },
+  "canal du mozambique": {
+   "lon": 41.0,
+   "lat": -18.0,
+   "label": "canal du Mozambique",
+   "aliases": [
+    "mozambique channel"
+   ]
+  },
+  "canberra": {
+   "lon": 149.13,
+   "lat": -35.28,
+   "label": "Canberra",
+   "aliases": []
+  },
+  "caraibes": {
+   "lon": -73.0,
+   "lat": 17.0,
+   "label": "Caraïbes",
+   "aliases": [
+    "caraibe",
+    "caribbean"
+   ]
+  },
+  "caucase": {
+   "lon": 44.5,
+   "lat": 42.5,
+   "label": "Caucase",
+   "aliases": [
+    "caucase du sud",
+    "caucasus"
+   ]
+  },
+  "chypre": {
+   "lon": 33.2,
+   "lat": 35.1,
+   "label": "Chypre",
+   "aliases": [
+    "cyprus"
+   ]
+  },
+  "cisjordanie": {
+   "lon": 35.3,
+   "lat": 31.9,
+   "label": "Cisjordanie",
+   "aliases": [
+    "west bank"
+   ]
+  },
+  "colombo": {
+   "lon": 79.85,
+   "lat": 6.9,
+   "label": "Colombo",
+   "aliases": []
+  },
+  "copenhague": {
+   "lon": 12.57,
+   "lat": 55.68,
+   "label": "Copenhague",
+   "aliases": [
+    "copenhagen"
+   ]
+  },
+  "corne de l afrique": {
+   "lon": 45.0,
+   "lat": 8.0,
+   "label": "Corne de l'Afrique",
+   "aliases": [
+    "horn of africa"
+   ]
+  },
+  "crimee": {
+   "lon": 34.1,
+   "lat": 45.3,
+   "label": "Crimée",
+   "aliases": [
+    "crimea"
+   ]
+  },
+  "dakar": {
+   "lon": -17.47,
+   "lat": 14.72,
+   "label": "Dakar",
+   "aliases": []
+  },
+  "dardanelles": {
+   "lon": 26.4,
+   "lat": 40.2,
+   "label": "Dardanelles",
+   "aliases": []
+  },
+  "detroit d ormuz": {
+   "lon": 56.5,
+   "lat": 26.6,
+   "label": "détroit d'Ormuz",
+   "aliases": [
+    "hormuz",
+    "ormuz",
+    "strait of hormuz"
+   ]
+  },
+  "detroit de bering": {
+   "lon": -169.5,
+   "lat": 65.8,
+   "label": "détroit de Béring",
+   "aliases": [
+    "bering"
+   ]
+  },
+  "detroit de gibraltar": {
+   "lon": -5.6,
+   "lat": 35.95,
+   "label": "détroit de Gibraltar",
+   "aliases": [
+    "gibraltar"
+   ]
+  },
+  "detroit de kertch": {
+   "lon": 36.5,
+   "lat": 45.3,
+   "label": "détroit de Kertch",
+   "aliases": [
+    "kerch"
+   ]
+  },
+  "detroit de la sonde": {
+   "lon": 105.8,
+   "lat": -6.0,
+   "label": "détroit de la Sonde",
+   "aliases": [
+    "sunda"
+   ]
+  },
+  "detroit de lombok": {
+   "lon": 115.7,
+   "lat": -8.7,
+   "label": "détroit de Lombok",
+   "aliases": [
+    "lombok"
+   ]
+  },
+  "detroit de malacca": {
+   "lon": 100.6,
+   "lat": 2.4,
+   "label": "détroit de Malacca",
+   "aliases": [
+    "malacca"
+   ]
+  },
+  "detroit de taiwan": {
+   "lon": 119.5,
+   "lat": 24.2,
+   "label": "détroit de Taïwan",
+   "aliases": [
+    "taiwan strait"
+   ]
+  },
+  "detroit du danemark": {
+   "lon": -27.0,
+   "lat": 66.5,
+   "label": "détroit du Danemark",
+   "aliases": []
+  },
+  "diego garcia": {
+   "lon": 72.4,
+   "lat": -7.3,
+   "label": "Diego Garcia",
+   "aliases": []
+  },
+  "djeddah": {
+   "lon": 39.2,
+   "lat": 21.5,
+   "label": "Djeddah",
+   "aliases": [
+    "jeddah"
+   ]
+  },
+  "djibouti": {
+   "lon": 43.15,
+   "lat": 11.6,
+   "label": "Djibouti",
+   "aliases": [
+    "djibouti city"
+   ]
+  },
+  "donbass": {
+   "lon": 38.0,
+   "lat": 48.0,
+   "label": "Donbass",
+   "aliases": [
+    "donbas"
+   ]
+  },
+  "dubai": {
+   "lon": 55.3,
+   "lat": 25.25,
+   "label": "Dubaï",
+   "aliases": [
+    "dubai"
+   ]
+  },
+  "durban": {
+   "lon": 31.0,
+   "lat": -29.85,
+   "label": "Durban",
+   "aliases": []
+  },
+  "europe de l est": {
+   "lon": 27.0,
+   "lat": 50.0,
+   "label": "Europe de l'Est",
+   "aliases": [
+    "eastern europe"
+   ]
+  },
+  "extreme orient russe": {
+   "lon": 135.0,
+   "lat": 55.0,
+   "label": "Extrême-Orient russe",
+   "aliases": [
+    "russian far east"
+   ]
+  },
+  "fordo": {
+   "lon": 50.99,
+   "lat": 34.88,
+   "label": "Fordo",
+   "aliases": [
+    "fordow"
+   ]
+  },
+  "gdansk": {
+   "lon": 18.65,
+   "lat": 54.35,
+   "label": "Gdansk",
+   "aliases": [
+    "dantzig"
+   ]
+  },
+  "geneve": {
+   "lon": 6.15,
+   "lat": 46.2,
+   "label": "Genève",
+   "aliases": [
+    "geneva",
+    "geneve"
+   ]
+  },
+  "giuk": {
+   "lon": -14.0,
+   "lat": 62.0,
+   "label": "GIUK",
+   "aliases": [
+    "giuk gap"
+   ]
+  },
+  "golfe d aden": {
+   "lon": 47.5,
+   "lat": 12.5,
+   "label": "golfe d'Aden",
+   "aliases": [
+    "gulf of aden"
+   ]
+  },
+  "golfe d oman": {
+   "lon": 58.0,
+   "lat": 24.5,
+   "label": "golfe d'Oman",
+   "aliases": [
+    "gulf of oman"
+   ]
+  },
+  "golfe de finlande": {
+   "lon": 26.0,
+   "lat": 59.9,
+   "label": "golfe de Finlande",
+   "aliases": []
+  },
+  "golfe de guinee": {
+   "lon": 2.0,
+   "lat": 2.5,
+   "label": "golfe de Guinée",
+   "aliases": [
+    "gulf of guinea"
+   ]
+  },
+  "golfe du bengale": {
+   "lon": 88.0,
+   "lat": 15.0,
+   "label": "golfe du Bengale",
+   "aliases": [
+    "baie du bengale",
+    "bay of bengal"
+   ]
+  },
+  "golfe du mexique": {
+   "lon": -90.0,
+   "lat": 25.0,
+   "label": "golfe du Mexique",
+   "aliases": [
+    "gulf of mexico"
+   ]
+  },
+  "golfe persique": {
+   "lon": 51.0,
+   "lat": 27.0,
+   "label": "golfe Persique",
+   "aliases": [
+    "golfe arabo persique",
+    "persian gulf"
+   ]
+  },
+  "groenland": {
+   "lon": -42.0,
+   "lat": 72.0,
+   "label": "Groenland",
+   "aliases": [
+    "greenland"
+   ]
+  },
+  "guam": {
+   "lon": 144.8,
+   "lat": 13.45,
+   "label": "Guam",
+   "aliases": []
+  },
+  "gwadar": {
+   "lon": 62.3,
+   "lat": 25.1,
+   "label": "Gwadar",
+   "aliases": []
+  },
+  "haifa": {
+   "lon": 35.0,
+   "lat": 32.8,
+   "label": "Haïfa",
+   "aliases": [
+    "haifa"
+   ]
+  },
+  "hambourg": {
+   "lon": 10.0,
+   "lat": 53.55,
+   "label": "Hambourg",
+   "aliases": [
+    "hamburg"
+   ]
+  },
+  "haut karabagh": {
+   "lon": 46.8,
+   "lat": 39.8,
+   "label": "Haut-Karabagh",
+   "aliases": [
+    "karabagh",
+    "nagorno karabakh"
+   ]
+  },
+  "hodeida": {
+   "lon": 42.95,
+   "lat": 14.8,
+   "label": "Hodeïda",
+   "aliases": [
+    "al hudaydah",
+    "hodeidah"
+   ]
+  },
+  "hong kong": {
+   "lon": 114.2,
+   "lat": 22.3,
+   "label": "Hong Kong",
+   "aliases": []
+  },
+  "houston": {
+   "lon": -95.35,
+   "lat": 29.75,
+   "label": "Houston",
+   "aliases": []
+  },
+  "iles kouriles": {
+   "lon": 150.0,
+   "lat": 46.5,
+   "label": "îles Kouriles",
+   "aliases": [
+    "kouriles",
+    "kuril"
+   ]
+  },
+  "iles malouines": {
+   "lon": -59.0,
+   "lat": -51.7,
+   "label": "îles Malouines",
+   "aliases": [
+    "falklands",
+    "malouines"
+   ]
+  },
+  "iles paracels": {
+   "lon": 112.0,
+   "lat": 16.5,
+   "label": "îles Paracels",
+   "aliases": [
+    "paracel"
+   ]
+  },
+  "iles senkaku": {
+   "lon": 123.5,
+   "lat": 25.75,
+   "label": "îles Senkaku",
+   "aliases": [
+    "diaoyu",
+    "senkaku"
+   ]
+  },
+  "iles spratleys": {
+   "lon": 114.0,
+   "lat": 9.5,
+   "label": "îles Spratleys",
+   "aliases": [
+    "spratleys",
+    "spratly"
+   ]
+  },
+  "indo pacifique": {
+   "lon": 120.0,
+   "lat": 5.0,
+   "label": "Indo-Pacifique",
+   "aliases": [
+    "indo pacific"
+   ]
+  },
+  "islamabad": {
+   "lon": 73.05,
+   "lat": 33.69,
+   "label": "Islamabad",
+   "aliases": []
+  },
+  "islande": {
+   "lon": -19.0,
+   "lat": 65.0,
+   "label": "Islande",
+   "aliases": [
+    "iceland"
+   ]
+  },
+  "istanbul": {
+   "lon": 28.98,
+   "lat": 41.0,
+   "label": "Istanbul",
+   "aliases": []
+  },
+  "jerusalem": {
+   "lon": 35.21,
+   "lat": 31.78,
+   "label": "Jérusalem",
+   "aliases": [
+    "jerusalem"
+   ]
+  },
+  "kaliningrad": {
+   "lon": 20.5,
+   "lat": 54.7,
+   "label": "Kaliningrad",
+   "aliases": []
+  },
+  "kaohsiung": {
+   "lon": 120.3,
+   "lat": 22.6,
+   "label": "Kaohsiung",
+   "aliases": []
+  },
+  "karachi": {
+   "lon": 67.0,
+   "lat": 24.85,
+   "label": "Karachi",
+   "aliases": []
+  },
+  "kharkiv": {
+   "lon": 36.25,
+   "lat": 50.0,
+   "label": "Kharkiv",
+   "aliases": [
+    "kharkov"
+   ]
+  },
+  "kinshasa": {
+   "lon": 15.27,
+   "lat": -4.44,
+   "label": "Kinshasa",
+   "aliases": []
+  },
+  "kurdistan": {
+   "lon": 44.0,
+   "lat": 36.5,
+   "label": "Kurdistan",
+   "aliases": []
+  },
+  "kyiv": {
+   "lon": 30.52,
+   "lat": 50.45,
+   "label": "Kyiv",
+   "aliases": [
+    "kiev"
+   ]
+  },
+  "ladakh": {
+   "lon": 77.6,
+   "lat": 34.2,
+   "label": "Ladakh",
+   "aliases": []
+  },
+  "lagos": {
+   "lon": 3.4,
+   "lat": 6.45,
+   "label": "Lagos",
+   "aliases": []
+  },
+  "le caire": {
+   "lon": 31.24,
+   "lat": 30.04,
+   "label": "Le Caire",
+   "aliases": [
+    "cairo"
+   ]
+  },
+  "le cap": {
+   "lon": 18.4,
+   "lat": -33.9,
+   "label": "Le Cap",
+   "aliases": [
+    "cape town"
+   ]
+  },
+  "levant": {
+   "lon": 36.5,
+   "lat": 34.0,
+   "label": "Levant",
+   "aliases": []
+  },
+  "londres": {
+   "lon": -0.13,
+   "lat": 51.51,
+   "label": "Londres",
+   "aliases": [
+    "london"
+   ]
+  },
+  "los angeles": {
+   "lon": -118.25,
+   "lat": 34.05,
+   "label": "Los Angeles",
+   "aliases": []
+  },
+  "madrid": {
+   "lon": -3.7,
+   "lat": 40.42,
+   "label": "Madrid",
+   "aliases": []
+  },
+  "maghreb": {
+   "lon": 2.0,
+   "lat": 32.0,
+   "label": "Maghreb",
+   "aliases": []
+  },
+  "marioupol": {
+   "lon": 37.55,
+   "lat": 47.1,
+   "label": "Marioupol",
+   "aliases": [
+    "mariupol"
+   ]
+  },
+  "mediterranee": {
+   "lon": 17.0,
+   "lat": 36.0,
+   "label": "Méditerranée",
+   "aliases": [
+    "mediterranean"
+   ]
+  },
+  "mediterranee orientale": {
+   "lon": 32.0,
+   "lat": 33.5,
+   "label": "Méditerranée orientale",
+   "aliases": [
+    "eastern mediterranean",
+    "mediterranee orientale"
+   ]
+  },
+  "mer adriatique": {
+   "lon": 16.0,
+   "lat": 42.5,
+   "label": "mer Adriatique",
+   "aliases": [
+    "adriatique"
+   ]
+  },
+  "mer baltique": {
+   "lon": 19.0,
+   "lat": 58.0,
+   "label": "mer Baltique",
+   "aliases": [
+    "baltic sea",
+    "baltique"
+   ]
+  },
+  "mer caspienne": {
+   "lon": 50.5,
+   "lat": 41.5,
+   "label": "mer Caspienne",
+   "aliases": [
+    "caspian",
+    "caspienne"
+   ]
+  },
+  "mer d arabie": {
+   "lon": 63.0,
+   "lat": 15.0,
+   "label": "mer d'Arabie",
+   "aliases": [
+    "arabian sea"
+   ]
+  },
+  "mer d azov": {
+   "lon": 36.0,
+   "lat": 46.0,
+   "label": "mer d'Azov",
+   "aliases": [
+    "azov"
+   ]
+  },
+  "mer d okhotsk": {
+   "lon": 150.0,
+   "lat": 55.0,
+   "label": "mer d'Okhotsk",
+   "aliases": [
+    "okhotsk"
+   ]
+  },
+  "mer de barents": {
+   "lon": 40.0,
+   "lat": 73.0,
+   "label": "mer de Barents",
+   "aliases": [
+    "barents"
+   ]
+  },
+  "mer de chine meridionale": {
+   "lon": 114.0,
+   "lat": 12.0,
+   "label": "mer de Chine méridionale",
+   "aliases": [
+    "mer de chine du sud",
+    "south china sea"
+   ]
+  },
+  "mer de chine orientale": {
+   "lon": 125.0,
+   "lat": 29.0,
+   "label": "mer de Chine orientale",
+   "aliases": [
+    "east china sea"
+   ]
+  },
+  "mer du japon": {
+   "lon": 134.0,
+   "lat": 40.0,
+   "label": "mer du Japon",
+   "aliases": [
+    "sea of japan"
+   ]
+  },
+  "mer du nord": {
+   "lon": 3.5,
+   "lat": 56.0,
+   "label": "mer du Nord",
+   "aliases": [
+    "north sea"
+   ]
+  },
+  "mer egee": {
+   "lon": 25.0,
+   "lat": 38.5,
+   "label": "mer Égée",
+   "aliases": [
+    "aegean",
+    "egee"
+   ]
+  },
+  "mer noire": {
+   "lon": 34.0,
+   "lat": 43.5,
+   "label": "mer Noire",
+   "aliases": [
+    "black sea"
+   ]
+  },
+  "mer rouge": {
+   "lon": 38.5,
+   "lat": 20.0,
+   "label": "mer Rouge",
+   "aliases": [
+    "red sea"
+   ]
+  },
+  "mexico": {
+   "lon": -99.13,
+   "lat": 19.43,
+   "label": "Mexico",
+   "aliases": []
+  },
+  "mogadiscio": {
+   "lon": 45.3,
+   "lat": 2.05,
+   "label": "Mogadiscio",
+   "aliases": [
+    "mogadishu"
+   ]
+  },
+  "mombasa": {
+   "lon": 39.65,
+   "lat": -4.05,
+   "label": "Mombasa",
+   "aliases": []
+  },
+  "moscou": {
+   "lon": 37.62,
+   "lat": 55.75,
+   "label": "Moscou",
+   "aliases": [
+    "moscow"
+   ]
+  },
+  "mossoul": {
+   "lon": 43.1,
+   "lat": 36.35,
+   "label": "Mossoul",
+   "aliases": [
+    "mosul"
+   ]
+  },
+  "mourmansk": {
+   "lon": 33.1,
+   "lat": 68.97,
+   "label": "Mourmansk",
+   "aliases": [
+    "murmansk"
+   ]
+  },
+  "natanz": {
+   "lon": 51.9,
+   "lat": 33.7,
+   "label": "Natanz",
+   "aliases": []
+  },
+  "new delhi": {
+   "lon": 77.21,
+   "lat": 28.61,
+   "label": "New Delhi",
+   "aliases": []
+  },
+  "new york": {
+   "lon": -74.0,
+   "lat": 40.7,
+   "label": "New York",
+   "aliases": []
+  },
+  "nouvelle orleans": {
+   "lon": -90.1,
+   "lat": 30.0,
+   "label": "Nouvelle-Orléans",
+   "aliases": [
+    "new orleans"
+   ]
+  },
+  "ocean arctique": {
+   "lon": 0.0,
+   "lat": 82.0,
+   "label": "océan Arctique",
+   "aliases": [
+    "arctic",
+    "arctique"
+   ]
+  },
+  "ocean indien": {
+   "lon": 75.0,
+   "lat": -15.0,
+   "label": "océan Indien",
+   "aliases": [
+    "indian ocean"
+   ]
+  },
+  "odessa": {
+   "lon": 30.7,
+   "lat": 46.5,
+   "label": "Odessa",
+   "aliases": [
+    "odesa"
+   ]
+  },
+  "okinawa": {
+   "lon": 127.7,
+   "lat": 26.3,
+   "label": "Okinawa",
+   "aliases": []
+  },
+  "ottawa": {
+   "lon": -75.7,
+   "lat": 45.42,
+   "label": "Ottawa",
+   "aliases": []
+  },
+  "pacifique occidental": {
+   "lon": 140.0,
+   "lat": 18.0,
+   "label": "Pacifique occidental",
+   "aliases": [
+    "western pacific"
+   ]
+  },
+  "paris": {
+   "lon": 2.35,
+   "lat": 48.86,
+   "label": "Paris",
+   "aliases": []
+  },
+  "passage de drake": {
+   "lon": -63.0,
+   "lat": -58.5,
+   "label": "passage de Drake",
+   "aliases": []
+  },
+  "patagonie": {
+   "lon": -70.0,
+   "lat": -45.0,
+   "label": "Patagonie",
+   "aliases": []
+  },
+  "pekin": {
+   "lon": 116.4,
+   "lat": 39.9,
+   "label": "Pékin",
+   "aliases": [
+    "beijing"
+   ]
+  },
+  "peninsule arabique": {
+   "lon": 45.0,
+   "lat": 23.0,
+   "label": "péninsule Arabique",
+   "aliases": [
+    "arabian peninsula"
+   ]
+  },
+  "peninsule coreenne": {
+   "lon": 127.5,
+   "lat": 38.0,
+   "label": "péninsule coréenne",
+   "aliases": [
+    "coree",
+    "korean peninsula"
+   ]
+  },
+  "plateau du golan": {
+   "lon": 35.75,
+   "lat": 33.0,
+   "label": "plateau du Golan",
+   "aliases": [
+    "golan"
+   ]
+  },
+  "port said": {
+   "lon": 32.3,
+   "lat": 31.26,
+   "label": "Port-Saïd",
+   "aliases": [
+    "port said"
+   ]
+  },
+  "pretoria": {
+   "lon": 28.19,
+   "lat": -25.75,
+   "label": "Pretoria",
+   "aliases": []
+  },
+  "proche orient": {
+   "lon": 36.0,
+   "lat": 33.0,
+   "label": "Proche-Orient",
+   "aliases": [
+    "middle east",
+    "moyen orient"
+   ]
+  },
+  "pyongyang": {
+   "lon": 125.75,
+   "lat": 39.03,
+   "label": "Pyongyang",
+   "aliases": []
+  },
+  "rabat": {
+   "lon": -6.85,
+   "lat": 34.02,
+   "label": "Rabat",
+   "aliases": []
+  },
+  "ras tanura": {
+   "lon": 50.15,
+   "lat": 26.7,
+   "label": "Ras Tanura",
+   "aliases": []
+  },
+  "riyad": {
+   "lon": 46.72,
+   "lat": 24.63,
+   "label": "Riyad",
+   "aliases": [
+    "riyadh"
+   ]
+  },
+  "rome": {
+   "lon": 12.5,
+   "lat": 41.9,
+   "label": "Rome",
+   "aliases": []
+  },
+  "rotterdam": {
+   "lon": 4.5,
+   "lat": 51.9,
+   "label": "Rotterdam",
+   "aliases": []
+  },
+  "sahara occidental": {
+   "lon": -13.0,
+   "lat": 24.5,
+   "label": "Sahara occidental",
+   "aliases": [
+    "western sahara"
+   ]
+  },
+  "sahel": {
+   "lon": 2.0,
+   "lat": 15.0,
+   "label": "Sahel",
+   "aliases": []
+  },
+  "san francisco": {
+   "lon": -122.4,
+   "lat": 37.75,
+   "label": "San Francisco",
+   "aliases": []
+  },
+  "scandinavie": {
+   "lon": 15.0,
+   "lat": 62.0,
+   "label": "Scandinavie",
+   "aliases": [
+    "scandinavia"
+   ]
+  },
+  "sebastopol": {
+   "lon": 33.5,
+   "lat": 44.6,
+   "label": "Sébastopol",
+   "aliases": [
+    "sevastopol"
+   ]
+  },
+  "seoul": {
+   "lon": 126.98,
+   "lat": 37.57,
+   "label": "Séoul",
+   "aliases": [
+    "seoul"
+   ]
+  },
+  "shanghai": {
+   "lon": 121.5,
+   "lat": 31.2,
+   "label": "Shanghai",
+   "aliases": []
+  },
+  "shenzhen": {
+   "lon": 114.05,
+   "lat": 22.55,
+   "label": "Shenzhen",
+   "aliases": []
+  },
+  "siberie": {
+   "lon": 100.0,
+   "lat": 62.0,
+   "label": "Sibérie",
+   "aliases": [
+    "siberia"
+   ]
+  },
+  "singapour": {
+   "lon": 103.82,
+   "lat": 1.35,
+   "label": "Singapour",
+   "aliases": [
+    "singapore city"
+   ]
+  },
+  "svalbard": {
+   "lon": 16.0,
+   "lat": 78.5,
+   "label": "Svalbard",
+   "aliases": [
+    "spitzberg"
+   ]
+  },
+  "taiwan": {
+   "lon": 121.0,
+   "lat": 23.7,
+   "label": "Taïwan",
+   "aliases": [
+    "formose",
+    "taiwan"
+   ]
+  },
+  "tanger": {
+   "lon": -5.8,
+   "lat": 35.8,
+   "label": "Tanger",
+   "aliases": [
+    "tangier"
+   ]
+  },
+  "teheran": {
+   "lon": 51.39,
+   "lat": 35.7,
+   "label": "Téhéran",
+   "aliases": [
+    "tehran"
+   ]
+  },
+  "tibet": {
+   "lon": 88.0,
+   "lat": 31.0,
+   "label": "Tibet",
+   "aliases": []
+  },
+  "tokyo": {
+   "lon": 139.69,
+   "lat": 35.68,
+   "label": "Tokyo",
+   "aliases": []
+  },
+  "transnistrie": {
+   "lon": 29.6,
+   "lat": 47.2,
+   "label": "Transnistrie",
+   "aliases": [
+    "transnistria"
+   ]
+  },
+  "tunis": {
+   "lon": 10.18,
+   "lat": 36.81,
+   "label": "Tunis",
+   "aliases": []
+  },
+  "vallee de la bekaa": {
+   "lon": 36.0,
+   "lat": 33.9,
+   "label": "vallée de la Bekaa",
+   "aliases": [
+    "bekaa"
+   ]
+  },
+  "vienne": {
+   "lon": 16.37,
+   "lat": 48.2,
+   "label": "Vienne",
+   "aliases": [
+    "vienna"
+   ]
+  },
+  "vladivostok": {
+   "lon": 131.9,
+   "lat": 43.1,
+   "label": "Vladivostok",
+   "aliases": []
+  },
+  "washington": {
+   "lon": -77.04,
+   "lat": 38.9,
+   "label": "Washington",
+   "aliases": []
+  },
+  "xinjiang": {
+   "lon": 85.0,
+   "lat": 41.0,
+   "label": "Xinjiang",
+   "aliases": [
+    "turkestan oriental"
+   ]
+  },
+  "zone demilitarisee coreenne": {
+   "lon": 126.9,
+   "lat": 38.0,
+   "label": "zone démilitarisée coréenne",
+   "aliases": [
+    "dmz"
+   ]
+  }
+ }
+}

@@ -1,0 +1,234 @@
+/* Kit UI « théâtre futuriste » — extrait du prototype validé
+ * (docs/prototypes/theatre-globe.html, spec docs/spec_theatre_globe.md §9).
+ *
+ * Référence d'implémentation pour la refonte de TOUTES les surfaces DOM de
+ * l'app (avant-jeu compris : connexion, lobby, config, réglages). Claude Code
+ * l'adapte au système existant (Tailwind v4 : reprendre les tokens en @theme
+ * et/ou consommer ces classes telles quelles) — étape S10 du runbook.
+ * Principes : panneaux CHANFREINÉS (clip-path), néon cyan discret, accents
+ * ambre pour l'action, texte DOM net, `prefers-reduced-motion` respecté. */
+
+:root {
+  --thk-bg: #04060c;
+  --thk-panel: rgba(8, 14, 26, 0.85);
+  --thk-panel-solid: #0b1220;
+  --thk-edge: rgba(78, 168, 255, 0.26);
+  --thk-edge-strong: rgba(89, 215, 255, 0.5);
+  --thk-fg: #dbe6f5;
+  --thk-fg-muted: #8fa3c0;
+  --thk-fg-faint: #5c7194;
+  --thk-cyan: #59d7ff;
+  --thk-accent: #4ea8ff;
+  --thk-amber: #ffc14d;
+  --thk-good: #34d399;
+  --thk-bad: #f87171;
+}
+
+/* --- chanfreins (la signature) --------------------------------------------- */
+
+.thk-cut {
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px),
+    calc(100% - 12px) 100%, 0 100%, 0 12px);
+}
+.thk-cut-sm {
+  clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px),
+    calc(100% - 7px) 100%, 0 100%, 0 7px);
+}
+.thk-cut-lg {
+  clip-path: polygon(16px 0, 100% 0, 100% calc(100% - 16px),
+    calc(100% - 16px) 100%, 0 100%, 0 16px);
+}
+
+/* --- panneaux --------------------------------------------------------------- */
+
+.thk-panel {
+  background: var(--thk-panel);
+  border: 1px solid var(--thk-edge);
+  backdrop-filter: blur(10px);
+  box-shadow: inset 0 0 22px -10px rgba(89, 215, 255, 0.35);
+}
+.thk-panel--strong { border-color: var(--thk-edge-strong); }
+
+.thk-title {
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--thk-fg-faint);
+}
+.thk-title::before { content: "▮ "; color: var(--thk-cyan); }
+
+.thk-block-label {
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--thk-cyan);
+}
+
+/* --- contrôles --------------------------------------------------------------- */
+
+.thk-input {
+  width: 100%;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--thk-fg);
+  background: rgba(10, 18, 32, 0.8);
+  border: 1px solid var(--thk-edge);
+  outline: none;
+}
+.thk-input:focus {
+  border-color: var(--thk-cyan);
+  box-shadow: 0 0 14px -4px rgba(89, 215, 255, 0.6);
+}
+
+/* le bouton d'action principal : ambre, chanfreiné, lumineux */
+.thk-cta {
+  padding: 11px 18px;
+  font: inherit;
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  color: #08101e;
+  background: linear-gradient(100deg, #ffd98a, var(--thk-amber));
+  border: 0;
+  cursor: pointer;
+  box-shadow: 0 0 26px -6px rgba(255, 193, 77, 0.65);
+  transition: filter 0.2s;
+}
+.thk-cta:hover { filter: brightness(1.1); }
+.thk-cta:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.thk-ghost {
+  padding: 7px 14px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--thk-fg-muted);
+  background: none;
+  border: 1px solid var(--thk-edge);
+  cursor: pointer;
+}
+.thk-ghost:hover { color: var(--thk-fg); border-color: var(--thk-edge-strong); }
+
+/* interrupteur (repris du théâtre : .ctl/.sw) */
+.thk-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px;
+  border: 1px solid var(--thk-edge);
+  background: var(--thk-panel);
+  font-size: 12px;
+  color: var(--thk-fg-muted);
+  cursor: pointer;
+  user-select: none;
+}
+.thk-switch .sw {
+  width: 26px; height: 14px; border-radius: 99px;
+  background: #22314a; position: relative; flex: none; transition: background 0.2s;
+}
+.thk-switch .sw::after {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--thk-fg-muted); transition: transform 0.2s, background 0.2s;
+}
+.thk-switch.on .sw { background: rgba(78, 168, 255, 0.45); }
+.thk-switch.on .sw::after { transform: translateX(12px); background: #fff; }
+
+/* onglets capitale espacée (Dialogues · Paris · Renseignement…) */
+.thk-tab {
+  padding: 5px 10px;
+  border: 1px solid var(--thk-edge);
+  background: none;
+  color: var(--thk-fg-faint);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.thk-tab:hover { color: var(--thk-fg); }
+.thk-tab.on {
+  background: rgba(78, 168, 255, 0.12);
+  border-color: var(--thk-edge-strong);
+  color: var(--thk-fg);
+}
+
+/* --- listes & cartes --------------------------------------------------------- */
+
+/* rangée de casting (drapeau + nom + badge « VOUS ») */
+.thk-cast-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 6px;
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.thk-cast-row:hover { border-color: var(--thk-edge); }
+.thk-cast-row.me {
+  border-color: rgba(255, 193, 77, 0.6);
+  background: rgba(255, 193, 77, 0.07);
+}
+.thk-cast-row .who-tag {
+  margin-left: auto;
+  font-size: 9px;
+  color: var(--thk-amber);
+  letter-spacing: 0.1em;
+}
+
+/* carte de mode / de chapitre (hover : lévite + néon) */
+.thk-mode-card {
+  padding: 16px;
+  cursor: pointer;
+  background: var(--thk-panel);
+  border: 1px solid var(--thk-edge);
+  backdrop-filter: blur(10px);
+  transition: transform 0.25s, border-color 0.25s, box-shadow 0.25s;
+}
+.thk-mode-card:hover {
+  transform: translateY(-6px);
+  border-color: var(--thk-cyan);
+  box-shadow: inset 0 0 24px -10px rgba(89, 215, 255, 0.5);
+}
+.thk-mode-card h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  color: var(--thk-cyan);
+}
+
+/* journal (rapports de renseignement, notifications) */
+.thk-chip {
+  padding: 8px 10px;
+  border-left: 2px solid rgba(77, 255, 157, 0.55);
+  background: rgba(16, 28, 24, 0.7);
+  font-size: 11px;
+  color: var(--thk-fg-muted);
+}
+
+/* --- effets ------------------------------------------------------------------ */
+
+/* ligne de balayage lumineuse (en-têtes de panneaux) */
+.thk-sweep { position: relative; overflow: hidden; }
+.thk-sweep::after {
+  content: "";
+  position: absolute;
+  left: -40%; top: 0;
+  width: 34%; height: 1.5px;
+  background: linear-gradient(to right, transparent, var(--thk-cyan), transparent);
+  animation: thk-sweep 4.5s linear infinite;
+}
+@keyframes thk-sweep { to { left: 110%; } }
+
+/* voile scanlines plein écran (décoratif, très discret) */
+.thk-scanlines {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background: repeating-linear-gradient(0deg,
+    rgba(180, 220, 255, 0.028) 0 1px, transparent 1px 3px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thk-sweep::after { animation: none; }
+  .thk-mode-card, .thk-mode-card:hover { transform: none; }
+}

@@ -1,0 +1,170 @@
+/** Texture de la planète (spec théâtre-globe §1) — palette naturelle assombrie
+ * et peintre équirectangulaire. Env node sans canvas : un contexte 2D factice
+ * enregistre les opérations, d3-geo dessine dedans comme dans le vrai. */
+
+import { describe, expect, it } from "vitest";
+
+import { uTint } from "@/lib/stage";
+import { WORLD_FEATURES } from "@/lib/world";
+import {
+  createGlobePainter,
+  createOverlayPainter,
+  landColorFor,
+  SPEAKER_FILL,
+  TEX_H,
+  TEX_W,
+} from "./texture";
+import { summitFeatures } from "./picking";
+
+/** Contexte 2D minimal : enregistre styles posés et méthodes appelées. */
+function recordingCtx() {
+  const ops: [string, unknown?][] = [];
+  const push = (name: string, v?: unknown) => ops.push(v === undefined ? [name] : [name, v]);
+  const ctx = {
+    ops,
+    set fillStyle(v: unknown) {
+      push("fillStyle", v);
+    },
+    set strokeStyle(v: unknown) {
+      push("strokeStyle", v);
+    },
+    set shadowColor(v: unknown) {
+      push("shadowColor", v);
+    },
+    set shadowBlur(_v: unknown) {},
+    set lineWidth(_v: unknown) {},
+    clearRect: (...a: unknown[]) => push("clearRect", a),
+    createLinearGradient: () => ({ addColorStop: () => undefined }),
+    createRadialGradient: () => {
+      push("radialGradient");
+      return { addColorStop: () => undefined };
+    },
+    fillRect: (...a: unknown[]) => push("fillRect", a),
+    beginPath: () => push("beginPath"),
+    moveTo: () => undefined,
+    lineTo: () => undefined,
+    arc: () => undefined,
+    closePath: () => undefined,
+    fill: () => push("fill"),
+    stroke: () => push("stroke"),
+    save: () => push("save"),
+    restore: () => push("restore"),
+  };
+  return ctx as unknown as CanvasRenderingContext2D & { ops: [string, unknown?][] };
+}
+
+describe("landColorFor (palette naturelle éteinte, variée par ISO)", () => {
+  it("peint glaces, déserts, boréal et tempéré dans leurs gammes", () => {
+    expect(landColorFor("304")).toBe(landColorFor("010")); // Groenland = Antarctique = glace
+    expect(landColorFor("012")).toMatch(/^#[0-9a-f]{6}$/i); // Algérie : sable
+    expect(landColorFor("012")).not.toBe(landColorFor("250")); // sable ≠ vert tempéré
+    expect(landColorFor("124")).not.toBe(landColorFor("012")); // boréal ≠ sable
+  });
+
+  it("est déterministe (même ISO → même couleur)", () => {
+    expect(landColorFor("818")).toBe(landColorFor("818"));
+    expect(landColorFor("250")).toBe(landColorFor("250"));
+  });
+});
+
+describe("createGlobePainter (entrées → opérations de dessin)", () => {
+  const feats = summitFeatures(["france", "usa"], WORLD_FEATURES);
+  const summit = feats.map((f, i) => ({ ...f, u: i === 0 ? 0.61 : 0.58 }));
+
+  it("pose l'océan sur toute la texture puis remplit des terres", () => {
+    const ctx = recordingCtx();
+    createGlobePainter({ ctx, features: WORLD_FEATURES, width: TEX_W, height: TEX_H }).paint(
+      summit,
+      null,
+    );
+    const firstRect = ctx.ops.find(([op]) => op === "fillRect");
+    expect(firstRect?.[1]).toEqual([0, 0, TEX_W, TEX_H]);
+    expect(ctx.ops.filter(([op]) => op === "fill").length).toBeGreaterThan(50);
+  });
+
+  it("remplit l'orateur en ambre, liseré uTint pour les autres", () => {
+    const ctx = recordingCtx();
+    createGlobePainter({ ctx, features: WORLD_FEATURES, width: TEX_W, height: TEX_H }).paint(
+      summit,
+      "france",
+    );
+    const styles = ctx.ops.filter(([op]) => op === "fillStyle").map(([, v]) => v);
+    expect(styles).toContain("#ffc14d"); // la France parle
+    const strokes = ctx.ops.filter(([op]) => op === "strokeStyle").map(([, v]) => v);
+    expect(strokes).toContain(uTint(0.58)); // liseré des États-Unis à leur teinte U
+  });
+
+  it("sans orateur, aucun remplissage ambre", () => {
+    const ctx = recordingCtx();
+    createGlobePainter({ ctx, features: WORLD_FEATURES, width: TEX_W, height: TEX_H }).paint(
+      summit,
+      null,
+    );
+    const styles = ctx.ops.filter(([op]) => op === "fillStyle").map(([, v]) => v);
+    expect(styles).not.toContain("#ffc14d");
+  });
+
+  it("cicatrices du monde (S9) : une brûlure et une guérison marquent la texture", () => {
+    const ctx = recordingCtx();
+    const painter = createGlobePainter({ ctx, features: WORLD_FEATURES, width: TEX_W, height: TEX_H });
+    const before = ctx.ops.length;
+    painter.paint(summit, null, [
+      { lon: 56.5, lat: 26.6, kind: "burn", age: 0 },
+      { lon: 2.35, lat: 48.86, kind: "heal", age: 0.6 },
+    ]);
+    const scarGradients = ctx.ops.slice(before).filter(([op]) => op === "radialGradient");
+    expect(scarGradients.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("une cicatrice totalement estompée (age ≥ 1) ne peint plus rien", () => {
+    const ctx = recordingCtx();
+    const painter = createGlobePainter({ ctx, features: WORLD_FEATURES, width: TEX_W, height: TEX_H });
+    painter.paint(summit, null, [{ lon: 0, lat: 0, kind: "burn", age: 1 }]);
+    expect(ctx.ops.filter(([op]) => op === "radialGradient")).toHaveLength(0);
+  });
+});
+
+describe("createOverlayPainter (surcouche transparente : bordures-only, zéro aplat)", () => {
+  const feats = summitFeatures(["france", "usa"], WORLD_FEATURES);
+  const summit = feats.map((f, i) => ({ ...f, u: i === 0 ? 0.61 : 0.58 }));
+
+  it("efface d'abord toute la surcouche puis ne peint AUCUN aplat de pays/océan", () => {
+    const ctx = recordingCtx();
+    createOverlayPainter(ctx, WORLD_FEATURES).paint(summit, null);
+    // La surcouche démarre par un clearRect plein cadre (canvas transparent).
+    expect(ctx.ops[0]).toEqual(["clearRect", [0, 0, TEX_W, TEX_H]]);
+    // Aucun aplat océan (fillRect) ni remplissage de terre/orateur (fill) sans cicatrice.
+    expect(ctx.ops.filter(([op]) => op === "fillRect")).toHaveLength(0);
+    expect(ctx.ops.filter(([op]) => op === "fill")).toHaveLength(0);
+  });
+
+  it("trace le liseré teinté U des pays (stroke), jamais l'aplat ambre de l'orateur", () => {
+    const ctx = recordingCtx();
+    createOverlayPainter(ctx, WORLD_FEATURES).paint(summit, "france");
+    // Les bordures existent bien (double trait).
+    expect(ctx.ops.filter(([op]) => op === "stroke").length).toBeGreaterThan(0);
+    const strokes = ctx.ops.filter(([op]) => op === "strokeStyle").map(([, v]) => v);
+    expect(strokes).toContain(uTint(0.58)); // liseré des États-Unis à leur teinte U
+    // L'orateur porte un halo ambre, jamais un remplissage.
+    const fills = ctx.ops.filter(([op]) => op === "fillStyle").map(([, v]) => v);
+    expect(fills).not.toContain(SPEAKER_FILL);
+    expect(ctx.ops.filter(([op]) => op === "fill")).toHaveLength(0);
+  });
+
+  it("conserve les cicatrices du monde (alpha selon l'âge)", () => {
+    const ctx = recordingCtx();
+    createOverlayPainter(ctx, WORLD_FEATURES).paint(summit, null, [
+      { lon: 56.5, lat: 26.6, kind: "burn", age: 0 },
+      { lon: 2.35, lat: 48.86, kind: "heal", age: 0.6 },
+    ]);
+    expect(ctx.ops.filter(([op]) => op === "radialGradient").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("une cicatrice estompée (age ≥ 1) ne peint plus rien", () => {
+    const ctx = recordingCtx();
+    createOverlayPainter(ctx, WORLD_FEATURES).paint(summit, null, [
+      { lon: 0, lat: 0, kind: "burn", age: 1 },
+    ]);
+    expect(ctx.ops.filter(([op]) => op === "radialGradient")).toHaveLength(0);
+  });
+});

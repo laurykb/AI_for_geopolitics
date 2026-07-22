@@ -6,7 +6,7 @@
  * (garde-fous de `docs/specs_jeu/spec_g1_scene.md`). Aucun changement Python.
  */
 
-import type { AttributeDelta } from "./types";
+import type { AttributeDelta, MarketTargetView } from "./types";
 
 // --- teintes des pays (échelle U locale, paliers fixes de la spec) -----------------
 
@@ -106,6 +106,25 @@ export function summitCenter(countries: string[]): [number, number] | null {
   if (pts.length === 0) return null;
   const [sx, sy] = pts.reduce(([ax, ay], [x, y]) => [ax + x, ay + y], [0, 0]);
   return [sx / pts.length, sy / pts.length];
+}
+
+/** Ancre on-globe de la pile de billets d'un marché (parité proto_9 `fundStack`) :
+ * la capitale (décalée) pour un marché-pays, le lieu de l'événement (décalé) pour un
+ * marché-événement, sinon le centre du sommet. Le marché « trahison » est ancré au
+ * sommet (type "summit") — JAMAIS sur la capitale du traître (spoiler-safe). */
+export function marketAnchor(
+  target: MarketTargetView | null | undefined,
+  eventGeo: { lon: number; lat: number } | null,
+  countries: string[],
+): [number, number] | null {
+  if (target?.type === "country" && target.slug) {
+    const cap = CAPITALS[target.slug];
+    if (cap) return [cap[0] + 2.8, cap[1] - 1.2];
+  }
+  if (target?.type === "event" && eventGeo) {
+    return [eventGeo.lon - 2.6, eventGeo.lat + 1.8];
+  }
+  return summitCenter(countries);
 }
 
 // --- file d'animations sobre --------------------------------------------------------

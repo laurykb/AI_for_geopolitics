@@ -32,9 +32,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await resp.json()) as T;
 }
 
-/** Marché « utopie finale » de la partie, s'il a déjà été ouvert. */
+/** Tous les marchés thématiques de la partie (utopie + trahison + crise) — parité
+ * proto_9. Filtré sur le round_id STABLE de la partie pour écarter les marchés éclair
+ * (round_id = numéro de round). Vide tant que le 1er round n'a pas coté le bot. */
+export async function getGameMarkets(gameId: string): Promise<MarketView[]> {
+  return request<MarketView[]>(
+    `/api/markets?game_id=${gameId}&round_id=${marketRoundId(gameId)}`,
+  );
+}
+
+/** Marché « utopie finale » de la partie, s'il a déjà été ouvert (ouvert en 1er par
+ * `_ensure_game_markets` -> markets[0] fiable même une fois les marchés éclair accumulés). */
 export async function getGameMarket(gameId: string): Promise<MarketView | null> {
-  const markets = await request<MarketView[]>(`/api/markets?game_id=${gameId}`);
+  const markets = await getGameMarkets(gameId);
   return markets[0] ?? null;
 }
 
@@ -54,9 +64,9 @@ export function openGameMarket(gameId: string): Promise<MarketView> {
   });
 }
 
-/** Fait coter le marché de la partie par le bot forecaster (après chaque round). */
-export function runMarketBot(gameId: string): Promise<BotRunView> {
-  return request<BotRunView>(`/api/games/${gameId}/market/bot`, { method: "POST" });
+/** Fait coter les marchés de la partie par le bot forecaster (après chaque round). */
+export function runMarketBot(gameId: string): Promise<BotRunView[]> {
+  return request<BotRunView[]>(`/api/games/${gameId}/market/bot`, { method: "POST" });
 }
 
 /** Compte humain du navigateur (créé une fois, retrouvé via localStorage). */

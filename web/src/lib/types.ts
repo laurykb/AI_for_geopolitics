@@ -137,7 +137,7 @@ export type GameView = {
 };
 
 /** G8/G12 — le rôle choisi à la création (le Spectateur revient par le marché, G12 §3). */
-export type GameRole = "architect" | "council" | "player" | "spectator";
+export type GameRole = "architect" | "council" | "player" | "spectator" | "un";
 
 /** G11 §4 — la difficulté (asymétrie d'information/économie, jamais de modèle). */
 export type Difficulty = "beginner" | "intermediate" | "expert";
@@ -287,6 +287,10 @@ export type GeoEvent = {
   act?: string;
   ties_to?: string;
   ties_label?: string;
+  // Théâtre-globe §3 — géolocalisation additive (absente des vieux rounds).
+  geo_lon?: number;
+  geo_lat?: number;
+  geo_precision?: "place" | "actors";
 };
 
 export type AttributeDelta = {
@@ -587,6 +591,7 @@ export type CreateGameBody = {
   mode?: GameMode;
   fog?: boolean; // RG-2 — réglage Brouillard cochable
   escalation?: boolean; // RG-2 — réglage Réel/escalade cochable
+  world_pulse?: boolean; // S15 — le Pouls du monde (dépêches autonomes) cochable
   play_as?: string; // id existant, ou NOM du pays inventé (l'API résout le slug)
   invent?: {
     name: string;
@@ -666,6 +671,28 @@ export type CustomCrisisView = {
 };
 
 /** Événements SSE du round (un par `RoundStep`, plus `done`). */
+/** S15 — une dépêche du Pouls du monde (choc/aubaine qui bouge une stat d'un pays joué). */
+export type PulseEvent = {
+  round_id: number;
+  country: string;
+  key: string;
+  label: string;
+  stat: string;
+  delta: number;
+  boon: boolean;
+};
+
+/** S14 — le rapport public de l'ONU pour un round (trame SSE `org`, additive). */
+export type OrgCompliance = { country: string; status: string; note: string };
+export type OrgAdvisory = { severity_delta: number; tension_delta: number; rationale: string };
+export type OrgReport = {
+  round_id: number;
+  compliance: OrgCompliance[];
+  resolution: string;
+  advisory: OrgAdvisory;
+  audited: string | null;
+};
+
 export type SseEvent =
   | { type: "date"; date: string }
   | { type: "event"; event: GeoEvent }
@@ -700,6 +727,8 @@ export type SseEvent =
   | { type: "communique"; text: string; support: Record<string, number> }
   | { type: "risk"; risk: RiskScore }
   | { type: "trajectory"; state: TrajectoryState }
+  | { type: "org"; report: OrgReport }
+  | { type: "pulse"; events: PulseEvent[] }
   | { type: "summary"; summary: { round_id: number; headline?: string } }
   | { type: "done"; round_no: number }
   | { type: "error"; detail: string }
@@ -1217,6 +1246,10 @@ export type OutcomeView = {
   price: number; // probabilité implicite courante (LMSR)
 };
 
+/** Ancre on-globe d'un marché (pile de billets) : capitale d'un pays, lieu de
+ * l'événement, ou centre du sommet (spoiler-safe pour le marché « trahison »). */
+export type MarketTargetView = { type: "country" | "event" | "summit"; slug: string | null };
+
 export type MarketView = {
   id: string;
   round_id: number;
@@ -1228,6 +1261,7 @@ export type MarketView = {
   resolved_outcome: string | null;
   outcomes: OutcomeView[];
   volume: number;
+  target: MarketTargetView | null; // ancre on-globe (criterion.params.ui_target)
 };
 
 /** Passage du bot forecaster sur le marché de la partie (POST /games/{id}/market/bot). */

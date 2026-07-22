@@ -15,7 +15,9 @@ import {
   perfClass,
   saveSettings,
   type Perf,
+  type PlanetQuality,
   type Settings,
+  type StageView,
 } from "@/lib/settings";
 
 type SettingsApi = {
@@ -23,6 +25,10 @@ type SettingsApi = {
   setLang: (lang: Lang) => void;
   setPerf: (perf: Perf) => void;
   setNoAnim: (on: boolean) => void;
+  /** Vue du théâtre (globe 3D / carte dépliée 2D) — persistée par appareil. */
+  setStageView: (view: StageView) => void;
+  /** Rendu de la planète (réaliste / léger) — persisté par appareil. */
+  setPlanetQuality: (quality: PlanetQuality) => void;
   /** Traduction : clé → chaîne dans la langue courante (repli FR, puis la clé). */
   t: (key: string) => string;
 };
@@ -83,10 +89,20 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const setLang = useCallback((lang: Lang) => setSettings((s) => ({ ...s, lang })), []);
   const setPerf = useCallback((perf: Perf) => setSettings((s) => ({ ...s, perf })), []);
   const setNoAnim = useCallback((on: boolean) => setSettings((s) => ({ ...s, noAnim: on })), []);
+  const setStageView = useCallback(
+    (stageView: StageView) => setSettings((s) => ({ ...s, stageView })),
+    [],
+  );
+  const setPlanetQuality = useCallback(
+    (planetQuality: PlanetQuality) => setSettings((s) => ({ ...s, planetQuality })),
+    [],
+  );
   const t = useCallback((key: string) => translate(settings.lang, key), [settings.lang]);
 
   return (
-    <SettingsContext.Provider value={{ settings, setLang, setPerf, setNoAnim, t }}>
+    <SettingsContext.Provider
+      value={{ settings, setLang, setPerf, setNoAnim, setStageView, setPlanetQuality, t }}
+    >
       {children}
     </SettingsContext.Provider>
   );

@@ -6,6 +6,8 @@ from datetime import date
 from agents.game_master import GameMasterAgent
 from agents.judge import JudgeAgent
 from agents.llm_agent import LLMAgent
+from agents.organization import OrgAgent
+from app.game_sse import step_event
 from core.country_state import CountryState, Economy, Military, Resources
 from core.world_state import WorldState
 from inference.mock_backend import MockBackend
@@ -16,8 +18,10 @@ from simulation.live_round import (
     EventStep,
     JudgeTokenStep,
     MessageDoneStep,
+    OrgStep,
     ParticipationStep,
     PowerSeekingStep,
+    PulseStep,
     SummaryStep,
     TokenStep,
     TrajectoryStep,
@@ -86,6 +90,136 @@ def test_step_sequence_and_dynamic_turns():
     # le juge a raisonné puis rendu un verdict
     assert any(isinstance(s, JudgeTokenStep) for s in steps)
     assert any(isinstance(s, VerdictStep) for s in steps)
+
+
+def test_un_report_emitted_and_advisory_bounded():
+    """S14 — l'ONU (opt-in) publie un rapport et pèse sur le verdict, borné à ±0,05."""
+    world = _world()
+    org_json = json.dumps(
+        {
+            "round_id": 1,
+            "compliance": [{"country": "iran", "status": "violation", "note": "missiles"}],
+            "resolution": "Condamnation de l'escalade.",
+            "advisory": {
+                "severity_delta": 0.9,
+                "tension_delta": 0.0,
+                "rationale": "Escalade avérée.",
+            },
+        }
+    )
+    org = OrgAgent(MockBackend(org_json))
+    steps = list(
+        run_negotiation_round(
+            world,
+            _agents(world),
+            _gm(),
+            _judge(),
+            SimClock(current_date=date(2025, 1, 1)),
+            max_passes=1,
+            org_agent=org,
+        )
+    )
+    org_steps = [s for s in steps if isinstance(s, OrgStep)]
+    assert len(org_steps) == 1
+    assert org_steps[0].report.resolution == "Condamnation de l'escalade."
+    # l'avis est borné dès le socle : 0,9 -> 0,05
+    assert org_steps[0].report.advisory.severity_delta == 0.05
+    # l'ONU pèse mais ne décide pas : escalade 0,7 (juge) + 0,05 (avis) = 0,75
+    verdict = next(s for s in steps if isinstance(s, VerdictStep))
+    assert abs(verdict.escalation - 0.75) < 1e-6
+    # produite AVANT le délibéré du juge (citable dans le rationale)
+    kinds = [type(s).__name__ for s in steps]
+    assert kinds.index("OrgStep") < kinds.index("JudgeTokenStep")
+
+
+def test_un_optin_absent_no_step_no_effect():
+    """Sans ONU : aucun OrgStep, escalade du juge inchangée (garde des ~1310 tests)."""
+    world = _world()
+    steps = list(
+        run_negotiation_round(
+            world,
+            _agents(world),
+            _gm(),
+            _judge(),
+            SimClock(current_date=date(2025, 1, 1)),
+            max_passes=1,
+        )
+    )
+    assert not any(isinstance(s, OrgStep) for s in steps)
+    verdict = next(s for s in steps if isinstance(s, VerdictStep))
+    assert abs(verdict.escalation - 0.7) < 1e-6
+
+
+def test_org_step_serializes_to_org_sse_frame():
+    """La trame SSE est générique : OrgStep -> event `org` porteur du rapport."""
+    from agents.organization import neutral_report
+
+    name, payload = step_event(OrgStep(report=neutral_report(1, ["usa", "iran"])))
+    assert name == "org"
+    assert payload["report"]["round_id"] == 1
+
+
+def test_world_pulse_dispatches_and_applies():
+    """S15 — le Pouls du monde (opt-in) frappe les pays joués et émet des dépêches."""
+    world = _world()  # usa, iran
+    steps = list(
+        run_negotiation_round(
+            world,
+            _agents(world),
+            _gm(),
+            _judge(),
+            SimClock(current_date=date(2025, 1, 1)),
+            max_passes=1,
+            pulse_seed=7,
+            pulse_intensity="turbulent",  # (1..3) => au moins une dépêche, bornée au sommet
+        )
+    )
+    pulses = [s for s in steps if isinstance(s, PulseStep)]
+    assert len(pulses) == 1
+    events = pulses[0].events
+    assert 1 <= len(events) <= 2  # sommet de 2 pays, jamais deux fois le même
+    countries = {ev.country for ev in events}
+    assert len(countries) == len(events)  # pas de doublon
+    for ev in events:
+        assert ev.country in {"usa", "iran"}
+        assert -0.07 <= ev.delta <= 0.06  # micro-mouvement borné (table PULSE_KINDS)
+    # la dépêche tombe AVANT la négociation : le monde est déjà perturbé quand on parle
+    kinds = [type(s).__name__ for s in steps]
+    assert kinds.index("PulseStep") < kinds.index("VerdictStep")
+
+
+def test_world_pulse_optin_absent():
+    """Sans seed, aucune dépêche (garde des ~1310 tests)."""
+    world = _world()
+    steps = list(
+        run_negotiation_round(
+            world,
+            _agents(world),
+            _gm(),
+            _judge(),
+            SimClock(current_date=date(2025, 1, 1)),
+            max_passes=1,
+        )
+    )
+    assert not any(isinstance(s, PulseStep) for s in steps)
+
+
+def test_pulse_step_serializes_to_pulse_sse_frame():
+    """La trame SSE est générique : PulseStep -> event `pulse` porteur des dépêches."""
+    from simulation.world_pulse import PulseEvent
+
+    ev = PulseEvent(
+        round_id=1,
+        country="usa",
+        key="krach",
+        label="Krach",
+        stat="growth",
+        delta=-0.05,
+        boon=False,
+    )
+    name, payload = step_event(PulseStep(events=[ev]))
+    assert name == "pulse"
+    assert payload["events"][0]["country"] == "usa"
 
 
 def test_reasoning_judge_think_trace_never_reaches_public_steps():
@@ -242,9 +376,7 @@ def test_fog_makes_countries_negotiate_on_their_own_perception():
         },
     )
     list(
-        run_negotiation_round(
-            world, agents, _gm(), _judge(), SimClock(), event=true_event, fog=fog
-        )
+        run_negotiation_round(world, agents, _gm(), _judge(), SimClock(), event=true_event, fog=fog)
     )
     nego = "\n".join(c["prompt"] for c in shared.calls if c.get("system") == NEGOTIATION_SYSTEM)
     assert "USA_CROIT_XYZ" in nego and "IRAN_CROIT_ABC" in nego  # chacun sur SA croyance

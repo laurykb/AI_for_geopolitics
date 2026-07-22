@@ -14,6 +14,7 @@ import {
   prevStep,
   reasoningCountryModels,
   SUMMIT_EXACT,
+  SUMMIT_SIZES,
   toggleCountry,
   trimForRole,
 } from "./flow";
@@ -35,6 +36,19 @@ describe("capacité de la carte", () => {
     expect(mapCapacity("player")).toBe(SUMMIT_EXACT);
     expect(mapCapacity("gm")).toBe(SUMMIT_EXACT);
     expect(mapCapacity("invent")).toBe(SUMMIT_EXACT - 1);
+  });
+
+  it("taille de sommet réglable au hall (spec §9 : 5/7/9/12, défaut 7)", () => {
+    expect(SUMMIT_SIZES).toEqual([5, 7, 9, 12]);
+    expect(mapCapacity("player", 12)).toBe(12);
+    expect(mapCapacity("invent", 5)).toBe(4);
+    expect(trimForRole(["a", "b", "c", "d", "e", "f"], "player", 5)).toHaveLength(5);
+    expect(mapComplete("player", ["a", "b", "c", "d", "e"], 5)).toBe(true);
+    expect(mapComplete("player", ["a", "b", "c", "d", "e"], 9)).toBe(false);
+    expect(canLaunch("gm", ["a", "b", "c", "d", "e"], {}, 5)).toBe(true);
+    expect(
+      canLaunch("player", ["a", "b", "c", "d", "e"], { flag: "a" }, 5),
+    ).toBe(true);
   });
 });
 
@@ -110,6 +124,7 @@ describe("buildCreateBody", () => {
   const settings = {
     fog: false,
     escalation: false,
+    world_pulse: false,
     rounds: 8,
     difficulty: "expert" as const,
     free: false,

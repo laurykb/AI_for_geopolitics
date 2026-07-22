@@ -76,12 +76,14 @@ export type LobbyMode = (typeof FLOW_MODES)[number]["value"];
 /** Les rôles du flow (§0/S3 + G12 §3). `invent` = « Créer son pays » (forge), `gm` =
  * Game Master (événements + consignes globales), `spectator` = le parieur (parie, ne
  * motionne ni ne prompte). */
-export type FlowRole = "player" | "invent" | "gm" | "spectator";
+export type FlowRole = "player" | "invent" | "gm" | "spectator" | "un";
 
-/** Rôle du flow → rôle d'API (l'architecte porte les pouvoirs du Game Master). */
+/** Rôle du flow → rôle d'API (l'architecte porte les pouvoirs du Game Master ; l'ONU
+ * n'incarne aucun pays : elle observe, vérifie et conseille — S14). */
 export function backendRole(role: FlowRole): GameRole {
   if (role === "gm") return "architect";
   if (role === "spectator") return "spectator";
+  if (role === "un") return "un";
   return "player";
 }
 
@@ -90,6 +92,7 @@ export function backendRole(role: FlowRole): GameRole {
 export type FlowSettings = {
   fog: boolean; // RG-2 — réglage Brouillard (off par défaut)
   escalation: boolean; // RG-2 — réglage Réel/escalade (off par défaut)
+  world_pulse: boolean; // S15 — le Pouls du monde (dépêches autonomes), on par défaut
   rounds: number; // curseur 3-20 → horizon
   difficulty: Difficulty;
   free: boolean; // partie libre : off par défaut (on = consignes globales + composition de table)
@@ -105,6 +108,7 @@ export const ROUNDS_MAX = 20;
 export const DEFAULT_SETTINGS: FlowSettings = {
   fog: false,
   escalation: false,
+  world_pulse: true, // S15 — le monde respire par défaut (dépêches bornées, déterministes)
   rounds: 5,
   difficulty: "intermediate",
   free: false,
@@ -113,19 +117,27 @@ export const DEFAULT_SETTINGS: FlowSettings = {
 
 // --- sélection des pays (S4) ----------------------------------------------------
 
-/** Le sommet compte toujours 7 États (§1 S4). « Créer son pays » en pose 6 sur la
- * carte + 1 forgé ; « Jouer un pays » et « Game Master » en posent 7. */
+/** Le sommet compte 7 États par défaut (§1 S4) — et devient RÉGLABLE au hall
+ * (spec théâtre-globe §9 : 5 / 7 / 9 / 12, défaut 7 recommandé ; l'API accepte
+ * jusqu'à 24, mais chaque pays de plus = une réflexion de plus par round sur le
+ * pool mono-GPU). « Créer son pays » en pose taille−1 sur la carte + 1 forgé. */
 export const SUMMIT_EXACT = 7;
+export const SUMMIT_SIZES = [5, 7, 9, 12] as const;
+export type SummitSize = (typeof SUMMIT_SIZES)[number];
 
 /** Combien de pays cliquer sur la carte selon le rôle (le pays inventé complète). */
-export function mapCapacity(role: FlowRole): number {
-  return role === "invent" ? SUMMIT_EXACT - 1 : SUMMIT_EXACT;
+export function mapCapacity(role: FlowRole, size: number = SUMMIT_EXACT): number {
+  return role === "invent" ? size - 1 : size;
 }
 
-/** Rabote une sélection à la capacité d'un rôle (au changement de rôle : « Créer son
- * pays » ne garde que 6 États sur la carte, le pays forgé complétant le sommet). */
-export function trimForRole(selected: string[], role: FlowRole): string[] {
-  return selected.slice(0, mapCapacity(role));
+/** Rabote une sélection à la capacité d'un rôle (au changement de rôle ou de
+ * taille : « Créer son pays » garde taille−1 États, le pays forgé complète). */
+export function trimForRole(
+  selected: string[],
+  role: FlowRole,
+  size: number = SUMMIT_EXACT,
+): string[] {
+  return selected.slice(0, mapCapacity(role, size));
 }
 
 /** Bascule blanc↔jaune : retire si présent, ajoute si sous la capacité, sinon ignore
@@ -136,9 +148,14 @@ export function toggleCountry(selected: string[], id: string, capacity: number):
   return [...selected, id];
 }
 
-/** La carte est-elle complète pour ce rôle (7 pile, ou 6 pile pour l'invention) ? */
-export function mapComplete(role: FlowRole, selected: string[]): boolean {
-  return selected.length === mapCapacity(role);
+/** La carte est-elle complète pour ce rôle (taille pile, ou taille−1 pour
+ * l'invention) ? */
+export function mapComplete(
+  role: FlowRole,
+  selected: string[],
+  size: number = SUMMIT_EXACT,
+): boolean {
+  return selected.length === mapCapacity(role, size);
 }
 
 /** Peut-on lancer la partie ? Gating final selon le rôle (drapeau / nom du pays inventé). */
@@ -146,11 +163,12 @@ export function canLaunch(
   role: FlowRole,
   selected: string[],
   opts: { flag?: string | null; inventName?: string } = {},
+  size: number = SUMMIT_EXACT,
 ): boolean {
-  if (!mapComplete(role, selected)) return false;
+  if (!mapComplete(role, selected, size)) return false;
   if (role === "player") return !!opts.flag && selected.includes(opts.flag);
   if (role === "invent") return (opts.inventName?.trim().length ?? 0) >= 2;
-  return true; // gm : 7 pays suffisent
+  return true; // gm : le compte pile suffit
 }
 
 // --- résolution vers l'API ------------------------------------------------------
@@ -190,6 +208,7 @@ export function buildCreateBody(args: {
     mode: baseMode,
     fog: settings.fog,
     escalation: settings.escalation,
+    world_pulse: settings.world_pulse,
     role: backendRole(role),
     difficulty: settings.difficulty,
     free: settings.free,

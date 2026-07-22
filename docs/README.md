@@ -17,6 +17,7 @@ ce dossier contient le *pourquoi*, les décisions de design, les specs et l'hist
 
 ## Specs d'architecture (courantes)
 
+- [`spec_theatre_globe.md`](spec_theatre_globe.md) — **la refonte théâtre-globe** (planète futuriste 3D/2D, délégués incarnés, briques du jeu sur la carte) + [`prototypes/theatre-globe.html`](prototypes/theatre-globe.html), le prototype autonome.
 - [`spec_alignment_frontier.md`](spec_alignment_frontier.md) — instrumentation d'alignement (M1-M7/M8).
 - [`spec_dialogue_integrity.md`](spec_dialogue_integrity.md) — intégrité du dialogue (anti-fuite, métriques).
 - [`spec_trajectory.md`](spec_trajectory.md) — la trajectoire utopie ↔ dystopie (moteur déterministe).
@@ -36,6 +37,7 @@ ce dossier contient le *pourquoi*, les décisions de design, les specs et l'hist
 ## Dette & suivi
 
 - [`DETTE_TECHNIQUE.md`](DETTE_TECHNIQUE.md) — chantiers connus, priorisés (auto-documentés).
+- [`RUNBOOK_THEATRE_GLOBE.md`](RUNBOOK_THEATRE_GLOBE.md) — **dispatch de la refonte théâtre-globe** (étapes Claude Code S0-S9, passes Cowork C1-C3). *Actif tant que la v1 n'est pas mergée.*
 - [`RUNBOOK_VAGUE1_GIT.md`](RUNBOOK_VAGUE1_GIT.md) — procédure git (normalisation EOL, nettoyage des branches). *Actif tant que la Vague 1 n'est pas mergée.*
 
 ## Historique & notes de travail internes

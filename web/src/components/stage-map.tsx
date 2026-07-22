@@ -44,6 +44,10 @@ export type StageMapProps = {
   breatheKey?: number;
   /** Titre de l'événement, affiché en carte au-dessus de la scène. */
   eventTitle?: string;
+  /** Repli sans WebGL (S3) : la StageMap reste interactive — clic pays → fiche. */
+  onCountryClick?: (slug: string) => void;
+  /** Marqueur au lieu réel de la crise (géolocalisation C1). */
+  eventGeo?: { lon: number; lat: number } | null;
 };
 
 export function StageMap({
@@ -58,6 +62,8 @@ export function StageMap({
   frozen = false,
   breatheKey = 0,
   eventTitle,
+  onCountryClick,
+  eventGeo = null,
 }: StageMapProps) {
   const t = useT();
   const { path, project } = useMemo(() => {
@@ -109,6 +115,7 @@ export function StageMap({
                   ? SUSPENDED_FILL
                   : uTint(uByCountry[slug] ?? utopia)
               : "url(#map-land)";
+            const clickable = slug != null && onCountryClick != null;
             return (
               <path
                 key={`${String(f.id)}-${i}`} // certains territoires n'ont pas d'id ISO unique
@@ -117,11 +124,13 @@ export function StageMap({
                 stroke={isSpeaking ? "var(--accent-bright)" : "var(--ocean-night)"}
                 strokeWidth={isSpeaking ? 1.2 : 0.5}
                 opacity={slug ? (isSuspended ? 0.7 : 0.95) : 0.7}
+                onClick={clickable ? () => onCountryClick(slug) : undefined}
+                style={clickable ? { cursor: "pointer" } : undefined}
                 className={
                   slug
-                    ? isSpeaking
-                      ? "stage-country stage-country-speaking"
-                      : "stage-country"
+                    ? `${isSpeaking ? "stage-country stage-country-speaking" : "stage-country"}${
+                        clickable ? " stage-country-clickable" : ""
+                      }`
                     : undefined
                 }
               >
@@ -149,6 +158,7 @@ export function StageMap({
               : isSuspended
                 ? SUSPENDED_FILL
                 : uTint(uByCountry[slug] ?? utopia);
+            const clickable = onCountryClick != null;
             return (
               <circle
                 key={`point-${slug}`}
@@ -159,7 +169,11 @@ export function StageMap({
                 stroke={isSpeaking ? "var(--accent-bright)" : "var(--ocean-night)"}
                 strokeWidth={isSpeaking ? 2 : 1.2}
                 opacity={isSuspended ? 0.7 : 0.95}
-                className={isSpeaking ? "stage-country stage-country-speaking" : "stage-country"}
+                onClick={clickable ? () => onCountryClick(slug) : undefined}
+                style={clickable ? { cursor: "pointer" } : undefined}
+                className={`${
+                  isSpeaking ? "stage-country stage-country-speaking" : "stage-country"
+                }${clickable ? " stage-country-clickable" : ""}`}
               >
                 <title>
                   {isSpeaking
@@ -239,6 +253,22 @@ export function StageMap({
               </g>
             );
           })}
+
+          {/* Marqueur au lieu réel de la crise (géolocalisation C1). */}
+          {eventGeo &&
+            (() => {
+              const xy = project([eventGeo.lon, eventGeo.lat]);
+              if (!xy) return null;
+              const [x, y] = xy;
+              return (
+                <g className="stage-event-geo" pointerEvents="none">
+                  <circle cx={x} cy={y} r="6" className="stage-pulse" />
+                  <circle cx={x} cy={y} r="6" className="stage-pulse stage-pulse-2" />
+                  <circle cx={x} cy={y} r="3" fill="#ffc14d" stroke="var(--ocean-night)" strokeWidth="1" />
+                  <title>{`lieu de la crise${eventTitle ? ` : ${eventTitle}` : ""}`}</title>
+                </g>
+              );
+            })()}
 
           {/* Cadenas sur les capitales suspendues. */}
           {suspended.map((slug) => {

@@ -21,12 +21,18 @@ infra/k8s/secret.yaml
 *.gguf
 *.safetensors
 models/
+# Exception : les assets 3D publics (glTF/glb) sont versionnés (models/ ci-dessus vise les poids ML).
+!web/public/models/
+!web/public/models/**
 data/corpus/
 chroma/
 *.sqlite
 *.db
 *.db-wal
 *.db-shm
+
+# Textures NASA source 8K (hors build ; voir scripts/downsample-textures.mjs)
+/nasa_texture/
 
 # Artefacts temporaires de benchmark, rendu PDF et QA locale
 tmp/
