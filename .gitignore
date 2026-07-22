@@ -28,6 +28,9 @@ chroma/
 *.db-wal
 *.db-shm
 
+# Textures NASA source 8K (hors build ; voir scripts/downsample-textures.mjs)
+/nasa_texture/
+
 # Artefacts temporaires de benchmark, rendu PDF et QA locale
 tmp/
 
