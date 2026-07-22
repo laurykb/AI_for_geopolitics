@@ -43,6 +43,7 @@ import {
   type CameraFly,
   type CamState,
 } from "./camera";
+import { createEarthMaterial, type EarthMaterial } from "./earth-material";
 import { paintFlag } from "./flags";
 import {
   AnchorRegistry,
@@ -93,7 +94,8 @@ import {
   type RobotMood,
   type SatelliteState,
 } from "./robots";
-import { TEX_H, TEX_W, createGlobePainter, type Scar } from "./texture";
+import { makeAtmosphere, makeClouds, makeMoon, makeStarfield } from "./sky";
+import { TEX_H, TEX_W, createGlobePainter, createOverlayPainter, type Scar } from "./texture";
 
 /** Superset des props StageMap (spec §2) : le théâtre passe la même vue aux
  * deux modes. Les champs encore muets ici (pense, événement, brouillard…)
@@ -136,6 +138,10 @@ export type GlobeStageProps = {
   lisere?: string;
   /** HALL (S11) — le pays incarné : halo cyan + badge « VOUS » sur son délégué. */
   chosen?: string | null;
+  /** Palier de rendu de la planète (spec planète-réaliste A7) : Terre photo-réaliste
+   * (textures NASA) ou globe peint léger (repli). Défaut « light » côté scène : zéro
+   * changement tant que l'hôte ne le câble pas. L'hôte le dérive de `settings.planetQuality`. */
+  quality?: "realistic" | "light";
   /** La vue du joueur (spec §5) : globe, ou LE MÊME monde déplié en carte. */
   view?: "3d" | "2d";
   /** Touche V pressée : l'hôte (qui possède le réglage `stageView`) bascule. */
@@ -291,32 +297,28 @@ export function GlobeStage(props: GlobeStageProps) {
     scene.add(ring2);
     orbitals.push([ring2, 0.09]);
 
-    // Étoiles.
-    {
-      const n = 1300;
-      const pos = new Float32Array(n * 3);
-      for (let i = 0; i < n; i++) {
-        const u = Math.random() * 2 - 1;
-        const th = Math.random() * Math.PI * 2;
-        const s = Math.sqrt(1 - u * u);
-        const d = 38 + Math.random() * 14;
-        pos.set([s * Math.cos(th) * d, u * d, s * Math.sin(th) * d], i * 3);
-      }
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-      scene.add(
-        new THREE.Points(
-          geo,
-          new THREE.PointsMaterial({
-            color: 0x9db4d8,
-            size: 0.055,
-            sizeAttenuation: true,
-            transparent: true,
-            opacity: 0.75,
-          }),
-        ),
-      );
+    // Étoiles peintes (palier léger) — masquées en réaliste au profit du champ texturé.
+    const starPos = new Float32Array(1300 * 3);
+    for (let i = 0; i < 1300; i++) {
+      const u = Math.random() * 2 - 1;
+      const th = Math.random() * Math.PI * 2;
+      const s = Math.sqrt(1 - u * u);
+      const d = 38 + Math.random() * 14;
+      starPos.set([s * Math.cos(th) * d, u * d, s * Math.sin(th) * d], i * 3);
     }
+    const starGeo = new THREE.BufferGeometry();
+    starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
+    const pointStars = new THREE.Points(
+      starGeo,
+      new THREE.PointsMaterial({
+        color: 0x9db4d8,
+        size: 0.055,
+        sizeAttenuation: true,
+        transparent: true,
+        opacity: 0.75,
+      }),
+    );
+    scene.add(pointStars);
 
     // Halo atmosphérique (fresnel BackSide additif) — s'efface à plat.
     const atmoMat = new THREE.ShaderMaterial({
@@ -534,6 +536,7 @@ export function GlobeStage(props: GlobeStageProps) {
     const CAMP = new THREE.Vector3();
     const CAMT = new THREE.Vector3();
     const ORIGIN = new THREE.Vector3(0, 0, 0);
+    const SUNDIR = new THREE.Vector3();
 
     // État interne de la scène (refs, pas de React).
     let cam: CamState = { ...CAM_HOME };
@@ -551,7 +554,10 @@ export function GlobeStage(props: GlobeStageProps) {
     let py = 0;
     let hoverT = 0;
     let glowLL: [number, number] | null = null;
-    let painter: ReturnType<typeof createGlobePainter> | null = null;
+    let painter:
+      | ReturnType<typeof createGlobePainter>
+      | ReturnType<typeof createOverlayPainter>
+      | null = null;
     let feats: ReturnType<typeof summitFeatures> = [];
     let raf = 0;
 
@@ -804,11 +810,80 @@ export function GlobeStage(props: GlobeStageProps) {
       if (reduced) morphK = target;
     };
 
+    // Palier réaliste (spec planète-réaliste A2-A6) : Terre NASA jour/nuit/spéculaire +
+    // nuages + atmosphère + lune + champ d'étoiles, à la place du globe peint. Décidé au
+    // montage par la prop `quality` ; repli SILENCIEUX vers le palier léger si une texture
+    // manque. Le matériau Terre est AUTONOME (jour/nuit calculés depuis uSun) : les lumières
+    // de scène ne l'affectent pas — on garde donc l'éclairage tel quel pour les délégués.
+    const realistic = propsRef.current.quality === "realistic";
+    let earthMat: EarthMaterial | null = null;
+    let sky: { atmo: ReturnType<typeof makeAtmosphere>; clouds: THREE.Mesh } | null = null;
+    const planetTextures: THREE.Texture[] = [];
+    const loadPlanetTextures = (): Promise<{
+      day: THREE.Texture;
+      night: THREE.Texture;
+      clouds: THREE.Texture;
+      moon: THREE.Texture;
+      stars: THREE.Texture;
+    } | null> => {
+      const loader = new THREE.TextureLoader();
+      const aniso = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+      const one = (url: string) =>
+        new Promise<THREE.Texture>((res, rej) =>
+          loader.load(
+            url,
+            (tex) => {
+              tex.anisotropy = aniso;
+              res(tex);
+            },
+            undefined,
+            () => rej(new Error(url)),
+          ),
+        );
+      return Promise.all([
+        one("/textures/earth-day.jpg"),
+        one("/textures/earth-night.jpg"),
+        one("/textures/earth-clouds.jpg"),
+        one("/textures/moon.jpg"),
+        one("/textures/stars.jpg"),
+      ])
+        .then(([day, night, clouds, moon, stars]) => ({ day, night, clouds, moon, stars }))
+        .catch(() => null);
+    };
+
     let allFeatures: GlobeFeature[] = [];
-    loadFeatures50m().then((loaded) => {
+    Promise.all([
+      loadFeatures50m(),
+      realistic ? loadPlanetTextures() : Promise.resolve(null),
+    ]).then(([loaded, tex]) => {
       if (dead) return;
       allFeatures = loaded;
-      painter = createGlobePainter({ ctx: tctx, features: allFeatures });
+      if (tex) {
+        // Palier réaliste gréé : matériau Terre + ciel ; la texture canvas devient la
+        // SURCOUCHE gameplay (uOverlay) ; atmosphère peinte et étoiles Points masquées.
+        planetTextures.push(tex.day, tex.night, tex.clouds);
+        earthMat = createEarthMaterial({
+          day: tex.day,
+          night: tex.night,
+          overlay: texture,
+          flatW: FLAT_W,
+          flatH: FLAT_H,
+        });
+        globe.material = earthMat.material;
+        globeMat.dispose();
+        const atmoSky = makeAtmosphere();
+        const clouds = makeClouds(tex.clouds);
+        scene.add(atmoSky.mesh);
+        scene.add(clouds);
+        scene.add(makeMoon(tex.moon));
+        scene.add(makeStarfield(tex.stars));
+        sky = { atmo: atmoSky, clouds };
+        atmo.visible = false;
+        pointStars.visible = false;
+        painter = createOverlayPainter(tctx, allFeatures);
+      } else {
+        painter = createGlobePainter({ ctx: tctx, features: allFeatures });
+      }
       refresh();
       setEvent();
       setArc();
@@ -969,8 +1044,25 @@ export function GlobeStage(props: GlobeStageProps) {
       // Le morph avance vers sa cible ; tout le monde suit.
       morphK = stepMorph(morphK, morphTarget, dt);
       anchors.apply(morphK);
-      globeMat.uniforms.uFlat.value = morphK;
-      atmoMat.uniforms.uFlat.value = morphK;
+      // Palier réaliste : soleil animé (jour/nuit + atmosphère teintée), morph des sphères
+      // de ciel, nuages en rotation lente. Sinon (palier léger) : le globe peint et
+      // l'atmosphère fresnel suivent le morph comme avant.
+      const em = earthMat;
+      const sk = sky;
+      if (em && sk) {
+        const ang = reduced ? 0.7 : clock.elapsedTime * 0.05;
+        SUNDIR.set(Math.cos(ang), 0.22, Math.sin(ang)).normalize();
+        em.setSun(SUNDIR);
+        em.setFlat(morphK);
+        sk.atmo.setSun(SUNDIR);
+        sk.atmo.setFlat(morphK);
+        (sk.clouds.material as THREE.ShaderMaterial).uniforms.uFlat.value = morphK;
+        if (!reduced) sk.clouds.rotation.y += dt * 0.006;
+        sun.position.copy(SUNDIR).multiplyScalar(10);
+      } else {
+        globeMat.uniforms.uFlat.value = morphK;
+        atmoMat.uniforms.uFlat.value = morphK;
+      }
       for (const [o, base] of orbitals) o.material.opacity = base * (1 - morphK);
 
       // Caméra : inertie orbitale (côté sphère), vols des deux mondes.
@@ -1261,6 +1353,7 @@ export function GlobeStage(props: GlobeStageProps) {
           m.dispose();
         }
       });
+      for (const tex of planetTextures) tex.dispose();
       renderer.dispose();
       for (const el of [tooltip, eventTag, speakerTag, judgeTag, bubbleTag, tallyTag, chosenTag])
         el.remove();
