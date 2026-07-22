@@ -54,25 +54,33 @@
 - [x] `web/src/components/globe/flags.ts` : drapeaux canvas simplifiés des **33 pays du
   roster** (pur, testable) + test.
 
-### C3 — Socle carnet de suspicion (backend)
-- [ ] Épingles `{pays → 0-3, round}` dans `extras` du snapshot (additif), endpoint léger.
-- [ ] Part **calibration** du score mixte (spec §4 bis : suspicion juste et précoce récompensée,
-  faux positif coûteux) + tests.
+### C3 — Socle carnet de suspicion (backend) — ✅ livré (2026-07-22)
+- [x] `simulation/suspicion.py` : carnet **0-2** (aligné sur `web/src/lib/suspects.ts`) —
+  `Pin`, `parse_notebook` (tolérant), `notebook_to_extras` (persistance additive).
+- [x] `calibrate(...)` : note le carnet contre les traîtres réels — récompense la suspicion
+  **juste et précoce** (antériorité × conviction), pénalise le faux drapeau (niveau 2 sur un
+  loyal), bornée [0, max] ; artefact À PART (ne casse pas `monde+détection=100`, S9 l'affiche).
+- [x] `tests/test_suspicion.py` (8 tests : bornes, antériorité, conviction, faux positif).
 
-### C5 — Socle de l'ONU jouable (backend, spec §12)
-- [ ] `agents/organization.py` (`OrgAgent` no-think, remplacé par l'humain si rôle ONU)
-  + `OrgReport` Pydantic (additif) ; **5ᵉ rôle `un`/ONU** dans `GameRole` + score dédié.
-- [ ] Hook de round : avis consultatif **avant** le verdict (borné ±0,05, cité par le Juge),
-  rapport public après (trame SSE `org`) ; persistance `extras`.
-- [ ] Saisine (audit ciblé, coût renseignement) + faillibilité (tromperie sous Brouillard).
-- [ ] Tests MockBackend : conformité, avis borné, résolution, tromperie, rétro-compat.
+### C5 — Socle de l'ONU jouable (backend, spec §12) — ✅ socle livré (2026-07-22)
+- [x] `agents/organization.py` : `OrgReport`/`ComplianceItem`/`Advisory`, `OrgAgent` (repli
+  déterministe `neutral_report`), `clamp_advisory` (±0,05), `apply_advisory` (borné [0,1]),
+  saisine (`audit_target`).
+- [x] **5ᵉ rôle `un`/ONU** ajouté à `GameRole` (accepté par `CreateGameRequest`, EOL préservé).
+- [x] `tests/test_organization.py` (9 tests : rôle, avis borné, parse+filtrage, repli, audit).
+- [ ] **Reste S14 (Claude Code, app)** : hook avis **avant** le verdict + trame SSE `org` +
+  faillibilité (tromperie sous Brouillard) + score détection dédié à l'ONU.
 
-### C6 — Pouls du monde + instabilité (backend pur, spec §13)
-- [ ] `simulation/world_pulse.py` : flux **autonome déterministe seedé** frappant les stats
-  des pays JOUÉS (deltas bornés, mix chocs/aubaines) — réglage on/off + intensité ; le pays
-  forgé peut être exclu ; le GM le lit en contexte, ne le cause pas.
-- [ ] `simulation/instability.py` : indice par pays depuis `WorldState` + **convergence** de
-  signaux ; zéro réseau. Tests pytest (déterminisme, bornes, summit-only).
+### C6 — Pouls du monde + instabilité (backend pur, spec §13) — ✅ livré (2026-07-22)
+- [x] `simulation/world_pulse.py` : `roll_pulses(seed, round, summit, intensity, exclude)`
+  **déterministe seedé**, summit-only, jamais 2× le même pays/round, `exclude` (pays forgé) ;
+  `apply_pulse` renvoie une **copie bornée** (n'altère pas l'original).
+- [x] `simulation/instability.py` : `country_risk`/`instability_index` (tension, instabilité,
+  éco, promesses rompues) + `convergence_alerts` (≥ 2 familles chaudes) ; zéro réseau.
+- [x] `tests/test_world_pulse.py` (13 tests : déterminisme, bornes, summit-only, exclusion,
+  convergence, non-mutation).
+- [ ] **Reste S15 (Claude Code, app)** : tirage par round câblé, dépêches SSE + réglage,
+  halo d'instabilité & alertes sur la carte.
 
 ### C4 — Kit UI futuriste — ✅ livré (2026-07-21)
 - [x] `web/src/styles/theatre-kit.css` : tokens + composants (chanfreins, panneaux néon,
@@ -81,70 +89,43 @@
 
 ## Étapes Claude Code
 
-- [x] **S0** — Lire la spec, ouvrir le prototype dans un navigateur. `npm i three @types/three`
-  (web/). Commit `chore`. *(fait 2026-07-21, `0033b20`)*
-- [x] **S1** — `GlobeStage` client-only (`dynamic(() => …, {ssr:false})`) : globe + **texture
+- [ ] **S0** — Lire la spec, ouvrir le prototype dans un navigateur. `npm i three @types/three`
+  (web/). Commit `chore`.
+- [ ] **S1** — `GlobeStage` client-only (`dynamic(() => …, {ssr:false})`) : globe + **texture
   canvas peinte** (palette planète futuriste, spec §1) + caméra orbitale (drag/molette/fly-to)
   + picking pays. Parité visuelle avec le prototype, **sans robots d'abord**.
-  *(fait 2026-07-21, `8e6df20` — vérifié live, atelier `/dev/globe`)*
-- [x] **S2** — Délégués humanoïdes + drone GM + entité Juge + arcs + anneau d'événement :
+- [ ] **S2** — Délégués humanoïdes + drone GM + entité Juge + arcs + anneau d'événement :
   transposer le prototype dans les modules de la spec §2 (`texture.ts`, `robots.ts`,
-  `camera.ts`, `picking.ts`…). *(fait 2026-07-21, `e00caf1` — vérifié live)*
-- [x] **S3** — **Le dépliage 2D⇄3D** (full-three, spec §5) : morph sphère⇄plan transposé du
+  `camera.ts`, `picking.ts`…).
+- [ ] **S3** — **Le dépliage 2D⇄3D** (full-three, spec §5) : morph sphère⇄plan transposé du
   prototype (shader `uFlat`, ancres lerp/slerp, caméra oblique tactique, plan de picking)
   derrière `stageView` + touche V, point de vue préservé ; StageMap SVG rendue interactive
   (`onCountryClick`, `eventGeo`) **uniquement en repli sans WebGL**.
-  *(fait 2026-07-22, `3fd6077` — morph.ts pur testé ; vérifié live)*
-- [x] **S4** — Layout immersif (spec §4) dans `app/games/[id]/page.tsx` : globe plein théâtre,
+- [ ] **S4** — Layout immersif (spec §4) dans `app/games/[id]/page.tsx` : globe plein théâtre,
   transcript overlay droite **à onglets** (Dialogues · Paris · Renseignement), bandeau
-  événement, contrôles bas-gauche, fiche gauche. *(fait 2026-07-22, `70cbbe0` —
-  `GlobeTheatre` + `CountryFiche`, réglage `stageView` persisté (wosi.stage), repli SVG
-  sans WebGL / palier léger, colonne empilée en mobile ; vérifié live sur une partie)*
-- [x] **S5** — Branchements réels : bulle de pensée sur `turn.reasoning`/digest selon
+  événement, contrôles bas-gauche, fiche gauche.
+- [ ] **S5** — Branchements réels : bulle de pensée sur `turn.reasoning`/digest selon
   `expose_thinking` ; fiche sur les données Informations + état de partie ; géoloc via
   `geo_lon`/`geo_lat` (C1) avec repli barycentre côté front en attendant.
-  *(fait 2026-07-22, `5a0339d` — bulle holographique streamée, queue 240 chars)*
-- [x] **S6** — Perf + accessibilité : mesure tokens/s ON/OFF (protocole §5), réglages,
+- [ ] **S6** — Perf + accessibilité : mesure tokens/s ON/OFF (protocole §5), réglages,
   `prefers-reduced-motion`, i18n fr/en, annonces sr-only conservées.
-  *(fait 2026-07-22, `cec56b2` — clés theatre.*/fiche.* fr+en ; protocole de mesure
-  documenté dans `docs/PROTOCOLE_PERF_GLOBE.md`, MESURE LOCALE À FAIRE par Laury
-  avant merge — Ollama chaud requis)*
-- [x] **S7** — Campagne : vérifier que le chapitre hérite du théâtre sans code spécifique.
-  *(vérifié 2026-07-22 — la partie témoin de S4 était un chapitre (sommet-inaugural),
-  même route games/[id], zéro code théâtre spécifique campagne)*
-- [x] **S8** — v1.5 « le jeu sur la carte » : piles de billets ← vraies cagnottes
+- [ ] **S7** — Campagne : vérifier que le chapitre hérite du théâtre sans code spécifique.
+- [ ] **S8** — v1.5 « le jeu sur la carte » : piles de billets ← vraies cagnottes
   (`market_api`) ; satellite ← bureau de renseignement (coût compute, rapports réels).
-  *(fait 2026-07-22, `40da627` — cagnotte réelle = volume du marché de la partie,
-  onglet Paris avec pari rapide, IntelPanel déménagé dans l'onglet Renseignement,
-  achat ciblé → le satellite balaye la capitale)*
-- [x] **S9** — v1.5 renforts gameplay (spec §4 bis) : UI du **carnet de suspicion** (épingles
+- [ ] **S9** — v1.5 renforts gameplay (spec §4 bis) : UI du **carnet de suspicion** (épingles
   sur les robots ; socle C3), **cicatrices du monde** (couche texture ← `RoundSummary`),
   **motion de censure** en séquence de vote illuminée (trames SSE existantes).
-  *(fait 2026-07-22, `2e0ff93` — épingles depuis le carnet existant wosi.suspects
-  (0-2, C3 s'y branchera), cicatrices dérivées des rounds persistés (ΔU + géoloc C1),
-  socles illuminés par bulletin + décompte flottant)*
-- [x] **S10** — **Kit futuriste sur toutes les surfaces** (spec §9) : adopter
+- [ ] **S10** — **Kit futuriste sur toutes les surfaces** (spec §9) : adopter
   `web/src/styles/theatre-kit.css` (tokens en `@theme` Tailwind et/ou classes telles
   quelles) sur `/`, `/accueil`, `/lobby`, `/campagne`, `/laboratoire`, `/defi`,
   `/reglages`, `/profil`, `/leaderboard`, header, `auth-gate` — texte net, chanfreins,
-  néon discret, a11y intacte. *(fait 2026-07-22, `d9f2deb` — par le système ; nota :
-  le CSS du kit, non-layered, prime sur les utilitaires Tailwind)*
+  néon discret, a11y intacte.
 - [ ] **S11** — **Le hall** (spec §9, prototype comme référence : états
   `auth → menu → config → game`) : GlobeStage monté au **layout** (scène persistante entre
   routes), connexion/lobby/config convertis en **overlays** ; **5 rôles dont ONU (siège
   Genève, vrai drapeau) et pays forgé (siège océanique)** ; **les délégués se posent/retirent
   du globe au fil de la sélection** ; choix du pays incarné **au clic sur le globe** (halo cyan + badge VOUS) ; lancement = plongée caméra vers le round 1 ;
   repli sans WebGL : mêmes pages sur fond `--thk-bg`.
-  *(v1 livrée 2026-07-22 : route `/hall` (entrée PARALLÈLE depuis l'accueil, l'ancien
-  lobby reste canonique) — menu 3 modes sur le monde, config en panneau droit : 5 sièges
-  dont ONU verrouillée (C5), sélection au clic sur le globe parmi les 33 (les délégués
-  se posent/retirent en direct, liseré doré, capacité + tailles 5/7/9/12 avec
-  avertissement mono-GPU), 🎮 incarner (halo cyan + badge VOUS), forge nom+concept,
-  brouillard/escalade/pensée, difficulté, rounds 3-20, délai 30-300 s, table G17,
-  casting multi-modèles + assignations, lancement réel vérifié de bout en bout
-  (partie créée et jouable). RESTENT avant de cocher : scène au layout + connexion/
-  accueil en overlays, plongée caméra, alliances de la forge, siège océanique du pays
-  forgé, i18n hall.*, et la checklist complète avant de toucher à /lobby.)*
   **Checklist anti-régression (spec §9 « rien ne se perd ») : chaque option du lobby
   actuel — 4 rôles, sélection 7/33 sur le globe (+ tailles 5-12), forge complète, casting
   multi-modèles avec répartition/assignations, scénarios, brouillard/escalade/pensée,

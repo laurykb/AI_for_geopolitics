@@ -18,7 +18,8 @@ from storage.game_store import PromptEntry, TranscriptEntry
 GameMode = Literal["classic", "campaign"]  # RG-2 — deux modes ; le reste = drapeaux
 # G8/G12 — rôles : architect (GM/laboratoire), council, player, et le Spectateur (G12 §3 :
 # ne motionne ni ne prompte, mais parie sur tout — le turfiste du jeu, XP ×0.5, non classé).
-GameRole = Literal["architect", "council", "player", "spectator"]
+# G8/théâtre-globe §12 — `un` = l'ONU jouable (surveille le sommet, conseille le Juge).
+GameRole = Literal["architect", "council", "player", "spectator", "un"]
 # G11 §4 — la difficulté (asymétrie d'information/économie, jamais de changement de modèle).
 Difficulty = Literal["beginner", "intermediate", "expert"]
 
