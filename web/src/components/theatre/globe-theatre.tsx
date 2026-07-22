@@ -17,7 +17,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState, type ReactNode } from "react";
 
-import { useT } from "@/components/settings-provider";
+import { useSettings, useT } from "@/components/settings-provider";
 import { StageMap, type StageMapProps } from "@/components/stage-map";
 import type { Scar } from "@/components/globe/texture";
 import { fmt } from "@/lib/format";
@@ -109,6 +109,7 @@ export function GlobeTheatre({
   fallback = {},
 }: GlobeTheatreProps) {
   const t = useT();
+  const { settings } = useSettings();
   const [tab, setTab] = useState<TabId>("dialogues");
   const [webglOk, setWebglOk] = useState(true);
   const [follow, setFollow] = useState(true);
@@ -132,6 +133,9 @@ export function GlobeTheatre({
       <div className="fixed inset-0 z-0 bg-[#04060c]">
         {use3D ? (
           <GlobeStage
+            // La scène lit `quality` au montage : la clé la remonte quand le réglage change.
+            key={settings.planetQuality}
+            quality={settings.planetQuality}
             countries={view.countries}
             uByCountry={view.uByCountry}
             utopia={utopia}

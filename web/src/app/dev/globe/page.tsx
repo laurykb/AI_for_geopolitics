@@ -40,6 +40,9 @@ export default function GlobeDevPage() {
   const [view, setView] = useState<"3d" | "2d">("3d");
   const [onu, setOnu] = useState(false);
   const [lab, setLab] = useState(false);
+  // Palier de rendu (planète-réaliste A7) : le toggle remonte GlobeStage (key) car la
+  // scène lit `quality` au montage. Défaut réaliste pour itérer sur le shader ici.
+  const [quality, setQuality] = useState<"realistic" | "light">("realistic");
 
   const current = speakerIdx >= 0 ? SUMMIT[speakerIdx % SUMMIT.length] : null;
   const speaking = phase === "speaking" ? current : null;
@@ -51,6 +54,8 @@ export default function GlobeDevPage() {
   return (
     <main className="fixed inset-0 bg-[#04060c]">
       <GlobeStage
+        key={quality}
+        quality={quality}
         countries={SUMMIT}
         uByCountry={U_BY_COUNTRY}
         utopia={0.52}
@@ -126,6 +131,14 @@ export default function GlobeDevPage() {
         </button>
         <button type="button" className={chip} data-on={lab} onClick={() => setLab((v) => !v)}>
           🧪 Labo
+        </button>
+        <button
+          type="button"
+          className={chip}
+          data-on={quality === "realistic"}
+          onClick={() => setQuality((q) => (q === "realistic" ? "light" : "realistic"))}
+        >
+          🛰 réaliste
         </button>
         <button
           type="button"

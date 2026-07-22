@@ -24,14 +24,15 @@ import {
 import { deletePlayer, humanizeError } from "@/lib/api";
 import { getAuth } from "@/lib/auth";
 import type { Lang } from "@/lib/i18n";
-import type { Perf, StageView } from "@/lib/settings";
+import type { Perf, PlanetQuality, StageView } from "@/lib/settings";
 
 const INPUT_CLASS =
   "w-full rounded-md border border-edge bg-surface-2 px-3 py-2 text-sm " +
   "placeholder:text-fg-faint focus:border-accent focus:outline-none";
 
 export default function ReglagesPage() {
-  const { settings, setLang, setPerf, setNoAnim, setStageView, t } = useSettings();
+  const { settings, setLang, setPerf, setNoAnim, setStageView, setPlanetQuality, t } =
+    useSettings();
   const { player } = useAuth();
   const { mascotHidden, setMascotVisible, restart } = useTour();
 
@@ -49,6 +50,14 @@ export default function ReglagesPage() {
   const STAGE_VIEWS: { value: StageView; label: string; desc: string }[] = [
     { value: "3d", label: t("reglages.vue-3d"), desc: t("reglages.vue-3d-desc") },
     { value: "2d", label: t("reglages.vue-2d"), desc: t("reglages.vue-2d-desc") },
+  ];
+  const PLANET_QUALITIES: { value: PlanetQuality; label: string; desc: string }[] = [
+    {
+      value: "realistic",
+      label: t("reglages.planete-realiste"),
+      desc: t("reglages.planete-realiste-desc"),
+    },
+    { value: "light", label: t("reglages.planete-legere"), desc: t("reglages.planete-legere-desc") },
   ];
 
   return (
@@ -110,6 +119,20 @@ export default function ReglagesPage() {
             />
             <p className="mt-1.5 text-xs text-fg-faint">
               {STAGE_VIEWS.find((v) => v.value === settings.stageView)?.desc}
+            </p>
+          </div>
+          {/* Qualité de la planète (spec planète-réaliste A7) : Terre photo-réaliste NASA
+              ou globe peint léger — un CHOIX du joueur, persisté par appareil. */}
+          <div>
+            <p className="mb-1.5 text-sm font-medium">{t("reglages.planete-titre")}</p>
+            <Segmented
+              options={PLANET_QUALITIES}
+              value={settings.planetQuality}
+              onChange={setPlanetQuality}
+              ariaLabel={t("reglages.planete-titre")}
+            />
+            <p className="mt-1.5 text-xs text-fg-faint">
+              {PLANET_QUALITIES.find((q) => q.value === settings.planetQuality)?.desc}
             </p>
           </div>
         </div>

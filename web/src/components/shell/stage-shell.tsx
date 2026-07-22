@@ -60,10 +60,13 @@ export function StageShell() {
         aria-hidden
       >
         <GlobeStage
+          // La scène lit `quality` au montage : la clé la remonte quand le réglage change.
+          key={settings.planetQuality}
           countries={countries}
           uByCountry={uByCountry}
           utopia={utopia}
           {...rest}
+          quality={settings.planetQuality}
           view={settings.stageView}
           onViewToggle={onViewToggle}
           onCountryClick={onCountryClick}
