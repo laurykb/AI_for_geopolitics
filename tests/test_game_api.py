@@ -48,6 +48,17 @@ def _create(client, **kw):
     return resp.json()
 
 
+def test_un_role_activates_org_agent(client):
+    """S14 — le siège ONU (rôle `un`) active l'agent de veille ; sinon aucun (opt-in)."""
+    game = _create(client, countries=["usa", "iran", "china"], role="un")
+    session = game_api._sessions[game["id"]]
+    assert session.org_agent is not None
+    assert session.role == "un"
+    # Sans le rôle ONU : pas d'agent (round strictement historique).
+    plain = _create(client, countries=["usa", "iran"])
+    assert game_api._sessions[plain["id"]].org_agent is None
+
+
 # --- création de partie ------------------------------------------------------
 
 
@@ -143,8 +154,7 @@ def test_default_cast_fallback_logs_a_warning(client, monkeypatch, caplog):
         game = _create(client, countries=["usa", "iran"])
     assert game["model_cast"] is None  # repli historique : backend unique
     assert any(
-        "casting reasoning par défaut indisponible" in rec.getMessage()
-        for rec in caplog.records
+        "casting reasoning par défaut indisponible" in rec.getMessage() for rec in caplog.records
     )
 
 
@@ -222,10 +232,7 @@ def test_game_and_round_payloads_are_bounded(client):
     assert client.post("/api/games", json={"horizon": 51}).status_code == 422
     assert client.post("/api/games", json={"scenario": "x" * 121}).status_code == 422
     game = _create(client, countries=["usa", "iran"])
-    assert (
-        client.post(f"/api/games/{game['id']}/rounds", json={"max_turns": 41}).status_code
-        == 422
-    )
+    assert client.post(f"/api/games/{game['id']}/rounds", json={"max_turns": 41}).status_code == 422
     assert (
         client.post(
             f"/api/games/{game['id']}/rounds",
@@ -251,9 +258,7 @@ def test_round_streams_full_step_sequence(client):
         for name in ("turn_start", "private_token", "private_plan_done", "token", "message_done")
     )
     assert any(payload["token"] for name, payload in events if name == "private_token")
-    private = "\n".join(
-        payload["text"] for name, payload in events if name == "private_plan_done"
-    )
+    private = "\n".join(payload["text"] for name, payload in events if name == "private_plan_done")
     assert "FUTUR 1" in private and "ARBITRAGE" in private
     # arbitrage + observables de fin de round
     for expected in ("participation", "verdict", "communique", "risk", "trajectory", "summary"):
@@ -408,9 +413,7 @@ def test_late_motion_vote_gets_explicit_409(client):
 def test_human_player_votes_on_motion(client):
     import threading
 
-    game = _create(
-        client, countries=["usa", "iran", "china"], play_as="usa", turn_seconds=30
-    )
+    game = _create(client, countries=["usa", "iran", "china"], play_as="usa", turn_seconds=30)
     filed = client.post(
         f"/api/games/{game['id']}/motions",
         json={"country": "iran", "reason": "escalade répétée"},
@@ -453,18 +456,14 @@ def test_human_player_votes_on_motion(client):
 
     ballot_prompt = next(p for n, p in events if n == "human_motion_vote")
     assert ballot_prompt["country"] == "usa" and ballot_prompt["target"] == "iran"
-    human_vote = next(
-        p for n, p in events if n == "motion_vote" and p["country"] == "usa"
-    )
+    human_vote = next(p for n, p in events if n == "motion_vote" and p["country"] == "usa")
     assert human_vote["vote"] == "pour"
     assert seen["votes"] == 1 and seen["duplicate"] is True
 
 
 def test_motion_vote_without_pending_ballot_is_409(client):
     game = _create(client, countries=["usa", "iran"], play_as="usa")
-    response = client.post(
-        f"/api/games/{game['id']}/motion-vote", json={"vote": "pour"}
-    )
+    response = client.post(f"/api/games/{game['id']}/motion-vote", json={"vote": "pour"})
     assert response.status_code == 409
 
 
@@ -476,9 +475,7 @@ def test_turn_without_pending_turn_is_409(client):
 
 def test_turn_bounds_are_422(client):
     # turn_seconds hors bornes à la création.
-    resp = client.post(
-        "/api/games", json={"countries": ["usa", "iran"], "turn_seconds": 999}
-    )
+    resp = client.post("/api/games", json={"countries": ["usa", "iran"], "turn_seconds": 999})
     assert resp.status_code == 422
     # message trop long au tour.
     game = _create(client, countries=["usa", "iran"], play_as="usa", turn_seconds=2)
@@ -712,9 +709,7 @@ def test_expose_thinking_never_leaks_the_engine_secret_ledger(client):
     assert "drift" not in judge  # le classeur secret du moteur reste scellé
     perceptions = judge.get("perceptions", {})
     assert perceptions and set(perceptions) <= {"usa"}  # jamais la perception d'autrui
-    ai_entries = [
-        t for t in detail["rounds"][0]["transcript"] if t["speaker"] in ("iran", "china")
-    ]
+    ai_entries = [t for t in detail["rounds"][0]["transcript"] if t["speaker"] in ("iran", "china")]
     assert ai_entries and any("Réactions anticipées" in t["reasoning"] for t in ai_entries)
 
 
@@ -1264,9 +1259,7 @@ def test_spectator_is_bet_only(client):
     # depuis G8 (maj) il PROMPTE via des directives — c'est son levier d'observateur.
     game = _create(client, countries=["usa", "iran", "china"], role="spectator", owner_id="u1")
     assert game["role"] == "spectator" and game["ranked"] is False
-    motion = client.post(
-        f"/api/games/{game['id']}/motions", json={"country": "usa", "reason": "x"}
-    )
+    motion = client.post(f"/api/games/{game['id']}/motions", json={"country": "usa", "reason": "x"})
     assert motion.status_code == 403
     # G8 (maj) : les directives sont désormais LE levier du spectateur (il oriente une SI
     # sans l'incarner) — cf. test_directive_validation_by_role.
@@ -1505,13 +1498,9 @@ def test_finished_or_snapshotless_game_stays_replay_only(client_store):
     assert client.get(f"/api/games/{game['id']}").json()["resumable"] is False
 
     # Partie « d'avant R2 » : en cours mais sans snapshot -> relecture seule, inchangé.
-    store.add_game(
-        GameRecord(id="orphan", scenario="red_sea", horizon=5, created_at="2026-01-01")
-    )
+    store.add_game(GameRecord(id="orphan", scenario="red_sea", horizon=5, created_at="2026-01-01"))
     assert client.post("/api/games/orphan/rounds").status_code == 409
-    assert (
-        client.post("/api/games/orphan/motions", json={"country": "usa"}).status_code == 409
-    )
+    assert client.post("/api/games/orphan/motions", json={"country": "usa"}).status_code == 409
 
 
 def test_mode_and_play_as_survive_restart(client_store):
@@ -1801,12 +1790,18 @@ def test_directive_validation_by_role(client):
     # G8 (maj) : le joueur-pays incarne déjà sa SI — une directive sur soi n'a aucun sens,
     # le levier est réservé à l'observateur. Toute directive du joueur est refusée.
     player = _create(client, countries=["usa", "iran"], play_as="usa")
-    assert client.post(
-        f"/api/games/{player['id']}/directives", json={"country": "iran", "text": "x"}
-    ).status_code == 403
-    assert client.post(
-        f"/api/games/{player['id']}/directives", json={"country": "usa", "text": "x"}
-    ).status_code == 403
+    assert (
+        client.post(
+            f"/api/games/{player['id']}/directives", json={"country": "iran", "text": "x"}
+        ).status_code
+        == 403
+    )
+    assert (
+        client.post(
+            f"/api/games/{player['id']}/directives", json={"country": "usa", "text": "x"}
+        ).status_code
+        == 403
+    )
 
     # Le Spectateur, lui, oriente n'importe quelle SI (une directive par pays et par round).
     spectator = _create(client, countries=["usa", "iran"], role="spectator", owner_id="u1")
@@ -1849,9 +1844,7 @@ def test_directive_on_suspended_country_rejected(motion_client):
 def test_architect_directives_reach_all_prompts(client):
     # L'Architecte adresse 3 directives ; au round suivant les 3 prompts les contiennent
     # (vérification par la capture admin — G7-c au service de G8).
-    game = _create(
-        client, countries=["egypt", "france", "usa"], role="architect", admin=True
-    )
+    game = _create(client, countries=["egypt", "france", "usa"], role="architect", admin=True)
     assert game["role"] == "architect"
     for cid in ("egypt", "france", "usa"):
         assert (

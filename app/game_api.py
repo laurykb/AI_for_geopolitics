@@ -42,6 +42,7 @@ from pydantic import BaseModel, Field, ValidationError
 from agents.game_master import GameMasterAgent
 from agents.judge import JudgeAgent
 from agents.llm_agent import LLMAgent
+from agents.organization import OrgAgent
 from app.game_schemas import (
     AllianceAtTable,
     CreateGameRequest,
@@ -131,6 +132,7 @@ from simulation.live_round import (
     MessageDoneStep,
     MotionTallyStep,
     MotionVerdictStep,
+    OrgStep,
     PrivatePlanDoneStep,
     PrivateTokenStep,
     RiskStep,
@@ -305,6 +307,9 @@ class GameSession:
     # G21 — l'ultimatum vivant (fiche de crise ou décret GM) : armé jusqu'au round k,
     # expiré = conséquence due au round suivant. Reconstruit des rounds au restart.
     ultimatum: ultimatum_mod.UltimatumState | None = None
+    # S14 — l'ONU (opt-in via le rôle `un`) : agent de veille + cible d'audit du pupitre.
+    org_agent: OrgAgent | None = None
+    org_audit: str | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -484,12 +489,8 @@ def _build_cast(
     }
     return (
         agents,
-        GameMasterAgent(
-            wrap("gm", "gm", cast.game_master_model if cast is not None else "")
-        ),
-        JudgeAgent(
-            wrap("judge", "judge", cast.judge_model if cast is not None else "")
-        ),
+        GameMasterAgent(wrap("gm", "gm", cast.game_master_model if cast is not None else "")),
+        JudgeAgent(wrap("judge", "judge", cast.judge_model if cast is not None else "")),
     )
 
 
@@ -561,9 +562,7 @@ def _rebuild_session(
         return None
     try:
         world = WorldState.model_validate(snapshot.world)
-        motion = (
-            Motion.model_validate(snapshot.pending_motion) if snapshot.pending_motion else None
-        )
+        motion = Motion.model_validate(snapshot.pending_motion) if snapshot.pending_motion else None
         clock = _restore_clock(snapshot.clock)
     except (ValidationError, KeyError, ValueError):
         return None
@@ -571,9 +570,7 @@ def _rebuild_session(
     # snapshots d'avant le champ, qui retombent sur le défaut « fr »).
     world.language = game.language
     prompt_sink: list[CapturedPrompt] = []
-    agents, game_master, judge = _build_cast(
-        world, backend, prompt_sink if game.admin else None
-    )
+    agents, game_master, judge = _build_cast(world, backend, prompt_sink if game.admin else None)
     session = GameSession(
         world=world,
         agents=agents,
@@ -592,6 +589,8 @@ def _rebuild_session(
         grudges=GrudgeBook.model_validate(snapshot.grudges or {}),
         deadlines=[Deadline.model_validate(d) for d in snapshot.deadlines],
         role=game.role,
+        # S14 — l'ONU survit au restart (le rôle est persisté dans le GameRecord).
+        org_agent=OrgAgent(backend) if game.role == "un" else None,
         difficulty=game.difficulty,  # G11-d — restauré du GameRecord (pas du snapshot)
         pending_directives=dict(snapshot.directives or {}),
         index_history=IndexHistory.model_validate(snapshot.history or {}),
@@ -787,7 +786,9 @@ def _view(
         model_cast=(
             session.world.model_cast
             if session
-            else snapshot.world.get("model_cast") if snapshot else None
+            else snapshot.world.get("model_cast")
+            if snapshot
+            else None
         ),
     )
 
@@ -856,7 +857,7 @@ def _restore_checkpoint(session: GameSession, checkpoint: RoundCheckpoint | None
     session.ultimatum = checkpoint.ultimatum
     session.free_briefs_used = checkpoint.free_briefs_used
     session.free_briefs_round = checkpoint.free_briefs_round
-    del session.prompt_sink[checkpoint.prompt_count:]
+    del session.prompt_sink[checkpoint.prompt_count :]
     session.pending_turn = None
     session.pending_motion_vote = None
     for agent in session.agents.values():
@@ -980,9 +981,7 @@ def _storyteller_signals(
             motion_targets.append(str(suspension.get("country", "")))
         if session.human_country is not None:
             human_texts.extend(
-                e.content
-                for e in store.list_transcript(r.id)
-                if e.speaker == session.human_country
+                e.content for e in store.list_transcript(r.id) if e.speaker == session.human_country
             )
     for action in current_intel:
         if action.get("target"):
@@ -1048,10 +1047,7 @@ def _choose_event(
     event: GeoEvent | None = None
     if motion is not None:
         event = motion_event(motion, round_id, sorted(session.world.countries))
-    elif (
-        session.ultimatum is not None
-        and session.ultimatum.status == ultimatum_mod.STATUS_EXPIRED
-    ):
+    elif session.ultimatum is not None and session.ultimatum.status == ultimatum_mod.STATUS_EXPIRED:
         # G21 — l'exigence est restée sans réponse au round k : la conséquence annoncée
         # EST l'événement de ce round (elle prime sur la fiche, le décret et le fog ;
         # une motion en attente la diffère d'un round).
@@ -1125,9 +1121,7 @@ def _apply_intel_fog(
         fog = fog.model_copy(
             update={
                 "perceptions": {
-                    cid: p
-                    for cid, p in fog.perceptions.items()
-                    if cid != session.human_country
+                    cid: p for cid, p in fog.perceptions.items() if cid != session.human_country
                 },
                 "uninformed": [u for u in fog.uninformed if u != session.human_country],
             }
@@ -1189,13 +1183,8 @@ def _maintain_ultimatum(
             )
             source = ultimatum_mod.SOURCE_DECREE
         if spec is not None and round_id <= spec.round:
-            session.ultimatum = ultimatum_mod.UltimatumState(
-                **spec.model_dump(), source=source
-            )
-    armed = (
-        session.ultimatum is not None
-        and session.ultimatum.status == ultimatum_mod.STATUS_ARMED
-    )
+            session.ultimatum = ultimatum_mod.UltimatumState(**spec.model_dump(), source=source)
+    armed = session.ultimatum is not None and session.ultimatum.status == ultimatum_mod.STATUS_ARMED
     record.judge["sous_ultimatum"] = armed
     run.ultimatum_due = armed and round_id >= session.ultimatum.round
     if armed:
@@ -1206,10 +1195,7 @@ def _maintain_ultimatum(
                 session, state, in_rounds=max(0, state.round - round_id), due_round=state.round
             )
         )
-    elif (
-        session.ultimatum is not None
-        and session.ultimatum.status == ultimatum_mod.STATUS_EXPIRED
-    ):
+    elif session.ultimatum is not None and session.ultimatum.status == ultimatum_mod.STATUS_EXPIRED:
         # POLISH-1 — conséquence DIFFÉRÉE (une motion a pris l'événement de ce round) :
         # la menace reste visible au lieu de disparaître silencieusement — le bandeau
         # est ré-entretenu (la consommation générique des échéances l'a purgé plus
@@ -1227,17 +1213,11 @@ def _record_intel(run: RoundRun, intel_record: dict) -> None:
     if not intel_record:
         return
     run.record.judge["intel"] = intel_record
-    redacted: list[dict] = [
-        {"action": a.get("action")} for a in intel_record.get("actions", [])
-    ]
+    redacted: list[dict] = [{"action": a.get("action")} for a in intel_record.get("actions", [])]
     if "disinfo" in intel_record:
-        redacted.append(
-            {"action": "disinfo", "exposed": intel_record["disinfo"]["exposed"]}
-        )
+        redacted.append({"action": "disinfo", "exposed": intel_record["disinfo"]["exposed"]})
     if "covert" in intel_record:
-        redacted.append(
-            {"action": "covert", "exposed": intel_record["covert"]["exposed"]}
-        )
+        redacted.append({"action": "covert", "exposed": intel_record["covert"]["exposed"]})
     if redacted:
         run.pre_frames.append(sse_frame("intel", {"actions": redacted}))
     if intel_record.get("disinfo", {}).get("exposed"):
@@ -1364,9 +1344,7 @@ def _prepare_drift(
         "acts": [a.model_dump() for a in directives.acts if a.country in active],
     }
     if motion is not None:
-        evidence = drift_game.evidence_met(
-            _drift_acts(store.list_rounds(game_id)), dparams
-        )
+        evidence = drift_game.evidence_met(_drift_acts(store.list_rounds(game_id)), dparams)
         # Un traître dont la motion NE vise PAS le pays peut recevoir la consigne d'un
         # vote stratégique incohérent (indice de plus). On la donne à chaque traître
         # non concerné par la motion en débat — et présent au sommet (un banc ne vote pas).
@@ -1550,9 +1528,7 @@ def _start_round(
         intel_record=intel_record,
         note_parts=note_parts,
     )
-    secret_notes = {
-        cid: "\n\n".join(parts) for cid, parts in note_parts.items() if parts
-    } or None
+    secret_notes = {cid: "\n\n".join(parts) for cid, parts in note_parts.items() if parts} or None
 
     # G9 §5 — la trame du GM en actes : uniquement quand c'est LUI qui invente
     # l'événement (motion/crise/événement humain/fog gardent leur vérité propre).
@@ -1595,6 +1571,9 @@ def _start_round(
             if run.ultimatum_due and session.ultimatum is not None
             else None
         ),
+        # S14 — l'ONU (opt-in) : veille de conformité + avis borné, et cible d'audit.
+        org_agent=session.org_agent,
+        org_audit=session.org_audit,
     )
     return run
 
@@ -1691,9 +1670,7 @@ def _emit_escalation_ladder(run: RoundRun, step: VerdictStep) -> list[str]:
         "ceilings": {
             cid: {
                 "rung": (
-                    r := ceiling(
-                        derive_profile(country), run.current_event, session.world, country
-                    )
+                    r := ceiling(derive_profile(country), run.current_event, session.world, country)
                 ),
                 "label": rung_label(r),
             }
@@ -1733,6 +1710,10 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
     elif isinstance(step, HumanMotionVoteStep) and session.pending_motion_vote is not None:
         payload = {**payload, "deadline_ts": session.pending_motion_vote.deadline}
     frames = [sse_frame(name, payload)]
+    if isinstance(step, OrgStep):
+        # S14 — le rapport ONU est persisté (relu par le front/replay) ; l'effet de l'avis
+        # (borné ±0,05) est déjà appliqué à l'escalade dans le moteur, en amont.
+        run.record.judge["org"] = payload["report"]
     if isinstance(step, EventStep):
         run.current_event = step.event
         run.record.event = payload["event"]
@@ -1741,10 +1722,9 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
         # G9 §5 — l'intrigue centrale se pose au premier événement raconté par le GM
         # (fournie par lui, sinon repli déterministe) et persiste toute la partie.
         if not session.storyline and step.event.act:
-            session.storyline = (
-                getattr(session.game_master, "last_storyline", "")
-                or default_storyline(session.world)
-            )
+            session.storyline = getattr(
+                session.game_master, "last_storyline", ""
+            ) or default_storyline(session.world)
             frames.append(sse_frame("storyline", {"text": session.storyline}))
         if run.fog is not None:
             perceptions = {
@@ -2040,8 +2020,10 @@ def _update_gamefeel(run: RoundRun) -> Iterator[str]:
             )
         )
     game = run.store.get_game(run.game_id)
-    if game is not None and game.horizon > round_no and not any(
-        d.kind == "market" for d in session.deadlines
+    if (
+        game is not None
+        and game.horizon > round_no
+        and not any(d.kind == "market" for d in session.deadlines)
     ):
         session.deadlines.append(
             Deadline(kind="market", due_round=game.horizon, label="clôture du marché")
@@ -2204,8 +2186,7 @@ def _victory(game: GameRecord, u_final: float, store: GameStore) -> bool:
             return u_final >= 0.55
     if game.escalation:
         rungs = [
-            int((r.judge.get("ladder") or {}).get("reached", 0))
-            for r in store.list_rounds(game.id)
+            int((r.judge.get("ladder") or {}).get("reached", 0)) for r in store.list_rounds(game.id)
         ]
         return (max(rungs) if rungs else 0) < 9  # on a tenu la crise sous le palier max
     if game.mode == "campaign":
@@ -2435,9 +2416,7 @@ def _process_treaties(run: RoundRun) -> Iterator[str]:
                 judge_model,
             )
         else:
-            rejected.append(
-                {"label": candidate.label, "signatories": candidate.signatories}
-            )
+            rejected.append({"label": candidate.label, "signatories": candidate.signatories})
             _add_entry(
                 run,
                 "judge",
@@ -2469,7 +2448,8 @@ def _finish_drift_if_over(run: RoundRun) -> Iterator[str]:
     if game is None or game.status is not GameStatus.RUNNING:
         return
     deviant_ids = {
-        d for d, _ in _drift_deviants(
+        d
+        for d, _ in _drift_deviants(
             run.session.drift_seed,
             sorted(run.session.world.countries),
             run.session.human_country,
@@ -2505,9 +2485,7 @@ def _run_stream(run: RoundRun) -> Iterator[str]:
         step = next(run.steps)
         while True:
             if isinstance(step, HumanTurnStep):
-                turn = PendingTurn(
-                    country=step.country, deadline=_clock() + session.turn_seconds
-                )
+                turn = PendingTurn(country=step.country, deadline=_clock() + session.turn_seconds)
                 session.pending_turn = turn  # posé AVANT la trame (deadline_ts dedans)
                 yield from _handle_step(run, step)
                 while not turn.done and _clock() < turn.deadline:
@@ -2630,9 +2608,7 @@ def create_game(
                     status_code=400,
                     detail=f"alliances inconnues du registre : {', '.join(unknown)}",
                 )
-            invented = invented.model_copy(
-                update={"alliances": sorted(set(body.invent.alliances))}
-            )
+            invented = invented.model_copy(update={"alliances": sorted(set(body.invent.alliances))})
         world = WorldState.from_countries([*world.countries.values(), invented])
     if len(world.countries) < 2:
         raise HTTPException(status_code=400, detail="il faut au moins 2 pays pour négocier")
@@ -2669,7 +2645,7 @@ def create_game(
         raise HTTPException(
             status_code=400, detail="le joueur-pays choisit un pays (play_as ou invention)"
         )
-    if role in ("architect", "council", "spectator") and play_as is not None:
+    if role in ("architect", "council", "spectator", "un") and play_as is not None:
         raise HTTPException(
             status_code=400,
             detail=f"le rôle {role} n'incarne aucun pays — retirez play_as ou choisissez player",
@@ -2777,7 +2753,11 @@ def create_game(
         role=role,
         difficulty=body.difficulty,
         # G11-d §4 — le budget de renseignement dépend du niveau (Débutant 150 … Expert 60).
-        intel=intel_mod.IntelState(budget=difficulty_mod.load_difficulty(body.difficulty).intel_budget),
+        intel=intel_mod.IntelState(
+            budget=difficulty_mod.load_difficulty(body.difficulty).intel_budget
+        ),
+        # S14 — l'ONU rejoint la table quand le joueur prend le siège ONU (rôle `un`).
+        org_agent=OrgAgent(backend) if role == "un" else None,
     )
     _sessions[game.id] = session
     # G9 §4 — valeurs de départ des indices : la fenêtre de tendance (momentum,
@@ -3064,9 +3044,7 @@ class DriftRevealView(BaseModel):
 
 
 @router.get("/games/{game_id}/drift/reveal", response_model=DriftRevealView)
-def drift_reveal(
-    game_id: str, store: Annotated[GameStore, Depends(get_store)]
-) -> DriftRevealView:
+def drift_reveal(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> DriftRevealView:
     """Révélation de fin de partie (mode Dérive) : refusée tant que la partie court."""
     game = store.get_game(game_id)
     if game is None:
@@ -3074,9 +3052,7 @@ def drift_reveal(
     if not game.drift_enabled:
         raise HTTPException(status_code=404, detail="cette partie n'a pas de Dérive")
     if game.status is not GameStatus.FINISHED:
-        raise HTTPException(
-            status_code=409, detail="la révélation attend la fin de la partie"
-        )
+        raise HTTPException(status_code=409, detail="la révélation attend la fin de la partie")
     return compute_drift_reveal(game_id, store)
 
 
@@ -3133,9 +3109,7 @@ def compute_drift_reveal(game_id: str, store: GameStore) -> DriftRevealView:
     caught_count = len(human_caught)  # « combien TU en as démasqués » (surface + score)
     false_accusations = len(false_positive_ids)
 
-    u_history = [
-        float(r.trajectory.get("utopia", 0.5) or 0.5) for r in rounds if r.trajectory
-    ]
+    u_history = [float(r.trajectory.get("utopia", 0.5) or 0.5) for r in rounds if r.trajectory]
     flagrant = drift_game.first_flagrant_round(acts, params)
     # G20/M8 — le décrochage signal-action : divergence moyenne déviante vs table,
     # relue des rounds persistés (judge_json["signal"]). None sans données.
@@ -3190,9 +3164,7 @@ def compute_drift_reveal(game_id: str, store: GameStore) -> DriftRevealView:
         ],
         u_history=u_history,
         acts=[
-            DriftActView(
-                round_no=a.round_no, tier=a.tier, label=a.label, signature=a.signature
-            )
+            DriftActView(round_no=a.round_no, tier=a.tier, label=a.label, signature=a.signature)
             for a in acts
         ],
         flagrant_round=flagrant,
@@ -3334,12 +3306,16 @@ def buy_intel(
             status_code=400,
             detail=f"budget de renseignement insuffisant ({session.intel.budget:g} crédits)",
         )
-    if body.action in (
-        intel_mod.ACTION_BRIEF,
-        intel_mod.ACTION_DISINFO,
-        intel_mod.ACTION_ANALYZE,
-        intel_mod.ACTION_COVERT,
-    ) and session.lock.locked():
+    if (
+        body.action
+        in (
+            intel_mod.ACTION_BRIEF,
+            intel_mod.ACTION_DISINFO,
+            intel_mod.ACTION_ANALYZE,
+            intel_mod.ACTION_COVERT,
+        )
+        and session.lock.locked()
+    ):
         raise HTTPException(
             status_code=409, detail="achat entre les rounds seulement (négociation en cours)"
         )
@@ -3374,7 +3350,8 @@ def buy_intel(
             # RG-3 — 1 ou 2 traîtres : la vérification doit flairer N'IMPORTE lequel
             # (pas seulement le pivot), sinon l'outil rendrait un traître #2 « propre ».
             deviant_ids = {
-                d for d, _ in _drift_deviants(
+                d
+                for d, _ in _drift_deviants(
                     session.drift_seed,
                     sorted(session.world.countries),
                     session.human_country,
@@ -3412,9 +3389,7 @@ def buy_intel(
             (
                 r.round_no,
                 "\n".join(
-                    e.content
-                    for e in store.list_transcript(r.id)
-                    if e.speaker == body.target
+                    e.content for e in store.list_transcript(r.id) if e.speaker == body.target
                 ),
             )
             for r in store.list_rounds(game_id)
@@ -3485,9 +3460,7 @@ def buy_intel(
 # --- récit de partie (G6) : l'épilogue du juge-narrateur ----------------------------
 
 
-def _ensure_epilogue(
-    game: GameRecord, store: GameStore, backend: InferenceBackend
-) -> dict:
+def _ensure_epilogue(game: GameRecord, store: GameStore, backend: InferenceBackend) -> dict:
     """Génère le récit UNE seule fois (le récit d'une partie est unique) et le persiste.
     Pivots et citations extraits par code ; narrateur contraint par le gabarit ; repli
     déterministe (récit assemblé des pivots) si le LLM est indisponible/hors format."""
@@ -3522,9 +3495,7 @@ def _ensure_epilogue(
     score: float | None = None
     if game.drift_enabled:
         reveal_view = compute_drift_reveal(game.id, store)
-        all_entries = [
-            e.model_dump() for r in rounds for e in store.list_transcript(r.id)
-        ]
+        all_entries = [e.model_dump() for r in rounds for e in store.list_transcript(r.id)]
         irony = narrative.pick_quote(all_entries, country=reveal_view.deviant)
         reveal_data = {
             "deviant": reveal_view.deviant,
@@ -3559,12 +3530,11 @@ def _ensure_epilogue(
         title = "Le sommet des super-intelligences"
         acts = [
             f"Round {p.round_no} — {p.event_title} (ΔU {p.delta_u:+.3f})."
-            + (f' {p.quote.speaker} : « {p.quote.text} »' if p.quote else "")
+            + (f" {p.quote.speaker} : « {p.quote.text} »" if p.quote else "")
             for p in pivots
         ]
-        story = (
-            f"Le monde est parti de {u_start:.2f} et a fini à {u_final:.2f}.\n\n"
-            + "\n\n".join(acts)
+        story = f"Le monde est parti de {u_start:.2f} et a fini à {u_final:.2f}.\n\n" + "\n\n".join(
+            acts
         )
 
     epilogue = narrative.Epilogue(
@@ -3847,9 +3817,7 @@ def open_flash_markets(
         return [_flash_view(engine, m) for m in existing]
 
     event = _last_event(rounds)
-    event_text = (
-        f"{event.title}. {event.description or ''}".strip() if event else game.scenario
-    )
+    event_text = f"{event.title}. {event.description or ''}".strip() if event else game.scenario
     state = flash_mod.MarketState(
         current_round=round_no,
         motion_target=(
@@ -3956,8 +3924,7 @@ def library(countries: str | None = None) -> LibraryView:
     crises = [c for c in _crisis_library().values() if cast is None or crisis_fits_cast(c, cast)]
     return LibraryView(
         fog=[
-            FogScenarioView(id=s.id, title=s.title or s.id, description=s.description)
-            for s in fogs
+            FogScenarioView(id=s.id, title=s.title or s.id, description=s.description) for s in fogs
         ],
         crises=[
             CrisisView(
@@ -4159,9 +4126,7 @@ def post_directive(
 
 
 @router.get("/games/{game_id}/prompts", response_model=PromptsView)
-def game_prompts(
-    game_id: str, store: Annotated[GameStore, Depends(get_store)]
-) -> PromptsView:
+def game_prompts(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> PromptsView:
     """G7-c — les prompts complets capturés round par round (panneau admin).
 
     Réservé aux parties admin : ailleurs la capture est OFF et la lecture refusée
@@ -4177,9 +4142,7 @@ def game_prompts(
     return PromptsView(
         game_id=game_id,
         rounds=[
-            PromptRoundView(
-                round_no=r.round_no, round_id=r.id, entries=store.list_prompts(r.id)
-            )
+            PromptRoundView(round_no=r.round_no, round_id=r.id, entries=store.list_prompts(r.id))
             for r in store.list_rounds(game_id)
         ],
     )
@@ -4216,9 +4179,7 @@ def get_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> G
         out = {k: v for k, v in judge.items() if k != "drift"}
         perceptions = out.get("perceptions")
         if play_as is not None and isinstance(perceptions, dict):
-            out["perceptions"] = (
-                {play_as: perceptions[play_as]} if play_as in perceptions else {}
-            )
+            out["perceptions"] = {play_as: perceptions[play_as]} if play_as in perceptions else {}
         return out
 
     rounds = [
@@ -4230,9 +4191,7 @@ def get_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> G
             judge=_public_judge(r.judge),
             trajectory=r.trajectory,
             transcript=[
-                e.model_copy(
-                    update={"reasoning": observable_digest(e.reasoning), "thinking": ""}
-                )
+                e.model_copy(update={"reasoning": observable_digest(e.reasoning), "thinking": ""})
                 if hide
                 else e
                 for e in store.list_transcript(r.id)
@@ -4243,8 +4202,8 @@ def get_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> G
     # Session absente : le monde est servi depuis le snapshot (la page Monde retrouve
     # l'état des pays après restart, sans reconstruire d'agents — spec, coût nul).
     snapshot = None if session else store.get_session_snapshot(game_id)
-    world = session.world.model_dump(mode="json") if session else (
-        snapshot.world if snapshot else None
+    world = (
+        session.world.model_dump(mode="json") if session else (snapshot.world if snapshot else None)
     )
     if hide and world is not None and world.get("scenario_forecasts"):
         # Résumé observable (suite) : `option_summary` recopie jusqu'à 300 caractères
@@ -4405,9 +4364,7 @@ class PlayerStats(BaseModel):
 
 
 @router.get("/players/{player_id}/stats", response_model=PlayerStats)
-def player_stats(
-    player_id: str, store: Annotated[GameStore, Depends(get_store)]
-) -> PlayerStats:
+def player_stats(player_id: str, store: Annotated[GameStore, Depends(get_store)]) -> PlayerStats:
     """Statistiques agrégées du joueur (§6) — dérivées de ses parties + son compte."""
     player = store.get_player(player_id)
     if player is None:
@@ -4440,9 +4397,7 @@ def player_stats(
 
 
 @router.post("/games/{game_id}/forfeit", response_model=GameView)
-def forfeit_game(
-    game_id: str, store: Annotated[GameStore, Depends(get_store)]
-) -> GameView:
+def forfeit_game(game_id: str, store: Annotated[GameStore, Depends(get_store)]) -> GameView:
     """RG-1 — abandon d'une partie en cours : on la termine tout de suite et on fige son
     bilan (plus de pénalité de LP ; l'XP suit sa règle « terminée » = False). Idempotent
     si la partie est déjà finie."""
