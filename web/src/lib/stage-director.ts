@@ -37,10 +37,23 @@ export function phaseDefaults(phase: Phase): StageIntent {
   const base: StageIntent = { uByCountry: {}, utopia: 0.5 };
   switch (phase) {
     case "connexion":
-      // Fond de connexion : planète nue qui tourne lentement (full immersion), aucun délégué.
-      return { ...base, countries: [], autoRotate: true };
+      // Fond de connexion : planète nue qui tourne lentement (full immersion), aucun
+      // délégué. Caméra reculée (vue « cosmique ») ; l'entrée (login) plongera vers le hall.
+      return {
+        ...base,
+        countries: [],
+        autoRotate: true,
+        flyTo: { lon: 12, lat: 16, dist: 3.6, dur: 1.4, key: "connexion" },
+      };
     case "hall":
-      return { ...base, countries: DEFAULT_COUNTRIES, autoRotate: true };
+      // Retour/arrivée au hall : la caméra se rapproche du globe habité — transition
+      // ANIMÉE (jamais de coupure nette) : mode→hall, config→hall, déconnexion→connexion.
+      return {
+        ...base,
+        countries: DEFAULT_COUNTRIES,
+        autoRotate: true,
+        flyTo: { lon: 20, lat: 18, dist: 2.7, dur: 1.2, key: "hall" },
+      };
     case "config":
       // La composition : liseré doré uniforme (la partie n'a pas commencé). La caméra
       // glisse cadrer la région du sommet (full immersion, menu→config du proto).
@@ -54,7 +67,13 @@ export function phaseDefaults(phase: Phase): StageIntent {
       // Le théâtre repeint tout via setStage à chaque tick SSE ; base minimale.
       return { ...base, countries: [] };
     case "fin":
-      return { ...base, countries: DEFAULT_COUNTRIES, frozen: true };
+      // Cérémonie de fin : la caméra prend de la hauteur (vue du Juge), le monde figé.
+      return {
+        ...base,
+        countries: DEFAULT_COUNTRIES,
+        frozen: true,
+        flyTo: { lon: 18, lat: 44, dist: 3.7, dur: 1.6, key: "fin" },
+      };
   }
 }
 

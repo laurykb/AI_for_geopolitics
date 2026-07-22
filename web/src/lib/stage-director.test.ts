@@ -17,10 +17,18 @@ describe("stage-director", () => {
     expect(phaseDefaults("hall").lisere).toBeUndefined();
   });
 
-  it("phaseDefaults(config) cadre la caméra (fly-to), pas le hall", () => {
-    // Full immersion : entrer en config glisse la caméra sur la région du sommet.
+  it("chaque phase de la coquille a une intention caméra distincte (transitions animées)", () => {
+    // Full immersion : entrer/sortir d'un mode GLISSE la caméra (jamais de coupure nette).
+    // Chaque phase a une clé unique -> tout changement de phase (aller ET retour) rejoue un vol.
     expect(phaseDefaults("config").flyTo).toMatchObject({ lon: 38, lat: 24, dist: 3.1 });
-    expect(phaseDefaults("hall").flyTo).toBeUndefined();
+    expect(phaseDefaults("connexion").flyTo?.key).toBe("connexion");
+    expect(phaseDefaults("hall").flyTo?.key).toBe("hall");
+    expect(phaseDefaults("fin").flyTo?.key).toBe("fin");
+    // Le théâtre se repeint par SSE (son propre globe) : pas d'intention de vol ici.
+    expect(phaseDefaults("theatre").flyTo).toBeUndefined();
+    // Les clés sont toutes différentes -> chaque transition déclenche l'animation.
+    const keys = ["connexion", "hall", "config", "fin"].map((p) => phaseDefaults(p as never).flyTo?.key);
+    expect(new Set(keys).size).toBe(4);
   });
 
   it("goPhase config bascule la phase et applique ses défauts", () => {
