@@ -63,6 +63,8 @@ type TourApi = {
   /** Le compagnon coin bas-droit est-il masqué ? (Réglages G14 : « compagnon on/off ».) */
   mascotHidden: boolean;
   setMascotVisible: (visible: boolean) => void;
+  /** La visite du chapitre 0 est active : le théâtre affiche Laury 3D dans la scène. */
+  tutorialActive: boolean;
 };
 
 const TourContext = createContext<TourApi | null>(null);
@@ -402,10 +404,14 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const step = state.status === "active" ? steps[state.index] : null;
   const showCompanion =
     !!player && onAppPage && !mascotHidden && state.status !== "active";
+  // Une visite active (découverte OU chapitre 0) fait vivre Laury EN 3D dans la scène du
+  // théâtre : la bulle porte le texte, la mascotte 3D porte la présence (proto). Elle
+  // n'apparaît que là où le théâtre est monté (le théâtre lit ce drapeau).
+  const tutorialActive = state.status === "active";
 
   return (
     <TourContext.Provider
-      value={{ state, restart, startTutorial, mascotHidden, setMascotVisible }}
+      value={{ state, restart, startTutorial, mascotHidden, setMascotVisible, tutorialActive }}
     >
       {children}
 

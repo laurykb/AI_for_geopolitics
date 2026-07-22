@@ -38,6 +38,7 @@ export default function GlobeDevPage() {
   const [fogEgypt, setFogEgypt] = useState(false);
   const [arcOn, setArcOn] = useState(false);
   const [view, setView] = useState<"3d" | "2d">("3d");
+  const [laury, setLaury] = useState(false);
 
   const current = speakerIdx >= 0 ? SUMMIT[speakerIdx % SUMMIT.length] : null;
   const speaking = phase === "speaking" ? current : null;
@@ -69,6 +70,8 @@ export default function GlobeDevPage() {
         view={view}
         onViewToggle={() => setView((v) => (v === "3d" ? "2d" : "3d"))}
         onCountryClick={setPicked}
+        mascotVisible={laury}
+        mascotTarget={laury && eventOn ? [ORMUZ.lon, ORMUZ.lat] : null}
         className="h-full w-full"
       />
       <div className="absolute bottom-4 left-4 z-10 flex max-w-[92%] flex-wrap items-center gap-2 rounded-lg border border-edge bg-surface/85 px-3 py-2 text-xs text-foreground backdrop-blur">
@@ -114,6 +117,9 @@ export default function GlobeDevPage() {
         </button>
         <button type="button" className={chip} data-on={arcOn} onClick={() => setArcOn((v) => !v)}>
           ➰ arc USA → Iran
+        </button>
+        <button type="button" className={chip} data-on={laury} onClick={() => setLaury((v) => !v)}>
+          🎒 Laury
         </button>
         <button
           type="button"

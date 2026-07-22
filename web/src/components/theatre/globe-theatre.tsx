@@ -57,6 +57,10 @@ export type GlobeTheatreProps = {
   motionVotes?: { country: string; vote: string }[];
   motionTarget?: string | null;
   onCountryClick: (slug: string) => void;
+  /** Laury (mascotte 3D) : visible pendant la visite guidée. */
+  mascotVisible?: boolean;
+  /** Point [lon,lat] que Laury présente (null = flotte près de la caméra). */
+  mascotTarget?: [number, number] | null;
   /** Contenu de la fiche pays (tiroir gauche) ; null = fermée. */
   fiche?: ReactNode;
   onFicheClose: () => void;
@@ -91,6 +95,8 @@ export function GlobeTheatre({
   motionVotes,
   motionTarget = null,
   onCountryClick,
+  mascotVisible = false,
+  mascotTarget = null,
   fiche = null,
   onFicheClose,
   dialogues,
@@ -148,6 +154,8 @@ export function GlobeTheatre({
             view={stageView}
             onViewToggle={toggleView}
             onCountryClick={onCountryClick}
+            mascotVisible={mascotVisible}
+            mascotTarget={mascotTarget}
             followSpeaker={follow}
             onUserDrag={() => setFollow(false)}
             onUnsupported={() => setWebglOk(false)}

@@ -199,7 +199,7 @@ export default function TheatrePage() {
 
   // CC-5 — chapitre marqué `tutorial` (ch. 0) : le guide se lance tout seul, une fois
   // par partie (le TourProvider tient le flag local) ; la page ne porte que les jalons.
-  const { startTutorial } = useTour();
+  const { startTutorial, tutorialActive } = useTour();
   const tutorialLaunched = useRef(false);
   useEffect(() => {
     if (!chapter?.tutorial || detail?.status !== "running" || tutorialLaunched.current) return;
@@ -1273,6 +1273,14 @@ export default function TheatrePage() {
         onStageViewChange={setStageView}
         lowPerf={settings.perf === "leger"}
         thinkingText={thinkingText}
+        mascotVisible={tutorialActive}
+        mascotTarget={
+          tutorialActive
+            ? globeView.eventGeo
+              ? [globeView.eventGeo.lon, globeView.eventGeo.lat]
+              : (stageSpeaking && CAPITALS[stageSpeaking]) || null
+            : null
+        }
         onCountryClick={setFicheCountry}
         onFicheClose={() => setFicheCountry(null)}
         fiche={
