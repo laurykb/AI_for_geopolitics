@@ -57,9 +57,12 @@ export function createEarthMaterial(opts: {
         col *= 1.45;                                      // rehausse global (moins foncé)
         float lum = dot(day, vec3(0.299,0.587,0.114));
         float ocean = smoothstep(0.24, 0.08, lum) * step(day.r, day.b);
+        // Océan « bleu ciel » naturel (retour user) : rehausse les mers vers un bleu clair,
+        // surtout côté jour ; garde un peu du dégradé d'origine (profondeur/courants).
+        col = mix(col, vec3(0.11, 0.33, 0.55) * (0.82 + 0.28 * dayMix), ocean * dayMix * 0.60);
         vec3 h = normalize(uSun + vec3(0.0,0.0,1.0));
-        float spec = pow(max(dot(normalize(vNormalW), h), 0.0), 48.0) * ocean * dayMix * (1.0 - uFlat);
-        col += vec3(0.95,0.97,1.0) * spec * 3.0;          // reflet solaire sur l'océan (glint)
+        float spec = pow(max(dot(normalize(vNormalW), h), 0.0), 68.0) * ocean * dayMix * (1.0 - uFlat);
+        col += vec3(0.95,0.97,1.0) * spec * 1.9;          // reflet solaire sur l'océan (glint focalisé)
         // Tonemap filmique (ACES approx) : contraste + hautes lumières douces façon three.js.
         col = clamp((col * (2.51 * col + 0.03)) / (col * (2.43 * col + 0.59) + 0.14), 0.0, 1.0);
         vec4 ov = texture2D(uOverlay, vUv);
