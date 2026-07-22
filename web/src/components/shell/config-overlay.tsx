@@ -1,15 +1,9 @@
 "use client";
 
-/** ConfigOverlay — composer sa partie SUR le globe persistant (spec coquille §3, Inc 3).
- *
- * Porté du hall parallèle (`app/hall/page.tsx`) mais ne monte plus son propre globe :
- * il pousse son intention (pays cliquables, sélection, pays incarné) dans le
- * `StageDirector` et enregistre le clic-pays comme handler du globe du layout. Toute
- * la parité S11 : 5 sièges (dont ONU verrouillée → C5), tailles 5/7/9/12, forge,
- * réglages transversaux, casting multi-modèles, lancement.
- *
- * Note : les alliances de forge + i18n `hall.*` + plongée caméra continue arrivent
- * avant la suppression de `/lobby` (Inc 5/Inc 4). Ici, lancement = voile + navigation. */
+/** ConfigOverlay — composer sa partie, à l'identique du prototype (theatre-globe-proto_9) :
+ * un aside droit en `cfg-block` + `chip`, rôle/scénario/taille en pastilles, réglages en
+ * interrupteurs `cfg-ctl`, sélecteur de scénario. Le picking du sommet se fait SUR le globe
+ * (via le StageDirector). Câblage inchangé : `flow.ts` + `buildCreateBody`, tout se conserve. */
 
 import { useCallback, useEffect, useState } from "react";
 
@@ -21,7 +15,6 @@ import {
 } from "@/components/model-cast-selector";
 import { useSettings } from "@/components/settings-provider";
 import { useStageDirector } from "@/components/shell/stage-provider";
-import { Banner, Segmented, Spinner, Switch } from "@/components/ui";
 import { usePlanetLaunch } from "@/hooks/usePlanetLaunch";
 import { createGame, getLab, humanizeError } from "@/lib/api";
 import { ROSTER, speakerMeta } from "@/lib/countries";
@@ -40,22 +33,66 @@ import {
 } from "@/lib/flow";
 import type { ResearchModel } from "@/lib/types";
 
-const ROLES: { value: FlowRole | "un"; icon: string; label: string; desc: string }[] = [
-  { value: "player", icon: "🎮", label: "Jouer un pays", desc: "Incarne un État du sommet." },
-  { value: "invent", icon: "🛠", label: "Créer son pays", desc: "Forge un État et joue-le." },
-  { value: "gm", icon: "🎭", label: "Game Master", desc: "Écris les crises, ne joue personne." },
-  { value: "spectator", icon: "👁", label: "Spectateur", desc: "Observe et parie." },
-  { value: "un", icon: "🕊", label: "ONU", desc: "La veille institutionnelle, depuis Genève." },
+const ROLES: { value: FlowRole; label: string }[] = [
+  { value: "player", label: "Jouer un pays" },
+  { value: "invent", label: "Créer son pays" },
+  { value: "gm", label: "Game Master" },
+  { value: "spectator", label: "Spectateur" },
+  { value: "un", label: "🕊 ONU" },
 ];
 
+const SCENARIOS = [
+  { id: "red_sea", label: "Mer Rouge" },
+  { id: "hormuz", label: "Détroit d'Ormuz" },
+  { id: "baltic", label: "Baltique" },
+];
+
+const DIFFS = [
+  { id: "beginner", label: "Découverte" },
+  { id: "intermediate", label: "Intermédiaire" },
+  { id: "expert", label: "Expert" },
+] as const;
+
 const TABLES = [
-  { value: "equilibree", label: "Équilibrée" },
-  { value: "colombes", label: "Colombes" },
-  { value: "faucons", label: "Faucons" },
-  { value: "aleatoire", label: "Aléatoire" },
+  { id: "equilibree", label: "Équilibrée" },
+  { id: "colombes", label: "Colombes" },
+  { id: "faucons", label: "Faucons" },
+  { id: "aleatoire", label: "Aléatoire" },
 ] as const;
 
 const INITIAL_SELECTED = ["usa", "china", "iran", "france", "egypt", "saudi_arabia", "uk"];
+
+function Chip({
+  on,
+  onClick,
+  children,
+}: {
+  on?: boolean;
+  onClick?: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button type="button" className={`chip${on ? " on" : ""}`} onClick={onClick}>
+      {children}
+    </button>
+  );
+}
+
+function Ctl({
+  on,
+  onClick,
+  children,
+}: {
+  on: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`cfg-ctl${on ? " on" : ""}`} onClick={onClick}>
+      <span className="sw" aria-hidden /> {children}
+    </div>
+  );
+}
 
 export function ConfigOverlay() {
   const { player } = useAuth();
@@ -64,12 +101,13 @@ export function ConfigOverlay() {
   const { launching, launch } = usePlanetLaunch();
 
   const [role, setRole] = useState<FlowRole>("player");
-  const [summitSize, setSummitSize] = useState<number>(7);
+  const [scenario, setScenario] = useState("red_sea");
+  const [summitSize, setSummitSize] = useState(7);
   const [selected, setSelected] = useState<string[]>(INITIAL_SELECTED);
   const [flag, setFlag] = useState<string | null>("france");
   const [clickMode, setClickMode] = useState<"table" | "incarner">("table");
   const [flow, setFlow] = useState<FlowSettings>(DEFAULT_FLOW);
-  const [turnSeconds, setTurnSeconds] = useState(120);
+  const [turnSeconds, setTurnSeconds] = useState(90);
   const [inventName, setInventName] = useState("");
   const [inventConcept, setInventConcept] = useState("");
   const [researchModels, setResearchModels] = useState<ResearchModel[]>([]);
@@ -109,16 +147,10 @@ export function ConfigOverlay() {
     [capacity, clickMode, role],
   );
 
-  // Entrer en phase config (globe cliquable, liseré doré, sélection initiale).
   useEffect(() => {
-    goPhase("config", {
-      pickable: [...ROSTER],
-      countries: INITIAL_SELECTED,
-      chosen: "france",
-    });
+    goPhase("config", { pickable: [...ROSTER], countries: INITIAL_SELECTED, chosen: "france" });
   }, [goPhase]);
 
-  // Garder le globe synchrone avec la composition.
   useEffect(() => {
     setStage({
       pickable: [...ROSTER],
@@ -127,7 +159,6 @@ export function ConfigOverlay() {
     });
   }, [selected, role, flag, setStage]);
 
-  // Relayer le clic-pays du globe vers la logique de composition.
   useEffect(() => {
     setHandlers({ onCountryClick: onCountry });
     return () => setHandlers({});
@@ -137,7 +168,6 @@ export function ConfigOverlay() {
     setRole(r);
     setSelected((cur) => trimForRole(cur, r, summitSize));
     if (r !== "player") setClickMode("table");
-    // GM, spectateur et ONU n'incarnent aucun pays.
     if (r === "gm" || r === "spectator" || r === "un") setFlag(null);
   };
 
@@ -159,7 +189,7 @@ export function ConfigOverlay() {
     try {
       const activeCast = castEnabled ? castModels : castModels.slice(0, 1);
       const body = buildCreateBody({
-        scenario: "red_sea",
+        scenario,
         baseMode: "classic",
         settings: flow,
         role,
@@ -189,7 +219,6 @@ export function ConfigOverlay() {
           : undefined,
       });
       const game = await createGame({ ...body, turn_seconds: turnSeconds });
-      // Plongée (voile) vers le round 1 ; la caméra continue arrive en Inc 4.
       launch(`/games/${game.id}`);
     } catch (err) {
       setError(humanizeError(err));
@@ -197,263 +226,226 @@ export function ConfigOverlay() {
     }
   };
 
+  const launchLabel = creating
+    ? "LANCEMENT…"
+    : `⟢ LANCER — ${summitSize} PAYS · ${flow.rounds} ROUNDS`;
+
   return (
-    <div className="pointer-events-none absolute bottom-3 right-3 top-3 z-20 flex w-[400px] max-w-[92vw] flex-col gap-2">
-      <div className="thk-panel thk-cut pointer-events-auto flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 text-sm">
-        <header className="flex items-center justify-between">
-          <p className="thk-block-label">Composer la partie</p>
-          <button type="button" className="thk-ghost" onClick={() => goPhase("hall")}>
-            ← le hall
-          </button>
-        </header>
+    <aside className="hall-config">
+      <h3>
+        NOUVELLE PARTIE — <b>CLASSIQUE</b>
+      </h3>
+      <p className="hall-mini" style={{ margin: "-6px 0 12px" }}>
+        Toutes les options du lobby, sur le globe — rien ne se perd.
+      </p>
 
-        {/* 1. Le siège occupé (5 rôles, dont l'ONU verrouillée → C5). */}
-        <section className="space-y-1.5">
-          <p className="thk-block-label">Ton siège</p>
-          {ROLES.map((r) => {
-            const isUn = r.value === "un";
-            const active = role === r.value;
-            return (
-              <button
-                key={r.value}
-                type="button"
-                onClick={() => pickRole(r.value as FlowRole)}
-                className="thk-cast-row w-full"
-                style={
-                  active
-                    ? { borderColor: "var(--thk-amber)", background: "rgba(255,193,77,.07)" }
-                    : isUn
-                      ? { borderColor: "rgba(91,146,229,.4)" }
-                      : undefined
-                }
-              >
-                <span
-                  aria-hidden
-                  className="grid h-6 w-6 shrink-0 place-items-center text-sm"
-                  style={isUn ? { background: "#5b92e5", borderRadius: 3 } : undefined}
-                >
-                  {r.icon}
-                </span>
-                <span className="min-w-0 text-left">
-                  <span className="block text-xs font-semibold">{r.label}</span>
-                  <span className="block truncate text-[11px] text-fg-faint">{r.desc}</span>
-                </span>
-                {active && <span className="who-tag">TOI</span>}
-              </button>
-            );
-          })}
-        </section>
-
-        {/* 2. Le sommet : taille + sélection AU CLIC SUR LE GLOBE. */}
-        <section className="space-y-2">
-          <p className="thk-block-label">
-            Le sommet — {selected.length}/{capacity} au clic sur le globe
-          </p>
-          <Segmented
-            ariaLabel="Taille du sommet"
-            value={String(summitSize)}
-            onChange={(v) => pickSize(Number(v))}
-            size="sm"
-            options={SUMMIT_SIZES.map((s) => ({
-              value: String(s),
-              label: s === 7 ? "7 ★" : String(s),
-            }))}
-          />
-          {summitSize > 7 && (
-            <p className="text-[11px] text-warn">
-              ⚠ Chaque pays de plus = une réflexion de plus par round (pool mono-GPU) : les rounds
-              seront sensiblement plus longs.
-            </p>
-          )}
-          {role === "player" && (
-            <Segmented
-              ariaLabel="Action du clic sur le globe"
-              value={clickMode}
-              onChange={setClickMode}
-              size="sm"
-              options={[
-                { value: "table", label: "✚ table" },
-                { value: "incarner", label: "🎮 incarner" },
-              ]}
-            />
-          )}
-          <div className="flex flex-wrap gap-1.5">
-            {selected.map((slug) => (
-              <span
-                key={slug}
-                className="flex items-center gap-1 border border-edge px-1.5 py-0.5 text-[11px]"
-                style={flag === slug ? { borderColor: "var(--thk-cyan)" } : undefined}
-              >
-                {speakerMeta(slug).label}
-                {flag === slug && <span aria-hidden>🎮</span>}
-                <button
-                  type="button"
-                  aria-label={`Retirer ${speakerMeta(slug).label}`}
-                  className="text-fg-faint hover:text-bad"
-                  onClick={() => onCountry(slug)}
-                >
-                  ✕
-                </button>
-              </span>
-            ))}
-            {selected.length === 0 && (
-              <span className="text-[11px] text-fg-faint">
-                Clique des pays sur le globe pour composer la table.
-              </span>
-            )}
-          </div>
-        </section>
-
-        {/* 3. La forge (rôle Créer son pays). */}
-        {role === "invent" && (
-          <section className="space-y-2">
-            <p className="thk-block-label">La forge — ton État ({capacity} + lui)</p>
-            <input
-              value={inventName}
-              onChange={(e) => setInventName(e.target.value)}
-              placeholder="Nom du pays (2 caractères min.)"
-              className="thk-input text-sm"
-            />
-            <input
-              value={inventConcept}
-              onChange={(e) => setInventConcept(e.target.value)}
-              placeholder="Concept (optionnel) : cité-État neutre, théocratie solaire…"
-              className="thk-input text-sm"
-            />
-          </section>
-        )}
-
-        {/* 4. Les réglages transversaux (parité lobby). */}
-        <section className="space-y-3">
-          <p className="thk-block-label">Réglages</p>
-          <Switch
-            label="Brouillard"
-            desc="Chaque pays perçoit sa propre version des faits — parfois fausse."
-            checked={flow.fog}
-            onChange={(v) => setFlow({ ...flow, fog: v })}
-          />
-          <Switch
-            label="Crise qui monte"
-            desc="Les rounds s'enchaînent, la tension grimpe."
-            checked={flow.escalation}
-            onChange={(v) => setFlow({ ...flow, escalation: v })}
-          />
-          <Switch
-            label="Pouls du monde"
-            desc="Des chocs et des aubaines frappent les pays au fil des rounds."
-            checked={flow.world_pulse}
-            onChange={(v) => setFlow({ ...flow, world_pulse: v })}
-          />
-          <Switch
-            label="Pensée à découvert"
-            desc="Voir les IA penser en direct — mode observation."
-            checked={flow.expose_thinking}
-            onChange={(v) => setFlow({ ...flow, expose_thinking: v })}
-          />
-          <div>
-            <p className="mb-1 text-xs text-fg-muted">Difficulté</p>
-            <Segmented
-              ariaLabel="Difficulté"
-              size="sm"
-              value={flow.difficulty}
-              onChange={(v) => setFlow({ ...flow, difficulty: v })}
-              options={[
-                { value: "beginner", label: "Débutant" },
-                { value: "intermediate", label: "Intermédiaire" },
-                { value: "expert", label: "Expert" },
-              ]}
-            />
-          </div>
-          <label className="block text-xs text-fg-muted">
-            Rounds : <span className="font-mono">{flow.rounds}</span>
-            <input
-              type="range"
-              min={3}
-              max={20}
-              value={flow.rounds}
-              onChange={(e) => setFlow({ ...flow, rounds: Number(e.target.value) })}
-              className="mt-1 w-full"
-            />
-          </label>
-          <label className="block text-xs text-fg-muted">
-            Délai du tour humain : <span className="font-mono">{turnSeconds} s</span>
-            <input
-              type="range"
-              min={30}
-              max={300}
-              step={10}
-              value={turnSeconds}
-              onChange={(e) => setTurnSeconds(Number(e.target.value))}
-              className="mt-1 w-full"
-            />
-          </label>
-          <Switch
-            label="Partie libre"
-            desc="Non classée — consignes globales et composition de table."
-            checked={flow.free}
-            onChange={(v) => setFlow({ ...flow, free: v })}
-          />
-          {flow.free && (
-            <div>
-              <p className="mb-1 text-xs text-fg-muted">Composition de la table (G17)</p>
-              <Segmented
-                ariaLabel="Composition de la table"
-                size="sm"
-                value={flow.table ?? "equilibree"}
-                onChange={(v) => setFlow({ ...flow, table: v })}
-                options={TABLES.map((tb) => ({ value: tb.value, label: tb.label }))}
-              />
-            </div>
-          )}
-        </section>
-
-        {/* 5. Le casting des modèles (multi-modèles + assignations). */}
-        {researchModels.length > 0 && (
-          <section className="space-y-2">
-            <ModelCastSelector
-              models={researchModels}
-              enabled={castEnabled}
-              selected={castModels}
-              onEnabled={setCastEnabled}
-              onSelected={setCastModels}
-              context="classic"
-            />
-            {castEnabled && castModels.length >= 1 && selected.length > 0 && (
-              <CountryModelAssignments
-                countries={selected}
-                humanCountry={role === "player" ? flag : null}
-                selectedModels={castModels}
-                assignments={completeCountryAssignments(
-                  selected,
-                  castModels,
-                  castAssignments,
-                  role === "player" ? flag : null,
-                )}
-                onAssignments={setCastAssignments}
-                compact
-              />
-            )}
-          </section>
-        )}
-
-        {error && <Banner tone="bad">{error}</Banner>}
+      {/* Rôle */}
+      <div className="cfg-block">
+        <h4>Rôle</h4>
+        <div className="chips">
+          {ROLES.map((r) => (
+            <Chip key={r.value} on={role === r.value} onClick={() => pickRole(r.value)}>
+              {r.label}
+            </Chip>
+          ))}
+        </div>
       </div>
 
-      <button
-        type="button"
-        disabled={!launchable}
-        onClick={launch_}
-        className="thk-cta thk-cut-sm pointer-events-auto flex items-center justify-center gap-2 font-semibold"
-      >
-        {creating && <Spinner />}
-        {creating
-          ? "Lancement…"
-          : `Lancer — ${summitSize} pays · ${flow.rounds} rounds${
-              role === "player" && flag ? ` · ${speakerMeta(flag).label}` : ""
-            }${role === "invent" && inventName ? ` · ${inventName}` : ""}`}
-      </button>
+      {/* Forge */}
+      {role === "invent" && (
+        <div className="cfg-block">
+          <h4>Forge — invente ton pays</h4>
+          <input
+            className="cfg-input"
+            value={inventName}
+            onChange={(e) => setInventName(e.target.value)}
+            placeholder="nom du pays (2 caractères min.)"
+          />
+          <input
+            className="cfg-input"
+            value={inventConcept}
+            onChange={(e) => setInventConcept(e.target.value)}
+            placeholder="concept (« thalassocratie neutre »…)"
+          />
+          <p className="hall-mini">Le modèle forge profil + mandat ; ton État complète le sommet.</p>
+        </div>
+      )}
 
-      {launching && <div className="intro-veil pointer-events-auto fixed inset-0 z-30 bg-background" />}
-    </div>
+      {/* Scénario */}
+      <div className="cfg-block">
+        <h4>Scénario</h4>
+        <div className="chips">
+          {SCENARIOS.map((s) => (
+            <Chip key={s.id} on={scenario === s.id} onClick={() => setScenario(s.id)}>
+              {s.label}
+            </Chip>
+          ))}
+        </div>
+      </div>
+
+      {/* Sommet */}
+      <div className="cfg-block">
+        <h4>
+          Sommet — <b>{selected.length}</b>/{capacity}{" "}
+          <span className="hall-mini">· roster : 33 pays</span>
+        </h4>
+        <p className="hall-mini" style={{ margin: "0 0 6px" }}>
+          Clique les pays <b>sur le globe</b>. 🎮 = tu l&apos;incarnes.
+        </p>
+        <div className="row2">
+          <span className="hall-mini">Taille du sommet</span>
+          <div className="chips">
+            {SUMMIT_SIZES.map((s) => (
+              <Chip key={s} on={summitSize === s} onClick={() => pickSize(s)}>
+                {s}
+              </Chip>
+            ))}
+          </div>
+        </div>
+        {role === "player" && (
+          <div className="row2">
+            <span className="hall-mini">Clic sur le globe</span>
+            <div className="chips">
+              <Chip on={clickMode === "table"} onClick={() => setClickMode("table")}>
+                ✚ table
+              </Chip>
+              <Chip on={clickMode === "incarner"} onClick={() => setClickMode("incarner")}>
+                🎮 incarner
+              </Chip>
+            </div>
+          </div>
+        )}
+        <div className="chips" style={{ marginTop: 8 }}>
+          {selected.map((slug) => (
+            <span
+              key={slug}
+              className="chip on"
+              style={flag === slug ? { borderColor: "var(--amber)", color: "var(--amber)" } : undefined}
+            >
+              {speakerMeta(slug).label}
+              {flag === slug && " 🎮"}
+            </span>
+          ))}
+          {selected.length === 0 && <span className="hall-mini">Clique des pays sur le globe.</span>}
+        </div>
+      </div>
+
+      {/* Modèles d'IA */}
+      {researchModels.length > 0 && (
+        <div className="cfg-block">
+          <h4>Modèles d&apos;IA</h4>
+          <ModelCastSelector
+            models={researchModels}
+            enabled={castEnabled}
+            selected={castModels}
+            onEnabled={setCastEnabled}
+            onSelected={setCastModels}
+            context="classic"
+          />
+          {castEnabled && castModels.length >= 1 && selected.length > 0 && (
+            <CountryModelAssignments
+              countries={selected}
+              humanCountry={role === "player" ? flag : null}
+              selectedModels={castModels}
+              assignments={completeCountryAssignments(
+                selected,
+                castModels,
+                castAssignments,
+                role === "player" ? flag : null,
+              )}
+              onAssignments={setCastAssignments}
+              compact
+            />
+          )}
+        </div>
+      )}
+
+      {/* Réglages */}
+      <div className="cfg-block">
+        <h4>Réglages</h4>
+        <Ctl on={flow.fog} onClick={() => setFlow({ ...flow, fog: !flow.fog })}>
+          Brouillard de guerre
+        </Ctl>
+        <Ctl on={flow.escalation} onClick={() => setFlow({ ...flow, escalation: !flow.escalation })}>
+          Réel / escalade
+        </Ctl>
+        <Ctl on={flow.world_pulse} onClick={() => setFlow({ ...flow, world_pulse: !flow.world_pulse })}>
+          Pouls du monde
+        </Ctl>
+        <Ctl
+          on={flow.expose_thinking}
+          onClick={() => setFlow({ ...flow, expose_thinking: !flow.expose_thinking })}
+        >
+          Pensée à découvert
+        </Ctl>
+        <div className="row2">
+          <span className="hall-mini">Difficulté</span>
+          <div className="chips">
+            {DIFFS.map((d) => (
+              <Chip key={d.id} on={flow.difficulty === d.id} onClick={() => setFlow({ ...flow, difficulty: d.id })}>
+                {d.label}
+              </Chip>
+            ))}
+          </div>
+        </div>
+        <div className="row2">
+          <span className="hall-mini">
+            Rounds : <b>{flow.rounds}</b>
+          </span>
+          <input
+            type="range"
+            min={3}
+            max={20}
+            value={flow.rounds}
+            onChange={(e) => setFlow({ ...flow, rounds: Number(e.target.value) })}
+          />
+        </div>
+        <div className="row2">
+          <span className="hall-mini">
+            Tour humain : <b>{turnSeconds}</b> s
+          </span>
+          <input
+            type="range"
+            min={30}
+            max={300}
+            step={30}
+            value={turnSeconds}
+            onChange={(e) => setTurnSeconds(Number(e.target.value))}
+          />
+        </div>
+        <Ctl on={flow.free} onClick={() => setFlow({ ...flow, free: !flow.free })}>
+          Partie libre
+        </Ctl>
+        {flow.free && (
+          <div className="row2">
+            <span className="hall-mini">Table</span>
+            <div className="chips">
+              {TABLES.map((tb) => (
+                <Chip
+                  key={tb.id}
+                  on={(flow.table ?? "equilibree") === tb.id}
+                  onClick={() => setFlow({ ...flow, table: tb.id })}
+                >
+                  {tb.label}
+                </Chip>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {error && (
+        <p className="hall-mini" style={{ color: "var(--bad, #f87171)" }}>
+          {error}
+        </p>
+      )}
+
+      <button type="button" className="cta" disabled={!launchable} onClick={launch_}>
+        {launchLabel}
+      </button>
+      <button type="button" className="back" onClick={() => goPhase("hall")}>
+        ← revenir aux modes
+      </button>
+    </aside>
   );
 }
