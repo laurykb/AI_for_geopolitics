@@ -124,6 +124,7 @@ describe("buildCreateBody", () => {
   const settings = {
     fog: false,
     escalation: false,
+    world_pulse: false,
     rounds: 8,
     difficulty: "expert" as const,
     free: false,

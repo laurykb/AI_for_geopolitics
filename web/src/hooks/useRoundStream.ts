@@ -19,6 +19,7 @@ import type {
   OrgReport,
   Perception,
   PlayRoundBody,
+  PulseEvent,
   PowerSeekingScore,
   PromiseView,
   RiskScore,
@@ -79,6 +80,7 @@ export type LiveRound = {
   risk?: RiskScore;
   trajectory?: TrajectoryState;
   org?: OrgReport; // S14 — dernier rapport public de l'ONU (conformité + avis borné)
+  pulses?: PulseEvent[]; // S15 — les dépêches du Pouls du monde tombées CE round
   roundNo?: number;
   error?: string;
   // R4 / G9 §2 — motion de suspension : les cartes de vote tombent une à une,
@@ -277,6 +279,8 @@ function reduceSse(state: LiveRound, e: SseEvent): LiveRound {
       return { ...state, trajectory: e.state };
     case "org":
       return { ...state, org: e.report };
+    case "pulse":
+      return { ...state, pulses: e.events };
     case "summary":
       return state;
     case "done":

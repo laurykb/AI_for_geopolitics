@@ -56,6 +56,9 @@ class CreateGameRequest(BaseModel):
     # partie classique (le Fog Engine et l'échelle d'escalade, jadis des modes).
     fog: bool = False
     escalation: bool = False
+    # S15 — le Pouls du monde (dépêches autonomes qui frappent les stats des pays joués) :
+    # réglage composable, même patron que fog/escalation. Opt-in (False par défaut).
+    world_pulse: bool = False
     language: Literal["fr", "en"] = "fr"  # G14 §1 — langue des dialogues, figée à la création
     # G17 — composition de la table (partie LIBRE seulement ; classée = équilibrée forcée).
     table: Literal["equilibree", "colombes", "faucons", "aleatoire"] = "equilibree"

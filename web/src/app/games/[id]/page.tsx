@@ -14,6 +14,7 @@ import { type CountrySnapshot } from "@/components/country-table";
 import { DriftCouncilBanner, DriftRevealPanel } from "@/components/drift";
 import { IntelBudget, IntelPanel } from "@/components/intel";
 import { OrgPanel } from "@/components/org-panel";
+import { PulsePanel } from "@/components/pulse-panel";
 import { ObservablesGrid } from "@/components/theatre/observables-grid";
 import { StageBand, type StageSelection } from "@/components/stage-band";
 import { AlliancePills } from "@/components/alliance-pills";
@@ -1337,6 +1338,8 @@ export default function TheatrePage() {
           <div className="space-y-3">
             {/* S14 — le rapport de veille de l'ONU (si une ONU siège à la table). */}
             {round.org && <OrgPanel report={round.org} />}
+            {/* S15 — les dépêches du Pouls du monde tombées ce round. */}
+            {round.pulses && round.pulses.length > 0 && <PulsePanel events={round.pulses} />}
             {detail?.live && detail.status === "running" ? (
               /* S8 — le conseil quitte son panneau : le bureau vit dans le théâtre
                  (spec §4), et chaque achat ciblé envoie le satellite balayer. */

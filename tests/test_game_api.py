@@ -59,6 +59,15 @@ def test_un_role_activates_org_agent(client):
     assert game_api._sessions[plain["id"]].org_agent is None
 
 
+def test_world_pulse_flag_sets_session(client):
+    """S15 — le réglage Pouls du monde active les dépêches autonomes (opt-in)."""
+    game = _create(client, countries=["usa", "iran"], world_pulse=True)
+    assert game_api._sessions[game["id"]].world_pulse is True
+    # Défaut : pas de Pouls (round strictement historique).
+    plain = _create(client, countries=["usa", "iran"])
+    assert game_api._sessions[plain["id"]].world_pulse is False
+
+
 # --- création de partie ------------------------------------------------------
 
 

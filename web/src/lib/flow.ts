@@ -92,6 +92,7 @@ export function backendRole(role: FlowRole): GameRole {
 export type FlowSettings = {
   fog: boolean; // RG-2 — réglage Brouillard (off par défaut)
   escalation: boolean; // RG-2 — réglage Réel/escalade (off par défaut)
+  world_pulse: boolean; // S15 — le Pouls du monde (dépêches autonomes), on par défaut
   rounds: number; // curseur 3-20 → horizon
   difficulty: Difficulty;
   free: boolean; // partie libre : off par défaut (on = consignes globales + composition de table)
@@ -107,6 +108,7 @@ export const ROUNDS_MAX = 20;
 export const DEFAULT_SETTINGS: FlowSettings = {
   fog: false,
   escalation: false,
+  world_pulse: true, // S15 — le monde respire par défaut (dépêches bornées, déterministes)
   rounds: 5,
   difficulty: "intermediate",
   free: false,
@@ -206,6 +208,7 @@ export function buildCreateBody(args: {
     mode: baseMode,
     fog: settings.fog,
     escalation: settings.escalation,
+    world_pulse: settings.world_pulse,
     role: backendRole(role),
     difficulty: settings.difficulty,
     free: settings.free,

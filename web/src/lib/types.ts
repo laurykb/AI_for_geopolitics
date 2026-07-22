@@ -591,6 +591,7 @@ export type CreateGameBody = {
   mode?: GameMode;
   fog?: boolean; // RG-2 — réglage Brouillard cochable
   escalation?: boolean; // RG-2 — réglage Réel/escalade cochable
+  world_pulse?: boolean; // S15 — le Pouls du monde (dépêches autonomes) cochable
   play_as?: string; // id existant, ou NOM du pays inventé (l'API résout le slug)
   invent?: {
     name: string;
@@ -670,6 +671,17 @@ export type CustomCrisisView = {
 };
 
 /** Événements SSE du round (un par `RoundStep`, plus `done`). */
+/** S15 — une dépêche du Pouls du monde (choc/aubaine qui bouge une stat d'un pays joué). */
+export type PulseEvent = {
+  round_id: number;
+  country: string;
+  key: string;
+  label: string;
+  stat: string;
+  delta: number;
+  boon: boolean;
+};
+
 /** S14 — le rapport public de l'ONU pour un round (trame SSE `org`, additive). */
 export type OrgCompliance = { country: string; status: string; note: string };
 export type OrgAdvisory = { severity_delta: number; tension_delta: number; rationale: string };
@@ -716,6 +728,7 @@ export type SseEvent =
   | { type: "risk"; risk: RiskScore }
   | { type: "trajectory"; state: TrajectoryState }
   | { type: "org"; report: OrgReport }
+  | { type: "pulse"; events: PulseEvent[] }
   | { type: "summary"; summary: { round_id: number; headline?: string } }
   | { type: "done"; round_no: number }
   | { type: "error"; detail: string }

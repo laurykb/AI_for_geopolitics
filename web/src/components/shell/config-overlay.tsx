@@ -339,6 +339,12 @@ export function ConfigOverlay() {
             onChange={(v) => setFlow({ ...flow, escalation: v })}
           />
           <Switch
+            label="Pouls du monde"
+            desc="Des chocs et des aubaines frappent les pays au fil des rounds."
+            checked={flow.world_pulse}
+            onChange={(v) => setFlow({ ...flow, world_pulse: v })}
+          />
+          <Switch
             label="Pensée à découvert"
             desc="Voir les IA penser en direct — mode observation."
             checked={flow.expose_thinking}

@@ -27,6 +27,7 @@ import os
 import re
 import threading
 import time
+import zlib
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
@@ -135,6 +136,7 @@ from simulation.live_round import (
     OrgStep,
     PrivatePlanDoneStep,
     PrivateTokenStep,
+    PulseStep,
     RiskStep,
     RoundStep,
     SummaryStep,
@@ -310,6 +312,8 @@ class GameSession:
     # S14 — l'ONU (opt-in via le rôle `un`) : agent de veille + cible d'audit du pupitre.
     org_agent: OrgAgent | None = None
     org_audit: str | None = None
+    # S15 — le Pouls du monde (opt-in) : dépêches autonomes qui frappent les stats jouées.
+    world_pulse: bool = False
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -1574,6 +1578,9 @@ def _start_round(
         # S14 — l'ONU (opt-in) : veille de conformité + avis borné, et cible d'audit.
         org_agent=session.org_agent,
         org_audit=session.org_audit,
+        # S15 — le Pouls du monde (opt-in) : seed stable par partie (dérivé du drift_seed) ;
+        # roll_pulses varie par round_id. Le pays forgé n'est pas exclu (v1).
+        pulse_seed=(zlib.crc32(session.drift_seed.encode()) if session.world_pulse else None),
     )
     return run
 
@@ -1714,6 +1721,9 @@ def _handle_step(run: RoundRun, step: RoundStep) -> list[str]:
         # S14 — le rapport ONU est persisté (relu par le front/replay) ; l'effet de l'avis
         # (borné ±0,05) est déjà appliqué à l'escalade dans le moteur, en amont.
         run.record.judge["org"] = payload["report"]
+    if isinstance(step, PulseStep):
+        # S15 — les dépêches du Pouls du monde sont persistées (relues par le front/replay).
+        run.record.judge.setdefault("pulses", []).extend(payload["events"])
     if isinstance(step, EventStep):
         run.current_event = step.event
         run.record.event = payload["event"]
@@ -2758,6 +2768,7 @@ def create_game(
         ),
         # S14 — l'ONU rejoint la table quand le joueur prend le siège ONU (rôle `un`).
         org_agent=OrgAgent(backend) if role == "un" else None,
+        world_pulse=body.world_pulse,  # S15 — dépêches autonomes du Pouls du monde
     )
     _sessions[game.id] = session
     # G9 §4 — valeurs de départ des indices : la fenêtre de tendance (momentum,
