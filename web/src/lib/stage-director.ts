@@ -42,8 +42,14 @@ export function phaseDefaults(phase: Phase): StageIntent {
     case "hall":
       return { ...base, countries: DEFAULT_COUNTRIES, autoRotate: true };
     case "config":
-      // La composition : liseré doré uniforme (la partie n'a pas commencé).
-      return { ...base, countries: DEFAULT_COUNTRIES, lisere: "#ffc14d" };
+      // La composition : liseré doré uniforme (la partie n'a pas commencé). La caméra
+      // glisse cadrer la région du sommet (full immersion, menu→config du proto).
+      return {
+        ...base,
+        countries: DEFAULT_COUNTRIES,
+        lisere: "#ffc14d",
+        flyTo: { lon: 38, lat: 24, dist: 3.1, dur: 1.2, key: "config" },
+      };
     case "theatre":
       // Le théâtre repeint tout via setStage à chaque tick SSE ; base minimale.
       return { ...base, countries: [] };

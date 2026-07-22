@@ -17,6 +17,12 @@ describe("stage-director", () => {
     expect(phaseDefaults("hall").lisere).toBeUndefined();
   });
 
+  it("phaseDefaults(config) cadre la caméra (fly-to), pas le hall", () => {
+    // Full immersion : entrer en config glisse la caméra sur la région du sommet.
+    expect(phaseDefaults("config").flyTo).toMatchObject({ lon: 38, lat: 24, dist: 3.1 });
+    expect(phaseDefaults("hall").flyTo).toBeUndefined();
+  });
+
   it("goPhase config bascule la phase et applique ses défauts", () => {
     const s = directorReducer(INITIAL_DIRECTOR, { type: "goPhase", phase: "config" });
     expect(s.phase).toBe("config");

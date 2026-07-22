@@ -35,6 +35,7 @@ import {
   JUDGE_VIEW,
   SPEAKER_VIEW,
   camPosition,
+  clampDist,
   clampLat,
   flyTowards,
   stepFly,
@@ -148,6 +149,10 @@ export type GlobeStageProps = {
   /** Rotation lente d'attente (avant-jeu) : le monde tourne seul derrière la connexion
    * et le hall (full immersion, proto §3) — coupée dès qu'on drague ou qu'un vol se joue. */
   autoRotate?: boolean;
+  /** Intention de vol caméra déclarative (full immersion, chorégraphie hall→config) :
+   * un nouveau `key` déclenche un fly-to vers (lon,lat,dist) sur `dur` s. L'hôte
+   * (StageDirector) la pousse par phase ; la scène joue le vol dans sa boucle. */
+  flyTo?: { lon: number; lat: number; dist: number; dur?: number; key: string | number };
   /** WebGL indisponible : l'hôte peut retomber sur la StageMap 2D (S3). */
   onUnsupported?: () => void;
   className?: string;
@@ -172,6 +177,7 @@ function loadFeatures50m(): Promise<GlobeFeature[]> {
 type GlobeHandle = {
   refresh: () => void;
   flyToCountry: (slug: string) => void;
+  flyTo: (lon: number, lat: number, dist: number, dur?: number) => void;
   setEvent: () => void;
   setArc: () => void;
   verdict: () => void;
@@ -571,6 +577,17 @@ export function GlobeStage(props: GlobeStageProps) {
       fly = flyTowards(cam, target, 1.15);
     };
 
+    // Vol caméra déclaratif poussé par une intention de phase (hall→config…) : cadre
+    // une région (lon,lat,dist) en douceur. Ignoré en mode carte (2D) ou pendant un drag.
+    const flyTo = (lon: number, lat: number, dist: number, dur = 1.2) => {
+      if (dragging || morphTarget === 1) return;
+      if (reduced) {
+        cam = { lon, lat: clampLat(lat), dist: clampDist(dist) };
+        return;
+      }
+      fly = flyTowards(cam, { lon, lat, dist }, dur);
+    };
+
     // L'événement du GM : anneaux au lieu de crise, drone qui descend
     // l'annoncer, caméra en plan large. Ré-annonce SEULEMENT si le lieu change
     // (le titre ou la pulsation peuvent bouger sans re-descendre le drone).
@@ -741,6 +758,7 @@ export function GlobeStage(props: GlobeStageProps) {
       handleRef.current = {
         refresh,
         flyToCountry,
+        flyTo,
         setEvent,
         setArc,
         verdict,
@@ -1200,6 +1218,14 @@ export function GlobeStage(props: GlobeStageProps) {
   useEffect(() => {
     handleRef.current?.setScan();
   }, [scanKey]);
+
+  // Chorégraphie caméra (full immersion) : chaque nouvelle intention `flyTo` (poussée par
+  // le StageDirector au changement de phase) déclenche un vol vers la région cadrée.
+  const flyToKey = props.flyTo?.key ?? null;
+  useEffect(() => {
+    const f = propsRef.current.flyTo;
+    if (f) handleRef.current?.flyTo(f.lon, f.lat, f.dist, f.dur);
+  }, [flyToKey]);
 
   return (
     <div
