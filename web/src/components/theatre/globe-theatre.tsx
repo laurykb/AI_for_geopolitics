@@ -151,7 +151,7 @@ export function GlobeTheatre({
             followSpeaker={follow}
             onUserDrag={() => setFollow(false)}
             onUnsupported={() => setWebglOk(false)}
-            className="absolute inset-0"
+            className="h-full w-full"
           />
         ) : (
           // Repli sans WebGL / palier léger : la même scène, servie en SVG.
