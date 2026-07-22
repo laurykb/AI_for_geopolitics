@@ -4,6 +4,8 @@ import "./globals.css";
 import { AuthGate } from "@/components/auth-gate";
 import { AuthProvider } from "@/components/auth-provider";
 import { SettingsProvider } from "@/components/settings-provider";
+import { StageProvider } from "@/components/shell/stage-provider";
+import { StageShell } from "@/components/shell/stage-shell";
 import { SiteHeader } from "@/components/site-header";
 import { TourProvider } from "@/components/tour";
 
@@ -33,7 +35,11 @@ export default function RootLayout({
         <div className="thk-scanlines" aria-hidden="true" />
         <AuthProvider>
           <SettingsProvider>
+          <StageProvider>
           <TourProvider>
+            {/* La scène persistante de la coquille : le globe monté une fois,
+                derrière tout le chrome (masqué sur /r/* et /games/*). */}
+            <StageShell />
             <a
               href="#contenu"
               className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:z-50 focus:rounded-md focus:bg-surface-2 focus:px-3 focus:py-2 focus:text-sm"
@@ -50,6 +56,7 @@ export default function RootLayout({
               </p>
             </footer>
           </TourProvider>
+          </StageProvider>
           </SettingsProvider>
         </AuthProvider>
       </body>
