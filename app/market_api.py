@@ -12,7 +12,7 @@ Le moteur est injecté via `get_engine` (singleton process, SQLite `:memory:` pa
 from __future__ import annotations
 
 import os
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -73,6 +73,14 @@ class OutcomeView(BaseModel):
     price: float  # probabilité implicite courante (LMSR)
 
 
+class MarketTargetView(BaseModel):
+    """Ancre visuelle du marché sur le globe (pile de billets) : capitale d'un pays,
+    lieu de l'événement, ou centre du sommet. `slug` = pays (type country), None sinon."""
+
+    type: Literal["country", "event", "summit"]
+    slug: str | None = None
+
+
 class MarketView(BaseModel):
     id: str
     round_id: int
@@ -84,6 +92,7 @@ class MarketView(BaseModel):
     resolved_outcome: str | None
     outcomes: list[OutcomeView]
     volume: float  # somme des |parts| échangées
+    target: MarketTargetView | None = None  # ancre on-globe (criterion.params.ui_target)
 
 
 class OpenMarketRequest(BaseModel):
@@ -155,6 +164,15 @@ def _market_view(engine: MarketEngine, market: Market) -> MarketView:
             if callable(aggregate)
             else sum(abs(t.shares) for t in engine.store.list_trades(market_id=market.id))
         )
+    # Ancre on-globe portée par le critère (params.ui_target) — additif, rétro-compatible :
+    # un marché sans ui_target (flash, marchés hérités) rend simplement target=None.
+    target: MarketTargetView | None = None
+    crit = market.criterion
+    if crit is not None and isinstance(crit.params, dict) and crit.params.get("ui_target"):
+        try:
+            target = MarketTargetView.model_validate(crit.params["ui_target"])
+        except Exception:  # noqa: BLE001 — ancre malformée = pas d'ancre
+            target = None
     return MarketView(
         id=market.id,
         round_id=market.round_id,
@@ -168,6 +186,7 @@ def _market_view(engine: MarketEngine, market: Market) -> MarketView:
             OutcomeView(id=o.id, label=o.label, q=o.q, price=prices[o.id]) for o in market.outcomes
         ],
         volume=volume,
+        target=target,
     )
 
 
@@ -184,16 +203,17 @@ def _summary_from_decisions(round_id: int, decisions: list[DecisionInput]) -> Ro
     """RoundSummary minimal pour les mappers de résolution (seules les décisions comptent)."""
     return RoundSummary(
         round_id=round_id,
-        event=GeoEvent(
-            id=f"r{round_id}", round_id=round_id, event_type="resolve", title="resolve"
-        ),
+        event=GeoEvent(id=f"r{round_id}", round_id=round_id, event_type="resolve", title="resolve"),
         decisions=[
             AgentDecision(country=d.country, round_id=round_id, action=d.action, target=d.target)
             for d in decisions
         ],
         risk=RiskScore(
-            round_id=round_id, escalation=0.0, economic_disruption=0.0,
-            alliance_fracture=0.0, uncertainty=0.0,
+            round_id=round_id,
+            escalation=0.0,
+            economic_disruption=0.0,
+            alliance_fracture=0.0,
+            uncertainty=0.0,
         ),
     )
 
@@ -234,9 +254,7 @@ def open_market(
 
 
 @router.get("/markets/{market_id}", response_model=MarketView)
-def get_market(
-    market_id: str, engine: Annotated[MarketEngine, Depends(get_engine)]
-) -> MarketView:
+def get_market(market_id: str, engine: Annotated[MarketEngine, Depends(get_engine)]) -> MarketView:
     market = engine.store.get_market(market_id)
     if market is None:
         raise HTTPException(status_code=404, detail=f"marché inconnu : {market_id}")
@@ -286,9 +304,7 @@ def get_account(
 
 
 @router.post("/bet", response_model=Trade)
-def place_bet(
-    body: BetRequest, engine: Annotated[MarketEngine, Depends(get_engine)]
-) -> Trade:
+def place_bet(body: BetRequest, engine: Annotated[MarketEngine, Depends(get_engine)]) -> Trade:
     """Exécute un pari au prix LMSR, débite le compte."""
     try:
         return engine.place_bet(body.account_id, body.market_id, body.outcome_id, body.shares)
@@ -322,8 +338,11 @@ def resolve_round(
             try:
                 results.append(
                     resolve_and_settle(
-                        engine.store, market, summary,
-                        delta_utopia=body.delta_utopia, council_winner=body.council_winner,
+                        engine.store,
+                        market,
+                        summary,
+                        delta_utopia=body.delta_utopia,
+                        council_winner=body.council_winner,
                     )
                 )
             except ResolutionError as exc:

@@ -76,6 +76,7 @@ from market.engine import MarketEngine
 from market.forecaster import LLMForecaster
 from market.models import (
     AccountKind,
+    Market,
     MarketStatus,
     ResolutionCriterion,
     ResolutionKind,
@@ -3605,6 +3606,12 @@ def publish_game(
 GAME_MARKET_QUESTION = "Le monde finira-t-il côté utopie (indice > 0,5) ?"
 GAME_MARKET_B = 100.0
 
+# Marchés thématiques de la partie (parité proto_9) — ouverts avec le marché utopie.
+CRISIS_HORIZON_ROUNDS = 3
+BETRAYAL_HORIZON_ROUNDS = 5
+BETRAYAL_MARKET_QUESTION = "Une trahison sera-t-elle démasquée d'ici le round {r} ?"
+CRISIS_MARKET_QUESTION = "{country} retrouvera-t-il une trajectoire positive d'ici le round {r} ?"
+
 
 class BotTradeView(BaseModel):
     outcome_id: str
@@ -3644,19 +3651,89 @@ def _game_world(game_id: str, store: GameStore) -> WorldState | None:
         return None
 
 
-@router.post("/games/{game_id}/market/bot", response_model=BotRunView)
+def _ensure_game_markets(
+    game: GameRecord, engine: MarketEngine, world: WorldState, event: GeoEvent | None
+) -> tuple[list[Market], bool]:
+    """Ouvre (une seule fois) les marchés de la partie et les rend (parité proto_9) :
+    - utopie finale (toujours) — résolue par la trajectoire (ΔU) ;
+    - « une trahison sera-t-elle démasquée ? » (si la Dérive est armée) — ancrée au
+      CENTRE du sommet, JAMAIS la capitale du traître (spoiler-safe : la pile de billets
+      ne doit pas trahir l'identité du déviant) ;
+    - « {acteur} retrouvera-t-il une trajectoire positive ? » (acteur du 1er événement).
+
+    Idempotent : les 3 marchés partagent le round_id STABLE de la partie (int(id[:7],16)),
+    ce qui les distingue des marchés éclair éphémères (round_id = numéro de round)."""
+    round_id = int(game.id[:7], 16)
+    with engine.lock:
+        existing = engine.store.list_markets(game_id=game.id, round_id=round_id)
+        if existing:
+            return existing, False
+        crisis_r = min(CRISIS_HORIZON_ROUNDS, game.horizon)
+        betrayal_r = min(BETRAYAL_HORIZON_ROUNDS, game.horizon)
+        actor = (event.actors[0] if event and event.actors else None) or next(
+            iter(sorted(world.countries)), None
+        )
+        markets: list[Market] = [
+            engine.open_binary_market(
+                round_id=round_id,
+                game_id=game.id,
+                question=f"{GAME_MARKET_QUESTION} — partie {game.id}",
+                b=GAME_MARKET_B,
+                criterion=ResolutionCriterion(
+                    kind=ResolutionKind.TRAJECTORY, params={"ui_target": {"type": "event"}}
+                ),
+            )
+        ]
+        if game.drift_enabled:
+            markets.append(
+                engine.open_binary_market(
+                    round_id=round_id,
+                    game_id=game.id,
+                    question=BETRAYAL_MARKET_QUESTION.format(r=betrayal_r),
+                    b=GAME_MARKET_B,
+                    criterion=ResolutionCriterion(
+                        kind=ResolutionKind.PREDICATE,
+                        predicate="deviant_caught",
+                        params={"before_round": betrayal_r, "ui_target": {"type": "summit"}},
+                    ),
+                )
+            )
+        if actor:
+            label = world.countries[actor].name if actor in world.countries else actor
+            markets.append(
+                engine.open_binary_market(
+                    round_id=round_id,
+                    game_id=game.id,
+                    question=CRISIS_MARKET_QUESTION.format(country=label, r=crisis_r),
+                    b=GAME_MARKET_B,
+                    criterion=ResolutionCriterion(
+                        kind=ResolutionKind.PREDICATE,
+                        predicate="country_delta_positive",
+                        params={
+                            "x": actor,
+                            "round": crisis_r,
+                            "ui_target": {"type": "country", "slug": actor},
+                        },
+                    ),
+                )
+            )
+        return markets, True
+
+
+@router.post("/games/{game_id}/market/bot", response_model=list[BotRunView])
 def run_market_bot(
     game_id: str,
     store: Annotated[GameStore, Depends(get_store)],
     backend: Annotated[InferenceBackend, Depends(get_backend)],
     engine: Annotated[MarketEngine, Depends(get_market_engine)],
-) -> BotRunView:
-    """Fait coter le marché de la partie par le bot forecaster (après chaque round).
+) -> list[BotRunView]:
+    """Fait coter les marchés de la partie par le bot forecaster (après chaque round).
 
-    Ouvre le marché « utopie finale » de la partie s'il n'existe pas encore (lien
-    `markets.game_id`), prévoit avec le monde + le dernier événement en contexte,
-    et parie sur son avantage. Séquentiel par design (VRAM 8 Go) ; argent fictif."""
-    if store.get_game(game_id) is None:
+    Ouvre à la première fois les marchés de la partie (utopie + trahison si la Dérive
+    est armée + trajectoire d'un acteur), prévoit avec le monde + le dernier événement,
+    et parie son avantage sur CHAQUE marché ouvert. Séquentiel (VRAM 8 Go) ; argent fictif."""
+    game = store.get_game(game_id)
+    if game is None:
         raise HTTPException(status_code=404, detail=f"partie inconnue : {game_id}")
     world = _game_world(game_id, store)
     if world is None:
@@ -3664,57 +3741,47 @@ def run_market_bot(
             status_code=409, detail="monde introuvable (ni session ni snapshot) — relecture seule"
         )
 
-    with engine.lock:
-        open_markets = engine.store.list_markets(game_id=game_id, status=MarketStatus.OPEN)
-        opened = False
-        if open_markets:
-            market = open_markets[0]
-        else:
-            if engine.store.list_markets(game_id=game_id):
-                raise HTTPException(
-                    status_code=409, detail="le marché de la partie est déjà résolu"
-                )
-            market = engine.open_binary_market(
-                # round_id : même dérivation que le front (compat résolution par round).
-                round_id=int(game_id[:7], 16),
-                game_id=game_id,
-                question=f"{GAME_MARKET_QUESTION} — partie {game_id}",
-                b=GAME_MARKET_B,
-                criterion=ResolutionCriterion(kind=ResolutionKind.TRAJECTORY),
-            )
-            opened = True
-
     rounds = store.list_rounds(game_id)
     event = _last_event(rounds)
+    markets, opened = _ensure_game_markets(game, engine, world, event)
 
     forecaster = LLMForecaster(backend)
     account_id = _bot_account_id(forecaster.model_tag)
     with engine.lock:
         if engine.store.get_account(account_id) is None:
             engine.create_account(forecaster.model_tag, kind=AccountKind.BOT, account_id=account_id)
-    probs, trade = forecaster.quote_and_bet(engine, account_id, market, world, event)
 
-    prices = engine.prices(market.id)
-    labels = {o.id: o.label for o in market.outcomes}
-    return BotRunView(
-        market_id=market.id,
-        account_id=account_id,
-        model=forecaster.model_tag,
-        opened=opened,
-        probabilities={o.label: probs[i] for i, o in enumerate(market.outcomes)},
-        trade=(
-            BotTradeView(
-                outcome_id=trade.outcome_id,
-                label=labels.get(trade.outcome_id, "?"),
-                shares=trade.shares,
-                cost=trade.cost,
-                price=trade.price,
+    runs: list[BotRunView] = []
+    for m in markets:
+        with engine.lock:
+            market = engine.store.get_market(m.id) or m
+        if market.status is not MarketStatus.OPEN:
+            continue  # un marché déjà résolu (horizon passé) n'est plus coté
+        probs, trade = forecaster.quote_and_bet(engine, account_id, market, world, event)
+        prices = engine.prices(market.id)
+        labels = {o.id: o.label for o in market.outcomes}
+        runs.append(
+            BotRunView(
+                market_id=market.id,
+                account_id=account_id,
+                model=forecaster.model_tag,
+                opened=opened,
+                probabilities={o.label: probs[i] for i, o in enumerate(market.outcomes)},
+                trade=(
+                    BotTradeView(
+                        outcome_id=trade.outcome_id,
+                        label=labels.get(trade.outcome_id, "?"),
+                        shares=trade.shares,
+                        cost=trade.cost,
+                        price=trade.price,
+                    )
+                    if trade is not None
+                    else None
+                ),
+                prices={labels[oid]: price for oid, price in prices.items()},
             )
-            if trade is not None
-            else None
-        ),
-        prices={labels[oid]: price for oid, price in prices.items()},
-    )
+        )
+    return runs
 
 
 # --- marchés vivants (G12 §1) : « le LLM habille, le code résout » -----------------
@@ -3785,6 +3852,14 @@ def _market_context(
     # déjà réglé « caduque » par _finalize_game quand la partie est finie).
     world = session.world if session is not None else _game_world(game.id, store)
     promise_status = {p.id: p.status for p in world.promises} if world is not None else {}
+    # Marché « trahison démasquée » : le vrai crédit de détection (motion humaine retenue
+    # contre un traître). Rejoue les rounds persistés — pur, borné, aucune inférence.
+    deviant_caught = False
+    if game.drift_enabled:
+        try:
+            deviant_caught = compute_drift_reveal(game.id, store).caught_count > 0
+        except Exception:  # noqa: BLE001 — le marché reste OPEN si le reveal échoue
+            pass
     return MarketContext(
         current_round=(session.world.current_round if session else len(rounds)),
         motion_verdicts=verdicts,
@@ -3794,6 +3869,7 @@ def _market_context(
         suspended=suspended,
         game_over=game.status is GameStatus.FINISHED,
         promises=promise_status,
+        deviant_caught=deviant_caught,
     )
 
 
