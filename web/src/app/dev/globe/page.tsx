@@ -40,6 +40,7 @@ export default function GlobeDevPage() {
   const [view, setView] = useState<"3d" | "2d">("3d");
   const [laury, setLaury] = useState(false);
   const [onu, setOnu] = useState(false);
+  const [lab, setLab] = useState(false);
 
   const current = speakerIdx >= 0 ? SUMMIT[speakerIdx % SUMMIT.length] : null;
   const speaking = phase === "speaking" ? current : null;
@@ -75,6 +76,8 @@ export default function GlobeDevPage() {
         mascotTarget={laury && eventOn ? [ORMUZ.lon, ORMUZ.lat] : null}
         orgSeat={onu}
         orgActive={onu}
+        labArena={lab ? { tag: "🧪 Tournoi dyadique — manche 3/10 · deepseek-r1:7b vs qwen3:4b" } : null}
+        flyTo={lab ? { lon: 6.15, lat: 38, dist: 2.3, dur: 1.2, key: "lab" } : undefined}
         className="h-full w-full"
       />
       <div className="absolute bottom-4 left-4 z-10 flex max-w-[92%] flex-wrap items-center gap-2 rounded-lg border border-edge bg-surface/85 px-3 py-2 text-xs text-foreground backdrop-blur">
@@ -126,6 +129,9 @@ export default function GlobeDevPage() {
         </button>
         <button type="button" className={chip} data-on={onu} onClick={() => setOnu((v) => !v)}>
           🕊 ONU
+        </button>
+        <button type="button" className={chip} data-on={lab} onClick={() => setLab((v) => !v)}>
+          🧪 Labo
         </button>
         <button
           type="button"

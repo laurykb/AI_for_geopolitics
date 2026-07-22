@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 
 import { SpeakerAvatar } from "@/components/avatar";
@@ -12,6 +13,12 @@ import type {
   LiveActorTrace,
   StrategicTurn,
 } from "@/lib/types";
+
+// La scène-globe (duel SUR le terrain neutre de Genève) — chargée client-only.
+const GlobeStage = dynamic(
+  () => import("@/components/globe/globe-stage").then((m) => m.GlobeStage),
+  { ssr: false },
+);
 
 type StageProps = {
   protocol: ExperimentProtocol;
@@ -38,6 +45,8 @@ export function ExperimentStage({
   liveTraces = [],
 }: StageProps) {
   const actors = countries.length >= 2 ? countries.slice(0, 2) : ["usa", "china"];
+  const modelA = modelAssignments[actors[0]!] || sample?.model_id || "α";
+  const modelB = modelAssignments[actors[1]!] || sample?.opponent_model_id || "β";
   const [selectedRound, setSelectedRound] = useState(0);
   const [zoom, setZoom] = useState(1);
   const beats = protocol.scenario_beats ?? [];
@@ -103,6 +112,23 @@ export function ExperimentStage({
           </Pill>
         }
       />
+
+      {/* Le duel SUR le globe (terrain neutre : Genève) — arène + 2 candidats + tag de
+          tournoi (parité proto_9). Le harnais scientifique complet reste dessous. */}
+      <div className="relative mb-4 h-56 overflow-hidden rounded-xl border border-edge bg-[#04060c]">
+        <GlobeStage
+          countries={[]}
+          uByCountry={{}}
+          utopia={0.5}
+          labArena={{
+            tag: `🧪 Tournoi dyadique · Genève — ${modelA} vs ${modelB}${
+              roundCount ? ` · manche ${roundIndex + 1}/${roundCount}` : ""
+            }`,
+          }}
+          flyTo={{ lon: 6.15, lat: 46, dist: 2.3, dur: 1.2, key: "lab-arena" }}
+          className="h-full w-full"
+        />
+      </div>
 
       {!sample && (
         // Marquage fort et permanent (spec refonte labo §3.4, CETaS anti-sur-confiance) :

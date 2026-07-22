@@ -163,6 +163,9 @@ export type GlobeStageProps = {
   orgSeat?: boolean;
   /** L'ONU s'adresse au Juge (rapport cité) : onde cyan Genève → Juge + regard cyan. */
   orgActive?: boolean;
+  /** Arène du Laboratoire (duel de modèles) sur terrain neutre (Genève) : 2 anneaux
+   * concentriques + 2 candidats + un tag de tournoi. null = pas de mode Labo. */
+  labArena?: { tag: string } | null;
   /** WebGL indisponible : l'hôte peut retomber sur la StageMap 2D (S3). */
   onUnsupported?: () => void;
   className?: string;
@@ -479,6 +482,38 @@ export function GlobeStage(props: GlobeStageProps) {
     scene.add(orgBeam);
     const orgTag = makeTag("border-color:rgba(89,215,255,.55);color:#bff0ff;");
     orgTag.textContent = "🕊 ONU · Genève";
+
+    // Laboratoire — arène de duel de modèles sur terrain neutre (Genève) : 2 anneaux
+    // concentriques + 2 candidats α/β. Masqués hors mode Labo (proto l.1045-1055).
+    const LAB_VENUE: [number, number] = [6.15, 46.2];
+    const arenaRing = (rIn: number, rOut: number, opacity: number) =>
+      new THREE.Mesh(
+        new THREE.RingGeometry(rIn, rOut, 64),
+        new THREE.MeshBasicMaterial({
+          color: 0x59d7ff,
+          transparent: true,
+          opacity,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        }),
+      );
+    const arenaA = arenaRing(0.072, 0.077, 0.55);
+    const arenaB = arenaRing(0.05, 0.053, 0.28);
+    for (const a of [arenaA, arenaB]) {
+      anchors.anchor(a, LAB_VENUE[0], LAB_VENUE[1], { lift: 0.003, flatQ: Q_ID });
+      a.visible = false;
+      scene.add(a);
+    }
+    const labALL: [number, number] = [LAB_VENUE[0] - 2.4, LAB_VENUE[1] - 0.3];
+    const labBLL: [number, number] = [LAB_VENUE[0] + 2.4, LAB_VENUE[1] - 0.3];
+    const labA = makeRobot({ slug: "labA", hue: "#59d7ff", lonlat: labALL, flagMap: null });
+    const labB = makeRobot({ slug: "labB", hue: "#eab308", lonlat: labBLL, flagMap: null });
+    anchors.anchor(labA.group, labALL[0], labALL[1], { lift: 0.001 });
+    anchors.anchor(labB.group, labBLL[0], labBLL[1], { lift: 0.001 });
+    labA.group.visible = labB.group.visible = false;
+    scene.add(labA.group);
+    scene.add(labB.group);
+    const labTag = makeTag("border-color:rgba(89,215,255,.55);color:#bff0ff;");
     const eventTag = makeTag("border-color:rgba(255,193,77,.55);color:#ffe0a3;");
     const speakerTag = makeTag("border-color:rgba(255,193,77,.55);color:#ffe9c2;font-weight:600;");
     const judgeTag = makeTag("border-color:rgba(129,140,248,.55);color:#c7d2fe;");
@@ -800,6 +835,11 @@ export function GlobeStage(props: GlobeStageProps) {
         syncFunds,
         setScan,
       };
+      // Intention de vol posée AVANT que la poignée soit prête (montage direct sur une
+      // cible — ex. le Labo cadre Genève d'emblée) : l'effet `flyTo` a déjà tiré à vide
+      // pendant le chargement des côtes ; on la rejoue ici, une fois la scène gréée.
+      const initFly = propsRef.current.flyTo;
+      if (initFly) flyTo(initFly.lon, initFly.lat, initFly.dist, initFly.dur);
     });
 
     // --- interactions --------------------------------------------------------
@@ -1183,6 +1223,24 @@ export function GlobeStage(props: GlobeStageProps) {
       } else {
         orgBeam.material.opacity = 0;
         orgTag.style.opacity = "0";
+      }
+
+      // Laboratoire (duel de modèles) : arène + 2 candidats à Genève + tag de tournoi.
+      const lab = p.labArena;
+      arenaA.visible = arenaB.visible = !!lab;
+      labA.group.visible = labB.group.visible = !!lab;
+      if (lab) {
+        for (const r of [labA, labB]) {
+          const l = r.group.worldToLocal(CAMP.copy(camera.position));
+          r.spinner.rotation.y = Math.atan2(l.x, l.z);
+          animateRobot(r, t, reduced);
+        }
+        arenaB.scale.setScalar(1 + (reduced ? 0 : Math.sin(t * 2) * 0.06));
+        if (labTag.textContent !== lab.tag) labTag.textContent = lab.tag;
+        mixTop([LAB_VENUE[0], LAB_VENUE[1] - 5.6], 1.055, 0.05, morphK, LOC);
+        projectAt(labTag, LOC, true, 0);
+      } else {
+        labTag.style.opacity = "0";
       }
 
       // Laury flotte près de la caméra et va « présenter » la cible de l'étape (proto).
