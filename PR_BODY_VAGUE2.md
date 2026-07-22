@@ -42,4 +42,3 @@ native devient une donnée durable du jeu.
   déploiement Supabase réel avec jeu classé (dette de classe pré-existante).
 - Mineurs consignés : test unitaire du join deux-passes ; `useMemo` du lens Glass Box.
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
