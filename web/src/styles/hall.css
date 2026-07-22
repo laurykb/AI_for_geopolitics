@@ -1,0 +1,363 @@
+/* L'avant-jeu à l'identique du prototype (theatre-globe-proto_9) — connexion, hall,
+ * config posés sur le globe. Classes et tokens levés VERBATIM du proto (mêmes chanfreins
+ * clip-path, néon cyan/ambre, panneaux verre). Le câblage React (auth/flow/StageDirector)
+ * est inchangé ; seule la mise en scène épouse le proto. */
+
+:root {
+  --panel: rgba(8, 14, 26, 0.85);
+  --panel-solid: #0b1220;
+  --edge: rgba(78, 168, 255, 0.26);
+  --edge-strong: rgba(89, 215, 255, 0.5);
+  --fg: #dbe6f5;
+  --fg-muted: #8fa3c0;
+  --fg-faint: #5c7194;
+  --cyan: #59d7ff;
+  --accent: #4ea8ff;
+  --amber: #ffc14d;
+}
+
+/* --- centrage de la carte de connexion sur le globe --- */
+.hall-stage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.hall-stage > * {
+  pointer-events: auto;
+}
+
+/* --- la carte de connexion --- */
+.hall-card {
+  width: min(400px, 86vw);
+  padding: 30px 30px 22px;
+  text-align: center;
+  background: var(--panel);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--edge-strong);
+  clip-path: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
+  box-shadow: inset 0 0 30px -12px rgba(89, 215, 255, 0.4);
+}
+.hall-logo {
+  font-size: 24px;
+  letter-spacing: 0.26em;
+  color: var(--fg);
+  text-shadow: 0 0 18px rgba(89, 215, 255, 0.55);
+}
+.hall-logo b {
+  color: var(--cyan);
+  font-weight: 600;
+}
+.tag-line {
+  font-size: 12px;
+  color: var(--fg-muted);
+  line-height: 1.6;
+  margin: 12px 0 20px;
+}
+.hall-card input {
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--fg);
+  background: rgba(10, 18, 32, 0.8);
+  border: 1px solid var(--edge);
+  outline: none;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+.hall-card input:focus {
+  border-color: var(--cyan);
+  box-shadow: 0 0 14px -4px rgba(89, 215, 255, 0.6);
+}
+.cta {
+  width: 100%;
+  margin-top: 6px;
+  padding: 11px 0;
+  font: inherit;
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  color: #08101e;
+  background: linear-gradient(100deg, #ffd98a, var(--amber));
+  border: 0;
+  cursor: pointer;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  box-shadow: 0 0 26px -6px rgba(255, 193, 77, 0.65);
+  transition: filter 0.2s;
+}
+.cta:hover {
+  filter: brightness(1.1);
+}
+.cta:disabled {
+  filter: grayscale(0.4) brightness(0.8);
+  cursor: not-allowed;
+}
+.hall-mini {
+  font-size: 10px;
+  color: var(--fg-faint);
+  margin-top: 12px;
+  letter-spacing: 0.06em;
+}
+.hall-mini a,
+.hall-link {
+  color: var(--cyan);
+  cursor: pointer;
+  text-decoration: none;
+}
+.hall-link:hover {
+  filter: brightness(1.15);
+}
+
+/* --- le menu des modes : 3 portes flottant en bas --- */
+.hall-menu {
+  position: absolute;
+  left: 50%;
+  bottom: 9vh;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 14px;
+  width: min(880px, 92vw);
+  pointer-events: auto;
+}
+.mode-card {
+  flex: 1;
+  padding: 16px 16px 14px;
+  cursor: pointer;
+  text-align: left;
+  background: var(--panel);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--edge);
+  transition: transform 0.25s, border-color 0.25s, box-shadow 0.25s;
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+}
+.mode-card:hover {
+  transform: translateY(-6px);
+  border-color: var(--cyan);
+  box-shadow: inset 0 0 24px -10px rgba(89, 215, 255, 0.5);
+}
+.mode-card h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  color: var(--cyan);
+}
+.mode-card p {
+  margin: 0;
+  font-size: 11px;
+  color: var(--fg-muted);
+  line-height: 1.55;
+}
+
+/* --- pastille discrète (visite / défi / reprendre / rang) --- */
+.hall-extra {
+  position: absolute;
+  left: 50%;
+  bottom: 4vh;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  pointer-events: auto;
+}
+.hall-pill {
+  padding: 7px 16px;
+  font-size: 11px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  backdrop-filter: blur(8px);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  transition: border-color 0.2s, color 0.2s;
+}
+.hall-pill:hover {
+  border-color: var(--cyan);
+  color: var(--fg);
+}
+.hall-pill b {
+  color: var(--cyan);
+}
+
+/* --- l'aside de configuration --- */
+.hall-config {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(400px, 38vw);
+  padding: 22px 20px;
+  overflow-y: auto;
+  pointer-events: auto;
+  background: linear-gradient(to left, rgba(7, 11, 20, 0.95), rgba(7, 11, 20, 0.82));
+  backdrop-filter: blur(10px);
+  border-left: 1px solid var(--edge-strong);
+  scrollbar-width: thin;
+  scrollbar-color: #233350 transparent;
+}
+.hall-config h3 {
+  margin: 0 0 14px;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  color: var(--fg-faint);
+}
+.hall-config h3 b {
+  color: var(--fg);
+}
+.cfg-block {
+  margin-bottom: 16px;
+  padding: 12px;
+  border: 1px solid var(--edge);
+  background: rgba(13, 20, 34, 0.6);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+}
+.cfg-block h4 {
+  margin: 0 0 8px;
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  color: var(--cyan);
+  text-transform: uppercase;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.chip {
+  padding: 4px 9px;
+  font: inherit;
+  font-size: 10px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--edge);
+  letter-spacing: 0.03em;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+}
+.chip:hover {
+  color: var(--fg);
+}
+.chip.on {
+  background: rgba(78, 168, 255, 0.14);
+  border-color: var(--edge-strong);
+  color: var(--fg);
+}
+.chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.cfg-input {
+  width: 100%;
+  margin-bottom: 7px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--fg);
+  background: rgba(10, 18, 32, 0.8);
+  border: 1px solid var(--edge);
+  outline: none;
+  clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
+}
+.cfg-input:focus {
+  border-color: var(--cyan);
+}
+.cfg-ctl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  font-size: 12px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  user-select: none;
+}
+.cfg-ctl .sw {
+  width: 26px;
+  height: 14px;
+  border-radius: 99px;
+  background: #22314a;
+  position: relative;
+  flex: none;
+  transition: background 0.2s;
+}
+.cfg-ctl .sw::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--fg-muted);
+  transition: transform 0.2s, background 0.2s;
+}
+.cfg-ctl.on .sw {
+  background: rgba(78, 168, 255, 0.45);
+}
+.cfg-ctl.on .sw::after {
+  transform: translateX(12px);
+  background: #fff;
+}
+.row2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.row2 input[type="range"] {
+  flex: 1;
+  accent-color: var(--cyan);
+}
+.cast-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 6px;
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.cast-row:hover {
+  border-color: var(--edge);
+}
+.cast-row.me {
+  border-color: rgba(255, 193, 77, 0.6);
+  background: rgba(255, 193, 77, 0.07);
+}
+.cast-row .who-tag {
+  margin-left: auto;
+  font-size: 9px;
+  color: var(--amber);
+  letter-spacing: 0.1em;
+}
+.cast-row .who-btn {
+  margin-left: auto;
+  padding: 1px 7px;
+  font-size: 9px;
+  color: var(--fg-faint);
+  border: 1px solid var(--edge);
+  background: none;
+  cursor: pointer;
+}
+.cast-row .who-btn:hover {
+  color: var(--amber);
+  border-color: rgba(255, 193, 77, 0.6);
+}
+.sel {
+  color: var(--fg);
+  font-size: 12px;
+}
+.back {
+  margin-top: 10px;
+  width: 100%;
+  padding: 7px 0;
+  font: inherit;
+  font-size: 11px;
+  color: var(--fg-muted);
+  background: none;
+  border: 1px solid var(--edge);
+  cursor: pointer;
+}
+.back:hover {
+  color: var(--fg);
+  border-color: var(--edge-strong);
+}

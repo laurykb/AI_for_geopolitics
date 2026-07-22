@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "../styles/theatre-kit.css";
+@import "../styles/hall.css";
 
 /* Direction artistique « théâtre futuriste » (spec théâtre-globe §9, S10) : la
    palette de l'app est REBASÉE sur le kit theatre-kit.css — nuit du théâtre
