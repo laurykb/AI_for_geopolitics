@@ -76,12 +76,14 @@ export type LobbyMode = (typeof FLOW_MODES)[number]["value"];
 /** Les rôles du flow (§0/S3 + G12 §3). `invent` = « Créer son pays » (forge), `gm` =
  * Game Master (événements + consignes globales), `spectator` = le parieur (parie, ne
  * motionne ni ne prompte). */
-export type FlowRole = "player" | "invent" | "gm" | "spectator";
+export type FlowRole = "player" | "invent" | "gm" | "spectator" | "un";
 
-/** Rôle du flow → rôle d'API (l'architecte porte les pouvoirs du Game Master). */
+/** Rôle du flow → rôle d'API (l'architecte porte les pouvoirs du Game Master ; l'ONU
+ * n'incarne aucun pays : elle observe, vérifie et conseille — S14). */
 export function backendRole(role: FlowRole): GameRole {
   if (role === "gm") return "architect";
   if (role === "spectator") return "spectator";
+  if (role === "un") return "un";
   return "player";
 }
 

@@ -137,7 +137,8 @@ export function ConfigOverlay() {
     setRole(r);
     setSelected((cur) => trimForRole(cur, r, summitSize));
     if (r !== "player") setClickMode("table");
-    if (r === "gm" || r === "spectator") setFlag(null);
+    // GM, spectateur et ONU n'incarnent aucun pays.
+    if (r === "gm" || r === "spectator" || r === "un") setFlag(null);
   };
 
   const pickSize = (size: number) => {
@@ -211,14 +212,13 @@ export function ConfigOverlay() {
           <p className="thk-block-label">Ton siège</p>
           {ROLES.map((r) => {
             const isUn = r.value === "un";
-            const active = !isUn && role === r.value;
+            const active = role === r.value;
             return (
               <button
                 key={r.value}
                 type="button"
-                disabled={isUn}
-                onClick={() => !isUn && pickRole(r.value as FlowRole)}
-                className="thk-cast-row w-full disabled:cursor-not-allowed disabled:opacity-45"
+                onClick={() => pickRole(r.value as FlowRole)}
+                className="thk-cast-row w-full"
                 style={
                   active
                     ? { borderColor: "var(--thk-amber)", background: "rgba(255,193,77,.07)" }
@@ -236,9 +236,7 @@ export function ConfigOverlay() {
                 </span>
                 <span className="min-w-0 text-left">
                   <span className="block text-xs font-semibold">{r.label}</span>
-                  <span className="block truncate text-[11px] text-fg-faint">
-                    {isUn ? "Siège spécial — arrive avec le socle C5." : r.desc}
-                  </span>
+                  <span className="block truncate text-[11px] text-fg-faint">{r.desc}</span>
                 </span>
                 {active && <span className="who-tag">TOI</span>}
               </button>

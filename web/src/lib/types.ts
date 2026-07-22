@@ -137,7 +137,7 @@ export type GameView = {
 };
 
 /** G8/G12 — le rôle choisi à la création (le Spectateur revient par le marché, G12 §3). */
-export type GameRole = "architect" | "council" | "player" | "spectator";
+export type GameRole = "architect" | "council" | "player" | "spectator" | "un";
 
 /** G11 §4 — la difficulté (asymétrie d'information/économie, jamais de modèle). */
 export type Difficulty = "beginner" | "intermediate" | "expert";
@@ -670,6 +670,17 @@ export type CustomCrisisView = {
 };
 
 /** Événements SSE du round (un par `RoundStep`, plus `done`). */
+/** S14 — le rapport public de l'ONU pour un round (trame SSE `org`, additive). */
+export type OrgCompliance = { country: string; status: string; note: string };
+export type OrgAdvisory = { severity_delta: number; tension_delta: number; rationale: string };
+export type OrgReport = {
+  round_id: number;
+  compliance: OrgCompliance[];
+  resolution: string;
+  advisory: OrgAdvisory;
+  audited: string | null;
+};
+
 export type SseEvent =
   | { type: "date"; date: string }
   | { type: "event"; event: GeoEvent }
@@ -704,6 +715,7 @@ export type SseEvent =
   | { type: "communique"; text: string; support: Record<string, number> }
   | { type: "risk"; risk: RiskScore }
   | { type: "trajectory"; state: TrajectoryState }
+  | { type: "org"; report: OrgReport }
   | { type: "summary"; summary: { round_id: number; headline?: string } }
   | { type: "done"; round_no: number }
   | { type: "error"; detail: string }

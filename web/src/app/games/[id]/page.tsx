@@ -13,6 +13,7 @@ import { MODE_LABELS } from "@/lib/modes";
 import { type CountrySnapshot } from "@/components/country-table";
 import { DriftCouncilBanner, DriftRevealPanel } from "@/components/drift";
 import { IntelBudget, IntelPanel } from "@/components/intel";
+import { OrgPanel } from "@/components/org-panel";
 import { ObservablesGrid } from "@/components/theatre/observables-grid";
 import { StageBand, type StageSelection } from "@/components/stage-band";
 import { AlliancePills } from "@/components/alliance-pills";
@@ -1333,24 +1334,28 @@ export default function TheatrePage() {
           </div>
         }
         renseignement={
-          detail?.live && detail.status === "running" ? (
-            /* S8 — le conseil quitte son panneau : le bureau vit dans le théâtre
-               (spec §4), et chaque achat ciblé envoie le satellite balayer. */
-            <IntelPanel
-              gameId={id}
-              countries={summit}
-              fog={fogOn}
-              playAs={detail.play_as}
-              claims={round.turns
-                .filter((turn) => turn.done && turn.model !== "humain" && turn.text)
-                .map((turn) => [turn.country, turn.text] as [string, string])}
-              streaming={streaming}
-              onSpent={resync}
-              onAction={onIntelAction}
-            />
-          ) : (
-            <p className="text-xs text-fg-faint">{t("theatre.rens-note")}</p>
-          )
+          <div className="space-y-3">
+            {/* S14 — le rapport de veille de l'ONU (si une ONU siège à la table). */}
+            {round.org && <OrgPanel report={round.org} />}
+            {detail?.live && detail.status === "running" ? (
+              /* S8 — le conseil quitte son panneau : le bureau vit dans le théâtre
+                 (spec §4), et chaque achat ciblé envoie le satellite balayer. */
+              <IntelPanel
+                gameId={id}
+                countries={summit}
+                fog={fogOn}
+                playAs={detail.play_as}
+                claims={round.turns
+                  .filter((turn) => turn.done && turn.model !== "humain" && turn.text)
+                  .map((turn) => [turn.country, turn.text] as [string, string])}
+                streaming={streaming}
+                onSpent={resync}
+                onAction={onIntelAction}
+              />
+            ) : (
+              <p className="text-xs text-fg-faint">{t("theatre.rens-note")}</p>
+            )}
+          </div>
         }
         dock={
         <ActionDock
