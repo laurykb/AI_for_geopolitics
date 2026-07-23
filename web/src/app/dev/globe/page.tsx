@@ -43,6 +43,7 @@ export default function GlobeDevPage() {
   // Palier de rendu (planète-réaliste A7) : le toggle remonte GlobeStage (key) car la
   // scène lit `quality` au montage. Défaut réaliste pour itérer sur le shader ici.
   const [quality, setQuality] = useState<"realistic" | "light">("realistic");
+  const [bloom, setBloom] = useState(true);
 
   const current = speakerIdx >= 0 ? SUMMIT[speakerIdx % SUMMIT.length] : null;
   const speaking = phase === "speaking" ? current : null;
@@ -56,6 +57,7 @@ export default function GlobeDevPage() {
       <GlobeStage
         key={quality}
         quality={quality}
+        bloom={bloom}
         countries={SUMMIT}
         uByCountry={U_BY_COUNTRY}
         utopia={0.52}
@@ -139,6 +141,9 @@ export default function GlobeDevPage() {
           onClick={() => setQuality((q) => (q === "realistic" ? "light" : "realistic"))}
         >
           🛰 réaliste
+        </button>
+        <button type="button" className={chip} data-on={bloom} onClick={() => setBloom((b) => !b)}>
+          ✨ bloom
         </button>
         <button
           type="button"

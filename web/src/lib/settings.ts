@@ -25,6 +25,7 @@ export type Settings = {
   noAnim: boolean; // « désactiver toutes les animations » (raccourci reduced-motion)
   stageView: StageView;
   planetQuality: PlanetQuality;
+  bloom: boolean; // halo lumineux (post-traitement) du mode réaliste — désactivable
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -33,6 +34,7 @@ export const DEFAULT_SETTINGS: Settings = {
   noAnim: false,
   stageView: "3d",
   planetQuality: "realistic",
+  bloom: true,
 };
 
 const LANGS: readonly string[] = ["fr", "en"];
@@ -45,6 +47,7 @@ const KEY_PERF = "wosi.perf";
 const KEY_NOANIM = "wosi.noanim";
 const KEY_STAGE = "wosi.stage";
 const KEY_PLANET = "wosi.planet";
+const KEY_BLOOM = "wosi.bloom";
 
 /** Classe à poser sur `<html>` : `prefers-reduced-motion` impose au minimum
  * « confort » (spec §2) ; « léger » reste léger. « plein » = aucune classe. */
@@ -73,6 +76,7 @@ export function loadSettings(store: SettingsStore): Settings {
       planet !== null && PLANET_QUALITIES.includes(planet)
         ? (planet as PlanetQuality)
         : DEFAULT_SETTINGS.planetQuality,
+    bloom: store.getItem(KEY_BLOOM) !== "0", // défaut vrai (clé absente → activé)
   };
 }
 
@@ -82,4 +86,5 @@ export function saveSettings(settings: Settings, store: SettingsStore): void {
   store.setItem(KEY_NOANIM, settings.noAnim ? "1" : "0");
   store.setItem(KEY_STAGE, settings.stageView);
   store.setItem(KEY_PLANET, settings.planetQuality);
+  store.setItem(KEY_BLOOM, settings.bloom ? "1" : "0");
 }

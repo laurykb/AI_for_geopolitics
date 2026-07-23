@@ -145,6 +145,9 @@ export type GlobeStageProps = {
    * (textures NASA) ou globe peint léger (repli). Défaut « light » côté scène : zéro
    * changement tant que l'hôte ne le câble pas. L'hôte le dérive de `settings.planetQuality`. */
   quality?: "realistic" | "light";
+  /** Halo lumineux (bloom) du mode réaliste — désactivable (retour user : il masquait
+   * parfois un délégué qui parle). Lu en direct (pas de remontage) ; coupé aussi en carte 2D. */
+  bloom?: boolean;
   /** La vue du joueur (spec §5) : globe, ou LE MÊME monde déplié en carte. */
   view?: "3d" | "2d";
   /** Touche V pressée : l'hôte (qui possède le réglage `stageView`) bascule. */
@@ -822,6 +825,7 @@ export function GlobeStage(props: GlobeStageProps) {
     let earthMat: EarthMaterial | null = null;
     let sky: { atmo: ReturnType<typeof makeAtmosphere>; clouds: THREE.Mesh } | null = null;
     let composer: EffectComposer | null = null;
+    let bloomPass: UnrealBloomPass | null = null;
     const planetTextures: THREE.Texture[] = [];
     const loadPlanetTextures = (): Promise<{
       day: THREE.Texture;
@@ -893,7 +897,10 @@ export function GlobeStage(props: GlobeStageProps) {
         // Seuil haut → seules les hautes lumières (limbe, glint, villes de nuit, sommets de
         // nuages) rayonnent ; les couleurs réglées (océan/terres) sont préservées.
         const bloomRes = renderer.getSize(new THREE.Vector2());
-        composer.addPass(new UnrealBloomPass(bloomRes, 1.3, 0.6, 0.72));
+        // Doux (retour user : moins puissant/brillant, ne masque plus les délégués) :
+        // strength bas + seuil haut → seules les toutes hautes lumières rayonnent légèrement.
+        bloomPass = new UnrealBloomPass(bloomRes, 0.7, 0.5, 0.82);
+        composer.addPass(bloomPass);
         painter = createOverlayPainter(tctx, allFeatures);
       } else {
         painter = createGlobePainter({ ctx: tctx, features: allFeatures });
@@ -1343,6 +1350,11 @@ export function GlobeStage(props: GlobeStageProps) {
         labTag.style.opacity = "0";
       }
 
+      // Bloom : palier réaliste, réglage activé, et SEULEMENT en globe 3D — coupé en carte 2D
+      // (morphK élevé) et désactivable (masquait parfois un délégué qui parle). On garde TOUJOURS
+      // le composer en réaliste — mélanger composer.render/renderer.render corrompt l'état du
+      // renderer et masque la carte dépliée ; on n'active/désactive donc QUE la passe bloom.
+      if (bloomPass) bloomPass.enabled = propsRef.current.bloom !== false && morphK < 0.5;
       if (composer) composer.render();
       else renderer.render(scene, camera);
     };

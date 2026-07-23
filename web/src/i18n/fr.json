@@ -130,6 +130,8 @@
   "reglages.planete-realiste-desc": "Terre photo-réaliste : textures NASA jour/nuit, nuages, atmosphère, lune et étoiles.",
   "reglages.planete-legere": "Légère",
   "reglages.planete-legere-desc": "Globe peint sobre — plus léger sur les machines modestes, et repli si les textures manquent.",
+  "reglages.bloom": "Halo lumineux (bloom)",
+  "reglages.bloom-desc": "Fait rayonner les hautes lumières du globe réaliste (atmosphère, villes de nuit). Désactive-le s'il gêne la lecture des délégués.",
   "theatre.tab.dialogues": "Dialogues",
   "theatre.tab.paris": "Paris",
   "theatre.tab.renseignement": "Renseignement",

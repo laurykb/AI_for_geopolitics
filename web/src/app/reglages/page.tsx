@@ -31,7 +31,7 @@ const INPUT_CLASS =
   "placeholder:text-fg-faint focus:border-accent focus:outline-none";
 
 export default function ReglagesPage() {
-  const { settings, setLang, setPerf, setNoAnim, setStageView, setPlanetQuality, t } =
+  const { settings, setLang, setPerf, setNoAnim, setStageView, setPlanetQuality, setBloom, t } =
     useSettings();
   const { player } = useAuth();
   const { mascotHidden, setMascotVisible, restart } = useTour();
@@ -135,6 +135,12 @@ export default function ReglagesPage() {
               {PLANET_QUALITIES.find((q) => q.value === settings.planetQuality)?.desc}
             </p>
           </div>
+          <Switch
+            label={t("reglages.bloom")}
+            desc={t("reglages.bloom-desc")}
+            checked={settings.bloom}
+            onChange={setBloom}
+          />
         </div>
 
         <div className="mt-5 border-t border-edge pt-4">

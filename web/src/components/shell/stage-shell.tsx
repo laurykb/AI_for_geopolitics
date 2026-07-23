@@ -67,6 +67,7 @@ export function StageShell() {
           utopia={utopia}
           {...rest}
           quality={settings.planetQuality}
+          bloom={settings.bloom}
           view={settings.stageView}
           onViewToggle={onViewToggle}
           onCountryClick={onCountryClick}
