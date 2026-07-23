@@ -141,6 +141,18 @@ export default function ReglagesPage() {
             checked={settings.bloom}
             onChange={setBloom}
           />
+          {/* Atelier visuel : la page /dev/globe, accessible aux joueurs — prévisualise et règle
+              le rendu ; les choix qualité/bloom y lisent et écrivent les vrais réglages. */}
+          <div>
+            <p className="mb-1.5 text-sm font-medium">{t("reglages.atelier")}</p>
+            <a
+              href="/dev/globe"
+              className="inline-block cursor-pointer rounded-md border border-edge px-3 py-1.5 text-sm text-fg-muted transition-colors hover:border-accent hover:text-accent-bright"
+            >
+              {t("reglages.atelier-ouvrir")}
+            </a>
+            <p className="mt-1.5 text-xs text-fg-faint">{t("reglages.atelier-desc")}</p>
+          </div>
         </div>
 
         <div className="mt-5 border-t border-edge pt-4">

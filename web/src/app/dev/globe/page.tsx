@@ -9,6 +9,7 @@
 import dynamic from "next/dynamic";
 import { useState } from "react";
 
+import { useSettings } from "@/components/settings-provider";
 import { speakerMeta } from "@/lib/countries";
 
 const GlobeStage = dynamic(
@@ -40,10 +41,11 @@ export default function GlobeDevPage() {
   const [view, setView] = useState<"3d" | "2d">("3d");
   const [onu, setOnu] = useState(false);
   const [lab, setLab] = useState(false);
-  // Palier de rendu (planète-réaliste A7) : le toggle remonte GlobeStage (key) car la
-  // scène lit `quality` au montage. Défaut réaliste pour itérer sur le shader ici.
-  const [quality, setQuality] = useState<"realistic" | "light">("realistic");
-  const [bloom, setBloom] = useState(true);
+  // Atelier accessible depuis Réglages : quality/bloom lisent les VRAIS réglages (persistés,
+  // appliqués en jeu) — tweaker ici applique partout. Les autres boutons restent de la démo locale.
+  const { settings, setPlanetQuality, setBloom } = useSettings();
+  const quality = settings.planetQuality;
+  const bloom = settings.bloom;
 
   const current = speakerIdx >= 0 ? SUMMIT[speakerIdx % SUMMIT.length] : null;
   const speaking = phase === "speaking" ? current : null;
@@ -138,11 +140,11 @@ export default function GlobeDevPage() {
           type="button"
           className={chip}
           data-on={quality === "realistic"}
-          onClick={() => setQuality((q) => (q === "realistic" ? "light" : "realistic"))}
+          onClick={() => setPlanetQuality(quality === "realistic" ? "light" : "realistic")}
         >
           🛰 réaliste
         </button>
-        <button type="button" className={chip} data-on={bloom} onClick={() => setBloom((b) => !b)}>
+        <button type="button" className={chip} data-on={bloom} onClick={() => setBloom(!bloom)}>
           ✨ bloom
         </button>
         <button
