@@ -31,7 +31,7 @@ const INPUT_CLASS =
   "placeholder:text-fg-faint focus:border-accent focus:outline-none";
 
 export default function ReglagesPage() {
-  const { settings, setLang, setPerf, setNoAnim, setStageView, setPlanetQuality, t } =
+  const { settings, setLang, setPerf, setNoAnim, setStageView, setPlanetQuality, setBloom, t } =
     useSettings();
   const { player } = useAuth();
   const { mascotHidden, setMascotVisible, restart } = useTour();
@@ -134,6 +134,24 @@ export default function ReglagesPage() {
             <p className="mt-1.5 text-xs text-fg-faint">
               {PLANET_QUALITIES.find((q) => q.value === settings.planetQuality)?.desc}
             </p>
+          </div>
+          <Switch
+            label={t("reglages.bloom")}
+            desc={t("reglages.bloom-desc")}
+            checked={settings.bloom}
+            onChange={setBloom}
+          />
+          {/* Atelier visuel : la page /dev/globe, accessible aux joueurs — prévisualise et règle
+              le rendu ; les choix qualité/bloom y lisent et écrivent les vrais réglages. */}
+          <div>
+            <p className="mb-1.5 text-sm font-medium">{t("reglages.atelier")}</p>
+            <a
+              href="/dev/globe"
+              className="inline-block cursor-pointer rounded-md border border-edge px-3 py-1.5 text-sm text-fg-muted transition-colors hover:border-accent hover:text-accent-bright"
+            >
+              {t("reglages.atelier-ouvrir")}
+            </a>
+            <p className="mt-1.5 text-xs text-fg-faint">{t("reglages.atelier-desc")}</p>
           </div>
         </div>
 

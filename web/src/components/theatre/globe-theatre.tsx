@@ -136,6 +136,7 @@ export function GlobeTheatre({
             // La scène lit `quality` au montage : la clé la remonte quand le réglage change.
             key={settings.planetQuality}
             quality={settings.planetQuality}
+            bloom={settings.bloom}
             countries={view.countries}
             uByCountry={view.uByCountry}
             utopia={utopia}

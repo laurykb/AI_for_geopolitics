@@ -47,7 +47,14 @@ describe("persistance des réglages (localStorage aujourd'hui, profil en CC-3)",
   it("relit ce qui a été sauvé", () => {
     const store = fakeStore();
     saveSettings(
-      { lang: "en", perf: "leger", noAnim: true, stageView: "2d", planetQuality: "light" },
+      {
+        lang: "en",
+        perf: "leger",
+        noAnim: true,
+        stageView: "2d",
+        planetQuality: "light",
+        bloom: false,
+      },
       store,
     );
     expect(loadSettings(store)).toEqual({
@@ -56,6 +63,7 @@ describe("persistance des réglages (localStorage aujourd'hui, profil en CC-3)",
       noAnim: true,
       stageView: "2d",
       planetQuality: "light",
+      bloom: false,
     });
   });
 
@@ -73,5 +81,11 @@ describe("persistance des réglages (localStorage aujourd'hui, profil en CC-3)",
     expect(DEFAULT_SETTINGS.planetQuality).toBe("realistic");
     expect(loadSettings(fakeStore()).planetQuality).toBe("realistic");
     expect(loadSettings(fakeStore({ "wosi.planet": "light" })).planetQuality).toBe("light");
+  });
+
+  it("le halo bloom : activé par défaut, désactivable et persisté", () => {
+    expect(DEFAULT_SETTINGS.bloom).toBe(true);
+    expect(loadSettings(fakeStore()).bloom).toBe(true);
+    expect(loadSettings(fakeStore({ "wosi.bloom": "0" })).bloom).toBe(false);
   });
 });

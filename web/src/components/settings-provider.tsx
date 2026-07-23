@@ -29,6 +29,8 @@ type SettingsApi = {
   setStageView: (view: StageView) => void;
   /** Rendu de la planète (réaliste / léger) — persisté par appareil. */
   setPlanetQuality: (quality: PlanetQuality) => void;
+  /** Halo lumineux (bloom) du mode réaliste — activé/désactivé, persisté. */
+  setBloom: (on: boolean) => void;
   /** Traduction : clé → chaîne dans la langue courante (repli FR, puis la clé). */
   t: (key: string) => string;
 };
@@ -97,11 +99,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     (planetQuality: PlanetQuality) => setSettings((s) => ({ ...s, planetQuality })),
     [],
   );
+  const setBloom = useCallback((bloom: boolean) => setSettings((s) => ({ ...s, bloom })), []);
   const t = useCallback((key: string) => translate(settings.lang, key), [settings.lang]);
 
   return (
     <SettingsContext.Provider
-      value={{ settings, setLang, setPerf, setNoAnim, setStageView, setPlanetQuality, t }}
+      value={{ settings, setLang, setPerf, setNoAnim, setStageView, setPlanetQuality, setBloom, t }}
     >
       {children}
     </SettingsContext.Provider>

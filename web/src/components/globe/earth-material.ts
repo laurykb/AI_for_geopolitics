@@ -59,7 +59,7 @@ export function createEarthMaterial(opts: {
         float ocean = smoothstep(0.24, 0.08, lum) * step(day.r, day.b);
         // Océan « bleu ciel » naturel (retour user) : rehausse les mers vers un bleu clair,
         // surtout côté jour ; garde un peu du dégradé d'origine (profondeur/courants).
-        col = mix(col, vec3(0.11, 0.33, 0.55) * (0.82 + 0.28 * dayMix), ocean * dayMix * 0.60);
+        col = mix(col, vec3(0.09, 0.28, 0.48) * (0.55 + 0.45 * dayMix), ocean * (0.14 + 0.5 * dayMix));
         vec3 h = normalize(uSun + vec3(0.0,0.0,1.0));
         float spec = pow(max(dot(normalize(vNormalW), h), 0.0), 68.0) * ocean * dayMix * (1.0 - uFlat);
         col += vec3(0.95,0.97,1.0) * spec * 1.9;          // reflet solaire sur l'océan (glint focalisé)
